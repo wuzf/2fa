@@ -1,0 +1,4 @@
+name = "2fa"
+main = "src/worker.js"
+compatibility_date = "2024-01-13"
+workers_dev = true
