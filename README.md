@@ -3,9 +3,8 @@
 如果不想用演示站，也可以自己复制worker.js源码，通过Cloudflare Worker自行搭建。
 
 ### 演示网站
- https://2fa.free.hr/MBWJJVDIQ3PH3SA5
+https://2fa.guts.eu.org/MBWJJVDIQ3PH3SA5
 
 ### 备用网站：
- 1. https://2fa.guts.eu.org/MBWJJVDIQ3PH3SA5
- 2. https://2fa.my2fa.workers.dev/MBWJJVDIQ3PH3SA5
- 3. https://tfa.mytfa.workers.dev/MBWJJVDIQ3PH3SA5
+  1. https://2fa.my2fa.workers.dev/MBWJJVDIQ3PH3SA5
+  2. https://tfa.mytfa.workers.dev/MBWJJVDIQ3PH3SA5
