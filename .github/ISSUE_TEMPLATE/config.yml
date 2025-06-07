@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 项目文档
+    url: https://github.com/wuzf/2fa/blob/main/README.md
+    about: 查看项目使用文档和说明
+  - name: 💬 讨论区
+    url: https://github.com/wuzf/2fa/discussions
+    about: 在讨论区提问或分享想法
+  - name: 🔒 安全问题
+    url: https://github.com/wuzf/2fa/security/advisories/new
+    about: 如果发现安全漏洞，请私密报告

@@ -2,3 +2,52 @@ name = "2fa"
 main = "src/worker.js"
 compatibility_date = "2024-01-13"
 workers_dev = true
+
+# KV 命名空间（生产环境）
+[[kv_namespaces]]
+binding = "SECRETS_KV"
+id = "a98735f310c24a9786cfd388241258e7"
+preview_id = "b6c4090a117c46ce94cf0bd2a88ddedb"
+
+# 环境变量 (Secrets)
+# 注意：敏感信息使用 Cloudflare Secrets 安全存储
+#
+# 生产环境（默认）设置：
+#   npx wrangler secret put ENCRYPTION_KEY    # 加密密钥（可选，用于数据加密）
+#
+# 开发环境设置：
+#   npx wrangler secret put ENCRYPTION_KEY --env development
+#
+# 详细配置指南：docs/DEPLOYMENT.md
+
+# 定时任务配置 - 每天凌晨0点（北京时间）自动备份（仅在数据变化时执行）
+[triggers]
+crons = ["0 16 * * *"]
+
+# ====================================
+# 🚀 Service Worker 自动版本管理
+# ====================================
+# SW_VERSION 将在部署时通过 scripts/generate-version.js 自动生成
+# 支持三种版本策略：
+#   - 时间戳（默认）：v20250102-123456
+#   - Git commit：v<short-hash>
+#   - Package版本：v1.0.0
+#
+# 使用方式：
+#   npm run deploy              # 使用时间戳版本
+#   npm run deploy:git          # 使用 git commit 版本
+#   npm run deploy:package      # 使用 package.json 版本
+#
+# 注意：版本号由部署脚本注入，此处的值仅用于本地开发
+[vars]
+SW_VERSION = "v1"
+
+# ====================================
+# 开发/测试环境配置
+# ====================================
+[env.development]
+name = "2fa-dev"
+
+[[env.development.kv_namespaces]]
+binding = "SECRETS_KV"
+id = "27891dd17d854dad8de14448763fed4d"

@@ -1,0 +1,41 @@
+# 代码所有者配置
+# 当有 PR 修改这些文件时，会自动请求对应的人员进行审核
+# 详细文档：https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# 默认所有者 - 所有文件
+*       @wuzf
+
+# GitHub Actions 工作流
+/.github/workflows/    @wuzf
+
+# 文档
+/docs/                 @wuzf
+*.md                   @wuzf
+
+# 核心代码
+/src/                  @wuzf
+/src/api/              @wuzf
+/src/otp/              @wuzf
+/src/utils/            @wuzf
+
+# 前端 UI
+/src/ui/               @wuzf
+/src/ui/scripts/       @wuzf
+/src/ui/styles/        @wuzf
+
+# 配置文件
+/wrangler.toml         @wuzf
+/package.json          @wuzf
+/package-lock.json     @wuzf
+
+# 测试
+/tests/                @wuzf
+/vitest.config.js      @wuzf
+
+# 部署脚本
+/scripts/              @wuzf
+
+# 安全相关（需要特别审核）
+/src/utils/auth.js     @wuzf
+/src/utils/encryption.js @wuzf
+/src/utils/security.js @wuzf

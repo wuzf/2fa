@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "2fa-manager",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "include-component-in-tag": false,
+      "include-v-in-tag": true,
+      "changelog-sections": [
+        { "type": "feat", "section": "✨ Features / 新功能" },
+        { "type": "fix", "section": "🐛 Bug Fixes / 问题修复" },
+        { "type": "perf", "section": "⚡ Performance / 性能优化" },
+        { "type": "docs", "section": "📚 Documentation / 文档" },
+        { "type": "refactor", "section": "♻️ Code Refactoring / 代码重构" },
+        { "type": "test", "section": "✅ Tests / 测试" },
+        { "type": "build", "section": "📦 Build System / 构建系统" },
+        { "type": "ci", "section": "🔧 CI/CD" },
+        { "type": "chore", "section": "🔨 Chores / 杂项", "hidden": true },
+        { "type": "style", "section": "💄 Styles / 样式", "hidden": true }
+      ],
+      "extra-files": [
+        "wrangler.toml"
+      ]
+    }
+  }
+}
