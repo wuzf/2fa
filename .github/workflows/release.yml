@@ -1,0 +1,283 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    name: Build Release Assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          if npm ci 2>/dev/null; then
+            echo "✅ npm ci succeeded"
+          else
+            echo "⚠️ npm ci failed, falling back to npm install"
+            npm install
+          fi
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build release version
+        run: npm run build:minify
+
+      - name: Build non-minified version (for debugging)
+        run: npm run build -- --output=dist/worker.debug.js
+
+      - name: Verify build outputs
+        run: |
+          echo "✅ 检查构建输出..."
+          ls -lh dist/
+          echo ""
+          echo "📦 文件信息："
+          du -h dist/worker.js
+          du -h dist/worker.debug.js
+          echo ""
+          echo "📄 元数据："
+          cat dist/worker.metadata.json
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum worker.js > worker.js.sha256
+          sha256sum worker.debug.js > worker.debug.js.sha256
+          sha256sum worker.metadata.json > worker.metadata.json.sha256
+          echo "✅ Checksums 已生成："
+          cat *.sha256
+
+      - name: Create release archive
+        run: |
+          cd dist
+          zip -r ../2fa-release.zip .
+          cd ..
+          echo "✅ Release 压缩包已创建"
+          ls -lh 2fa-release.zip
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: |
+            dist/worker.js
+            dist/worker.debug.js
+            dist/worker.metadata.json
+            dist/DEPLOY.md
+            dist/*.sha256
+            2fa-release.zip
+          retention-days: 90
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: .
+
+      - name: Verify downloaded files
+        run: |
+          echo "📦 下载的文件列表："
+          ls -lhR
+          echo ""
+          echo "✅ 检查关键文件："
+          test -f dist/worker.js && echo "  ✓ dist/worker.js" || echo "  ✗ dist/worker.js 不存在"
+          test -f dist/worker.debug.js && echo "  ✓ dist/worker.debug.js" || echo "  ✗ dist/worker.debug.js 不存在"
+          test -f dist/worker.metadata.json && echo "  ✓ dist/worker.metadata.json" || echo "  ✗ dist/worker.metadata.json 不存在"
+          test -f dist/DEPLOY.md && echo "  ✓ dist/DEPLOY.md" || echo "  ✗ dist/DEPLOY.md 不存在"
+          test -f 2fa-release.zip && echo "  ✓ 2fa-release.zip" || echo "  ✗ 2fa-release.zip 不存在"
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "version_short=${VERSION#v}" >> $GITHUB_OUTPUT
+
+      - name: Read metadata
+        id: metadata
+        run: |
+          BUILD_DATE=$(jq -r '.buildDate' dist/worker.metadata.json)
+          FILE_SIZE=$(jq -r '.fileSizeKB' dist/worker.metadata.json)
+          echo "build_date=${BUILD_DATE}" >> $GITHUB_OUTPUT
+          echo "file_size=${FILE_SIZE}" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          cat > release-notes.md << 'EOF'
+          ## 🚀 2FA Manager ${{ steps.get_version.outputs.version }}
+
+          ### 📦 Release 信息
+
+          - **版本**: ${{ steps.get_version.outputs.version }}
+          - **构建时间**: ${{ steps.metadata.outputs.build_date }}
+          - **文件大小**: ${{ steps.metadata.outputs.file_size }} KB (压缩版)
+
+          ### 📥 下载说明
+
+          #### 推荐下载（适合大多数用户）
+
+          **worker.js** - 压缩优化版本
+          - ✅ 文件体积小
+          - ✅ 加载速度快
+          - ✅ 适合生产环境
+
+          #### 调试版本（适合开发者）
+
+          **worker.debug.js** - 未压缩版本
+          - 🔍 包含完整的变量名和注释
+          - 🐛 便于调试和排查问题
+          - 📚 代码可读性高
+
+          #### 完整包
+
+          **2fa-release.zip** - 包含所有文件
+          - worker.js (压缩版)
+          - worker.debug.js (调试版)
+          - worker.metadata.json (元数据)
+          - DEPLOY.md (部署说明)
+          - *.sha256 (校验和)
+
+          ### 🚀 快速部署
+
+          #### 方法 1: Cloudflare Dashboard (最简单)
+
+          1. 下载 `worker.js`
+          2. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)
+          3. 进入 "Workers & Pages" → "Create application" → "Create Worker"
+          4. 复制 `worker.js` 的内容并粘贴
+          5. 点击 "Save and Deploy"
+
+          #### 方法 2: Wrangler CLI
+
+          ```bash
+          # 下载 worker.js 后
+          wrangler deploy worker.js
+          ```
+
+          ### ⚙️ 配置要求
+
+          部署后需要配置：
+
+          1. **创建 KV Namespace**
+             ```bash
+             wrangler kv:namespace create SECRETS_KV
+             ```
+
+          2. **绑定 KV** (变量名: `SECRETS_KV`)
+
+          3. **设置加密密钥**（推荐）
+             ```bash
+             # 生成密钥
+             node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+
+             # 设置密钥
+             wrangler secret put ENCRYPTION_KEY
+             ```
+
+          详细说明请查看 `DEPLOY.md` 文件。
+
+          ### 🔒 安全提示
+
+          - ✅ 首次访问时会提示设置访问密码
+          - ✅ 建议启用 ENCRYPTION_KEY 加密存储的 2FA 密钥
+          - ✅ 定期使用应用内的备份功能导出数据
+
+          ### 📚 文档
+
+          - [完整文档](https://github.com/wuzf/2fa/blob/main/README.md)
+          - [部署指南](https://github.com/wuzf/2fa/blob/main/docs/DEPLOYMENT.md)
+          - [API 文档](https://github.com/wuzf/2fa/blob/main/docs/API_REFERENCE.md)
+          - [PWA 功能](https://github.com/wuzf/2fa/blob/main/docs/PWA_GUIDE.md)
+
+          ### 🔄 更新日志
+
+          查看 [CHANGELOG.md](https://github.com/wuzf/2fa/blob/main/CHANGELOG.md) 了解详细的版本更新信息。
+
+          ### 🐛 问题反馈
+
+          如遇到问题，请访问 [Issues](https://github.com/wuzf/2fa/issues) 页面。
+
+          ### 📝 校验和 (SHA256)
+
+          验证文件完整性：
+
+          ```bash
+          # Linux/Mac
+          sha256sum -c worker.js.sha256
+
+          # Windows (PowerShell)
+          Get-FileHash worker.js -Algorithm SHA256
+          ```
+
+          ---
+
+          **Full Changelog**: https://github.com/wuzf/2fa/compare/v0.9.0...${{ steps.get_version.outputs.version }}
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: 2FA Manager ${{ steps.get_version.outputs.version }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+          files: |
+            dist/worker.js
+            dist/worker.debug.js
+            dist/worker.metadata.json
+            dist/DEPLOY.md
+            dist/*.sha256
+            2fa-release.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release summary
+        run: |
+          echo "## Release Created Successfully 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ steps.get_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Date**: ${{ steps.metadata.outputs.build_date }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **File Size**: ${{ steps.metadata.outputs.file_size }} KB" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Download URLs" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- [worker.js](https://github.com/wuzf/2fa/releases/download/${{ steps.get_version.outputs.version }}/worker.js)" >> $GITHUB_STEP_SUMMARY
+          echo "- [worker.debug.js](https://github.com/wuzf/2fa/releases/download/${{ steps.get_version.outputs.version }}/worker.debug.js)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Complete Package](https://github.com/wuzf/2fa/releases/download/${{ steps.get_version.outputs.version }}/2fa-release.zip)" >> $GITHUB_STEP_SUMMARY
