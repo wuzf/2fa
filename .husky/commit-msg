@@ -1,0 +1,31 @@
+#!/usr/bin/env sh
+
+# Validate conventional commit format
+commit_msg=$(cat "$1")
+pattern="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .{1,72}"
+
+if ! echo "$commit_msg" | grep -qE "$pattern"; then
+  echo "❌ Error: Commit message does not follow Conventional Commits format"
+  echo ""
+  echo "Format: <type>(<scope>): <subject>"
+  echo ""
+  echo "Types:"
+  echo "  feat     - A new feature"
+  echo "  fix      - A bug fix"
+  echo "  docs     - Documentation only changes"
+  echo "  style    - Code style changes (formatting, etc)"
+  echo "  refactor - Code refactoring"
+  echo "  perf     - Performance improvements"
+  echo "  test     - Adding or updating tests"
+  echo "  build    - Build system or dependencies"
+  echo "  ci       - CI/CD changes"
+  echo "  chore    - Other changes"
+  echo "  revert   - Revert a previous commit"
+  echo ""
+  echo "Examples:"
+  echo "  feat: add user authentication"
+  echo "  fix(api): handle empty response"
+  echo "  docs: update API reference"
+  echo ""
+  exit 1
+fi

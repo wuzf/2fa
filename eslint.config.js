@@ -1,0 +1,88 @@
+import js from '@eslint/js';
+
+export default [
+	js.configs.recommended,
+	{
+		languageOptions: {
+			ecmaVersion: 2022,
+			sourceType: 'module',
+			globals: {
+				// Cloudflare Workers globals
+				addEventListener: 'readonly',
+				fetch: 'readonly',
+				Response: 'readonly',
+				Request: 'readonly',
+				Headers: 'readonly',
+				URL: 'readonly',
+				URLSearchParams: 'readonly',
+				crypto: 'readonly',
+				TextEncoder: 'readonly',
+				TextDecoder: 'readonly',
+				btoa: 'readonly',
+				atob: 'readonly',
+				console: 'readonly',
+				setTimeout: 'readonly',
+				clearTimeout: 'readonly',
+				setInterval: 'readonly',
+				clearInterval: 'readonly',
+				// Browser globals for frontend code
+				window: 'readonly',
+				document: 'readonly',
+				navigator: 'readonly',
+				localStorage: 'readonly',
+				sessionStorage: 'readonly',
+				indexedDB: 'readonly',
+				IDBKeyRange: 'readonly',
+				self: 'readonly',
+				caches: 'readonly',
+				clients: 'readonly',
+				registration: 'readonly',
+				skipWaiting: 'readonly',
+				// Web APIs
+				Blob: 'readonly',
+				File: 'readonly',
+				FileReader: 'readonly',
+				FormData: 'readonly',
+				AbortController: 'readonly',
+				AbortSignal: 'readonly',
+				Event: 'readonly',
+				CustomEvent: 'readonly',
+				EventTarget: 'readonly',
+				MessageChannel: 'readonly',
+				MessagePort: 'readonly',
+				ReadableStream: 'readonly',
+				WritableStream: 'readonly',
+				TransformStream: 'readonly',
+				// Vitest globals
+				describe: 'readonly',
+				it: 'readonly',
+				test: 'readonly',
+				expect: 'readonly',
+				beforeEach: 'readonly',
+				afterEach: 'readonly',
+				beforeAll: 'readonly',
+				afterAll: 'readonly',
+				vi: 'readonly',
+			},
+		},
+		rules: {
+			'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+			'no-console': 'off', // Workers use console for logging
+			'prefer-const': 'error',
+			'no-var': 'error',
+			eqeqeq: ['error', 'always'],
+			curly: ['error', 'all'],
+			'no-eval': 'error',
+			'no-implied-eval': 'error',
+			'no-new-func': 'error',
+			'no-return-await': 'error',
+			'require-await': 'off', // Allow async functions without await
+			'no-throw-literal': 'error',
+			'prefer-promise-reject-errors': 'error',
+			'no-useless-escape': 'off', // Frontend code uses escape sequences in template strings
+		},
+	},
+	{
+		ignores: ['node_modules/**', 'dist/**', 'coverage/**', '*.min.js', '.wrangler/**'],
+	},
+];

@@ -1,16 +1,62 @@
 {
   "name": "2fa",
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "type": "module",
   "private": true,
+  "description": "2FA - OTP Generator using Cloudflare Workers",
   "scripts": {
-    "deploy": "wrangler deploy",
+    "deploy": "node scripts/deploy.js",
+    "deploy:git": "node scripts/deploy.js --git",
+    "deploy:package": "node scripts/deploy.js --package",
+    "deploy:dev": "node scripts/deploy.js --env development",
+    "deploy:direct": "wrangler deploy",
     "dev": "wrangler dev",
-    "start": "wrangler dev"
+    "start": "wrangler dev",
+    "build": "node scripts/build-release.js",
+    "build:minify": "node scripts/build-release.js --minify",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write \"src/**/*.js\"",
+    "format:check": "prettier --check \"src/**/*.js\"",
+    "prepare": "husky"
   },
-  "devDependencies": {
-    "wrangler": "^3.0.0"
+  "lint-staged": {
+    "src/**/*.js": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.md": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
-    "otplib": "^12.0.1"
-  }
+    "@sentry/cloudflare": "^10.22.0",
+    "qrcode": "^1.5.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251014.0",
+    "@eslint/js": "^9.18.0",
+    "@vitest/coverage-v8": "^4.0.5",
+    "@vitest/ui": "^4.0.5",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.18.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.3.0",
+    "prettier": "^3.4.2",
+    "vitest": "^4.0.5",
+    "wrangler": "^4.37.0"
+  },
+  "keywords": [
+    "2fa",
+    "otp",
+    "totp",
+    "cloudflare-workers",
+    "authentication"
+  ],
+  "author": "wuzf",
+  "license": "MIT"
 }
