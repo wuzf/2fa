@@ -342,17 +342,18 @@ describe('Batch Import API Module', () => {
     it('应该触发 Rate Limiting', async () => {
       const env = createMockEnv();
 
-      const request = createMockRequest({
+      const body = {
         secrets: [{ name: 'Test', secret: 'JBSWY3DPEHPK3PXP' }]
-      });
+      };
 
-      // 连续调用多次触发限制（bulk preset: 5/5分钟）
-      for (let i = 0; i < 5; i++) {
-        await handleBatchAddSecrets(request, env);
+      // 连续调用多次触发限制（bulk preset: 20/5分钟）
+      for (let i = 0; i < 20; i++) {
+        const req = createMockRequest(body);
+        await handleBatchAddSecrets(req, env);
       }
 
-      // 第6次应该被限制
-      const response = await handleBatchAddSecrets(request, env);
+      // 第21次应该被限制
+      const response = await handleBatchAddSecrets(createMockRequest(body), env);
       const data = await response.json();
 
       expect(response.status).toBe(429);

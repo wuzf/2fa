@@ -580,11 +580,11 @@ describe('Auth.js Integration Tests', () => {
       const now = Date.now();
       expect(expiryTime).toBeGreaterThan(now);
 
-      // 验证过期时间约为1天后
-      const oneDayMs = 24 * 60 * 60 * 1000;
+      // 验证过期时间约为30天后
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
       const timeDiff = expiryTime - now;
-      expect(timeDiff).toBeGreaterThan(oneDayMs * 0.9); // 至少0.9天
-      expect(timeDiff).toBeLessThan(oneDayMs * 1.1); // 最多1.1天
+      expect(timeDiff).toBeGreaterThan(thirtyDaysMs * 0.9); // 至少27天
+      expect(timeDiff).toBeLessThan(thirtyDaysMs * 1.1); // 最多33天
     });
   });
 
