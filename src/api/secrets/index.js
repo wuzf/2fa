@@ -14,37 +14,19 @@
  */
 
 // CRUD 操作处理器
-export {
-  handleGetSecrets,
-  handleAddSecret,
-  handleUpdateSecret,
-  handleDeleteSecret
-} from './crud.js';
+export { handleGetSecrets, handleAddSecret, handleUpdateSecret, handleDeleteSecret } from './crud.js';
 
 // 批量导入处理器
-export {
-  handleBatchAddSecrets
-} from './batch.js';
+export { handleBatchAddSecrets } from './batch.js';
 
 // 备份处理器
-export {
-  handleBackupSecrets,
-  handleGetBackups
-} from './backup.js';
+export { handleBackupSecrets, handleGetBackups } from './backup.js';
 
 // 恢复和导出处理器
-export {
-  handleExportBackup,
-  handleRestoreBackup
-} from './restore.js';
+export { handleExportBackup, handleRestoreBackup } from './restore.js';
 
 // OTP 生成处理器
-export {
-  handleGenerateOTP
-} from './otp.js';
+export { handleGenerateOTP } from './otp.js';
 
 // 共享工具函数（内部使用或测试）
-export {
-  saveSecretsToKV,
-  getAllSecrets
-} from './shared.js';
+export { saveSecretsToKV, getAllSecrets } from './shared.js';

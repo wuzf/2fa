@@ -12,7 +12,7 @@ import { getSecurityHeaders } from './security.js';
 
 // 性能优化：缓存默认 CORS headers，避免重复创建对象
 const DEFAULT_CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*'
+	'Access-Control-Allow-Origin': '*',
 };
 
 // 性能优化：只警告一次（避免在循环中重复打印降低性能）
@@ -23,7 +23,7 @@ let hasWarnedMissingRequest = false;
  * @internal
  */
 export function _resetWarningFlag() {
-  hasWarnedMissingRequest = false;
+	hasWarnedMissingRequest = false;
 }
 
 /**
@@ -35,44 +35,44 @@ export function _resetWarningFlag() {
  * @returns {Response} HTTP响应对象
  */
 export function createJsonResponse(data, status = 200, request = null, additionalHeaders = {}) {
-  let headers;
+	let headers;
 
-  // 添加安全头（如果提供了 request）
-  if (request) {
-    const securityHeaders = getSecurityHeaders(request);
-    // 性能优化：减少对象展开次数
-    headers = {
-      'Content-Type': 'application/json',
-      ...securityHeaders,
-      ...additionalHeaders  // 额外的 headers 优先级更高
-    };
-  } else {
-    // 向后兼容：如果没有提供 request，使用旧的 CORS 配置
-    // 性能优化：只警告一次
-    if (!hasWarnedMissingRequest) {
-      console.warn('⚠️ createJsonResponse 未提供 request 参数，使用默认 CORS 配置');
-      hasWarnedMissingRequest = true;
-    }
+	// 添加安全头（如果提供了 request）
+	if (request) {
+		const securityHeaders = getSecurityHeaders(request);
+		// 性能优化：减少对象展开次数
+		headers = {
+			'Content-Type': 'application/json',
+			...securityHeaders,
+			...additionalHeaders, // 额外的 headers 优先级更高
+		};
+	} else {
+		// 向后兼容：如果没有提供 request，使用旧的 CORS 配置
+		// 性能优化：只警告一次
+		if (!hasWarnedMissingRequest) {
+			console.warn('⚠️ createJsonResponse 未提供 request 参数，使用默认 CORS 配置');
+			hasWarnedMissingRequest = true;
+		}
 
-    // 性能优化：复用缓存的默认 headers
-    if (Object.keys(additionalHeaders).length === 0) {
-      headers = {
-        'Content-Type': 'application/json',
-        ...DEFAULT_CORS_HEADERS
-      };
-    } else {
-      headers = {
-        'Content-Type': 'application/json',
-        ...DEFAULT_CORS_HEADERS,
-        ...additionalHeaders
-      };
-    }
-  }
+		// 性能优化：复用缓存的默认 headers
+		if (Object.keys(additionalHeaders).length === 0) {
+			headers = {
+				'Content-Type': 'application/json',
+				...DEFAULT_CORS_HEADERS,
+			};
+		} else {
+			headers = {
+				'Content-Type': 'application/json',
+				...DEFAULT_CORS_HEADERS,
+				...additionalHeaders,
+			};
+		}
+	}
 
-  return new Response(JSON.stringify(data), {
-    status,
-    headers
-  });
+	return new Response(JSON.stringify(data), {
+		status,
+		headers,
+	});
 }
 
 /**
@@ -84,13 +84,13 @@ export function createJsonResponse(data, status = 200, request = null, additiona
  * @returns {Response} 错误响应对象
  */
 export function createErrorResponse(title, message, status = 500, request = null) {
-  const errorData = {
-    error: title,
-    message: message,
-    timestamp: new Date().toISOString()
-  };
+	const errorData = {
+		error: title,
+		message: message,
+		timestamp: new Date().toISOString(),
+	};
 
-  return createJsonResponse(errorData, status, request);
+	return createJsonResponse(errorData, status, request);
 }
 
 /**
@@ -101,11 +101,15 @@ export function createErrorResponse(title, message, status = 500, request = null
  * @returns {Response} 成功响应对象
  */
 export function createSuccessResponse(data, message, request = null) {
-  return createJsonResponse({
-    success: true,
-    message,
-    data
-  }, 200, request);
+	return createJsonResponse(
+		{
+			success: true,
+			message,
+			data,
+		},
+		200,
+		request,
+	);
 }
 
 /**
@@ -116,21 +120,21 @@ export function createSuccessResponse(data, message, request = null) {
  * @returns {Response} HTML响应对象
  */
 export function createHtmlResponse(html, status = 200, request = null) {
-  let headers = {
-    'Content-Type': 'text/html; charset=utf-8'
-  };
+	let headers = {
+		'Content-Type': 'text/html; charset=utf-8',
+	};
 
-  // 添加安全头（如果提供了 request）
-  if (request) {
-    const securityHeaders = getSecurityHeaders(request);
-    headers = {
-      ...securityHeaders,
-      ...headers
-    };
-  }
+	// 添加安全头（如果提供了 request）
+	if (request) {
+		const securityHeaders = getSecurityHeaders(request);
+		headers = {
+			...securityHeaders,
+			...headers,
+		};
+	}
 
-  return new Response(html, {
-    status,
-    headers
-  });
+	return new Response(html, {
+		status,
+		headers,
+	});
 }

@@ -15,7 +15,7 @@
  * @returns {string} JavaScript 代码
  */
 export function getModuleLoaderCode() {
-  return `
+	return `
     // ========== 模块懒加载系统 ==========
 
     // 模块加载状态

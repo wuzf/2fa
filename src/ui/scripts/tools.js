@@ -17,7 +17,7 @@ import { getKeyGeneratorToolCode } from './tools/keyGenerator.js';
  * @returns {string} Complete Tools JavaScript code
  */
 export function getToolsCode() {
-  return `    // ========== 实用工具模块集合 ==========
+	return `    // ========== 实用工具模块集合 ==========
     // 包含6个独立工具：二维码解析、二维码生成、Base32编解码、时间戳、密钥检查器、密钥生成器
 
     // 入口函数

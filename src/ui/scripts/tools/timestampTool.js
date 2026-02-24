@@ -7,7 +7,7 @@
  * @returns {string} 时间戳工具 JavaScript 代码
  */
 export function getTimestampToolCode() {
-  return `
+	return `
     // ==================== 时间戳工具 ====================
 
     let currentPeriod = 30;

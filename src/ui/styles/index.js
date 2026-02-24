@@ -14,10 +14,9 @@ import { getResponsiveStyles } from './responsive.js';
  * @returns {string} 完整的 <style>...</style> 标签
  */
 export function getStyles() {
-  return `
+	return `
   <style>
 ${getVariables()}
 ${getBaseStyles()}${getComponentStyles()}${getModalStyles()}${getResponsiveStyles()}  </style>
 </head>`;
 }
-

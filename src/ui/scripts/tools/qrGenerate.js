@@ -7,7 +7,7 @@
  * @returns {string} 二维码生成工具 JavaScript 代码
  */
 export function getQRGenerateToolCode() {
-  return `    // ==================== 二维码生成工具 ====================
+	return `    // ==================== 二维码生成工具 ====================
 
     function showQRGenerateModal() {
       showModal('qrGenerateModal', () => {

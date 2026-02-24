@@ -10,10 +10,10 @@ import { SERVICE_LOGOS } from '../config/serviceLogos.js';
  * @returns {string} Core JavaScript 代码
  */
 export function getCoreCode() {
-  // 将 SERVICE_LOGOS 配置序列化为客户端代码
-  const serviceLogosJSON = JSON.stringify(SERVICE_LOGOS, null, 2);
+	// 将 SERVICE_LOGOS 配置序列化为客户端代码
+	const serviceLogosJSON = JSON.stringify(SERVICE_LOGOS, null, 2);
 
-  return `    // ========== Service Logos 配置 ==========
+	return `    // ========== Service Logos 配置 ==========
     // 服务名称到域名的映射数据（从 serviceLogos.js 导入）
     const SERVICE_LOGOS = ${serviceLogosJSON};
 

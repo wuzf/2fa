@@ -2,7 +2,7 @@
  * 弹窗样式模块
  */
 export function getModalStyles() {
-  return `    .modal {
+	return `    .modal {
       display: none;
       position: fixed;
       top: 0;

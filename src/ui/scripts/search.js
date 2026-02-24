@@ -8,7 +8,7 @@
  * @returns {string} 搜索 JavaScript 代码
  */
 export function getSearchCode() {
-  return `    // ========== 搜索和排序模块 ==========
+	return `    // ========== 搜索和排序模块 ==========
 
     // 排序相关变量
     let currentSortType = 'oldest-first';

@@ -7,7 +7,7 @@
  * @returns {string} 密钥生成器工具 JavaScript 代码
  */
 export function getKeyGeneratorToolCode() {
-  return `
+	return `
     // ==================== 密钥生成器 ====================
 
     let currentKeyLength = 16;

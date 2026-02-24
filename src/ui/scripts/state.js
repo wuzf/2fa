@@ -8,7 +8,7 @@
  * @returns {string} State JavaScript 代码
  */
 export function getStateCode() {
-  return `    let secrets = [];
+	return `    let secrets = [];
     let scanStream = null;
     let scannerCanvas = null;
     let scannerContext = null;

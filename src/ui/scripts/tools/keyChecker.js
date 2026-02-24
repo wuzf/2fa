@@ -7,7 +7,7 @@
  * @returns {string} 密钥检查器工具 JavaScript 代码
  */
 export function getKeyCheckerToolCode() {
-  return `
+	return `
     // ==================== 密钥检查器 ====================
 
     function showKeyCheckModal() {

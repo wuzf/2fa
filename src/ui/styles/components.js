@@ -2,7 +2,7 @@
  * 组件样式模块
  */
 export function getComponentStyles() {
-  return `    .secrets-list {
+	return `    .secrets-list {
       display: grid;
       grid-template-columns: 1fr;
       gap: 10px;

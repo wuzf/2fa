@@ -3,7 +3,7 @@
  * CSS 变量会自动处理颜色主题切换,此文件仅包含响应式布局调整
  */
 export function getResponsiveStyles() {
-  return `
+	return `
       /* ========== 全局 Select 和 Option 样式修复 ========== */
       /* 修复 iOS/Safari/iPad 下拉列表显示问题 */
       select.backup-select {

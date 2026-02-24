@@ -8,7 +8,7 @@
  * @returns {string} Utils JavaScript 代码
  */
 export function getUtilsCode() {
-  return `    // ========== 工具函数模块 ==========
+	return `    // ========== 工具函数模块 ==========
 
     // ==================== 模态框通用函数 ====================
 

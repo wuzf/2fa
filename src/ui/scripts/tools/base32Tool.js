@@ -7,7 +7,7 @@
  * @returns {string} Base32 工具 JavaScript 代码
  */
 export function getBase32ToolCode() {
-  return `
+	return `
     // ==================== Base32编解码工具 ====================
 
     function showBase32Modal() {

@@ -8,7 +8,7 @@
  * @returns {string} OTP JavaScript 代码
  */
 export function getOTPCode() {
-  return `    // ========== OTP 计算模块 ==========
+	return `    // ========== OTP 计算模块 ==========
 
     // OTP计算核心类
     class OTPCalculator {

@@ -8,7 +8,7 @@
  * @returns {string} 二维码 JavaScript 代码
  */
 export function getQRCodeCode() {
-  return `    // ========== 二维码功能模块 ==========
+	return `    // ========== 二维码功能模块 ==========
 
     // 连续扫描模式状态
     let continuousScanMode = false;

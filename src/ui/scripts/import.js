@@ -8,7 +8,7 @@
  * @returns {string} 导入 JavaScript 代码
  */
 export function getImportCode() {
-  return `    // ========== 导入功能模块 ==========
+	return `    // ========== 导入功能模块 ==========
 
     // 导入预览数据
     let importPreviewData = [];

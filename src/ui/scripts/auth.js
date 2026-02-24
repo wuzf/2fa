@@ -8,7 +8,7 @@
  * @returns {string} 认证 JavaScript 代码
  */
 export function getAuthCode() {
-  return `    // ========== 认证相关函数 ==========
+	return `    // ========== 认证相关函数 ==========
     // 注意：现在使用 HttpOnly Cookie 存储 token，不再使用 localStorage
 
     // 获取存储的令牌（已弃用 - Cookie 自动管理）

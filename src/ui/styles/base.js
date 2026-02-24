@@ -2,7 +2,7 @@
  * 基础样式模块 - 使用 CSS 变量
  */
 export function getBaseStyles() {
-  return `    * {
+	return `    * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;

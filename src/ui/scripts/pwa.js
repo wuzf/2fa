@@ -8,7 +8,7 @@
  * @returns {string} PWA JavaScript 代码
  */
 export function getPWACode() {
-  return `// ==================== PWA Service Worker 注册 ====================
+	return `// ==================== PWA Service Worker 注册 ====================
 
     /**
      * 注册 Service Worker 以支持 PWA 和离线功能

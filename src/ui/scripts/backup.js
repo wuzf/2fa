@@ -8,7 +8,7 @@
  * @returns {string} 备份 JavaScript 代码
  */
 export function getBackupCode() {
-  return `    // ========== 备份恢复功能模块 ==========
+	return `    // ========== 备份恢复功能模块 ==========
 
     // 还原配置相关函数
     let selectedBackup = null;

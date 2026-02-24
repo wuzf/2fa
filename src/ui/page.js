@@ -14,19 +14,19 @@ import { getScripts, getCoreScripts } from './scripts/index.js';
  * @returns {Response} HTML响应
  */
 export async function createMainPage(options = {}) {
-  const { lazyLoad = true } = options;
+	const { lazyLoad = true } = options;
 
-  // 构建完整的HTML内容
-  const html = buildCompleteHTML(lazyLoad);
+	// 构建完整的HTML内容
+	const html = buildCompleteHTML(lazyLoad);
 
-  return new Response(html, {
-    headers: {
-      'Content-Type': 'text/html',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0'
-    }
-  });
+	return new Response(html, {
+		headers: {
+			'Content-Type': 'text/html',
+			'Cache-Control': 'no-cache, no-store, must-revalidate',
+			Pragma: 'no-cache',
+			Expires: '0',
+		},
+	});
 }
 
 /**
@@ -34,18 +34,14 @@ export async function createMainPage(options = {}) {
  * @param {boolean} lazyLoad - 是否启用懒加载
  */
 function buildCompleteHTML(lazyLoad = true) {
-  return getHTMLStart() +
-         getStyles() +
-         getHTMLBody() +
-         getHTMLScripts(lazyLoad) +
-         getHTMLEnd();
+	return getHTMLStart() + getStyles() + getHTMLBody() + getHTMLScripts(lazyLoad) + getHTMLEnd();
 }
 
 /**
  * HTML文档开始部分
  */
 function getHTMLStart() {
-  return `<!DOCTYPE html>
+	return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -108,7 +104,7 @@ function getHTMLStart() {
  * HTML样式部分 - 包含所有原版样式
  */
 function getHTMLBody() {
-  return `
+	return `
 <body>
   <div class="container">
     <div class="content">
@@ -1206,17 +1202,21 @@ function getHTMLBody() {
  * @param {boolean} lazyLoad - 是否启用懒加载模式
  */
 function getHTMLScripts(lazyLoad = true) {
-  const scriptContent = getInlineScripts(lazyLoad);
-  // 🔄 使用 CDN 作为主要来源（Service Worker 会自动缓存）
-  // jsQR 用于二维码扫描，qrcode-generator 用于二维码生成
-  return '<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js" crossorigin="anonymous"></script>\n<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" crossorigin="anonymous"></script>\n<script>\n' + scriptContent + '\n</script>';
+	const scriptContent = getInlineScripts(lazyLoad);
+	// 🔄 使用 CDN 作为主要来源（Service Worker 会自动缓存）
+	// jsQR 用于二维码扫描，qrcode-generator 用于二维码生成
+	return (
+		'<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js" crossorigin="anonymous"></script>\n<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" crossorigin="anonymous"></script>\n<script>\n' +
+		scriptContent +
+		'\n</script>'
+	);
 }
 
 /**
  * HTML结束部分
  */
 function getHTMLEnd() {
-  return `</body>
+	return `</body>
 </html>`;
 }
 
@@ -1225,11 +1225,11 @@ function getHTMLEnd() {
  * @param {boolean} lazyLoad - 是否启用懒加载（true=核心模块，false=完整模块）
  */
 function getInlineScripts(lazyLoad = true) {
-  if (lazyLoad) {
-    console.log('📦 代码分割模式：仅加载核心模块');
-    return getCoreScripts();
-  } else {
-    console.log('📦 传统模式：加载完整模块');
-    return getScripts();
-  }
+	if (lazyLoad) {
+		console.log('📦 代码分割模式：仅加载核心模块');
+		return getCoreScripts();
+	} else {
+		console.log('📦 传统模式：加载完整模块');
+		return getScripts();
+	}
 }

@@ -8,7 +8,7 @@
  * @returns {Response} HTML响应
  */
 export async function createSetupPage() {
-  const html = `<!DOCTYPE html>
+	const html = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -558,12 +558,12 @@ export async function createSetupPage() {
 </body>
 </html>`;
 
-  return new Response(html, {
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0'
-    }
-  });
+	return new Response(html, {
+		headers: {
+			'Content-Type': 'text/html; charset=utf-8',
+			'Cache-Control': 'no-cache, no-store, must-revalidate',
+			Pragma: 'no-cache',
+			Expires: '0',
+		},
+	});
 }

@@ -7,7 +7,7 @@
  * @returns {string} 二维码解析工具 JavaScript 代码
  */
 export function getQRDecodeToolCode() {
-  return `    // ==================== 二维码解析工具 ====================
+	return `    // ==================== 二维码解析工具 ====================
 
     let decodeStream = null;
     let decodeInterval = null;

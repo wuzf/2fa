@@ -9,86 +9,86 @@
  * @returns {Response} Manifest JSON 响应
  */
 export function createManifest(request) {
-  const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+	const url = new URL(request.url);
+	const baseUrl = `${url.protocol}//${url.host}`;
 
-  // 简化的 Manifest 配置，确保最佳兼容性
-  const manifest = {
-    name: '2FA - 两步验证密钥管理器',
-    short_name: '2FA',
-    description: '安全的两步验证密钥管理器，支持 TOTP、HOTP 验证码生成',
-    start_url: '/',
-    display: 'standalone',
-    background_color: '#ffffff',
-    theme_color: '#2196F3',
-    orientation: 'portrait-primary',
-    scope: '/',
-    
-    // 使用 SVG 格式图标（声明为 any 类型以提高兼容性）
-    icons: [
-      {
-        src: `${baseUrl}/icon-192.png`,
-        sizes: '192x192',
-        type: 'image/svg+xml',
-        purpose: 'any'
-      },
-      {
-        src: `${baseUrl}/icon-512.png`,
-        sizes: '512x512',
-        type: 'image/svg+xml',
-        purpose: 'any'
-      },
-      {
-        src: `${baseUrl}/icon-192.png`,
-        sizes: '192x192',
-        type: 'image/svg+xml',
-        purpose: 'maskable'
-      }
-    ],
+	// 简化的 Manifest 配置，确保最佳兼容性
+	const manifest = {
+		name: '2FA - 两步验证密钥管理器',
+		short_name: '2FA',
+		description: '安全的两步验证密钥管理器，支持 TOTP、HOTP 验证码生成',
+		start_url: '/',
+		display: 'standalone',
+		background_color: '#ffffff',
+		theme_color: '#2196F3',
+		orientation: 'portrait-primary',
+		scope: '/',
 
-    categories: ['productivity', 'utilities', 'security'],
-    
-    // 移除 screenshots（非必需）
-    
-    // 简化的快捷方式（无图标）
-    shortcuts: [
-      {
-        name: '添加密钥',
-        short_name: '添加',
-        description: '快速添加新的 2FA 密钥',
-        url: '/?action=add'
-      },
-      {
-        name: '扫描二维码',
-        short_name: '扫描',
-        description: '扫描二维码添加密钥',
-        url: '/?action=scan'
-      }
-    ],
+		// 使用 SVG 格式图标（声明为 any 类型以提高兼容性）
+		icons: [
+			{
+				src: `${baseUrl}/icon-192.png`,
+				sizes: '192x192',
+				type: 'image/svg+xml',
+				purpose: 'any',
+			},
+			{
+				src: `${baseUrl}/icon-512.png`,
+				sizes: '512x512',
+				type: 'image/svg+xml',
+				purpose: 'any',
+			},
+			{
+				src: `${baseUrl}/icon-192.png`,
+				sizes: '192x192',
+				type: 'image/svg+xml',
+				purpose: 'maskable',
+			},
+		],
 
-    related_applications: [],
-    prefer_related_applications: false,
+		categories: ['productivity', 'utilities', 'security'],
 
-    // 显示模式（从最佳到降级）
-    display_override: ['standalone', 'minimal-ui'],
-    
-    // 简化的协议处理器
-    protocol_handlers: [
-      {
-        protocol: 'web+otpauth',
-        url: '/?otpauth=%s'
-      }
-    ]
-  };
+		// 移除 screenshots（非必需）
 
-  return new Response(JSON.stringify(manifest, null, 2), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/manifest+json',
-      'Cache-Control': 'public, max-age=3600',
-      'Access-Control-Allow-Origin': '*'
-    }
-  });
+		// 简化的快捷方式（无图标）
+		shortcuts: [
+			{
+				name: '添加密钥',
+				short_name: '添加',
+				description: '快速添加新的 2FA 密钥',
+				url: '/?action=add',
+			},
+			{
+				name: '扫描二维码',
+				short_name: '扫描',
+				description: '扫描二维码添加密钥',
+				url: '/?action=scan',
+			},
+		],
+
+		related_applications: [],
+		prefer_related_applications: false,
+
+		// 显示模式（从最佳到降级）
+		display_override: ['standalone', 'minimal-ui'],
+
+		// 简化的协议处理器
+		protocol_handlers: [
+			{
+				protocol: 'web+otpauth',
+				url: '/?otpauth=%s',
+			},
+		],
+	};
+
+	return new Response(JSON.stringify(manifest, null, 2), {
+		status: 200,
+		headers: {
+			'Content-Type': 'application/manifest+json',
+			'Cache-Control': 'public, max-age=3600',
+			'Access-Control-Allow-Origin': '*',
+		},
+	});
 }
 
 /**
@@ -98,8 +98,8 @@ export function createManifest(request) {
  * @returns {Response} PNG 图标响应
  */
 export function createDefaultIcon(size = 192) {
-  // 创建一个简单的 SVG 图标
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+	// 创建一个简单的 SVG 图标
+	const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -120,7 +120,7 @@ export function createDefaultIcon(size = 192) {
     <!-- 锁扣 -->
     <path d="M ${size * 0.05} ${size * 0.2}
              L ${size * 0.05} ${size * 0.15}
-             A ${size * 0.10} ${size * 0.10} 0 0 1 ${size * 0.35} ${size * 0.15}
+             A ${size * 0.1} ${size * 0.1} 0 0 1 ${size * 0.35} ${size * 0.15}
              L ${size * 0.35} ${size * 0.2}"
           fill="none" stroke="white" stroke-width="${size * 0.04}"
           stroke-linecap="round" opacity="0.95"/>
@@ -141,13 +141,12 @@ export function createDefaultIcon(size = 192) {
         opacity="0.95">2FA</text>
 </svg>`;
 
-  return new Response(svg, {
-    status: 200,
-    headers: {
-      'Content-Type': 'image/svg+xml',
-      'Cache-Control': 'public, max-age=86400',
-      'Access-Control-Allow-Origin': '*'
-    }
-  });
+	return new Response(svg, {
+		status: 200,
+		headers: {
+			'Content-Type': 'image/svg+xml',
+			'Cache-Control': 'public, max-age=86400',
+			'Access-Control-Allow-Origin': '*',
+		},
+	});
 }
-

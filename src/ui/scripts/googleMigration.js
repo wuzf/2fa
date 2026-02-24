@@ -13,7 +13,7 @@
  * @returns {string} JavaScript 代码
  */
 export function getGoogleMigrationCode() {
-  return `
+	return `
     // ========== Google Authenticator 迁移模块 ==========
     // 支持 otpauth-migration:// 格式的导入导出
 

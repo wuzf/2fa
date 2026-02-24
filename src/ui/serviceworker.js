@@ -8,18 +8,18 @@
  * @returns {Response} Service Worker JavaScript 响应
  */
 export function createServiceWorker(env = {}) {
-    // 🚀 自动版本管理：从环境变量读取版本号
-  // 支持多种版本策略：
-  // 1. env.SW_VERSION - 构建时注入的版本号（推荐）
-  // 2. env.BUILD_TIMESTAMP - 构建时间戳
-  // 3. 'v1' - 默认版本（后备）
-  const version = env.SW_VERSION || env.BUILD_TIMESTAMP || 'v1';
+	// 🚀 自动版本管理：从环境变量读取版本号
+	// 支持多种版本策略：
+	// 1. env.SW_VERSION - 构建时注入的版本号（推荐）
+	// 2. env.BUILD_TIMESTAMP - 构建时间戳
+	// 3. 'v1' - 默认版本（后备）
+	const version = env.SW_VERSION || env.BUILD_TIMESTAMP || 'v1';
 
-  // 生成缓存名称
-  const CACHE_NAME = `2fa-cache-${version}`;
-  const RUNTIME_CACHE = `2fa-runtime-${version}`;
+	// 生成缓存名称
+	const CACHE_NAME = `2fa-cache-${version}`;
+	const RUNTIME_CACHE = `2fa-runtime-${version}`;
 
-const swScript = `
+	const swScript = `
 /**
  * 2FA - Service Worker
  * 版本: ${version}
@@ -771,14 +771,13 @@ self.addEventListener('message', event => {
 console.log('[SW] Service Worker 脚本已加载');
 `;
 
-  return new Response(swScript, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/javascript; charset=utf-8',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Service-Worker-Allowed': '/',
-      'Access-Control-Allow-Origin': '*'
-    }
-  });
+	return new Response(swScript, {
+		status: 200,
+		headers: {
+			'Content-Type': 'application/javascript; charset=utf-8',
+			'Cache-Control': 'no-cache, no-store, must-revalidate',
+			'Service-Worker-Allowed': '/',
+			'Access-Control-Allow-Origin': '*',
+		},
+	});
 }
-
