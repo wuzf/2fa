@@ -54,11 +54,65 @@ try {
   const fs = await import('fs');
   const originalConfig = fs.readFileSync(wranglerPath, 'utf-8');
 
-  // 临时替换版本号
-  const modifiedConfig = originalConfig.replace(
-    /SW_VERSION = "v1-dev"/,
+  let modifiedConfig = originalConfig;
+
+  // 替换版本号
+  modifiedConfig = modifiedConfig.replace(
+    /SW_VERSION = "v1"/,
     `SW_VERSION = "${version}"`
   );
+
+  // 检测 KV namespace 是否缺少 id，自动创建
+  const kvBindingPattern = /\[\[kv_namespaces\]\]\r?\nbinding = "SECRETS_KV"/;
+  const hasKvId = /\[\[kv_namespaces\]\]\r?\nbinding = "SECRETS_KV"\r?\nid = "/.test(modifiedConfig);
+  if (kvBindingPattern.test(modifiedConfig) && !hasKvId) {
+    console.log('   🔍 检测到 KV namespace 未配置 ID，自动创建...');
+
+    // 先写入临时占位 ID，否则 wrangler 校验 toml 会报错
+    const placeholderId = '00000000000000000000000000000000';
+    const tempConfig = modifiedConfig.replace(
+      kvBindingPattern,
+      `[[kv_namespaces]]\nbinding = "SECRETS_KV"\nid = "${placeholderId}"`
+    );
+    fs.writeFileSync(wranglerPath, tempConfig, 'utf-8');
+
+    try {
+      const kvOutput = execSync('npx wrangler kv namespace create SECRETS_KV', {
+        encoding: 'utf-8',
+      });
+      const idMatch = kvOutput.match(/id = "([a-f0-9]+)"/);
+      if (idMatch) {
+        const kvId = idMatch[1];
+        modifiedConfig = modifiedConfig.replace(
+          kvBindingPattern,
+          `[[kv_namespaces]]\nbinding = "SECRETS_KV"\nid = "${kvId}"`
+        );
+        console.log(`   ✅ KV namespace 已创建: ${kvId}`);
+      } else {
+        console.warn('   ⚠️  无法从输出中提取 KV ID，尝试继续部署...');
+      }
+    } catch (kvError) {
+      // 可能已存在同名 namespace，尝试从 list 中查找
+      console.log('   🔍 创建失败，尝试查找已有的 KV namespace...');
+      try {
+        const listOutput = execSync('npx wrangler kv namespace list', { encoding: 'utf-8' });
+        const namespaces = JSON.parse(listOutput);
+        const existing = namespaces.find((ns) => ns.title.includes('2fa') && ns.title.includes('SECRETS_KV'));
+        if (existing) {
+          modifiedConfig = modifiedConfig.replace(
+            kvBindingPattern,
+            `[[kv_namespaces]]\nbinding = "SECRETS_KV"\nid = "${existing.id}"`
+          );
+          console.log(`   ✅ 找到已有 KV namespace: ${existing.id}`);
+        } else {
+          console.error('   ❌ 未找到匹配的 KV namespace');
+          throw kvError;
+        }
+      } catch {
+        throw kvError;
+      }
+    }
+  }
 
   fs.writeFileSync(wranglerPath, modifiedConfig, 'utf-8');
   console.log(`   ✅ 已注入版本: ${version}`);
