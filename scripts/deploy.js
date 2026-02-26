@@ -62,54 +62,56 @@ try {
     `SW_VERSION = "${version}"`
   );
 
-  // 检测 KV namespace 是否缺少 id，自动创建
-  const kvBindingPattern = /\[\[kv_namespaces\]\]\r?\nbinding = "SECRETS_KV"/;
-  const hasKvId = /\[\[kv_namespaces\]\]\r?\nbinding = "SECRETS_KV"\r?\nid = "/.test(modifiedConfig);
-  if (kvBindingPattern.test(modifiedConfig) && !hasKvId) {
-    console.log('   🔍 检测到 KV namespace 未配置 ID，自动创建...');
+  // 检测 KV namespace 配置，自动查找或创建
+  const hasKvBinding = /\[\[kv_namespaces\]\]\r?\nbinding = "SECRETS_KV"\r?\nid = "/.test(modifiedConfig);
+  if (!hasKvBinding) {
+    console.log('   🔍 检测到 KV namespace 未配置，查找已有的...');
 
-    // 先写入临时占位 ID，否则 wrangler 校验 toml 会报错
-    const placeholderId = '00000000000000000000000000000000';
-    const tempConfig = modifiedConfig.replace(
-      kvBindingPattern,
-      `[[kv_namespaces]]\nbinding = "SECRETS_KV"\nid = "${placeholderId}"`
-    );
-    fs.writeFileSync(wranglerPath, tempConfig, 'utf-8');
+    let kvId = null;
 
+    // Step A: 先从已有的 KV namespace 中查找
     try {
-      const kvOutput = execSync('npx wrangler kv namespace create SECRETS_KV', {
-        encoding: 'utf-8',
-      });
-      const idMatch = kvOutput.match(/id = "([a-f0-9]+)"/);
-      if (idMatch) {
-        const kvId = idMatch[1];
-        modifiedConfig = modifiedConfig.replace(
-          kvBindingPattern,
-          `[[kv_namespaces]]\nbinding = "SECRETS_KV"\nid = "${kvId}"`
-        );
-        console.log(`   ✅ KV namespace 已创建: ${kvId}`);
-      } else {
-        console.warn('   ⚠️  无法从输出中提取 KV ID，尝试继续部署...');
+      const listOutput = execSync('npx wrangler kv namespace list', { encoding: 'utf-8' });
+      const namespaces = JSON.parse(listOutput);
+      // 精确匹配 "SECRETS_KV"（deploy.js 创建的，用户数据在此）
+      const existing = namespaces.find((ns) => ns.title === 'SECRETS_KV');
+      if (existing) {
+        kvId = existing.id;
+        console.log(`   ✅ 找到已有 KV namespace "${existing.title}": ${kvId}`);
       }
-    } catch (kvError) {
-      // 可能已存在同名 namespace，尝试从 list 中查找
-      console.log('   🔍 创建失败，尝试查找已有的 KV namespace...');
+    } catch {
+      console.log('   ⚠️  查询 KV namespace 列表失败，尝试创建新的...');
+    }
+
+    // Step B: 没找到才创建
+    if (!kvId) {
       try {
-        const listOutput = execSync('npx wrangler kv namespace list', { encoding: 'utf-8' });
-        const namespaces = JSON.parse(listOutput);
-        const existing = namespaces.find((ns) => ns.title.includes('2fa') && ns.title.includes('SECRETS_KV'));
-        if (existing) {
-          modifiedConfig = modifiedConfig.replace(
-            kvBindingPattern,
-            `[[kv_namespaces]]\nbinding = "SECRETS_KV"\nid = "${existing.id}"`
-          );
-          console.log(`   ✅ 找到已有 KV namespace: ${existing.id}`);
+        console.log('   📦 未找到已有 KV namespace，创建新的...');
+        const kvOutput = execSync('npx wrangler kv namespace create SECRETS_KV', {
+          encoding: 'utf-8',
+        });
+        const idMatch = kvOutput.match(/id = "([a-f0-9]+)"/);
+        if (idMatch) {
+          kvId = idMatch[1];
+          console.log(`   ✅ KV namespace 已创建: ${kvId}`);
         } else {
-          console.error('   ❌ 未找到匹配的 KV namespace');
-          throw kvError;
+          console.warn('   ⚠️  无法从输出中提取 KV ID，尝试继续部署...');
         }
-      } catch {
+      } catch (kvError) {
+        console.error('   ❌ 创建 KV namespace 失败');
         throw kvError;
+      }
+    }
+
+    // 注入 KV 配置到 wrangler.toml
+    if (kvId) {
+      const kvBlock = `[[kv_namespaces]]\nbinding = "SECRETS_KV"\nid = "${kvId}"`;
+      // 替换已有的注释块，或在 [vars] 前插入
+      const commentedKvPattern = /# \[\[kv_namespaces\]\]\r?\n# binding = "SECRETS_KV"\r?\n(?:#[^\n]*\r?\n)*/;
+      if (commentedKvPattern.test(modifiedConfig)) {
+        modifiedConfig = modifiedConfig.replace(commentedKvPattern, kvBlock + '\n');
+      } else {
+        modifiedConfig = modifiedConfig.replace(/(\[vars\])/, kvBlock + '\n\n$1');
       }
     }
   }

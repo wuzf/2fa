@@ -4,10 +4,10 @@ compatibility_date = "2024-01-13"
 workers_dev = true
 
 # KV 命名空间
-# 一键部署时会自动创建并绑定，无需手动配置
-# 本地开发如需指定 ID，可取消注释下方两行
-[[kv_namespaces]]
-binding = "SECRETS_KV"
+# 部署时由 scripts/deploy.js 自动查找或创建，无需手动配置
+# 本地开发如需指定 ID，可取消注释下方三行
+# [[kv_namespaces]]
+# binding = "SECRETS_KV"
 # id = "your-kv-namespace-id"
 # preview_id = "your-preview-kv-namespace-id"
 
@@ -50,6 +50,6 @@ SW_VERSION = "v1"
 [env.development]
 name = "2fa-dev"
 
-[[env.development.kv_namespaces]]
-binding = "SECRETS_KV"
+# [[env.development.kv_namespaces]]
+# binding = "SECRETS_KV"
 # id = "your-dev-kv-namespace-id"
