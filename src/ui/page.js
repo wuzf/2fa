@@ -209,7 +209,7 @@ function getHTMLBody() {
           <button class="btn btn-primary" onclick="retryCamera()" style="margin-top: 10px;">🔄 重试摄像头</button>
         </div>
 
-        <!-- 底部操作区：连续扫描 + 选择图片 -->
+        <!-- 底部操作区：连续扫描 + 选择图片 + 粘贴截图 -->
         <div class="scanner-bottom-actions">
           <label class="continuous-scan-inline">
             <input type="checkbox" id="continuousScanToggle" onchange="toggleContinuousScan()">
@@ -217,8 +217,9 @@ function getHTMLBody() {
           </label>
           <input type="file" id="qrImageInput" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
           <button class="btn btn-info btn-compact" onclick="document.getElementById('qrImageInput').click()">📁 选择图片</button>
+          <button class="btn btn-info btn-compact" onclick="pasteImageForScan()">📋 粘贴截图</button>
         </div>
-        <div class="scanner-hint">💡 支持标准2FA码及Google迁移码批量导入</div>
+        <div class="scanner-hint">💡 支持拖拽图片到此处、Ctrl+V 粘贴截图、Google迁移码批量导入</div>
       </div>
     </div>
   </div>
@@ -680,10 +681,12 @@ function getHTMLBody() {
       
       <div class="tool-section">
         <div class="section-title">扫描二维码</div>
-        <div class="scan-options" style="display: flex; gap: 10px; margin-bottom: 15px;">
+        <div class="scan-options" style="display: flex; gap: 10px; margin-bottom: 10px;">
           <button class="btn btn-primary" onclick="startQRDecodeScanner()" style="flex: 1; padding: 12px; font-size: 14px;">📷 摄像头扫描</button>
           <button class="btn btn-info" onclick="uploadImageForDecode()" style="flex: 1; padding: 12px; font-size: 14px;">📁 选择图片</button>
+          <button class="btn btn-info" onclick="pasteImageForDecode()" style="flex: 1; padding: 12px; font-size: 14px;">📋 粘贴截图</button>
         </div>
+        <div class="scanner-hint" style="margin-bottom: 15px;">💡 支持拖拽图片到此处或 Ctrl+V 粘贴截图</div>
         
         <div id="decodeScannerContainer" style="display: none;">
           <div class="scanner-container" style="position: relative; margin: 15px 0;">

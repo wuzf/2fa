@@ -19,6 +19,7 @@ export function getQRDecodeToolCode() {
         document.getElementById('decodeResultSection').style.display = 'none';
         document.getElementById('decodeQRSection').style.display = 'none';
       });
+      initDecodeModalDragPaste();
     }
 
     function hideQRDecodeModal() {
@@ -366,6 +367,144 @@ export function getQRDecodeToolCode() {
         console.error('二维码生成过程发生错误:', error);
         showCenterToast('❌', '二维码生成失败: ' + error.message);
       }
+    }
+
+    // ========== 剪贴板粘贴识别二维码（解析工具） ==========
+
+    async function pasteImageForDecode() {
+      try {
+        const clipboardItems = await navigator.clipboard.read();
+        let imageBlob = null;
+
+        for (const item of clipboardItems) {
+          const imageType = item.types.find(t => t.startsWith('image/'));
+          if (imageType) {
+            imageBlob = await item.getType(imageType);
+            break;
+          }
+        }
+
+        if (!imageBlob) {
+          showCenterToast('❌', '剪贴板中没有图片，请先截图或复制图片');
+          return;
+        }
+
+        processImageBlobForDecode(imageBlob);
+      } catch (error) {
+        if (error.name === 'NotAllowedError') {
+          showCenterToast('❌', '请允许浏览器访问剪贴板');
+        } else {
+          showCenterToast('❌', '读取剪贴板失败: ' + error.message);
+        }
+      }
+    }
+
+    function processImageBlobForDecode(blob) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+
+          let { width, height } = img;
+          const maxSize = 1000;
+          if (width > maxSize || height > maxSize) {
+            const ratio = Math.min(maxSize / width, maxSize / height);
+            width = Math.floor(width * ratio);
+            height = Math.floor(height * ratio);
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const imageData = ctx.getImageData(0, 0, width, height);
+
+          if (typeof jsQR === 'undefined') {
+            showCenterToast('❌', '二维码解析库未加载');
+            return;
+          }
+
+          const parseOptions = [
+            { inversionAttempts: "dontInvert" },
+            { inversionAttempts: "onlyInvert" },
+            { inversionAttempts: "attemptBoth" }
+          ];
+
+          let qrCode = null;
+          for (const opt of parseOptions) {
+            const result = jsQR(imageData.data, imageData.width, imageData.height, opt);
+            if (result && result.data) {
+              qrCode = result.data;
+              break;
+            }
+          }
+
+          if (qrCode) {
+            processDecodeResult(qrCode);
+          } else {
+            showCenterToast('❌', '未在图片中找到二维码，请尝试其他图片');
+          }
+        };
+        img.onerror = function() {
+          showCenterToast('❌', '图片加载失败');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(blob);
+    }
+
+    // 初始化解析模态框的拖拽和粘贴事件
+    function initDecodeModalDragPaste() {
+      const modal = document.getElementById('qrDecodeModal');
+      if (!modal || modal.dataset.dragPasteInit) return;
+      modal.dataset.dragPasteInit = 'true';
+
+      // 拖拽事件
+      modal.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        modal.classList.add('drag-over');
+      });
+
+      modal.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!modal.contains(e.relatedTarget)) {
+          modal.classList.remove('drag-over');
+        }
+      });
+
+      modal.addEventListener('drop', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        modal.classList.remove('drag-over');
+
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type.startsWith('image/')) {
+          processImageBlobForDecode(files[0]);
+        } else {
+          showCenterToast('❌', '请拖入图片文件');
+        }
+      });
+
+      // Ctrl+V 粘贴事件（仅处理解析工具模态框）
+      document.addEventListener('paste', function(e) {
+        if (!modal.classList.contains('show')) return;
+
+        const items = e.clipboardData && e.clipboardData.items;
+        if (!items) return;
+
+        for (const item of items) {
+          if (item.type.startsWith('image/')) {
+            e.preventDefault();
+            const blob = item.getAsFile();
+            if (blob) processImageBlobForDecode(blob);
+            return;
+          }
+        }
+      });
     }
 
 `;

@@ -67,6 +67,29 @@ export function getModalStyles() {
       opacity: 1;
     }
 
+    .modal.drag-over .modal-content {
+      border: 2px dashed var(--primary);
+      background: var(--modal-bg);
+      box-shadow: inset 0 0 30px rgba(var(--primary-rgb, 59, 130, 246), 0.1);
+    }
+
+    .modal.drag-over::after {
+      content: '松开鼠标识别二维码';
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--primary);
+      color: white;
+      padding: 16px 32px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      z-index: 999999;
+      pointer-events: none;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
     .modal-header {
       display: flex;
       justify-content: space-between;
