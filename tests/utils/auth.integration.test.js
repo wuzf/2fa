@@ -877,5 +877,52 @@ describe('Auth.js Integration Tests', () => {
       const data = await getResponseJson(response);
       expect(data.error).toBeDefined();
     });
+
+    it('handleFirstTimeSetup 应该在 KV 未绑定时返回明确提示', async () => {
+      const envWithoutKV = { LOG_LEVEL: 'ERROR' };
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/setup',
+        body: { password: 'ValidPassword123!', confirmPassword: 'ValidPassword123!' }
+      });
+
+      const response = await handleFirstTimeSetup(request, envWithoutKV);
+      expect(response.status).toBe(500);
+
+      const data = await getResponseJson(response);
+      expect(data.message).toContain('KV 存储未绑定');
+    });
+
+    it('handleFirstTimeSetup 在请求体为 null 时不应误报为 KV 未绑定', async () => {
+      // 发送无 body 的请求，解构会抛 TypeError，但 KV 已绑定，不应误判
+      const request = new Request('https://example.com/api/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'null'
+      });
+
+      const response = await handleFirstTimeSetup(request, env);
+      expect(response.status).toBe(500);
+
+      const data = await getResponseJson(response);
+      // 不应包含 KV 相关的错误提示
+      expect(data.message).not.toContain('KV 存储未绑定');
+    });
+
+    it('handleFirstTimeSetup 未知错误不应暴露 error.message 细节', async () => {
+      // 用 null body 触发 TypeError 类的未知错误
+      const request = new Request('https://example.com/api/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'null'
+      });
+
+      const response = await handleFirstTimeSetup(request, env);
+      expect(response.status).toBe(500);
+
+      const data = await getResponseJson(response);
+      // 错误消息应该是通用的，不包含内部实现细节
+      expect(data.message).toBe('处理设置请求时发生错误');
+    });
   });
 });

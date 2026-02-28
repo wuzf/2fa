@@ -584,6 +584,17 @@ export async function handleFirstTimeSetup(request, env) {
 			},
 			error,
 		);
+
+		// 检测 KV 未绑定的情况
+		if (!env.SECRETS_KV) {
+			return createErrorResponse(
+				'设置失败',
+				'KV 存储未绑定，请在 Cloudflare Dashboard 或 wrangler.toml 中配置 SECRETS_KV 命名空间后重试',
+				500,
+				request,
+			);
+		}
+
 		return createErrorResponse('设置失败', '处理设置请求时发生错误', 500, request);
 	}
 }

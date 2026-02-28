@@ -792,25 +792,6 @@ export function getCoreCode() {
       }
     });
 
-    // 模态框外部点击关闭
-    document.getElementById('secretModal').addEventListener('click', function(e) {
-      if (e.target === this) {
-        hideSecretModal();
-      }
-    });
-    
-    document.getElementById('qrModal').addEventListener('click', function(e) {
-      if (e.target === this) {
-        hideQRModal();
-      }
-    });
-
-    document.getElementById('importModal').addEventListener('click', function(e) {
-      if (e.target === this) {
-        hideImportModal();
-      }
-    });
-
     // 页面卸载时清理定时器
     window.addEventListener('beforeunload', function() {
       Object.values(otpIntervals).forEach(interval => {
