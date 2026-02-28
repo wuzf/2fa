@@ -6,7 +6,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
-**主要特性：** TOTP/HOTP 验证码自动生成 · 二维码扫描/图片识别添加密钥 · AES-GCM 256 位加密存储 · 从 Google Authenticator、Aegis、2FAS、Bitwarden 等应用批量导入 · 多格式导出（TXT/JSON/CSV/HTML/Google 迁移二维码） · 自动备份与还原 · 深色/浅色主题 · 响应式设计适配手机/平板/桌面
+**主要特性：** TOTP/HOTP 验证码自动生成 · 二维码扫描/图片识别/粘贴截图/拖拽图片添加密钥 · AES-GCM 256 位加密存储 · 从 Google Authenticator、Aegis、2FAS、Bitwarden 等应用批量导入 · 多格式导出（TXT/JSON/CSV/HTML/Google 迁移二维码） · 自动备份与还原 · 深色/浅色主题 · 响应式设计适配手机/平板/桌面
 
 ## 📸 截图预览
 
@@ -40,6 +40,17 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 > 不配置也可正常使用，但建议配置以加密保护 2FA 密钥数据。
 
+#### 版本更新
+
+一键部署会在你的 GitHub 账户下创建一个独立仓库（非 Fork），无法通过同步上游的方式获取更新。更新到最新版本的步骤：
+
+1. **备份数据（建议）** — 正常操作不会丢失数据，但以防万一，建议先通过 **📤 批量导出** 或 **🔄 还原配置** 导出一份备份
+2. **删除 Worker** — 在 Cloudflare Dashboard → Workers & Pages 中删除 `2fa` Worker
+3. **删除 GitHub 仓库** — 在 GitHub 删除一键部署时自动创建的 `2fa` 仓库
+4. **重新一键部署** — 再次点击上方 Deploy 按钮，完成部署即为最新版本
+
+> ⚠️ **请勿删除 Cloudflare 上的 KV 命名空间**，你的密钥数据存储在 KV 中，重新部署后会自动关联已有数据。如果之前配置了 `ENCRYPTION_KEY`，重新部署后需要在 Worker Settings 中重新添加相同的密钥。
+
 ## 📖 使用指南
 
 ### 添加密钥
@@ -48,6 +59,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 - **扫二维码** — 摄像头扫描 2FA 二维码，自动填入
 - **选择图片** — 上传二维码截图，自动识别
+- **粘贴截图** — Ctrl+V 粘贴剪贴板中的二维码截图（适合无摄像头的 PC 用户）
+- **拖拽图片** — 直接将二维码图片拖入弹窗，自动识别
 - **手动添加** — 输入服务名称和 Base32 密钥（可展开高级设置调整位数/周期/算法）
 
 ### 日常使用
