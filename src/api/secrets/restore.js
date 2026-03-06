@@ -275,9 +275,10 @@ export async function handleExportBackup(request, env, backupKey) {
  *
  * @param {Request} request - HTTP请求对象
  * @param {Object} env - 环境变量对象
+ * @param {Object} [ctx] - Cloudflare Workers 执行上下文
  * @returns {Response} HTTP响应
  */
-export async function handleRestoreBackup(request, env) {
+export async function handleRestoreBackup(request, env, ctx) {
 	const logger = getLogger(env);
 
 	try {
@@ -373,7 +374,7 @@ export async function handleRestoreBackup(request, env) {
 		// 恢复密钥到主存储（使用加密保存）
 		// 🔄 立即备份（恢复操作使用 immediate: true 强制立即备份）
 		// 注意：saveSecretsToKV 内部会自动调用 saveDataHash 和 triggerBackup
-		await saveSecretsToKV(env, backupData.secrets, 'backup-restored', { immediate: true });
+		await saveSecretsToKV(env, backupData.secrets, 'backup-restored', { immediate: true }, ctx);
 
 		logger.info('✅ 备份恢复完成', {
 			backupKey,

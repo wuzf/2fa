@@ -1,12 +1,11 @@
 /**
  * 智能备份系统
- * 实现事件驱动 + 防抖的备份策略
+ * 实现事件驱动的即时备份策略
  *
  * 策略：
- * 1. 数据变化时立即触发备份（事件驱动）
- * 2. 使用防抖机制，避免频繁备份（5分钟内只备份一次）
- * 3. 保留定时备份作为兜底（每10分钟检查一次）
- * 4. 自动清理旧备份（默认保留最新100个，超过后自动删除最早的备份）
+ * 1. 数据变化时立即备份并推送 WebDAV（事件驱动，每次变更都备份）
+ * 2. 保留定时备份作为兜底（每日检查一次）
+ * 3. 自动清理旧备份（默认保留最新100个，超过后自动删除最早的备份）
  *
  * 配置选项（BACKUP_CONFIG）：
  * - MAX_BACKUPS: 最大保留备份数（默认100，设置为0表示不限制）
@@ -21,14 +20,12 @@
 import { encryptData } from './encryption.js';
 import { getLogger } from './logger.js';
 import { getMonitoring } from './monitoring.js';
+import { pushToWebDAV } from './webdav.js';
 
 /**
  * 备份配置
  */
 const BACKUP_CONFIG = {
-	// 防抖时间（毫秒）- 5分钟内只备份一次
-	DEBOUNCE_INTERVAL: 5 * 60 * 1000, // 5 minutes
-
 	// 最大保留备份数（默认100，可通过环境变量覆盖）
 	// 设置为 0 表示不限制（禁用自动清理）
 	MAX_BACKUPS: 100,
@@ -50,42 +47,22 @@ class BackupManager {
 	constructor(env) {
 		this.env = env;
 		this.logger = getLogger(env);
-		this.lastBackupTime = 0;
-		this.pendingBackup = null;
 		this.backupInProgress = false;
+		this.pendingSecrets = null; // 并发期间暂存最新的密钥快照
+		this.pendingReason = null;
+		this.pendingCtx = null;
 	}
 
 	/**
-	 * 检查是否应该执行备份（防抖检查）
-	 */
-	shouldBackup() {
-		const now = Date.now();
-		const timeSinceLastBackup = now - this.lastBackupTime;
-
-		// 如果距离上次备份不到5分钟，跳过
-		if (timeSinceLastBackup < BACKUP_CONFIG.DEBOUNCE_INTERVAL) {
-			this.logger.debug('⏭️ 备份防抖：距离上次备份不到5分钟，跳过', {
-				timeSinceLastBackup,
-				debounceInterval: BACKUP_CONFIG.DEBOUNCE_INTERVAL,
-			});
-			return false;
-		}
-
-		return true;
-	}
-
-	/**
-	 * 触发备份（事件驱动）
-	 * 带防抖机制，避免频繁备份
+	 * 触发备份（事件驱动，每次数据变更立即执行）
 	 */
 	async triggerBackup(secrets, options = {}) {
-		const { immediate = false, reason = 'event-driven' } = options;
+		const { immediate = false, reason = 'event-driven', ctx } = options;
 
 		this.logger.info('🔔 收到备份触发请求', {
 			reason,
 			immediate,
 			secretCount: secrets?.length || 0,
-			lastBackupTime: this.lastBackupTime,
 		});
 
 		// 如果未启用事件驱动备份，跳过
@@ -94,43 +71,23 @@ class BackupManager {
 			return null;
 		}
 
-		// 检查是否正在备份
+		// 检查是否正在备份：暂存最新快照，待当前备份完成后自动执行
 		if (this.backupInProgress) {
-			this.logger.debug('⏳ 备份已在进行中，跳过本次触发');
-			return null;
-		}
-
-		// 防抖检查（除非是立即备份）
-		if (!immediate && !this.shouldBackup()) {
-			// 取消之前的待处理备份
-			if (this.pendingBackup) {
-				clearTimeout(this.pendingBackup);
-			}
-
-			// 设置延迟备份（在防抖间隔后执行）
-			const remainingTime = BACKUP_CONFIG.DEBOUNCE_INTERVAL - (Date.now() - this.lastBackupTime);
-			this.logger.info('⏰ 延迟备份已调度', {
-				delay: remainingTime,
-				reason,
-			});
-
-			this.pendingBackup = setTimeout(() => {
-				this.executeBackup(secrets, reason).catch((err) => {
-					this.logger.error('延迟备份失败', { reason }, err);
-				});
-			}, remainingTime);
-
-			return { scheduled: true, delay: remainingTime };
+			this.pendingSecrets = secrets;
+			this.pendingReason = reason;
+			this.pendingCtx = ctx;
+			this.logger.debug('⏳ 备份已在进行中，已暂存最新数据等待执行');
+			return { queued: true };
 		}
 
 		// 立即执行备份
-		return this.executeBackup(secrets, reason);
+		return this.executeBackup(secrets, reason, ctx);
 	}
 
 	/**
 	 * 执行备份
 	 */
-	async executeBackup(secrets, reason = 'manual') {
+	async executeBackup(secrets, reason = 'manual', ctx) {
 		if (!secrets || secrets.length === 0) {
 			this.logger.info('📭 无密钥需要备份');
 			return null;
@@ -143,7 +100,6 @@ class BackupManager {
 			this.logger.info('🔄 开始执行备份', {
 				reason,
 				secretCount: secrets.length,
-				lastBackup: this.lastBackupTime ? new Date(this.lastBackupTime).toISOString() : 'never',
 			});
 
 			// 创建备份数据
@@ -174,8 +130,15 @@ class BackupManager {
 			// 存储备份
 			await this.env.SECRETS_KV.put(backupKey, backupContent);
 
+			// WebDAV 自动推送（通过 ctx.waitUntil 托管，确保 Worker 响应后推送仍能完成）
+			const webdavPromise = pushToWebDAV(backupKey, backupContent, this.env).catch((err) => {
+				this.logger.warn('WebDAV 推送异常（不影响备份）', {}, err);
+			});
+			if (ctx) {
+				ctx.waitUntil(webdavPromise);
+			}
+
 			const duration = Date.now() - startTime;
-			this.lastBackupTime = Date.now();
 
 			this.logger.info('✅ 备份完成', {
 				backupKey,
@@ -229,18 +192,33 @@ class BackupManager {
 			throw error;
 		} finally {
 			this.backupInProgress = false;
+
+			// 如果并发期间有新数据暂存，立即执行一次补偿备份
+			if (this.pendingSecrets) {
+				const secrets = this.pendingSecrets;
+				const pendingReason = this.pendingReason || 'event-driven';
+				const pendingCtx = this.pendingCtx;
+				this.pendingSecrets = null;
+				this.pendingReason = null;
+				this.pendingCtx = null;
+				this.logger.info('🔁 执行暂存的补偿备份', { reason: pendingReason });
+				this.executeBackup(secrets, pendingReason, pendingCtx).catch((err) => {
+					this.logger.error('补偿备份失败', { reason: pendingReason }, err);
+				});
+			}
 		}
 	}
 
 	/**
-	 * 生成备份文件名
+	 * 生成备份文件名（使用 UTC 保证排序一致性）
 	 * @private
 	 */
 	_generateBackupKey() {
 		const now = new Date();
 		const dateStr = now.toISOString().split('T')[0];
-		const timeStr = now.toISOString().split('T')[1].split('.')[0].replace(/:/g, '-');
-		return `backup_${dateStr}_${timeStr}.json`;
+		const timeStr = now.toISOString().split('T')[1].replace(/:/g, '-').replace('.', '-').replace('Z', '');
+		const rand = Math.random().toString(36).slice(2, 6);
+		return `backup_${dateStr}_${timeStr}-UTC-${rand}.json`;
 	}
 
 	/**
@@ -302,34 +280,6 @@ class BackupManager {
 		} catch (error) {
 			this.logger.error('清理旧备份失败', {}, error);
 			// 不抛出错误，避免影响主流程
-		}
-	}
-
-	/**
-	 * 获取上次备份时间
-	 */
-	getLastBackupTime() {
-		return this.lastBackupTime;
-	}
-
-	/**
-	 * 获取距离上次备份的时间
-	 */
-	getTimeSinceLastBackup() {
-		if (this.lastBackupTime === 0) {
-			return null;
-		}
-		return Date.now() - this.lastBackupTime;
-	}
-
-	/**
-	 * 取消待处理的备份
-	 */
-	cancelPendingBackup() {
-		if (this.pendingBackup) {
-			clearTimeout(this.pendingBackup);
-			this.pendingBackup = null;
-			this.logger.debug('⏹️ 已取消待处理的备份');
 		}
 	}
 }

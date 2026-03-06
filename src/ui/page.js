@@ -502,6 +502,14 @@ function getHTMLBody() {
             <div class="tool-desc">生成随机TOTP密钥</div>
           </div>
         </div>
+
+        <div class="tool-item" onclick="showWebdavTool()">
+          <div class="tool-icon">☁️</div>
+          <div class="tool-content">
+            <div class="tool-title">WebDAV 同步</div>
+            <div class="tool-desc">自动推送备份到 WebDAV 服务器</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -760,7 +768,53 @@ function getHTMLBody() {
 
     </div>
   </div>
-  
+
+  <!-- WebDAV 同步配置模态框 -->
+  <div id="webdavModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>☁️ WebDAV 同步</h2>
+        <button class="close-btn" onclick="hideWebdavModal()">&times;</button>
+      </div>
+
+      <div class="tool-section">
+        <div id="webdavStatus" style="display: none; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; background: var(--bg-secondary);"></div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">服务器地址</label>
+          <input type="url" id="webdavUrl" class="secret-input" placeholder="https://your-server.com/dav/" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">用户名</label>
+          <input type="text" id="webdavUsername" class="secret-input" placeholder="请输入用户名" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">密码</label>
+          <input type="password" id="webdavPassword" class="secret-input" placeholder="请输入密码" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">远程路径</label>
+          <input type="text" id="webdavPath" class="secret-input" value="/" placeholder="/" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+          <button class="btn btn-info" id="webdavTestBtn" onclick="testWebdavConnection()" style="flex: 1; padding: 10px; font-size: 13px;">测试连接</button>
+          <button class="btn btn-primary" id="webdavSaveBtn" onclick="saveWebdavConfig()" style="flex: 1; padding: 10px; font-size: 13px;">保存配置</button>
+        </div>
+
+        <button class="btn btn-danger" id="webdavDeleteBtn" onclick="deleteWebdavConfig()" style="width: 100%; padding: 10px; font-size: 13px; display: none;">删除配置</button>
+
+        <div class="advanced-info" style="margin-top: 15px; padding: 12px; border-radius: 6px; font-size: 12px; color: var(--text-tertiary); background: var(--bg-secondary); line-height: 1.6;">
+          配置 WebDAV 后，每次备份（事件驱动、定时、手动）都会自动推送到 WebDAV 服务器。支持 NextCloud、Alist 等 WebDAV 服务。推送失败不影响本地备份。
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- 二维码模态框 -->
   <div id="qrModal" class="modal" style="display: none;">
     <div class="modal-content">

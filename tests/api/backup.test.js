@@ -130,7 +130,7 @@ describe('Backup API Module', () => {
       expect(data.success).toBe(true);
       expect(data.message).toContain('备份完成');
       expect(data.backupKey).toBeDefined();
-      expect(data.backupKey).toMatch(/^backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.json$/);
+      expect(data.backupKey).toMatch(/^backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}-[a-z0-9]{4}\.json$/);
       expect(data.count).toBe(1);
       expect(data.encrypted).toBe(true);
     });
@@ -213,6 +213,54 @@ describe('Backup API Module', () => {
 
       const response = await handleBackupSecrets(request, env);
       expect(response.status).toBe(429); // Too Many Requests
+    });
+
+    it('应该通过 ctx.waitUntil 托管 WebDAV 推送', async () => {
+      const env = createMockEnv();
+
+      await saveSecretsToKV(env, [
+        { id: '1', name: 'Test', secret: 'JBSWY3DPEHPK3PXP', type: 'TOTP' }
+      ], 'test');
+
+      // 配置 WebDAV（触发推送路径）
+      await env.SECRETS_KV.put('webdav_config', JSON.stringify({
+        url: 'https://dav.example.com',
+        username: 'user',
+        password: 'pass',
+        path: '/'
+      }));
+
+      const ctx = { waitUntil: vi.fn() };
+      const request = createMockRequest();
+      const response = await handleBackupSecrets(request, env, ctx);
+      const data = await response.json();
+
+      expect(data.success).toBe(true);
+      expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+      // waitUntil 接收的应该是一个 Promise
+      expect(ctx.waitUntil.mock.calls[0][0]).toBeInstanceOf(Promise);
+    });
+
+    it('没有 ctx 时 WebDAV 推送不应报错', async () => {
+      const env = createMockEnv();
+
+      await saveSecretsToKV(env, [
+        { id: '1', name: 'Test', secret: 'JBSWY3DPEHPK3PXP', type: 'TOTP' }
+      ], 'test');
+
+      await env.SECRETS_KV.put('webdav_config', JSON.stringify({
+        url: 'https://dav.example.com',
+        username: 'user',
+        password: 'pass',
+        path: '/'
+      }));
+
+      const request = createMockRequest();
+      // 不传 ctx，验证不会抛异常
+      const response = await handleBackupSecrets(request, env);
+      const data = await response.json();
+
+      expect(data.success).toBe(true);
     });
   });
 

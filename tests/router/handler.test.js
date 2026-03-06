@@ -22,6 +22,14 @@ vi.mock('../../src/api/secrets/index.js', () => ({
   handleExportBackup: vi.fn(async (request, env, key) => new Response(JSON.stringify({ data: {} }), { status: 200 }))
 }));
 
+// Mock WebDAV API handlers
+vi.mock('../../src/api/webdav.js', () => ({
+  handleGetWebDAVConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ configured: false }), { status: 200 })),
+  handleSaveWebDAVConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleDeleteWebDAVConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleTestWebDAV: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '连接成功' }), { status: 200 }))
+}));
+
 // Mock UI generators
 vi.mock('../../src/ui/page.js', () => ({
   createMainPage: vi.fn(async () => new Response('<html>Main Page</html>', { status: 200, headers: { 'Content-Type': 'text/html' } }))
@@ -404,7 +412,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleAddSecret).toHaveBeenCalledWith(request, env);
+      expect(handleAddSecret).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(201);
     });
 
@@ -434,7 +442,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleBatchAddSecrets).toHaveBeenCalledWith(request, env);
+      expect(handleBatchAddSecrets).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(200);
     });
 
@@ -462,7 +470,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleUpdateSecret).toHaveBeenCalledWith(request, env);
+      expect(handleUpdateSecret).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(200);
     });
 
@@ -477,7 +485,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleDeleteSecret).toHaveBeenCalledWith(request, env);
+      expect(handleDeleteSecret).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(200);
     });
 
@@ -518,7 +526,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleBackupSecrets).toHaveBeenCalledWith(request, env);
+      expect(handleBackupSecrets).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(200);
     });
 
@@ -558,7 +566,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleRestoreBackup).toHaveBeenCalledWith(request, env);
+      expect(handleRestoreBackup).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(200);
     });
 
@@ -566,6 +574,90 @@ describe('Router Handler', () => {
       const request = createMockRequest({
         method: 'GET',
         pathname: '/api/backup/restore'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(response.status).toBe(405);
+    });
+
+    // WebDAV 配置 API 路由测试
+    it('应该处理 GET /api/webdav/config', async () => {
+      const { handleGetWebDAVConfig } = await import('../../src/api/webdav.js');
+
+      const request = createMockRequest({ pathname: '/api/webdav/config' });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleGetWebDAVConfig).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('应该处理 POST /api/webdav/config', async () => {
+      const { handleSaveWebDAVConfig } = await import('../../src/api/webdav.js');
+
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/webdav/config',
+        body: { url: 'https://dav.example.com', username: 'user', password: 'pass', path: '/' }
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleSaveWebDAVConfig).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('应该处理 DELETE /api/webdav/config', async () => {
+      const { handleDeleteWebDAVConfig } = await import('../../src/api/webdav.js');
+
+      const request = createMockRequest({
+        method: 'DELETE',
+        pathname: '/api/webdav/config'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleDeleteWebDAVConfig).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('应该拒绝 /api/webdav/config 的不支持方法', async () => {
+      const request = createMockRequest({
+        method: 'PATCH',
+        pathname: '/api/webdav/config'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(response.status).toBe(405);
+    });
+
+    it('应该处理 POST /api/webdav/test', async () => {
+      const { handleTestWebDAV } = await import('../../src/api/webdav.js');
+
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/webdav/test',
+        body: { url: 'https://dav.example.com', username: 'user', password: 'pass', path: '/' }
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleTestWebDAV).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('应该拒绝 /api/webdav/test 的不支持方法', async () => {
+      const request = createMockRequest({
+        method: 'GET',
+        pathname: '/api/webdav/test'
       });
       const env = createMockEnv();
 

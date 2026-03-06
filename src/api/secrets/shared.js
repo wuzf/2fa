@@ -26,9 +26,10 @@ import { KV_KEYS } from '../../utils/constants.js';
  * @param {string} reason - 操作原因 (用于备份元数据)
  * @param {Object} options - 可选配置
  * @param {boolean} options.immediate - 是否立即执行备份（忽略防抖）
+ * @param {Object} [ctx] - Cloudflare Workers 执行上下文（用于 waitUntil 托管后台任务）
  * @throws {Error} 保存失败时抛出异常
  */
-export async function saveSecretsToKV(env, secrets, reason = 'update', options = {}) {
+export async function saveSecretsToKV(env, secrets, reason = 'update', options = {}, ctx) {
 	const logger = getLogger(env);
 	const { immediate = false } = options;
 
@@ -55,7 +56,7 @@ export async function saveSecretsToKV(env, secrets, reason = 'update', options =
 
 		// 🔄 触发事件驱动备份（异步，不阻塞）
 		try {
-			const backupResult = await triggerBackup(secrets, env, { reason, immediate });
+			const backupResult = await triggerBackup(secrets, env, { reason, immediate, ctx });
 			if (backupResult) {
 				logger.debug('备份已触发', { reason, immediate, result: backupResult });
 			}

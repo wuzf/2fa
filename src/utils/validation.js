@@ -254,7 +254,7 @@ export const restoreBackupSchema = new Schema({
 		message: '备份键不能为空',
 		validator: (v) => {
 			if (!v.startsWith('backup_') || !v.endsWith('.json')) {
-				return '备份文件名格式不正确，应为 backup_YYYY-MM-DD_HH-MM-SS.json';
+				return '备份文件名格式不正确，应为 backup_YYYY-MM-DD_HH-MM-SS-mmm-xxxx.json';
 			}
 			return true;
 		},
@@ -263,6 +263,37 @@ export const restoreBackupSchema = new Schema({
 		required: false,
 		type: 'boolean',
 		default: false,
+	},
+});
+
+/**
+ * WebDAV 配置验证规则
+ */
+export const webdavConfigSchema = new Schema({
+	url: {
+		required: true,
+		type: 'string',
+		message: 'WebDAV URL 不能为空',
+		validator: (v) => {
+			try {
+				const u = new URL(v);
+				return u.protocol === 'https:' || 'URL 必须使用 HTTPS';
+			} catch {
+				return 'URL 格式无效';
+			}
+		},
+		transform: (v) => v.replace(/\/+$/, ''),
+	},
+	username: { required: true, type: 'string', message: '用户名不能为空' },
+	password: { required: false, type: 'string', default: '' },
+	path: {
+		required: false,
+		type: 'string',
+		default: '/',
+		transform: (v) => {
+			const p = v.trim().replace(/\/+/g, '/').replace(/\/+$/, '');
+			return p.startsWith('/') ? p || '/' : '/' + p;
+		},
 	},
 });
 

@@ -17,6 +17,7 @@ import { encryptData, decryptData } from '../../utils/encryption.js';
 import { createJsonResponse, createErrorResponse } from '../../utils/response.js';
 import { saveDataHash } from '../../worker.js';
 import { ValidationError, StorageError, CryptoError, BusinessLogicError, errorToResponse, logError } from '../../utils/errors.js';
+import { pushToWebDAV } from '../../utils/webdav.js';
 
 /**
  * 处理手动备份密钥
@@ -24,9 +25,10 @@ import { ValidationError, StorageError, CryptoError, BusinessLogicError, errorTo
  *
  * @param {Request} request - HTTP 请求对象
  * @param {Object} env - 环境变量对象
+ * @param {Object} [ctx] - Cloudflare Workers 执行上下文
  * @returns {Response} HTTP响应
  */
-export async function handleBackupSecrets(request, env) {
+export async function handleBackupSecrets(request, env, ctx) {
 	const logger = getLogger(env);
 
 	try {
@@ -60,11 +62,12 @@ export async function handleBackupSecrets(request, env) {
 				secrets: secrets,
 			};
 
-			// 生成备份文件名（按日期和时间戳）
+			// 生成备份文件名（含毫秒，避免同秒覆盖）
 			const now = new Date();
 			const dateStr = now.toISOString().split('T')[0];
-			const timeStr = now.toISOString().split('T')[1].split('.')[0].replace(/:/g, '-');
-			const backupKey = `backup_${dateStr}_${timeStr}.json`;
+			const timeStr = now.toISOString().split('T')[1].replace(/:/g, '-').replace('.', '-').replace('Z', '');
+			const rand = Math.random().toString(36).slice(2, 6);
+			const backupKey = `backup_${dateStr}_${timeStr}-${rand}.json`;
 
 			// 🔒 加密备份数据（如果配置了 ENCRYPTION_KEY）
 			let backupContent;
@@ -89,6 +92,12 @@ export async function handleBackupSecrets(request, env) {
 
 			// 存储备份到KV
 			await env.SECRETS_KV.put(backupKey, backupContent);
+
+			// WebDAV 自动推送（通过 ctx.waitUntil 托管，不阻塞响应且保证执行完成）
+			const webdavPromise = pushToWebDAV(backupKey, backupContent, env);
+			if (ctx) {
+				ctx.waitUntil(webdavPromise);
+			}
 
 			logger.info('手动备份完成', {
 				backupKey,
@@ -135,17 +144,18 @@ export async function handleBackupSecrets(request, env) {
 /**
  * 从备份文件名解析时间
  *
- * @param {string} keyName - 备份文件名，如 backup_2025-09-14_07-52-16.json
+ * @param {string} keyName - 备份文件名，如 backup_2025-09-14_07-52-16-123.json 或 backup_2025-09-14_07-52-16.json
  * @returns {string} ISO时间字符串，解析失败时返回 'unknown'
  */
 function parseBackupTimeFromKey(keyName) {
 	try {
-		// 解析 backup_2025-09-14_07-52-16.json 格式
-		const match = keyName.match(/backup_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json/);
+		// 解析 backup_2025-09-14_07-52-16-123.json（含毫秒）或 backup_2025-09-14_07-52-16.json 格式
+		const match = keyName.match(/backup_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-(\d{3}))?(?:-[a-z0-9]{4})?\.json/);
 		if (match) {
 			const dateStr = match[1]; // 2025-09-14
 			const timeStr = match[2]; // 07-52-16
-			const isoTime = `${dateStr}T${timeStr.replace(/-/g, ':')}.000Z`;
+			const ms = match[3] || '000';
+			const isoTime = `${dateStr}T${timeStr.replace(/-/g, ':')}.${ms}Z`;
 			return isoTime;
 		}
 
