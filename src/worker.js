@@ -19,8 +19,8 @@ import { encryptData } from './utils/encryption.js';
 import { getLogger, createRequestLogger, PerformanceTimer } from './utils/logger.js';
 import { getMonitoring, ErrorSeverity } from './utils/monitoring.js';
 import { KV_KEYS } from './utils/constants.js';
-import { pushToWebDAV } from './utils/webdav.js';
-import { pushToS3 } from './utils/s3.js';
+import { pushToAllWebDAV } from './utils/webdav.js';
+import { pushToAllS3 } from './utils/s3.js';
 import { sanitizeMaxBackups } from './utils/backup.js';
 
 /**
@@ -508,10 +508,10 @@ export default {
 			timer.checkpoint('备份已保存');
 
 			// WebDAV 自动推送（使用 waitUntil 确保 Worker 不会在推送完成前退出）
-			ctx.waitUntil(pushToWebDAV(backupKey, backupContent, env));
+			ctx.waitUntil(pushToAllWebDAV(backupKey, backupContent, env));
 
 			// S3 自动推送
-			ctx.waitUntil(pushToS3(backupKey, backupContent, env));
+			ctx.waitUntil(pushToAllS3(backupKey, backupContent, env));
 
 			logger.info('自动备份完成', {
 				backupKey,

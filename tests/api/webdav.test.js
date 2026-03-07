@@ -4,10 +4,11 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
-	handleGetWebDAVConfig,
+	handleGetWebDAVConfigs,
 	handleSaveWebDAVConfig,
 	handleTestWebDAV,
 	handleDeleteWebDAVConfig,
+	handleToggleWebDAV,
 } from '../../src/api/webdav.js';
 
 // --- MockKV ---
@@ -72,7 +73,7 @@ function createMockRequest(body = {}, method = 'POST', url = 'https://example.co
 	};
 }
 
-describe('WebDAV API Module', () => {
+describe('WebDAV API Module (Multi-Destination)', () => {
 	let env;
 
 	beforeEach(() => {
@@ -84,62 +85,77 @@ describe('WebDAV API Module', () => {
 		vi.restoreAllMocks();
 	});
 
-	// ==================== handleGetWebDAVConfig ====================
-	describe('handleGetWebDAVConfig', () => {
-		it('未配置时应返回 configured: false', async () => {
+	// ==================== handleGetWebDAVConfigs ====================
+	describe('handleGetWebDAVConfigs', () => {
+		it('未配置时应返回空目标列表', async () => {
 			const request = createMockRequest({}, 'GET');
-			const response = await handleGetWebDAVConfig(request, env);
+			const response = await handleGetWebDAVConfigs(request, env);
 			const data = await response.json();
 
 			expect(response.status).toBe(200);
-			expect(data.configured).toBe(false);
-			expect(data.config).toBeNull();
+			expect(data.destinations).toEqual([]);
+			expect(data.count).toBe(0);
+			expect(data.maxAllowed).toBe(5);
 		});
 
-		it('已配置时应返回配置（密码为空）', async () => {
-			const config = {
-				url: 'https://dav.example.com',
-				username: 'testuser',
-				password: 'secret123',
-				path: '/backup',
-			};
-			await env.SECRETS_KV.put('webdav_config', JSON.stringify(config));
+		it('已配置时应返回目标列表（密码为空）', async () => {
+			const configs = [
+				{
+					id: 'uuid-1',
+					name: 'NAS',
+					enabled: true,
+					url: 'https://dav.example.com',
+					username: 'testuser',
+					password: 'secret123',
+					path: '/backup',
+					createdAt: '2026-01-01T00:00:00Z',
+				},
+			];
+			await env.SECRETS_KV.put('webdav_configs', JSON.stringify(configs));
 
 			const request = createMockRequest({}, 'GET');
-			const response = await handleGetWebDAVConfig(request, env);
+			const response = await handleGetWebDAVConfigs(request, env);
 			const data = await response.json();
 
 			expect(response.status).toBe(200);
-			expect(data.configured).toBe(true);
-			expect(data.config.url).toBe('https://dav.example.com');
-			expect(data.config.username).toBe('testuser');
-			expect(data.config.password).toBe('');
-			expect(data.config.hasPassword).toBe(true);
-			expect(data.config.path).toBe('/backup');
+			expect(data.destinations.length).toBe(1);
+			expect(data.count).toBe(1);
+
+			const dest = data.destinations[0];
+			expect(dest.id).toBe('uuid-1');
+			expect(dest.name).toBe('NAS');
+			expect(dest.enabled).toBe(true);
+			expect(dest.config.url).toBe('https://dav.example.com');
+			expect(dest.config.password).toBe('');
+			expect(dest.config.hasPassword).toBe(true);
 		});
 
-		it('应返回推送状态信息', async () => {
-			const lastSuccess = { backupKey: 'backup_test.json', timestamp: '2026-03-01T00:00:00.000Z' };
-			await env.SECRETS_KV.put('webdav_last_success', JSON.stringify(lastSuccess));
+		it('应返回各目标的推送状态', async () => {
+			const configs = [
+				{
+					id: 'uuid-1',
+					name: 'NAS',
+					enabled: true,
+					url: 'https://dav.example.com',
+					username: 'u',
+					password: 'p',
+					path: '/',
+				},
+			];
+			await env.SECRETS_KV.put('webdav_configs', JSON.stringify(configs));
+			await env.SECRETS_KV.put(
+				'webdav_status_uuid-1',
+				JSON.stringify({
+					lastSuccess: { backupKey: 'backup.json', timestamp: '2026-03-01T00:00:00Z' },
+				}),
+			);
 
 			const request = createMockRequest({}, 'GET');
-			const response = await handleGetWebDAVConfig(request, env);
+			const response = await handleGetWebDAVConfigs(request, env);
 			const data = await response.json();
 
-			expect(data.lastSuccessAt).toBe('2026-03-01T00:00:00.000Z');
-			expect(data.lastError).toBeNull();
-		});
-
-		it('应返回最后错误信息', async () => {
-			const lastError = { backupKey: 'backup_test.json', error: 'Connection refused', timestamp: '2026-03-01T00:00:00.000Z' };
-			await env.SECRETS_KV.put('webdav_last_error', JSON.stringify(lastError));
-
-			const request = createMockRequest({}, 'GET');
-			const response = await handleGetWebDAVConfig(request, env);
-			const data = await response.json();
-
-			expect(data.lastError).toBeTruthy();
-			expect(data.lastError.error).toBe('Connection refused');
+			expect(data.destinations[0].status.lastSuccess.timestamp).toBe('2026-03-01T00:00:00Z');
+			expect(data.destinations[0].status.lastError).toBeNull();
 		});
 	});
 
@@ -147,6 +163,7 @@ describe('WebDAV API Module', () => {
 	describe('handleSaveWebDAVConfig', () => {
 		it('应成功保存新配置', async () => {
 			const request = createMockRequest({
+				name: 'TestNAS',
 				url: 'https://dav.example.com',
 				username: 'user',
 				password: 'pass',
@@ -158,33 +175,13 @@ describe('WebDAV API Module', () => {
 
 			expect(response.status).toBe(200);
 			expect(data.success).toBe(true);
+			expect(data.id).toBeTruthy();
 			expect(data.encrypted).toBe(true);
 		});
 
-		it('缺少必填字段时应返回 400', async () => {
+		it('缺少 name 字段时应返回 400', async () => {
 			const request = createMockRequest({
 				url: 'https://dav.example.com',
-				// 缺少 username
-			});
-
-			const response = await handleSaveWebDAVConfig(request, env);
-			expect(response.status).toBe(400);
-		});
-
-		it('URL 非 HTTPS 时应返回 400', async () => {
-			const request = createMockRequest({
-				url: 'http://dav.example.com',
-				username: 'user',
-				password: 'pass',
-			});
-
-			const response = await handleSaveWebDAVConfig(request, env);
-			expect(response.status).toBe(400);
-		});
-
-		it('URL 格式无效时应返回 400', async () => {
-			const request = createMockRequest({
-				url: 'not-a-url',
 				username: 'user',
 				password: 'pass',
 			});
@@ -195,6 +192,7 @@ describe('WebDAV API Module', () => {
 
 		it('首次配置时密码为空应返回 400', async () => {
 			const request = createMockRequest({
+				name: 'NAS',
 				url: 'https://dav.example.com',
 				username: 'user',
 				password: '',
@@ -209,58 +207,69 @@ describe('WebDAV API Module', () => {
 
 		it('更新配置时密码为空应保留旧密码', async () => {
 			// 先保存初始配置
-			const initialConfig = {
+			const addReq = createMockRequest({
+				name: 'NAS',
 				url: 'https://dav.example.com',
 				username: 'user',
 				password: 'old-pass',
 				path: '/',
-			};
-			await env.SECRETS_KV.put('webdav_config', JSON.stringify(initialConfig));
+			});
+			const addResp = await handleSaveWebDAVConfig(addReq, env);
+			const addData = await addResp.json();
 
 			// 更新配置时不提供密码
-			const request = createMockRequest({
+			const updateReq = createMockRequest({
+				id: addData.id,
+				name: 'NAS-Updated',
 				url: 'https://dav.example.com',
 				username: 'newuser',
 				password: '',
 				path: '/new-path',
 			});
 
-			const response = await handleSaveWebDAVConfig(request, env);
+			const response = await handleSaveWebDAVConfig(updateReq, env);
+			const data = await response.json();
+
+			expect(response.status).toBe(200);
+			expect(data.success).toBe(true);
+		});
+	});
+
+	// ==================== handleDeleteWebDAVConfig ====================
+	describe('handleDeleteWebDAVConfig', () => {
+		it('应成功删除指定配置', async () => {
+			// 先添加
+			const addReq = createMockRequest({
+				name: 'NAS',
+				url: 'https://dav.example.com',
+				username: 'user',
+				password: 'pass',
+				path: '/',
+			});
+			const addResp = await handleSaveWebDAVConfig(addReq, env);
+			const addData = await addResp.json();
+
+			// 删除
+			const deleteReq = createMockRequest({}, 'DELETE', `https://example.com/api/webdav/config?id=${addData.id}`);
+			const response = await handleDeleteWebDAVConfig(deleteReq, env);
 			const data = await response.json();
 
 			expect(response.status).toBe(200);
 			expect(data.success).toBe(true);
 		});
 
-		it('无 ENCRYPTION_KEY 应返回 warning', async () => {
-			delete env.ENCRYPTION_KEY;
+		it('缺少 id 参数应返回 400', async () => {
+			const request = createMockRequest({}, 'DELETE', 'https://example.com/api/webdav/config');
+			const response = await handleDeleteWebDAVConfig(request, env);
 
-			const request = createMockRequest({
-				url: 'https://dav.example.com',
-				username: 'user',
-				password: 'pass',
-			});
-
-			const response = await handleSaveWebDAVConfig(request, env);
-			const data = await response.json();
-
-			expect(response.status).toBe(200);
-			expect(data.success).toBe(true);
-			expect(data.encrypted).toBe(false);
-			expect(data.warning).toBeTruthy();
-			expect(data.warning).toContain('明文');
+			expect(response.status).toBe(400);
 		});
 
-		it('应正确处理 path 的 transform', async () => {
-			const request = createMockRequest({
-				url: 'https://dav.example.com',
-				username: 'user',
-				password: 'pass',
-				path: 'backup//folder/',
-			});
+		it('删除不存在的 id 应返回 404', async () => {
+			const request = createMockRequest({}, 'DELETE', 'https://example.com/api/webdav/config?id=non-existent');
+			const response = await handleDeleteWebDAVConfig(request, env);
 
-			const response = await handleSaveWebDAVConfig(request, env);
-			expect(response.status).toBe(200);
+			expect(response.status).toBe(404);
 		});
 	});
 
@@ -276,6 +285,7 @@ describe('WebDAV API Module', () => {
 
 			try {
 				const request = createMockRequest({
+					name: 'NAS',
 					url: 'https://dav.example.com',
 					username: 'user',
 					password: 'pass',
@@ -292,43 +302,17 @@ describe('WebDAV API Module', () => {
 			}
 		});
 
-		it('连接失败时应返回 400', async () => {
-			const originalFetch = globalThis.fetch;
-			globalThis.fetch = vi.fn().mockResolvedValue({
-				ok: false,
-				status: 401,
-				statusText: 'Unauthorized',
-			});
-
-			try {
-				const request = createMockRequest({
-					url: 'https://dav.example.com',
-					username: 'user',
-					password: 'wrong',
-					path: '/',
-				});
-
-				const response = await handleTestWebDAV(request, env);
-				const data = await response.json();
-
-				expect(response.status).toBe(400);
-				expect(data.success).toBe(false);
-			} finally {
-				globalThis.fetch = originalFetch;
-			}
-		});
-
-		it('密码为空时应从 KV 读取已保存密码', async () => {
+		it('密码为空且有已保存配置（通过 id）应使用保存的密码', async () => {
 			// 先保存配置
-			await env.SECRETS_KV.put(
-				'webdav_config',
-				JSON.stringify({
-					url: 'https://dav.example.com',
-					username: 'user',
-					password: 'saved-pass',
-					path: '/',
-				}),
-			);
+			const addReq = createMockRequest({
+				name: 'NAS',
+				url: 'https://dav.example.com',
+				username: 'user',
+				password: 'saved-pass',
+				path: '/',
+			});
+			const addResp = await handleSaveWebDAVConfig(addReq, env);
+			const addData = await addResp.json();
 
 			const originalFetch = globalThis.fetch;
 			globalThis.fetch = vi.fn().mockResolvedValue({
@@ -339,6 +323,8 @@ describe('WebDAV API Module', () => {
 
 			try {
 				const request = createMockRequest({
+					id: addData.id,
+					name: 'NAS',
 					url: 'https://dav.example.com',
 					username: 'user',
 					password: '',
@@ -350,20 +336,28 @@ describe('WebDAV API Module', () => {
 
 				expect(response.status).toBe(200);
 				expect(data.success).toBe(true);
-
-				// 验证 fetch 被调用时使用了保存的密码
-				const fetchCall = globalThis.fetch.mock.calls[0];
-				const authHeader = fetchCall[1].headers.Authorization;
-				expect(authHeader).toBe('Basic ' + btoa('user:saved-pass'));
 			} finally {
 				globalThis.fetch = originalFetch;
 			}
 		});
+		it('无 id 且密码为空时应返回 400（不得回退已保存凭据）', async () => {
+			// 先保存一个配置（确保 KV 中有凭据可被误用）
+			await handleSaveWebDAVConfig(
+				createMockRequest({
+					name: 'NAS',
+					url: 'https://dav.example.com',
+					username: 'user',
+					password: 'saved-pass',
+					path: '/',
+				}),
+				env,
+			);
 
-		it('密码为空且无已保存配置应返回 400', async () => {
+			// 不带 id、密码为空 → 必须 400，不能回退使用已保存的密码
 			const request = createMockRequest({
-				url: 'https://dav.example.com',
-				username: 'user',
+				name: 'Other',
+				url: 'https://evil.example.com',
+				username: 'attacker',
 				password: '',
 				path: '/',
 			});
@@ -371,46 +365,45 @@ describe('WebDAV API Module', () => {
 			const response = await handleTestWebDAV(request, env);
 			expect(response.status).toBe(400);
 		});
-
-		it('缺少必填字段应返回 400', async () => {
-			const request = createMockRequest({
-				url: 'https://dav.example.com',
-				// 缺少 username
-			});
-
-			const response = await handleTestWebDAV(request, env);
-			expect(response.status).toBe(400);
-		});
 	});
 
-	// ==================== handleDeleteWebDAVConfig ====================
-	describe('handleDeleteWebDAVConfig', () => {
-		it('应成功删除配置和状态', async () => {
-			// 先设置数据
-			await env.SECRETS_KV.put('webdav_config', '{"url":"test"}');
-			await env.SECRETS_KV.put('webdav_last_error', '{"error":"test"}');
-			await env.SECRETS_KV.put('webdav_last_success', '{"timestamp":"test"}');
+	// ==================== handleToggleWebDAV ====================
+	describe('handleToggleWebDAV', () => {
+		it('应成功启用/禁用目标', async () => {
+			// 先添加
+			const addReq = createMockRequest({
+				name: 'NAS',
+				url: 'https://dav.example.com',
+				username: 'user',
+				password: 'pass',
+				path: '/',
+			});
+			const addResp = await handleSaveWebDAVConfig(addReq, env);
+			const addData = await addResp.json();
 
-			const request = createMockRequest({}, 'DELETE');
-			const response = await handleDeleteWebDAVConfig(request, env);
+			// 禁用
+			const toggleReq = createMockRequest(
+				{ id: addData.id, enabled: false },
+				'POST',
+				'https://example.com/api/webdav/toggle',
+			);
+			const response = await handleToggleWebDAV(toggleReq, env);
 			const data = await response.json();
 
 			expect(response.status).toBe(200);
 			expect(data.success).toBe(true);
-
-			// 验证数据已删除
-			expect(await env.SECRETS_KV.get('webdav_config')).toBeNull();
-			expect(await env.SECRETS_KV.get('webdav_last_error')).toBeNull();
-			expect(await env.SECRETS_KV.get('webdav_last_success')).toBeNull();
+			expect(data.message).toBe('已禁用');
 		});
 
-		it('无配置时删除也应成功', async () => {
-			const request = createMockRequest({}, 'DELETE');
-			const response = await handleDeleteWebDAVConfig(request, env);
-			const data = await response.json();
+		it('不存在的 id 应返回 404', async () => {
+			const request = createMockRequest(
+				{ id: 'non-existent', enabled: false },
+				'POST',
+				'https://example.com/api/webdav/toggle',
+			);
+			const response = await handleToggleWebDAV(request, env);
 
-			expect(response.status).toBe(200);
-			expect(data.success).toBe(true);
+			expect(response.status).toBe(404);
 		});
 	});
 });

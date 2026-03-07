@@ -24,18 +24,20 @@ vi.mock('../../src/api/secrets/index.js', () => ({
 
 // Mock WebDAV API handlers
 vi.mock('../../src/api/webdav.js', () => ({
-  handleGetWebDAVConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ configured: false }), { status: 200 })),
+  handleGetWebDAVConfigs: vi.fn(async (request, env) => new Response(JSON.stringify({ destinations: [], count: 0, maxAllowed: 5 }), { status: 200 })),
   handleSaveWebDAVConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
   handleDeleteWebDAVConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
-  handleTestWebDAV: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '连接成功' }), { status: 200 }))
+  handleTestWebDAV: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '连接成功' }), { status: 200 })),
+  handleToggleWebDAV: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '已启用' }), { status: 200 }))
 }));
 
 // Mock S3 API handlers
 vi.mock('../../src/api/s3.js', () => ({
-  handleGetS3Config: vi.fn(async (request, env) => new Response(JSON.stringify({ configured: false }), { status: 200 })),
+  handleGetS3Configs: vi.fn(async (request, env) => new Response(JSON.stringify({ destinations: [], count: 0, maxAllowed: 5 }), { status: 200 })),
   handleSaveS3Config: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
   handleDeleteS3Config: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
-  handleTestS3: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '连接成功' }), { status: 200 }))
+  handleTestS3: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '连接成功' }), { status: 200 })),
+  handleToggleS3: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '已启用' }), { status: 200 }))
 }));
 
 // Mock Change Password API handler
@@ -597,14 +599,14 @@ describe('Router Handler', () => {
 
     // WebDAV 配置 API 路由测试
     it('应该处理 GET /api/webdav/config', async () => {
-      const { handleGetWebDAVConfig } = await import('../../src/api/webdav.js');
+      const { handleGetWebDAVConfigs } = await import('../../src/api/webdav.js');
 
       const request = createMockRequest({ pathname: '/api/webdav/config' });
       const env = createMockEnv();
 
       const response = await handleRequest(request, env);
 
-      expect(handleGetWebDAVConfig).toHaveBeenCalledWith(request, env);
+      expect(handleGetWebDAVConfigs).toHaveBeenCalledWith(request, env);
       expect(response.status).toBe(200);
     });
 

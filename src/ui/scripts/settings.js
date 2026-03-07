@@ -52,8 +52,8 @@ export function getSettingsCode() {
         const webdavData = await webdavResp.json();
         const webdavStatusEl = document.getElementById('settingsWebdavStatus');
         if (webdavStatusEl) {
-          if (webdavData.configured) {
-            webdavStatusEl.textContent = '已配置';
+          if (webdavData.count > 0) {
+            webdavStatusEl.textContent = '已配置 ' + webdavData.count + ' 个目标';
             webdavStatusEl.className = 'sync-status configured';
           } else {
             webdavStatusEl.textContent = '未配置';
@@ -74,8 +74,8 @@ export function getSettingsCode() {
         const s3Data = await s3Resp.json();
         const s3StatusEl = document.getElementById('settingsS3Status');
         if (s3StatusEl) {
-          if (s3Data.configured) {
-            s3StatusEl.textContent = '已配置';
+          if (s3Data.count > 0) {
+            s3StatusEl.textContent = '已配置 ' + s3Data.count + ' 个目标';
             s3StatusEl.className = 'sync-status configured';
           } else {
             s3StatusEl.textContent = '未配置';

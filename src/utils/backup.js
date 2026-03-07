@@ -20,8 +20,8 @@
 import { encryptData } from './encryption.js';
 import { getLogger } from './logger.js';
 import { getMonitoring } from './monitoring.js';
-import { pushToWebDAV } from './webdav.js';
-import { pushToS3 } from './s3.js';
+import { pushToAllWebDAV } from './webdav.js';
+import { pushToAllS3 } from './s3.js';
 
 /**
  * 备份配置
@@ -144,7 +144,7 @@ class BackupManager {
 			await this.env.SECRETS_KV.put(backupKey, backupContent);
 
 			// WebDAV 自动推送（通过 ctx.waitUntil 托管，确保 Worker 响应后推送仍能完成）
-			const webdavPromise = pushToWebDAV(backupKey, backupContent, this.env).catch((err) => {
+			const webdavPromise = pushToAllWebDAV(backupKey, backupContent, this.env).catch((err) => {
 				this.logger.warn('WebDAV 推送异常（不影响备份）', {}, err);
 			});
 			if (ctx) {
@@ -152,7 +152,7 @@ class BackupManager {
 			}
 
 			// S3 自动推送
-			const s3Promise = pushToS3(backupKey, backupContent, this.env).catch((err) => {
+			const s3Promise = pushToAllS3(backupKey, backupContent, this.env).catch((err) => {
 				this.logger.warn('S3 推送异常（不影响备份）', {}, err);
 			});
 			if (ctx) {

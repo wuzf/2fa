@@ -46,7 +46,7 @@ vi.mock('../../src/utils/monitoring.js', () => ({
 
 // Mock webdav
 vi.mock('../../src/utils/webdav.js', () => ({
-  pushToWebDAV: vi.fn(async () => ({ success: true }))
+  pushToAllWebDAV: vi.fn(async () => ({ success: true }))
 }));
 
 // ==================== Mock 工具 ====================
@@ -197,8 +197,8 @@ describe('Backup System', () => {
     });
 
     it('补偿备份应该复用暂存的 ctx 并触发 waitUntil', async () => {
-      const { pushToWebDAV } = await import('../../src/utils/webdav.js');
-      pushToWebDAV.mockResolvedValue({ success: true });
+      const { pushToAllWebDAV } = await import('../../src/utils/webdav.js');
+      pushToAllWebDAV.mockResolvedValue({ success: true });
 
       const env = createMockEnv();
       const manager = new BackupManager(env);

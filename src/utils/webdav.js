@@ -1,11 +1,11 @@
 /**
  * WebDAV 客户端模块
- * 实现备份自动推送到 WebDAV 服务器（如 NextCloud、Alist）
+ * 实现备份自动推送到多个 WebDAV 服务器（如 NextCloud、Alist）
  *
  * 设计原则：
  * - 推送失败只 warn 不抛异常，不阻断备份流程
  * - 配置支持加密存储（有 ENCRYPTION_KEY 时加密）
- * - 状态记录：成功写 webdav_last_success，失败写 webdav_last_error
+ * - 支持多目标并行推送，每个目标独立记录状态
  * - 15s 超时（AbortController）
  */
 
@@ -13,30 +13,218 @@ import { encryptData, decryptData, isEncrypted } from './encryption.js';
 import { getLogger } from './logger.js';
 
 const WEBDAV_USER_AGENT = '2FA-Manager/1.0 (Cloudflare Workers; WebDAV Client)';
+// ==================== 多目标配置管理 ====================
 
 /**
- * 推送备份到 WebDAV 服务器
- * 内部统一处理错误和状态记录，函数永远不抛异常
- *
- * @param {string} backupKey - 备份文件名
- * @param {string} backupContent - 备份内容
+ * 读取所有 WebDAV 配置（含自动迁移）
  * @param {Object} env - 环境变量对象
- * @returns {Promise<Object|null>} 推送结果或 null
+ * @returns {Promise<Array>} 配置数组
  */
-export async function pushToWebDAV(backupKey, backupContent, env) {
+export async function getWebDAVConfigs(env) {
 	const logger = getLogger(env);
 
 	try {
-		// 读取 WebDAV 配置
-		const config = await getWebDAVConfig(env);
+		// 先尝试读取新格式
+		const raw = await env.SECRETS_KV.get('webdav_configs', 'text');
 
-		// 未配置时静默跳过
-		if (!config) {
-			logger.debug('WebDAV 未配置，跳过推送');
+		if (raw) {
+			if (isEncrypted(raw)) {
+				return await decryptData(raw, env);
+			}
+			return JSON.parse(raw);
+		}
+
+		// 新格式不存在，检查旧格式并迁移
+		const oldRaw = await env.SECRETS_KV.get('webdav_config', 'text');
+		if (!oldRaw) {
+			return [];
+		}
+
+		logger.info('检测到旧版 WebDAV 配置，开始迁移');
+
+		const oldConfig = isEncrypted(oldRaw) ? await decryptData(oldRaw, env) : JSON.parse(oldRaw);
+
+		const id = crypto.randomUUID();
+		const newConfig = {
+			id,
+			name: 'WebDAV',
+			enabled: true,
+			url: oldConfig.url,
+			username: oldConfig.username,
+			password: oldConfig.password,
+			path: oldConfig.path || '/',
+			createdAt: new Date().toISOString(),
+		};
+
+		const configs = [newConfig];
+
+		// 迁移状态
+		const [oldSuccess, oldError] = await Promise.all([
+			env.SECRETS_KV.get('webdav_last_success', 'json'),
+			env.SECRETS_KV.get('webdav_last_error', 'json'),
+		]);
+
+		const status = {};
+		if (oldSuccess) {
+			status.lastSuccess = oldSuccess;
+		}
+		if (oldError) {
+			status.lastError = oldError;
+		}
+		if (Object.keys(status).length > 0) {
+			await env.SECRETS_KV.put(`webdav_status_${id}`, JSON.stringify(status));
+		}
+
+		// 保存新格式
+		await _saveConfigsToKV(env, 'webdav_configs', configs);
+
+		// 删除旧 key
+		await Promise.all([
+			env.SECRETS_KV.delete('webdav_config'),
+			env.SECRETS_KV.delete('webdav_last_success'),
+			env.SECRETS_KV.delete('webdav_last_error'),
+		]);
+
+		logger.info('WebDAV 配置迁移完成', { id, name: newConfig.name });
+		return configs;
+	} catch (error) {
+		logger.warn('读取 WebDAV 配置失败', { error: error.message });
+		return [];
+	}
+}
+
+/**
+ * 保存整个 WebDAV 配置数组
+ * @param {Object} env - 环境变量对象
+ * @param {Array} configs - 配置数组
+ * @returns {Promise<Object>} { success, encrypted, warning? }
+ */
+export async function saveWebDAVConfigs(env, configs) {
+	return _saveConfigsToKV(env, 'webdav_configs', configs);
+}
+
+/**
+ * 新增或更新单个 WebDAV 配置
+ * @param {Object} env - 环境变量对象
+ * @param {Object} config - 配置对象（有 id 则更新，无 id 则新增）
+ * @returns {Promise<Object>} { success, id, encrypted, warning? }
+ */
+export async function saveWebDAVSingleConfig(env, config) {
+	const configs = await getWebDAVConfigs(env);
+
+	if (config.id) {
+		// 更新现有
+		const idx = configs.findIndex((c) => c.id === config.id);
+		if (idx === -1) {
+			return { success: false, error: '未找到指定的 WebDAV 目标' };
+		}
+		configs[idx] = { ...configs[idx], ...config };
+	} else {
+		// 新增
+		config.id = crypto.randomUUID();
+		config.enabled = config.enabled !== undefined ? config.enabled : true;
+		config.createdAt = new Date().toISOString();
+		configs.push(config);
+	}
+
+	const result = await _saveConfigsToKV(env, 'webdav_configs', configs);
+	return { ...result, id: config.id };
+}
+
+/**
+ * 删除单个 WebDAV 配置
+ * @param {Object} env - 环境变量对象
+ * @param {string} id - 目标 ID
+ * @returns {Promise<Object>} { success }
+ */
+export async function deleteWebDAVSingleConfig(env, id) {
+	const configs = await getWebDAVConfigs(env);
+	const idx = configs.findIndex((c) => c.id === id);
+
+	if (idx === -1) {
+		return { success: false, error: '未找到指定的 WebDAV 目标' };
+	}
+
+	configs.splice(idx, 1);
+	await _saveConfigsToKV(env, 'webdav_configs', configs);
+
+	// 清理状态 key
+	try {
+		await env.SECRETS_KV.delete(`webdav_status_${id}`);
+	} catch {
+		// 静默忽略
+	}
+
+	return { success: true };
+}
+
+/**
+ * 读取单个目标的状态
+ * @param {Object} env - 环境变量对象
+ * @param {string} id - 目标 ID
+ * @returns {Promise<Object>} { lastSuccess?, lastError? }
+ */
+export async function getWebDAVStatus(env, id) {
+	try {
+		const status = await env.SECRETS_KV.get(`webdav_status_${id}`, 'json');
+		return status || {};
+	} catch {
+		return {};
+	}
+}
+
+// ==================== 推送功能 ====================
+
+/**
+ * 推送备份到所有已启用的 WebDAV 目标（并行）
+ * @param {string} backupKey - 备份文件名
+ * @param {string} backupContent - 备份内容
+ * @param {Object} env - 环境变量对象
+ * @returns {Promise<Object|null>} 推送结果汇总或 null
+ */
+export async function pushToAllWebDAV(backupKey, backupContent, env) {
+	const logger = getLogger(env);
+
+	try {
+		const configs = await getWebDAVConfigs(env);
+		const enabledConfigs = configs.filter((c) => c.enabled);
+
+		if (enabledConfigs.length === 0) {
+			logger.debug('WebDAV 无已启用目标，跳过推送');
 			return null;
 		}
 
-		// 构建目标 URL（确保 url 和 path 之间不出现双斜杠）
+		logger.info('开始推送备份到所有 WebDAV 目标', {
+			backupKey,
+			totalTargets: enabledConfigs.length,
+		});
+
+		const results = await Promise.all(enabledConfigs.map((config) => _pushToSingleWebDAV(backupKey, backupContent, config, env)));
+
+		const successCount = results.filter((r) => r && r.success).length;
+		const failCount = results.filter((r) => r && !r.success).length;
+
+		logger.info('WebDAV 推送完成', {
+			backupKey,
+			successCount,
+			failCount,
+		});
+
+		return { results, successCount, failCount };
+	} catch (error) {
+		logger.warn('WebDAV 推送过程异常', { backupKey, error: error.message });
+		return null;
+	}
+}
+
+/**
+ * 推送备份到单个 WebDAV 目标
+ * @private
+ */
+async function _pushToSingleWebDAV(backupKey, backupContent, config, env) {
+	const logger = getLogger(env);
+
+	try {
 		const baseUrl = config.url.replace(/\/+$/, '');
 		const cleanPath = config.path === '/' ? '' : config.path.replace(/\/+$/, '');
 		const targetUrl = `${baseUrl}${cleanPath}/${backupKey}`;
@@ -44,11 +232,11 @@ export async function pushToWebDAV(backupKey, backupContent, env) {
 
 		logger.info('开始推送备份到 WebDAV', {
 			backupKey,
+			targetName: config.name,
 			targetUrl,
 			contentLength: backupContent.length,
 		});
 
-		// 15s 超时
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -64,7 +252,7 @@ export async function pushToWebDAV(backupKey, backupContent, env) {
 				body: backupContent,
 			});
 
-			// 404/409 时尝试自动创建目录后重试（部分 WebDAV 服务对不存在的父目录返回 409）
+			// 404/409 时尝试自动创建目录后重试
 			if ((response.status === 404 || response.status === 409) && cleanPath) {
 				logger.info('目标目录不存在，尝试自动创建', { path: cleanPath });
 				const mkcolOk = await _ensureDirectory(baseUrl, cleanPath, authHeader, logger, controller.signal);
@@ -87,107 +275,51 @@ export async function pushToWebDAV(backupKey, backupContent, env) {
 			if (response.ok || response.status === 201 || response.status === 204) {
 				logger.info('WebDAV 推送成功', {
 					backupKey,
+					targetName: config.name,
 					status: response.status,
 				});
 
-				// 记录成功状态
-				await env.SECRETS_KV.put(
-					'webdav_last_success',
-					JSON.stringify({
-						backupKey,
-						timestamp: new Date().toISOString(),
-					}),
-				);
+				await _recordWebDAVStatus(env, config.id, {
+					lastSuccess: { backupKey, timestamp: new Date().toISOString() },
+					lastError: null,
+				});
 
-				// 清除错误状态
-				await env.SECRETS_KV.delete('webdav_last_error');
-
-				return { success: true, backupKey, status: response.status };
+				return { success: true, id: config.id, name: config.name, backupKey, status: response.status };
 			}
 
-			// 非成功状态
 			const errorMsg = `WebDAV 服务器返回 ${response.status}: ${response.statusText}`;
-			logger.warn('WebDAV 推送失败', { backupKey, status: response.status, statusText: response.statusText });
+			logger.warn('WebDAV 推送失败', { backupKey, targetName: config.name, status: response.status });
 
-			await _recordWebDAVError(env, backupKey, errorMsg);
-			return { success: false, backupKey, error: errorMsg };
+			await _recordWebDAVStatusError(env, config.id, backupKey, errorMsg);
+			return { success: false, id: config.id, name: config.name, backupKey, error: errorMsg };
 		} catch (fetchError) {
 			clearTimeout(timeoutId);
 
 			const errorMsg = fetchError.name === 'AbortError' ? 'WebDAV 推送超时（15s）' : `WebDAV 推送失败: ${fetchError.message}`;
-			logger.warn(errorMsg, { backupKey });
+			logger.warn(errorMsg, { backupKey, targetName: config.name });
 
-			await _recordWebDAVError(env, backupKey, errorMsg);
-			return { success: false, backupKey, error: errorMsg };
+			await _recordWebDAVStatusError(env, config.id, backupKey, errorMsg);
+			return { success: false, id: config.id, name: config.name, backupKey, error: errorMsg };
 		}
 	} catch (error) {
-		// 最外层兜底，确保永不抛异常
-		logger.warn('WebDAV 推送过程异常', { backupKey, error: error.message });
+		logger.warn('WebDAV 推送过程异常', { backupKey, targetName: config.name, error: error.message });
 
 		try {
-			await _recordWebDAVError(env, backupKey, error.message);
+			await _recordWebDAVStatusError(env, config.id, backupKey, error.message);
 		} catch {
 			// 静默忽略
 		}
 
-		return null;
+		return { success: false, id: config.id, name: config.name, backupKey, error: error.message };
 	}
 }
 
-/**
- * 读取 WebDAV 配置（含解密）
- * @param {Object} env - 环境变量对象
- * @returns {Promise<Object|null>} 配置对象 { url, username, password, path } 或 null
- */
-export async function getWebDAVConfig(env) {
-	try {
-		const raw = await env.SECRETS_KV.get('webdav_config', 'text');
-
-		if (!raw) {
-			return null;
-		}
-
-		// 检测是否加密
-		if (isEncrypted(raw)) {
-			return await decryptData(raw, env);
-		}
-
-		return JSON.parse(raw);
-	} catch (error) {
-		const logger = getLogger(env);
-		logger.warn('读取 WebDAV 配置失败', { error: error.message });
-		return null;
-	}
-}
-
-/**
- * 保存 WebDAV 配置（含加密）
- * @param {Object} env - 环境变量对象
- * @param {Object} config - 配置对象 { url, username, password, path }
- * @returns {Promise<Object>} { success: boolean, encrypted: boolean, warning?: string }
- */
-export async function saveWebDAVConfig(env, config) {
-	let encrypted = false;
-	let warning = null;
-
-	if (env.ENCRYPTION_KEY) {
-		const encryptedData = await encryptData(config, env);
-		await env.SECRETS_KV.put('webdav_config', encryptedData);
-		encrypted = true;
-	} else {
-		await env.SECRETS_KV.put('webdav_config', JSON.stringify(config));
-		warning = 'ENCRYPTION_KEY 未配置，WebDAV 密码以明文存储。建议配置加密密钥。';
-	}
-
-	return { success: true, encrypted, warning };
-}
+// ==================== 连接测试 ====================
 
 /**
  * 测试 WebDAV 连接
- * 依次尝试 PROPFIND → HEAD → GET，遇到 520 提示 Cloudflare 不兼容
- *
  * @param {Object} config - 配置对象 { url, username, password, path }
- * @returns {Promise<Object>} { success: boolean, message: string, method?: string }
+ * @returns {Promise<Object>} { success, message, method? }
  */
 export async function testWebDAVConnection(config) {
 	const baseUrl = config.url.replace(/\/+$/, '');
@@ -196,7 +328,6 @@ export async function testWebDAVConnection(config) {
 	const targetUrl = path === '/' ? `${baseUrl}/` : `${baseUrl}${path}`;
 	const authHeader = 'Basic ' + _encodeBasicAuth(config.username, config.password);
 
-	// 第一步：验证连接和认证
 	const methods = [
 		{
 			method: 'PROPFIND',
@@ -272,7 +403,7 @@ export async function testWebDAVConnection(config) {
 		return { success: false, message: '连接失败：所有测试方法均不可用，请检查服务器地址和网络' };
 	}
 
-	// 第二步：写入测试文件，验证路径和写入权限
+	// 写入测试文件
 	const testFileName = '.2fa-webdav-test.txt';
 	const testFileUrl = `${baseUrl}${cleanPath}/${testFileName}`;
 	const testContent = JSON.stringify({
@@ -296,7 +427,6 @@ export async function testWebDAVConnection(config) {
 			body: testContent,
 		});
 
-		// 目录不存在时尝试自动创建
 		if ((putResponse.status === 404 || putResponse.status === 409) && cleanPath) {
 			const mkcolOk = await _ensureDirectory(
 				baseUrl,
@@ -345,18 +475,61 @@ export async function testWebDAVConnection(config) {
 	}
 }
 
+// ==================== 内部工具函数 ====================
+
+/**
+ * 保存配置数组到 KV（含加密）
+ * @private
+ */
+async function _saveConfigsToKV(env, key, configs) {
+	let encrypted = false;
+	let warning = null;
+
+	if (env.ENCRYPTION_KEY) {
+		const encryptedData = await encryptData(configs, env);
+		await env.SECRETS_KV.put(key, encryptedData);
+		encrypted = true;
+	} else {
+		await env.SECRETS_KV.put(key, JSON.stringify(configs));
+		warning = 'ENCRYPTION_KEY 未配置，WebDAV 密码以明文存储。建议配置加密密钥。';
+	}
+
+	return { success: true, encrypted, warning };
+}
+
+/**
+ * 记录 WebDAV 目标状态（合并 lastSuccess/lastError）
+ * @private
+ */
+async function _recordWebDAVStatus(env, id, statusUpdate) {
+	try {
+		const existing = await getWebDAVStatus(env, id);
+		const merged = { ...existing, ...statusUpdate };
+		await env.SECRETS_KV.put(`webdav_status_${id}`, JSON.stringify(merged));
+	} catch {
+		// 静默忽略
+	}
+}
+
+/**
+ * 记录 WebDAV 推送错误
+ * @private
+ */
+async function _recordWebDAVStatusError(env, id, backupKey, errorMsg) {
+	await _recordWebDAVStatus(env, id, {
+		lastError: {
+			backupKey,
+			error: errorMsg,
+			timestamp: new Date().toISOString(),
+		},
+	});
+}
+
 /**
  * 确保 WebDAV 目标目录存在，逐级创建
  * @private
- * @param {string} baseUrl - WebDAV 基础 URL（不含尾部斜杠）
- * @param {string} path - 目标路径，如 /2fa-backup
- * @param {string} authHeader - Authorization 头
- * @param {Object} logger - 日志实例
- * @param {AbortSignal} [signal] - 超时信号
- * @returns {Promise<boolean>} 是否成功
  */
 async function _ensureDirectory(baseUrl, path, authHeader, logger, signal) {
-	// 逐级创建目录（如 /a/b/c → /a → /a/b → /a/b/c）
 	const parts = path.split('/').filter(Boolean);
 	let currentPath = '';
 
@@ -374,7 +547,6 @@ async function _ensureDirectory(baseUrl, path, authHeader, logger, signal) {
 			if (response.ok || response.status === 201) {
 				logger.info('WebDAV 目录已创建', { path: currentPath });
 			} else if (response.status === 405 || response.status === 301) {
-				// 405 = 目录已存在（部分服务返回），301 = 已存在重定向
 				logger.debug('WebDAV 目录已存在', { path: currentPath, status: response.status });
 			} else {
 				logger.warn('WebDAV 创建目录失败', { path: currentPath, status: response.status, statusText: response.statusText });
@@ -390,8 +562,7 @@ async function _ensureDirectory(baseUrl, path, authHeader, logger, signal) {
 }
 
 /**
- * 编码 Basic Auth 凭据（支持非 ASCII 字符如中文用户名/密码）
- * 使用 TextEncoder 将 UTF-8 字符串转为字节后再 base64 编码
+ * 编码 Basic Auth 凭据
  * @private
  */
 function _encodeBasicAuth(username, password) {
@@ -404,21 +575,29 @@ function _encodeBasicAuth(username, password) {
 	return btoa(binary);
 }
 
+// ==================== 兼容性导出 ====================
+
 /**
- * 记录 WebDAV 推送错误
- * @private
+ * 读取单个 WebDAV 配置（兼容旧 API，返回第一个启用的配置）
+ * @deprecated 使用 getWebDAVConfigs 代替
  */
-async function _recordWebDAVError(env, backupKey, errorMsg) {
-	try {
-		await env.SECRETS_KV.put(
-			'webdav_last_error',
-			JSON.stringify({
-				backupKey,
-				error: errorMsg,
-				timestamp: new Date().toISOString(),
-			}),
-		);
-	} catch {
-		// 静默忽略
-	}
+export async function getWebDAVConfig(env) {
+	const configs = await getWebDAVConfigs(env);
+	return configs.find((c) => c.enabled) || configs[0] || null;
+}
+
+/**
+ * 保存单个 WebDAV 配置（兼容旧 API）
+ * @deprecated 使用 saveWebDAVSingleConfig 代替
+ */
+export async function saveWebDAVConfig(env, config) {
+	return saveWebDAVSingleConfig(env, config);
+}
+
+/**
+ * 推送到 WebDAV（兼容旧 API，推送到所有目标）
+ * @deprecated 使用 pushToAllWebDAV 代替
+ */
+export async function pushToWebDAV(backupKey, backupContent, env) {
+	return pushToAllWebDAV(backupKey, backupContent, env);
 }

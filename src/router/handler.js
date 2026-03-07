@@ -17,8 +17,14 @@ import {
 	handleExportBackup,
 } from '../api/secrets/index.js';
 import { handleFaviconProxy } from '../api/favicon.js';
-import { handleGetWebDAVConfig, handleSaveWebDAVConfig, handleTestWebDAV, handleDeleteWebDAVConfig } from '../api/webdav.js';
-import { handleGetS3Config, handleSaveS3Config, handleTestS3, handleDeleteS3Config } from '../api/s3.js';
+import {
+	handleGetWebDAVConfigs,
+	handleSaveWebDAVConfig,
+	handleTestWebDAV,
+	handleDeleteWebDAVConfig,
+	handleToggleWebDAV,
+} from '../api/webdav.js';
+import { handleGetS3Configs, handleSaveS3Config, handleTestS3, handleDeleteS3Config, handleToggleS3 } from '../api/s3.js';
 import { handleChangePassword } from '../api/password.js';
 import { handleGetSettings, handleSaveSettings } from '../api/settings.js';
 
@@ -307,7 +313,7 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 	if (pathname === '/api/webdav/config') {
 		switch (method) {
 			case 'GET':
-				return handleGetWebDAVConfig(request, env);
+				return handleGetWebDAVConfigs(request, env);
 			case 'POST':
 				return handleSaveWebDAVConfig(request, env);
 			case 'DELETE':
@@ -322,12 +328,18 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 		}
 		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 	}
+	if (pathname === '/api/webdav/toggle') {
+		if (method === 'POST') {
+			return handleToggleWebDAV(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
 
 	// S3 配置 API
 	if (pathname === '/api/s3/config') {
 		switch (method) {
 			case 'GET':
-				return handleGetS3Config(request, env);
+				return handleGetS3Configs(request, env);
 			case 'POST':
 				return handleSaveS3Config(request, env);
 			case 'DELETE':
@@ -339,6 +351,12 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 	if (pathname === '/api/s3/test') {
 		if (method === 'POST') {
 			return handleTestS3(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+	if (pathname === '/api/s3/toggle') {
+		if (method === 'POST') {
+			return handleToggleS3(request, env);
 		}
 		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 	}

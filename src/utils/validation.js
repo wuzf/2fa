@@ -270,6 +270,19 @@ export const restoreBackupSchema = new Schema({
  * WebDAV 配置验证规则
  */
 export const webdavConfigSchema = new Schema({
+	id: { required: false, type: 'string' },
+	name: {
+		required: true,
+		type: 'string',
+		message: '目标名称不能为空',
+		transform: (v) => v.trim(),
+		validator: (v) => {
+			if (v.trim().length > 30) {
+				return `目标名称过长，最多支持30个字符（当前：${v.trim().length}）`;
+			}
+			return true;
+		},
+	},
 	url: {
 		required: true,
 		type: 'string',
@@ -301,6 +314,19 @@ export const webdavConfigSchema = new Schema({
  * S3 配置验证规则
  */
 export const s3ConfigSchema = new Schema({
+	id: { required: false, type: 'string' },
+	name: {
+		required: true,
+		type: 'string',
+		message: '目标名称不能为空',
+		transform: (v) => v.trim(),
+		validator: (v) => {
+			if (v.trim().length > 30) {
+				return `目标名称过长，最多支持30个字符（当前：${v.trim().length}）`;
+			}
+			return true;
+		},
+	},
 	endpoint: {
 		required: true,
 		type: 'string',
@@ -331,6 +357,14 @@ export const s3ConfigSchema = new Schema({
 			return p ? p + '/' : '';
 		},
 	},
+});
+
+/**
+ * 目标启用/禁用切换验证规则
+ */
+export const toggleDestinationSchema = new Schema({
+	id: { required: true, type: 'string', message: '目标 ID 不能为空' },
+	enabled: { required: true, type: 'boolean', message: '启用状态不能为空' },
 });
 
 // ==================== 原有验证函数 ====================

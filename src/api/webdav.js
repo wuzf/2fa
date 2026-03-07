@@ -1,62 +1,63 @@
 /**
  * WebDAV 配置 API 端点
- * 提供 WebDAV 配置的 CRUD 操作和连接测试
+ * 提供多目标 WebDAV 配置的 CRUD 操作、启用/禁用切换和连接测试
  *
  * 所有写操作接口使用 checkRateLimit + RATE_LIMIT_PRESETS.sensitive
  */
 
-import { getWebDAVConfig, saveWebDAVConfig, testWebDAVConnection } from '../utils/webdav.js';
+import {
+	getWebDAVConfigs,
+	saveWebDAVSingleConfig,
+	deleteWebDAVSingleConfig,
+	getWebDAVStatus,
+	testWebDAVConnection,
+} from '../utils/webdav.js';
 import { getLogger } from '../utils/logger.js';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../utils/rateLimit.js';
 import { createJsonResponse, createErrorResponse } from '../utils/response.js';
-import { validateRequest, webdavConfigSchema } from '../utils/validation.js';
+import { validateRequest, webdavConfigSchema, toggleDestinationSchema } from '../utils/validation.js';
+
+const MAX_ALLOWED = 5;
 
 /**
- * 获取 WebDAV 配置
+ * 获取所有 WebDAV 配置
  * 密码字段返回空字符串，附加 hasPassword 标记
- * 同时返回推送状态信息
- *
- * @param {Request} request - HTTP 请求对象
- * @param {Object} env - 环境变量对象
- * @returns {Response}
+ * 同时返回各目标的推送状态
  */
-export async function handleGetWebDAVConfig(request, env) {
+export async function handleGetWebDAVConfigs(request, env) {
 	const logger = getLogger(env);
 
 	try {
-		const config = await getWebDAVConfig(env);
+		const configs = await getWebDAVConfigs(env);
 
-		// 读取推送状态
-		const [lastError, lastSuccess] = await Promise.all([
-			env.SECRETS_KV.get('webdav_last_error', 'json'),
-			env.SECRETS_KV.get('webdav_last_success', 'json'),
-		]);
-
-		if (!config) {
-			return createJsonResponse(
-				{
-					configured: false,
-					config: null,
-					lastError: lastError || null,
-					lastSuccessAt: lastSuccess?.timestamp || null,
-				},
-				200,
-				request,
-			);
-		}
+		const destinations = await Promise.all(
+			configs.map(async (c) => {
+				const status = await getWebDAVStatus(env, c.id);
+				return {
+					id: c.id,
+					name: c.name,
+					enabled: c.enabled,
+					config: {
+						url: c.url,
+						username: c.username,
+						password: '',
+						hasPassword: !!(c.password && c.password.length > 0),
+						path: c.path || '/',
+					},
+					status: {
+						lastSuccess: status.lastSuccess || null,
+						lastError: status.lastError || null,
+					},
+					createdAt: c.createdAt,
+				};
+			}),
+		);
 
 		return createJsonResponse(
 			{
-				configured: true,
-				config: {
-					url: config.url,
-					username: config.username,
-					password: '',
-					hasPassword: !!(config.password && config.password.length > 0),
-					path: config.path || '/',
-				},
-				lastError: lastError || null,
-				lastSuccessAt: lastSuccess?.timestamp || null,
+				destinations,
+				count: destinations.length,
+				maxAllowed: MAX_ALLOWED,
 			},
 			200,
 			request,
@@ -68,18 +69,14 @@ export async function handleGetWebDAVConfig(request, env) {
 }
 
 /**
- * 保存 WebDAV 配置
- * password 为空时保留 KV 中的旧密码
- *
- * @param {Request} request - HTTP 请求对象
- * @param {Object} env - 环境变量对象
- * @returns {Response}
+ * 保存 WebDAV 配置（新增或更新）
+ * body 含 id 时更新，不含 id 时新增
+ * password 为空时保留已保存的密码
  */
 export async function handleSaveWebDAVConfig(request, env) {
 	const logger = getLogger(env);
 
 	try {
-		// Rate Limiting
 		const clientIP = getClientIdentifier(request, 'ip');
 		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
 
@@ -87,7 +84,6 @@ export async function handleSaveWebDAVConfig(request, env) {
 			return createRateLimitResponse(rateLimitInfo, request);
 		}
 
-		// 验证输入
 		const body = await validateRequest(webdavConfigSchema)(request);
 		if (body instanceof Response) {
 			return body;
@@ -95,28 +91,38 @@ export async function handleSaveWebDAVConfig(request, env) {
 
 		// password 为空时保留旧密码
 		if (!body.password) {
-			const existingConfig = await getWebDAVConfig(env);
-			if (existingConfig && existingConfig.password) {
-				body.password = existingConfig.password;
+			if (body.id) {
+				// 更新已有配置：从已保存的目标中找密码
+				const configs = await getWebDAVConfigs(env);
+				const existing = configs.find((c) => c.id === body.id);
+				if (existing && existing.password) {
+					body.password = existing.password;
+				} else {
+					return createErrorResponse('请求验证失败', '密码不能为空（无已保存的配置）', 400, request);
+				}
 			} else {
-				// 首次配置时 password 必填
+				// 新增配置：首次必须提供密码
 				return createErrorResponse('请求验证失败', '首次配置时密码不能为空', 400, request);
 			}
 		}
 
-		// 保存配置
-		const result = await saveWebDAVConfig(env, body);
+		const result = await saveWebDAVSingleConfig(env, body);
+
+		if (!result.success) {
+			return createErrorResponse('保存配置失败', result.error, 400, request);
+		}
 
 		logger.info('WebDAV 配置已保存', {
+			id: result.id,
+			name: body.name,
 			url: body.url,
-			username: body.username,
-			path: body.path,
 			encrypted: result.encrypted,
 		});
 
 		const response = {
 			success: true,
 			message: 'WebDAV 配置已保存',
+			id: result.id,
 			encrypted: result.encrypted,
 		};
 
@@ -132,18 +138,13 @@ export async function handleSaveWebDAVConfig(request, env) {
 }
 
 /**
- * 测试 WebDAV 连接
- * password 为空时从 KV 读取已保存的密码
- *
- * @param {Request} request - HTTP 请求对象
- * @param {Object} env - 环境变量对象
- * @returns {Response}
+ * 删除 WebDAV 配置
+ * 通过 query param id 指定要删除的目标
  */
-export async function handleTestWebDAV(request, env) {
+export async function handleDeleteWebDAVConfig(request, env) {
 	const logger = getLogger(env);
 
 	try {
-		// Rate Limiting
 		const clientIP = getClientIdentifier(request, 'ip');
 		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
 
@@ -151,7 +152,50 @@ export async function handleTestWebDAV(request, env) {
 			return createRateLimitResponse(rateLimitInfo, request);
 		}
 
-		// 验证输入
+		const url = new URL(request.url);
+		const id = url.searchParams.get('id');
+
+		if (!id) {
+			return createErrorResponse('请求验证失败', '缺少目标 ID', 400, request);
+		}
+
+		const result = await deleteWebDAVSingleConfig(env, id);
+
+		if (!result.success) {
+			return createErrorResponse('删除配置失败', result.error, 404, request);
+		}
+
+		logger.info('WebDAV 配置已删除', { id });
+
+		return createJsonResponse(
+			{
+				success: true,
+				message: 'WebDAV 配置已删除',
+			},
+			200,
+			request,
+		);
+	} catch (error) {
+		logger.error('删除 WebDAV 配置失败', { error: error.message }, error);
+		return createErrorResponse('删除配置失败', error.message, 500, request);
+	}
+}
+
+/**
+ * 测试 WebDAV 连接
+ * password 为空时从已保存的配置中读取（需提供 id）
+ */
+export async function handleTestWebDAV(request, env) {
+	const logger = getLogger(env);
+
+	try {
+		const clientIP = getClientIdentifier(request, 'ip');
+		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+
+		if (!rateLimitInfo.allowed) {
+			return createRateLimitResponse(rateLimitInfo, request);
+		}
+
 		const body = await validateRequest(webdavConfigSchema)(request);
 		if (body instanceof Response) {
 			return body;
@@ -159,15 +203,19 @@ export async function handleTestWebDAV(request, env) {
 
 		// password 为空时从 KV 读取已保存的密码
 		if (!body.password) {
-			const existingConfig = await getWebDAVConfig(env);
-			if (existingConfig && existingConfig.password) {
-				body.password = existingConfig.password;
+			if (body.id) {
+				const configs = await getWebDAVConfigs(env);
+				const existing = configs.find((c) => c.id === body.id);
+				if (existing && existing.password) {
+					body.password = existing.password;
+				} else {
+					return createErrorResponse('请求验证失败', '密码不能为空（无已保存的配置）', 400, request);
+				}
 			} else {
-				return createErrorResponse('请求验证失败', '密码不能为空（无已保存的配置）', 400, request);
+				return createErrorResponse('请求验证失败', '密码不能为空', 400, request);
 			}
 		}
 
-		// 测试连接
 		logger.info('开始测试 WebDAV 连接', { url: body.url, path: body.path });
 		const result = await testWebDAVConnection(body);
 
@@ -185,17 +233,12 @@ export async function handleTestWebDAV(request, env) {
 }
 
 /**
- * 删除 WebDAV 配置
- *
- * @param {Request} request - HTTP 请求对象
- * @param {Object} env - 环境变量对象
- * @returns {Response}
+ * 启用/禁用 WebDAV 目标
  */
-export async function handleDeleteWebDAVConfig(request, env) {
+export async function handleToggleWebDAV(request, env) {
 	const logger = getLogger(env);
 
 	try {
-		// Rate Limiting
 		const clientIP = getClientIdentifier(request, 'ip');
 		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
 
@@ -203,25 +246,29 @@ export async function handleDeleteWebDAVConfig(request, env) {
 			return createRateLimitResponse(rateLimitInfo, request);
 		}
 
-		// 删除配置和状态
-		await Promise.all([
-			env.SECRETS_KV.delete('webdav_config'),
-			env.SECRETS_KV.delete('webdav_last_error'),
-			env.SECRETS_KV.delete('webdav_last_success'),
-		]);
+		const body = await validateRequest(toggleDestinationSchema)(request);
+		if (body instanceof Response) {
+			return body;
+		}
 
-		logger.info('WebDAV 配置已删除');
+		const result = await saveWebDAVSingleConfig(env, { id: body.id, enabled: body.enabled });
+
+		if (!result.success) {
+			return createErrorResponse('操作失败', result.error, 404, request);
+		}
+
+		logger.info('WebDAV 目标状态已更新', { id: body.id, enabled: body.enabled });
 
 		return createJsonResponse(
 			{
 				success: true,
-				message: 'WebDAV 配置已删除',
+				message: body.enabled ? '已启用' : '已禁用',
 			},
 			200,
 			request,
 		);
 	} catch (error) {
-		logger.error('删除 WebDAV 配置失败', { error: error.message }, error);
-		return createErrorResponse('删除配置失败', error.message, 500, request);
+		logger.error('切换 WebDAV 目标状态失败', { error: error.message }, error);
+		return createErrorResponse('操作失败', error.message, 500, request);
 	}
 }

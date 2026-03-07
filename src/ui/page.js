@@ -770,37 +770,52 @@ function getHTMLBody() {
       </div>
 
       <div class="tool-section">
-        <div id="webdavStatus" style="display: none; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; background: var(--bg-secondary);"></div>
+        <!-- 目标列表 -->
+        <div id="webdavDestinationList" style="margin-bottom: 15px;"></div>
 
-        <div style="margin-bottom: 12px;">
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">服务器地址</label>
-          <input type="url" id="webdavUrl" class="secret-input" placeholder="https://your-server.com/dav/" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+        <!-- 添加按钮 -->
+        <button class="btn btn-primary" id="webdavAddBtn" onclick="showWebdavForm()" style="width: 100%; padding: 10px; font-size: 13px; margin-bottom: 15px;">+ 添加 WebDAV 目标</button>
+
+        <!-- 配置表单（默认隐藏） -->
+        <div id="webdavFormArea" style="display: none;">
+          <div style="padding: 15px; border-radius: 8px; border: 1px solid var(--border-primary); background: var(--bg-secondary); margin-bottom: 12px;">
+            <input type="hidden" id="webdavEditId" value="" />
+
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">目标名称</label>
+              <input type="text" id="webdavName" class="secret-input" placeholder="例如：家庭NAS、云盘" maxlength="30" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">服务器地址</label>
+              <input type="url" id="webdavUrl" class="secret-input" placeholder="https://your-server.com/dav/" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">用户名</label>
+              <input type="text" id="webdavUsername" class="secret-input" placeholder="请输入用户名" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">密码</label>
+              <input type="password" id="webdavPassword" class="secret-input" placeholder="请输入密码" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="margin-bottom: 15px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">远程路径</label>
+              <input type="text" id="webdavPath" class="secret-input" value="/" placeholder="/" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+              <button class="btn btn-info" id="webdavTestBtn" onclick="testWebdavConnection()" style="flex: 1; padding: 10px; font-size: 13px;">测试连接</button>
+              <button class="btn btn-primary" id="webdavSaveBtn" onclick="saveWebdavConfig()" style="flex: 1; padding: 10px; font-size: 13px;">保存</button>
+            </div>
+            <button class="btn" onclick="hideWebdavForm()" style="width: 100%; padding: 10px; font-size: 13px; background: var(--bg-primary); color: var(--text-secondary); border: 1px solid var(--border-primary);">取消</button>
+          </div>
         </div>
 
-        <div style="margin-bottom: 12px;">
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">用户名</label>
-          <input type="text" id="webdavUsername" class="secret-input" placeholder="请输入用户名" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
-        </div>
-
-        <div style="margin-bottom: 12px;">
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">密码</label>
-          <input type="password" id="webdavPassword" class="secret-input" placeholder="请输入密码" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
-        </div>
-
-        <div style="margin-bottom: 15px;">
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">远程路径</label>
-          <input type="text" id="webdavPath" class="secret-input" value="/" placeholder="/" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
-        </div>
-
-        <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-          <button class="btn btn-info" id="webdavTestBtn" onclick="testWebdavConnection()" style="flex: 1; padding: 10px; font-size: 13px;">测试连接</button>
-          <button class="btn btn-primary" id="webdavSaveBtn" onclick="saveWebdavConfig()" style="flex: 1; padding: 10px; font-size: 13px;">保存配置</button>
-        </div>
-
-        <button class="btn btn-danger" id="webdavDeleteBtn" onclick="deleteWebdavConfig()" style="width: 100%; padding: 10px; font-size: 13px; display: none;">删除配置</button>
-
-        <div class="advanced-info" style="margin-top: 15px; padding: 12px; border-radius: 6px; font-size: 12px; color: var(--text-tertiary); background: var(--bg-secondary); line-height: 1.6;">
-          配置 WebDAV 后，每次备份（事件驱动、定时、手动）都会自动推送到 WebDAV 服务器。支持 NextCloud、Alist 等 WebDAV 服务。推送失败不影响本地备份。
+        <div class="advanced-info" style="margin-top: 10px; padding: 12px; border-radius: 6px; font-size: 12px; color: var(--text-tertiary); background: var(--bg-secondary); line-height: 1.6;">
+          配置 WebDAV 后，每次备份（事件驱动、定时、手动）都会自动推送到所有已启用的 WebDAV 目标。支持 NextCloud、Alist 等。
         </div>
       </div>
 
@@ -816,47 +831,62 @@ function getHTMLBody() {
       </div>
 
       <div class="tool-section">
-        <div id="s3Status" style="display: none; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; background: var(--bg-secondary);"></div>
+        <!-- 目标列表 -->
+        <div id="s3DestinationList" style="margin-bottom: 15px;"></div>
 
-        <div style="margin-bottom: 12px;">
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Endpoint</label>
-          <input type="url" id="s3Endpoint" class="secret-input" placeholder="https://s3.amazonaws.com" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+        <!-- 添加按钮 -->
+        <button class="btn btn-primary" id="s3AddBtn" onclick="showS3Form()" style="width: 100%; padding: 10px; font-size: 13px; margin-bottom: 15px;">+ 添加 S3 目标</button>
+
+        <!-- 配置表单（默认隐藏） -->
+        <div id="s3FormArea" style="display: none;">
+          <div style="padding: 15px; border-radius: 8px; border: 1px solid var(--border-primary); background: var(--bg-secondary); margin-bottom: 12px;">
+            <input type="hidden" id="s3EditId" value="" />
+
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">目标名称</label>
+              <input type="text" id="s3Name" class="secret-input" placeholder="例如：R2备份、MinIO" maxlength="30" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Endpoint</label>
+              <input type="url" id="s3Endpoint" class="secret-input" placeholder="https://s3.amazonaws.com" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Bucket</label>
+              <input type="text" id="s3Bucket" class="secret-input" placeholder="my-backup-bucket" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Region</label>
+              <input type="text" id="s3Region" class="secret-input" value="auto" placeholder="auto" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Access Key ID</label>
+              <input type="text" id="s3AccessKeyId" class="secret-input" placeholder="请输入 Access Key ID" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Secret Access Key</label>
+              <input type="password" id="s3SecretAccessKey" class="secret-input" placeholder="请输入 Secret Access Key" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="margin-bottom: 15px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">存储路径前缀</label>
+              <input type="text" id="s3Prefix" class="secret-input" value="" placeholder="2fa-backup/（可选）" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+              <button class="btn btn-info" id="s3TestBtn" onclick="testS3Connection()" style="flex: 1; padding: 10px; font-size: 13px;">测试连接</button>
+              <button class="btn btn-primary" id="s3SaveBtn" onclick="saveS3Config()" style="flex: 1; padding: 10px; font-size: 13px;">保存</button>
+            </div>
+            <button class="btn" onclick="hideS3Form()" style="width: 100%; padding: 10px; font-size: 13px; background: var(--bg-primary); color: var(--text-secondary); border: 1px solid var(--border-primary);">取消</button>
+          </div>
         </div>
 
-        <div style="margin-bottom: 12px;">
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Bucket</label>
-          <input type="text" id="s3Bucket" class="secret-input" placeholder="my-backup-bucket" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
-        </div>
-
-        <div style="margin-bottom: 12px;">
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Region</label>
-          <input type="text" id="s3Region" class="secret-input" value="auto" placeholder="auto" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
-        </div>
-
-        <div style="margin-bottom: 12px;">
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Access Key ID</label>
-          <input type="text" id="s3AccessKeyId" class="secret-input" placeholder="请输入 Access Key ID" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
-        </div>
-
-        <div style="margin-bottom: 12px;">
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Secret Access Key</label>
-          <input type="password" id="s3SecretAccessKey" class="secret-input" placeholder="请输入 Secret Access Key" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
-        </div>
-
-        <div style="margin-bottom: 15px;">
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">存储路径前缀</label>
-          <input type="text" id="s3Prefix" class="secret-input" value="" placeholder="2fa-backup/（可选）" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
-        </div>
-
-        <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-          <button class="btn btn-info" id="s3TestBtn" onclick="testS3Connection()" style="flex: 1; padding: 10px; font-size: 13px;">测试连接</button>
-          <button class="btn btn-primary" id="s3SaveBtn" onclick="saveS3Config()" style="flex: 1; padding: 10px; font-size: 13px;">保存配置</button>
-        </div>
-
-        <button class="btn btn-danger" id="s3DeleteBtn" onclick="deleteS3Config()" style="width: 100%; padding: 10px; font-size: 13px; display: none;">删除配置</button>
-
-        <div class="advanced-info" style="margin-top: 15px; padding: 12px; border-radius: 6px; font-size: 12px; color: var(--text-tertiary); background: var(--bg-secondary); line-height: 1.6;">
-          配置 S3 后，每次备份（事件驱动、定时、手动）都会自动推送到 S3 兼容存储。支持 AWS S3、Cloudflare R2、MinIO、阿里云 OSS 等。推送失败不影响本地备份。
+        <div class="advanced-info" style="margin-top: 10px; padding: 12px; border-radius: 6px; font-size: 12px; color: var(--text-tertiary); background: var(--bg-secondary); line-height: 1.6;">
+          配置 S3 后，每次备份（事件驱动、定时、手动）都会自动推送到所有已启用的 S3 兼容存储。支持 AWS S3、Cloudflare R2、MinIO、阿里云 OSS 等。
         </div>
       </div>
 
