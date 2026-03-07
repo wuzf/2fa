@@ -18,6 +18,7 @@ import {
 } from '../api/secrets/index.js';
 import { handleFaviconProxy } from '../api/favicon.js';
 import { handleGetWebDAVConfig, handleSaveWebDAVConfig, handleTestWebDAV, handleDeleteWebDAVConfig } from '../api/webdav.js';
+import { handleGetS3Config, handleSaveS3Config, handleTestS3, handleDeleteS3Config } from '../api/s3.js';
 
 // UI 页面生成器
 import { createMainPage } from '../ui/page.js';
@@ -296,6 +297,26 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 	if (pathname === '/api/webdav/test') {
 		if (method === 'POST') {
 			return handleTestWebDAV(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
+	// S3 配置 API
+	if (pathname === '/api/s3/config') {
+		switch (method) {
+			case 'GET':
+				return handleGetS3Config(request, env);
+			case 'POST':
+				return handleSaveS3Config(request, env);
+			case 'DELETE':
+				return handleDeleteS3Config(request, env);
+			default:
+				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+		}
+	}
+	if (pathname === '/api/s3/test') {
+		if (method === 'POST') {
+			return handleTestS3(request, env);
 		}
 		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 	}

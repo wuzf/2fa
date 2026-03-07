@@ -510,6 +510,14 @@ function getHTMLBody() {
             <div class="tool-desc">自动推送备份到 WebDAV 服务器</div>
           </div>
         </div>
+
+        <div class="tool-item" onclick="showS3Tool()">
+          <div class="tool-icon">🪣</div>
+          <div class="tool-content">
+            <div class="tool-title">S3 同步</div>
+            <div class="tool-desc">自动推送备份到 S3 兼容存储</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -815,6 +823,62 @@ function getHTMLBody() {
     </div>
   </div>
 
+  <!-- S3 同步配置模态框 -->
+  <div id="s3Modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>🪣 S3 同步</h2>
+        <button class="close-btn" onclick="hideS3Modal()">&times;</button>
+      </div>
+
+      <div class="tool-section">
+        <div id="s3Status" style="display: none; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; background: var(--bg-secondary);"></div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Endpoint</label>
+          <input type="url" id="s3Endpoint" class="secret-input" placeholder="https://s3.amazonaws.com" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Bucket</label>
+          <input type="text" id="s3Bucket" class="secret-input" placeholder="my-backup-bucket" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Region</label>
+          <input type="text" id="s3Region" class="secret-input" value="auto" placeholder="auto" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Access Key ID</label>
+          <input type="text" id="s3AccessKeyId" class="secret-input" placeholder="请输入 Access Key ID" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">Secret Access Key</label>
+          <input type="password" id="s3SecretAccessKey" class="secret-input" placeholder="请输入 Secret Access Key" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">存储路径前缀</label>
+          <input type="text" id="s3Prefix" class="secret-input" value="" placeholder="2fa-backup/（可选）" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+          <button class="btn btn-info" id="s3TestBtn" onclick="testS3Connection()" style="flex: 1; padding: 10px; font-size: 13px;">测试连接</button>
+          <button class="btn btn-primary" id="s3SaveBtn" onclick="saveS3Config()" style="flex: 1; padding: 10px; font-size: 13px;">保存配置</button>
+        </div>
+
+        <button class="btn btn-danger" id="s3DeleteBtn" onclick="deleteS3Config()" style="width: 100%; padding: 10px; font-size: 13px; display: none;">删除配置</button>
+
+        <div class="advanced-info" style="margin-top: 15px; padding: 12px; border-radius: 6px; font-size: 12px; color: var(--text-tertiary); background: var(--bg-secondary); line-height: 1.6;">
+          配置 S3 后，每次备份（事件驱动、定时、手动）都会自动推送到 S3 兼容存储。支持 AWS S3、Cloudflare R2、MinIO、阿里云 OSS 等。推送失败不影响本地备份。
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- 二维码模态框 -->
   <div id="qrModal" class="modal" style="display: none;">
     <div class="modal-content">
@@ -822,15 +886,15 @@ function getHTMLBody() {
         <h2 id="qrTitle">二维码</h2>
         <button class="close-btn" onclick="hideQRModal()">&times;</button>
       </div>
-      
+
       <div class="qr-subtitle-section">
         <p id="qrSubtitle">扫描此二维码导入到其他2FA应用</p>
       </div>
-      
+
       <div class="qr-code-container">
         <!-- 二维码将在这里动态生成 -->
       </div>
-      
+
       <div class="qr-info">
         💡 使用任意2FA应用扫描二维码即可添加此账户<br>
         支持：Google Authenticator、Microsoft Authenticator、Authy等

@@ -18,6 +18,7 @@ import { createJsonResponse, createErrorResponse } from '../../utils/response.js
 import { saveDataHash } from '../../worker.js';
 import { ValidationError, StorageError, CryptoError, BusinessLogicError, errorToResponse, logError } from '../../utils/errors.js';
 import { pushToWebDAV } from '../../utils/webdav.js';
+import { pushToS3 } from '../../utils/s3.js';
 
 /**
  * 处理手动备份密钥
@@ -97,6 +98,12 @@ export async function handleBackupSecrets(request, env, ctx) {
 			const webdavPromise = pushToWebDAV(backupKey, backupContent, env);
 			if (ctx) {
 				ctx.waitUntil(webdavPromise);
+			}
+
+			// S3 自动推送
+			const s3Promise = pushToS3(backupKey, backupContent, env);
+			if (ctx) {
+				ctx.waitUntil(s3Promise);
 			}
 
 			logger.info('手动备份完成', {

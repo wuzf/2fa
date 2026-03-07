@@ -20,6 +20,7 @@ import { getLogger, createRequestLogger, PerformanceTimer } from './utils/logger
 import { getMonitoring, ErrorSeverity } from './utils/monitoring.js';
 import { KV_KEYS } from './utils/constants.js';
 import { pushToWebDAV } from './utils/webdav.js';
+import { pushToS3 } from './utils/s3.js';
 
 /**
  * 获取所有密钥
@@ -487,6 +488,9 @@ export default {
 
 			// WebDAV 自动推送（使用 waitUntil 确保 Worker 不会在推送完成前退出）
 			ctx.waitUntil(pushToWebDAV(backupKey, backupContent, env));
+
+			// S3 自动推送
+			ctx.waitUntil(pushToS3(backupKey, backupContent, env));
 
 			logger.info('自动备份完成', {
 				backupKey,

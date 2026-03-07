@@ -297,6 +297,42 @@ export const webdavConfigSchema = new Schema({
 	},
 });
 
+/**
+ * S3 配置验证规则
+ */
+export const s3ConfigSchema = new Schema({
+	endpoint: {
+		required: true,
+		type: 'string',
+		message: 'Endpoint 不能为空',
+		validator: (v) => {
+			try {
+				const u = new URL(v);
+				return u.protocol === 'https:' || 'URL 必须使用 HTTPS';
+			} catch {
+				return 'URL 格式无效';
+			}
+		},
+		transform: (v) => v.replace(/\/+$/, ''),
+	},
+	bucket: { required: true, type: 'string', message: 'Bucket 不能为空' },
+	region: { required: false, type: 'string', default: 'auto' },
+	accessKeyId: { required: true, type: 'string', message: 'Access Key ID 不能为空' },
+	secretAccessKey: { required: false, type: 'string', default: '' },
+	prefix: {
+		required: false,
+		type: 'string',
+		default: '',
+		transform: (v) => {
+			if (!v || !v.trim()) {
+				return '';
+			}
+			const p = v.trim().replace(/\/+/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+			return p ? p + '/' : '';
+		},
+	},
+});
+
 // ==================== 原有验证函数 ====================
 
 /**

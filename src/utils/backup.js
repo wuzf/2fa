@@ -21,6 +21,7 @@ import { encryptData } from './encryption.js';
 import { getLogger } from './logger.js';
 import { getMonitoring } from './monitoring.js';
 import { pushToWebDAV } from './webdav.js';
+import { pushToS3 } from './s3.js';
 
 /**
  * 备份配置
@@ -136,6 +137,14 @@ class BackupManager {
 			});
 			if (ctx) {
 				ctx.waitUntil(webdavPromise);
+			}
+
+			// S3 自动推送
+			const s3Promise = pushToS3(backupKey, backupContent, this.env).catch((err) => {
+				this.logger.warn('S3 推送异常（不影响备份）', {}, err);
+			});
+			if (ctx) {
+				ctx.waitUntil(s3Promise);
 			}
 
 			const duration = Date.now() - startTime;
