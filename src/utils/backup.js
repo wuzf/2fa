@@ -5,10 +5,10 @@
  * 策略：
  * 1. 数据变化时立即备份并推送 WebDAV（事件驱动，每次变更都备份）
  * 2. 保留定时备份作为兜底（每日检查一次）
- * 3. 自动清理旧备份（默认保留最新100个，超过后自动删除最早的备份）
+ * 3. 自动清理旧备份（保留数量由用户设置的 maxBackups 控制，默认100个）
  *
  * 配置选项（BACKUP_CONFIG）：
- * - MAX_BACKUPS: 最大保留备份数（默认100，设置为0表示不限制）
+ * - MAX_BACKUPS: 默认最大保留备份数（100），用户可在设置中自定义（0表示不限制）
  * - AUTO_CLEANUP_ENABLED: 是否启用自动清理（默认true）
  *
  * 清理机制：
@@ -27,11 +27,11 @@ import { pushToS3 } from './s3.js';
  * 备份配置
  */
 const BACKUP_CONFIG = {
-	// 最大保留备份数（默认100，可通过环境变量覆盖）
+	// 默认最大保留备份数，用户可在设置中自定义（KV key: settings.maxBackups）
 	// 设置为 0 表示不限制（禁用自动清理）
 	MAX_BACKUPS: 100,
 
-	// 是否启用自动清理旧备份（默认true，可通过环境变量覆盖）
+	// 是否启用自动清理旧备份
 	AUTO_CLEANUP_ENABLED: true,
 
 	// 是否启用事件驱动备份
@@ -40,6 +40,18 @@ const BACKUP_CONFIG = {
 	// 是否启用定时备份
 	SCHEDULED_BACKUP_ENABLED: true,
 };
+
+/**
+ * 校验 maxBackups 值，非法值回退默认 100
+ * @param {*} value - 待校验值
+ * @returns {number} 合法的整数值（0~1000）
+ */
+function sanitizeMaxBackups(value) {
+	if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 1000) {
+		return BACKUP_CONFIG.MAX_BACKUPS;
+	}
+	return value;
+}
 
 /**
  * 备份管理器
@@ -231,6 +243,25 @@ class BackupManager {
 	}
 
 	/**
+	 * 从 KV 读取用户配置的 maxBackups，回退到 BACKUP_CONFIG.MAX_BACKUPS
+	 * @private
+	 */
+	async _getMaxBackups() {
+		try {
+			const raw = await this.env.SECRETS_KV.get('settings');
+			if (raw) {
+				const settings = JSON.parse(raw);
+				if (settings.maxBackups !== undefined) {
+					return sanitizeMaxBackups(settings.maxBackups);
+				}
+			}
+		} catch {
+			// 读取失败时使用默认值
+		}
+		return BACKUP_CONFIG.MAX_BACKUPS;
+	}
+
+	/**
 	 * 异步清理旧备份
 	 * @private
 	 */
@@ -241,9 +272,11 @@ class BackupManager {
 			return;
 		}
 
+		const maxBackups = await this._getMaxBackups();
+
 		// 检查是否设置了备份限制（0表示不限制）
-		if (BACKUP_CONFIG.MAX_BACKUPS === 0) {
-			this.logger.debug('⏭️ 备份数量不限制（MAX_BACKUPS=0），跳过清理');
+		if (maxBackups === 0) {
+			this.logger.debug('⏭️ 备份数量不限制（maxBackups=0），跳过清理');
 			return;
 		}
 
@@ -253,10 +286,10 @@ class BackupManager {
 
 			this.logger.debug('🔍 检查备份文件', { count: backupKeys.length });
 
-			if (backupKeys.length <= BACKUP_CONFIG.MAX_BACKUPS) {
+			if (backupKeys.length <= maxBackups) {
 				this.logger.debug('✅ 备份文件数量正常', {
 					current: backupKeys.length,
-					max: BACKUP_CONFIG.MAX_BACKUPS,
+					max: maxBackups,
 				});
 				return;
 			}
@@ -265,12 +298,12 @@ class BackupManager {
 			backupKeys.sort((a, b) => b.name.localeCompare(a.name));
 
 			// 保留最新的备份，删除其余的
-			const keysToDelete = backupKeys.slice(BACKUP_CONFIG.MAX_BACKUPS);
+			const keysToDelete = backupKeys.slice(maxBackups);
 
 			this.logger.info('🧹 开始清理旧备份', {
 				totalBackups: backupKeys.length,
 				toDelete: keysToDelete.length,
-				toKeep: BACKUP_CONFIG.MAX_BACKUPS,
+				toKeep: maxBackups,
 			});
 
 			// 批量删除（避免阻塞太久）
@@ -284,7 +317,7 @@ class BackupManager {
 
 			this.logger.info('✅ 旧备份清理完成', {
 				deleted: keysToDelete.length,
-				remaining: BACKUP_CONFIG.MAX_BACKUPS,
+				remaining: maxBackups,
 			});
 		} catch (error) {
 			this.logger.error('清理旧备份失败', {}, error);
@@ -327,7 +360,7 @@ export async function executeImmediateBackup(secrets, env, reason = 'manual') {
 /**
  * 导出配置和类
  */
-export { BACKUP_CONFIG, BackupManager };
+export { BACKUP_CONFIG, BackupManager, sanitizeMaxBackups };
 
 /**
  * 使用示例：

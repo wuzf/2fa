@@ -240,6 +240,9 @@ export function getModuleLoaderCode() {
     window.showKeyCheckTool = createLazyWrapper('tools', 'showKeyCheckTool');
     window.showKeyGeneratorTool = createLazyWrapper('tools', 'showKeyGeneratorTool');
     window.showWebdavTool = createLazyWrapper('tools', 'showWebdavTool');
+    window.showS3Tool = createLazyWrapper('tools', 'showS3Tool');
+    window.showWebdavModal = createLazyWrapper('tools', 'showWebdavModal');
+    window.showS3Modal = createLazyWrapper('tools', 'showS3Modal');
 
     // 二维码功能懒加载
     window.showSecretQRCode = createLazyWrapper('qrcode', 'showSecretQRCode');

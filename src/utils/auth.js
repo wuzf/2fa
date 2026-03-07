@@ -19,17 +19,52 @@ import {
 } from './errors.js';
 
 // JWT 配置
-const JWT_EXPIRY_DAYS = 30; // JWT 有效期：30天
+const JWT_EXPIRY_DAYS_DEFAULT = 30; // JWT 默认有效期：30天
 const JWT_ALGORITHM = 'HS256';
-const JWT_AUTO_REFRESH_THRESHOLD_DAYS = 7; // 剩余时间少于7天时自动续期
 
 // Cookie 配置
 const COOKIE_NAME = 'auth_token';
-const COOKIE_MAX_AGE = JWT_EXPIRY_DAYS * 24 * 60 * 60; // 30天（秒）
 
 // KV 存储键
 const KV_USER_PASSWORD_KEY = 'user_password';
 const KV_SETUP_COMPLETED_KEY = 'setup_completed';
+const KV_SETTINGS_KEY = 'settings';
+
+/**
+ * 获取 JWT 过期天数（从 KV settings 读取）
+ * @param {Object} env - 环境变量对象
+ * @returns {Promise<number>} JWT 过期天数
+ */
+async function getJwtExpiryDays(env) {
+	if (env && env.SECRETS_KV) {
+		try {
+			const raw = await env.SECRETS_KV.get(KV_SETTINGS_KEY);
+			if (raw) {
+				const settings = JSON.parse(raw);
+				if (settings.jwtExpiryDays) {
+					const days = Number(settings.jwtExpiryDays);
+					if (Number.isFinite(days) && days >= 1 && days <= 365) {
+						return days;
+					}
+				}
+			}
+		} catch {
+			// 解析失败，使用默认值
+		}
+	}
+	return JWT_EXPIRY_DAYS_DEFAULT;
+}
+
+/**
+ * 获取 JWT 自动续期阈值天数
+ * 默认为过期天数的 1/4，至少 1 天
+ * @param {Object} env - 环境变量对象
+ * @returns {Promise<number>} 自动续期阈值天数
+ */
+async function getJwtRefreshThresholdDays(env) {
+	const expiryDays = await getJwtExpiryDays(env);
+	return Math.max(1, Math.floor(expiryDays / 4));
+}
 
 // 密码配置
 const PASSWORD_MIN_LENGTH = 8;
@@ -177,7 +212,7 @@ async function verifyPassword(password, storedHash, env = null) {
  * @param {number} expiryDays - 过期天数
  * @returns {Promise<string>} JWT token
  */
-async function generateJWT(payload, secret, expiryDays = JWT_EXPIRY_DAYS) {
+async function generateJWT(payload, secret, expiryDays = JWT_EXPIRY_DAYS_DEFAULT) {
 	const header = {
 		alg: JWT_ALGORITHM,
 		typ: 'JWT',
@@ -294,7 +329,7 @@ async function verifyJWT(token, secret, env = null) {
  * @param {number} maxAge - Cookie 最大有效期（秒）
  * @returns {string} Set-Cookie header 值
  */
-function createSetCookieHeader(token, maxAge = COOKIE_MAX_AGE) {
+function createSetCookieHeader(token, maxAge) {
 	const cookieAttributes = [
 		`${COOKIE_NAME}=${token}`,
 		`Max-Age=${maxAge}`,
@@ -421,7 +456,7 @@ export async function verifyAuthWithDetails(request, env) {
 			const now = Math.floor(Date.now() / 1000);
 			const remainingSeconds = payload.exp - now;
 			const remainingDays = remainingSeconds / (24 * 60 * 60);
-			const needsRefresh = remainingDays < JWT_AUTO_REFRESH_THRESHOLD_DAYS;
+			const needsRefresh = remainingDays < (await getJwtRefreshThresholdDays(env));
 
 			logger.debug('JWT 验证成功（详细）', {
 				exp: new Date(payload.exp * 1000).toISOString(),
@@ -536,16 +571,17 @@ export async function handleFirstTimeSetup(request, env) {
 		});
 
 		// 生成 JWT token
+		const jwtExpiryDays = await getJwtExpiryDays(env);
 		const jwtToken = await generateJWT(
 			{
 				auth: true,
 				setupAt: new Date().toISOString(),
 			},
 			passwordHash,
-			JWT_EXPIRY_DAYS,
+			jwtExpiryDays,
 		);
 
-		const expiryDate = new Date(Date.now() + JWT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+		const expiryDate = new Date(Date.now() + jwtExpiryDays * 24 * 60 * 60 * 1000);
 
 		// 🍪 使用 HttpOnly Cookie 存储 JWT token
 		const securityHeaders = getSecurityHeaders(request);
@@ -555,14 +591,14 @@ export async function handleFirstTimeSetup(request, env) {
 				success: true,
 				message: '密码设置成功，已自动登录',
 				expiresAt: expiryDate.toISOString(),
-				expiresIn: `${JWT_EXPIRY_DAYS}天`,
+				expiresIn: `${jwtExpiryDays}天`,
 			}),
 			{
 				status: 200,
 				headers: {
 					...securityHeaders,
 					'Content-Type': 'application/json',
-					'Set-Cookie': createSetCookieHeader(jwtToken),
+					'Set-Cookie': createSetCookieHeader(jwtToken, jwtExpiryDays * 24 * 60 * 60),
 					'X-RateLimit-Limit': rateLimitInfo.limit.toString(),
 					'X-RateLimit-Remaining': rateLimitInfo.remaining.toString(),
 					'X-RateLimit-Reset': rateLimitInfo.resetAt.toString(),
@@ -656,16 +692,17 @@ export async function handleLogin(request, env) {
 		}
 
 		// 生成 JWT token
+		const jwtExpiryDays = await getJwtExpiryDays(env);
 		const jwtToken = await generateJWT(
 			{
 				auth: true,
 				loginAt: new Date().toISOString(),
 			},
 			storedPasswordHash,
-			JWT_EXPIRY_DAYS,
+			jwtExpiryDays,
 		);
 
-		const expiryDate = new Date(Date.now() + JWT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+		const expiryDate = new Date(Date.now() + jwtExpiryDays * 24 * 60 * 60 * 1000);
 		const securityHeaders = getSecurityHeaders(request);
 
 		return new Response(
@@ -674,14 +711,14 @@ export async function handleLogin(request, env) {
 				message: '登录成功',
 				token: jwtToken, // 同时在响应 body 中返回 token（供测试和客户端使用）
 				expiresAt: expiryDate.toISOString(),
-				expiresIn: `${JWT_EXPIRY_DAYS}天`,
+				expiresIn: `${jwtExpiryDays}天`,
 			}),
 			{
 				status: 200,
 				headers: {
 					...securityHeaders,
 					'Content-Type': 'application/json',
-					'Set-Cookie': createSetCookieHeader(jwtToken),
+					'Set-Cookie': createSetCookieHeader(jwtToken, jwtExpiryDays * 24 * 60 * 60),
 					'X-RateLimit-Limit': rateLimitInfo.limit.toString(),
 					'X-RateLimit-Remaining': rateLimitInfo.remaining.toString(),
 					'X-RateLimit-Reset': rateLimitInfo.resetAt.toString(),
@@ -759,6 +796,7 @@ export async function handleRefreshToken(request, env) {
 		}
 
 		// 生成新的 JWT token
+		const jwtExpiryDays = await getJwtExpiryDays(env);
 		const newToken = await generateJWT(
 			{
 				auth: true,
@@ -766,10 +804,10 @@ export async function handleRefreshToken(request, env) {
 				refreshedAt: new Date().toISOString(),
 			},
 			storedPasswordHash,
-			JWT_EXPIRY_DAYS,
+			jwtExpiryDays,
 		);
 
-		const expiryDate = new Date(Date.now() + JWT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+		const expiryDate = new Date(Date.now() + jwtExpiryDays * 24 * 60 * 60 * 1000);
 
 		// 🍪 使用 HttpOnly Cookie 存储刷新后的 JWT token
 		// 🔒 使用安全头（CORS, CSP 等）
@@ -781,7 +819,7 @@ export async function handleRefreshToken(request, env) {
 				message: '令牌刷新成功',
 				token: newToken, // 同时在响应 body 中返回 token（供测试和客户端使用）
 				expiresAt: expiryDate.toISOString(),
-				expiresIn: `${JWT_EXPIRY_DAYS}天`,
+				expiresIn: `${jwtExpiryDays}天`,
 			}),
 			{
 				status: 200,
@@ -789,7 +827,7 @@ export async function handleRefreshToken(request, env) {
 					...securityHeaders, // 🔒 包含 CORS, CSP 等安全头
 					'Content-Type': 'application/json',
 					// 🍪 设置新的 HttpOnly Cookie
-					'Set-Cookie': createSetCookieHeader(newToken),
+					'Set-Cookie': createSetCookieHeader(newToken, jwtExpiryDays * 24 * 60 * 60),
 				},
 			},
 		);

@@ -502,22 +502,6 @@ function getHTMLBody() {
             <div class="tool-desc">生成随机TOTP密钥</div>
           </div>
         </div>
-
-        <div class="tool-item" onclick="showWebdavTool()">
-          <div class="tool-icon">☁️</div>
-          <div class="tool-content">
-            <div class="tool-title">WebDAV 同步</div>
-            <div class="tool-desc">自动推送备份到 WebDAV 服务器</div>
-          </div>
-        </div>
-
-        <div class="tool-item" onclick="showS3Tool()">
-          <div class="tool-icon">🪣</div>
-          <div class="tool-content">
-            <div class="tool-title">S3 同步</div>
-            <div class="tool-desc">自动推送备份到 S3 兼容存储</div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -876,6 +860,151 @@ function getHTMLBody() {
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- 设置模态框 -->
+  <div id="settingsModal" class="modal">
+    <div class="modal-content settings-modal-content">
+      <div class="modal-header">
+        <h2>设置</h2>
+        <button class="close-btn" onclick="hideSettingsModal()">&times;</button>
+      </div>
+      <div class="settings-layout">
+        <div class="settings-tabs">
+          <div class="settings-tab active" data-tab="security" onclick="switchSettingsTab('security')">
+            <span class="settings-tab-icon">🔒</span>
+            <span class="settings-tab-text">账户安全</span>
+          </div>
+          <div class="settings-tab" data-tab="sync" onclick="switchSettingsTab('sync')">
+            <span class="settings-tab-icon">☁️</span>
+            <span class="settings-tab-text">同步设置</span>
+          </div>
+          <div class="settings-tab" data-tab="preferences" onclick="switchSettingsTab('preferences')">
+            <span class="settings-tab-icon">🎨</span>
+            <span class="settings-tab-text">偏好设置</span>
+          </div>
+        </div>
+        <div class="settings-content">
+          <!-- 账户安全面板 -->
+          <div class="settings-panel active" data-panel="security">
+            <div class="settings-section">
+              <h3 class="settings-section-title">修改密码</h3>
+              <div class="settings-form">
+                <div class="settings-field">
+                  <label>当前密码</label>
+                  <input type="password" id="settingsCurrentPassword" placeholder="请输入当前密码" autocomplete="current-password" />
+                </div>
+                <div class="settings-field">
+                  <label>新密码</label>
+                  <input type="password" id="settingsNewPassword" placeholder="请输入新密码" autocomplete="new-password" />
+                </div>
+                <div class="settings-field">
+                  <label>确认新密码</label>
+                  <input type="password" id="settingsConfirmPassword" placeholder="请再次输入新密码" autocomplete="new-password" />
+                </div>
+                <div id="changePasswordResult" class="change-password-result" style="display: none;"></div>
+                <button class="btn btn-primary" id="changePasswordBtn" onclick="changePassword()" style="width: 100%; padding: 10px; font-size: 14px; border-radius: 8px;">修改密码</button>
+              </div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
+              <h3 class="settings-section-title">退出登录</h3>
+              <p class="settings-desc">退出当前账户，需要重新输入密码登录。</p>
+              <button class="btn btn-danger" onclick="logout()" style="width: 100%; padding: 10px; font-size: 14px; border-radius: 8px;">退出登录</button>
+            </div>
+          </div>
+
+          <!-- 同步设置面板 -->
+          <div class="settings-panel" data-panel="sync">
+            <div class="settings-section">
+              <div class="sync-card" onclick="openWebdavFromSettings()">
+                <div class="sync-card-header">
+                  <div class="sync-card-info">
+                    <span class="sync-card-icon">☁️</span>
+                    <div>
+                      <div class="sync-card-title">WebDAV 同步</div>
+                      <div class="sync-card-desc">自动推送备份到 WebDAV 服务器</div>
+                    </div>
+                  </div>
+                  <span id="settingsWebdavStatus" class="sync-status not-configured">未配置</span>
+                </div>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="sync-card" onclick="openS3FromSettings()">
+                <div class="sync-card-header">
+                  <div class="sync-card-info">
+                    <span class="sync-card-icon">🪣</span>
+                    <div>
+                      <div class="sync-card-title">S3 同步</div>
+                      <div class="sync-card-desc">自动推送备份到 S3 兼容存储</div>
+                    </div>
+                  </div>
+                  <span id="settingsS3Status" class="sync-status not-configured">未配置</span>
+                </div>
+              </div>
+            </div>
+            <div class="settings-info-box">
+              配置同步后，每次备份（事件驱动、定时、手动）都会自动推送到远程存储。推送失败不影响本地备份。
+            </div>
+          </div>
+
+          <!-- 偏好设置面板 -->
+          <div class="settings-panel" data-panel="preferences">
+            <div class="settings-section">
+              <h3 class="settings-section-title">主题模式</h3>
+              <div class="theme-options">
+                <label class="theme-option">
+                  <input type="radio" name="settingsTheme" value="light" onchange="applyThemeFromSettings('light')" />
+                  <span class="theme-option-label">☀️ 浅色模式</span>
+                </label>
+                <label class="theme-option">
+                  <input type="radio" name="settingsTheme" value="dark" onchange="applyThemeFromSettings('dark')" />
+                  <span class="theme-option-label">🌙 深色模式</span>
+                </label>
+                <label class="theme-option">
+                  <input type="radio" name="settingsTheme" value="auto" onchange="applyThemeFromSettings('auto')" />
+                  <span class="theme-option-label">🌓 跟随系统</span>
+                </label>
+              </div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
+              <h3 class="settings-section-title">默认导出格式</h3>
+              <p class="settings-desc">设置批量导出密钥时的默认格式。</p>
+              <select id="settingsDefaultExportFormat" class="settings-select" onchange="saveDefaultExportFormat()">
+                <option value="json">JSON</option>
+                <option value="txt">TXT 文本</option>
+                <option value="csv">CSV 表格</option>
+                <option value="html">HTML 网页</option>
+              </select>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
+              <h3 class="settings-section-title">登录有效期</h3>
+              <p class="settings-desc">设置登录后 Token 的有效天数，修改后下次登录生效。</p>
+              <div class="settings-inline-group">
+                <input type="number" id="settingsJwtExpiryDays" class="settings-input" min="1" max="365" value="30" />
+                <span class="settings-unit">天</span>
+                <button class="btn btn-sm" onclick="saveJwtExpiryDays()">保存</button>
+              </div>
+              <p id="settingsJwtExpiryResult" class="settings-result" style="display:none;"></p>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
+              <h3 class="settings-section-title">备份保留数量</h3>
+              <p class="settings-desc">设置自动清理时最多保留的备份数量，设为 0 表示不限制。</p>
+              <div class="settings-inline-group">
+                <input type="number" id="settingsMaxBackups" class="settings-input" min="0" max="1000" value="100" />
+                <span class="settings-unit">条</span>
+                <button class="btn btn-sm" onclick="saveMaxBackups()">保存</button>
+              </div>
+              <p id="settingsMaxBackupsResult" class="settings-result" style="display:none;"></p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1297,6 +1426,10 @@ function getHTMLBody() {
       <div class="submenu-item" onclick="showRestoreModal(); closeActionMenu();">
         <span class="item-icon">🔄</span>
         <span class="item-text">还原配置</span>
+      </div>
+      <div class="submenu-item" onclick="showSettingsModal(); closeActionMenu();">
+        <span class="item-icon">⚙️</span>
+        <span class="item-text">设置</span>
       </div>
       <div class="submenu-item" onclick="showToolsModal(); closeActionMenu();">
         <span class="item-icon">🔧</span>

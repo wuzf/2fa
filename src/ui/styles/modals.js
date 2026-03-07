@@ -1791,5 +1791,378 @@ export function getModalStyles() {
         font-size: 40px;
       }
     }
+
+    /* ==================== 设置模态框样式 ==================== */
+
+    .settings-modal-content {
+      max-width: 680px;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .settings-modal-content .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border-primary);
+      margin-bottom: 0;
+    }
+
+    .settings-layout {
+      display: flex;
+      min-height: 400px;
+      max-height: calc(85vh - 70px);
+    }
+
+    .settings-tabs {
+      flex-shrink: 0;
+      width: 160px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border-primary);
+      padding: 12px 0;
+      overflow-y: auto;
+    }
+
+    .settings-tab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-size: 14px;
+      transition: all 0.2s ease;
+      border-left: 3px solid transparent;
+    }
+
+    .settings-tab:hover {
+      background: var(--bg-tertiary, rgba(0, 0, 0, 0.05));
+      color: var(--text-primary);
+    }
+
+    .settings-tab.active {
+      background: var(--bg-tertiary, rgba(0, 0, 0, 0.05));
+      color: var(--accent-color, #2196F3);
+      border-left-color: var(--accent-color, #2196F3);
+      font-weight: 600;
+    }
+
+    .settings-tab-icon {
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .settings-tab-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .settings-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+    }
+
+    .settings-panel {
+      display: none;
+    }
+
+    .settings-panel.active {
+      display: block;
+    }
+
+    .settings-section {
+      margin-bottom: 20px;
+    }
+
+    .settings-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .settings-section-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0 0 12px 0;
+    }
+
+    .settings-desc {
+      font-size: 13px;
+      color: var(--text-tertiary);
+      margin: 0 0 12px 0;
+      line-height: 1.5;
+    }
+
+    .settings-divider {
+      height: 1px;
+      background: var(--border-primary);
+      margin: 20px 0;
+    }
+
+    .settings-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .settings-field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+
+    .settings-field input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-primary);
+      border-radius: 8px;
+      background: var(--input-bg, var(--bg-secondary));
+      color: var(--text-primary);
+      font-size: 14px;
+      box-sizing: border-box;
+      transition: border-color 0.2s ease;
+    }
+
+    .settings-field input:focus {
+      outline: none;
+      border-color: var(--accent-color, #2196F3);
+    }
+
+    .change-password-result {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .change-password-result.error {
+      background: rgba(244, 67, 54, 0.1);
+      color: #f44336;
+      border: 1px solid rgba(244, 67, 54, 0.2);
+    }
+
+    .change-password-result.success {
+      background: rgba(76, 175, 80, 0.1);
+      color: #4caf50;
+      border: 1px solid rgba(76, 175, 80, 0.2);
+    }
+
+    /* 同步设置卡片 */
+    .sync-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-primary);
+      border-radius: 12px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .sync-card:hover {
+      border-color: var(--accent-color, #2196F3);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .sync-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .sync-card-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .sync-card-icon {
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+
+    .sync-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .sync-card-desc {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      margin-top: 2px;
+    }
+
+    .sync-status {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+
+    .sync-status.configured {
+      background: rgba(76, 175, 80, 0.1);
+      color: #4caf50;
+    }
+
+    .sync-status.not-configured {
+      background: rgba(158, 158, 158, 0.1);
+      color: var(--text-tertiary);
+    }
+
+    .settings-info-box {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--text-tertiary);
+      background: var(--bg-secondary);
+      line-height: 1.6;
+    }
+
+    /* 主题选项 */
+    .theme-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .theme-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-primary);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .theme-option:hover {
+      border-color: var(--accent-color, #2196F3);
+    }
+
+    .theme-option input[type="radio"] {
+      accent-color: var(--accent-color, #2196F3);
+    }
+
+    .theme-option-label {
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    /* 设置下拉选择框 */
+    .settings-select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-primary);
+      border-radius: 8px;
+      background: var(--input-bg, var(--bg-secondary));
+      color: var(--text-primary);
+      font-size: 14px;
+      cursor: pointer;
+      appearance: auto;
+    }
+
+    .settings-select:focus {
+      outline: none;
+      border-color: var(--accent-color, #2196F3);
+    }
+
+    .settings-inline-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .settings-inline-group .settings-input {
+      width: 80px;
+      padding: 8px 10px;
+      border: 1px solid var(--border-primary);
+      border-radius: 8px;
+      background: var(--input-bg, var(--bg-secondary));
+      color: var(--text-primary);
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .settings-inline-group .settings-input:focus {
+      outline: none;
+      border-color: var(--accent-color, #2196F3);
+    }
+
+    .settings-unit {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .settings-result {
+      font-size: 13px;
+      margin: 8px 0 0 0;
+      line-height: 1.5;
+    }
+
+    .settings-result.success {
+      color: var(--success-color, #4CAF50);
+    }
+
+    .settings-result.error {
+      color: var(--error-color, #f44336);
+    }
+
+    /* 设置模态框移动端适配 */
+    @media (max-width: 600px) {
+      .settings-layout {
+        flex-direction: column;
+        min-height: auto;
+        max-height: calc(85vh - 70px);
+      }
+
+      .settings-tabs {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border-primary);
+        display: flex;
+        padding: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        flex-shrink: 0;
+      }
+
+      .settings-tab {
+        flex: 1;
+        justify-content: center;
+        padding: 10px 8px;
+        border-left: none;
+        border-bottom: 3px solid transparent;
+        font-size: 13px;
+        min-width: 0;
+      }
+
+      .settings-tab.active {
+        border-left-color: transparent;
+        border-bottom-color: var(--accent-color, #2196F3);
+      }
+
+      .settings-tab-text {
+        display: none;
+      }
+
+      .settings-tab-icon {
+        font-size: 20px;
+      }
+
+      .settings-content {
+        padding: 16px;
+        overflow-y: auto;
+        flex: 1;
+      }
+
+      .settings-modal-content {
+        max-width: 100%;
+        max-height: 90vh;
+      }
+    }
   `;
 }

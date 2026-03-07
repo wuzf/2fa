@@ -30,6 +30,19 @@ vi.mock('../../src/api/webdav.js', () => ({
   handleTestWebDAV: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '连接成功' }), { status: 200 }))
 }));
 
+// Mock S3 API handlers
+vi.mock('../../src/api/s3.js', () => ({
+  handleGetS3Config: vi.fn(async (request, env) => new Response(JSON.stringify({ configured: false }), { status: 200 })),
+  handleSaveS3Config: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleDeleteS3Config: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleTestS3: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '连接成功' }), { status: 200 }))
+}));
+
+// Mock Change Password API handler
+vi.mock('../../src/api/password.js', () => ({
+  handleChangePassword: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '密码修改成功' }), { status: 200 }))
+}));
+
 // Mock UI generators
 vi.mock('../../src/ui/page.js', () => ({
   createMainPage: vi.fn(async () => new Response('<html>Main Page</html>', { status: 200, headers: { 'Content-Type': 'text/html' } }))
@@ -658,6 +671,35 @@ describe('Router Handler', () => {
       const request = createMockRequest({
         method: 'GET',
         pathname: '/api/webdav/test'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(response.status).toBe(405);
+    });
+
+    // 修改密码 API 路由测试
+    it('应该处理 POST /api/change-password', async () => {
+      const { handleChangePassword } = await import('../../src/api/password.js');
+
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/change-password',
+        body: { currentPassword: 'OldPass123!', newPassword: 'NewPass456@', confirmPassword: 'NewPass456@' }
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleChangePassword).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('应该拒绝 /api/change-password 的不支持方法', async () => {
+      const request = createMockRequest({
+        method: 'GET',
+        pathname: '/api/change-password'
       });
       const env = createMockEnv();
 

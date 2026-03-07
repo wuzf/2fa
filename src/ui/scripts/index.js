@@ -13,6 +13,7 @@ import { getQRCodeCode } from './qrcode.js';
 import { getImportCode } from './import/index.js';
 import { getBackupCode } from './backup.js';
 import { getToolsCode } from './tools.js';
+import { getSettingsCode } from './settings.js';
 import { getGoogleMigrationCode } from './googleMigration.js';
 import { getCoreCode } from './core.js';
 import { getUtilsCode } from './utils.js';
@@ -25,7 +26,7 @@ import { getModuleLoaderCode } from './moduleLoader.js';
  * @returns {string} 核心JavaScript代码
  */
 export function getCoreScripts() {
-	return `${getUtilsCode()}${getStateCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getCoreCode()}${getPWACode()}${getModuleLoaderCode()}`;
+	return `${getUtilsCode()}${getStateCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getCoreCode()}${getPWACode()}${getModuleLoaderCode()}`;
 }
 
 /**

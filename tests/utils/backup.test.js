@@ -9,7 +9,8 @@ import {
   BACKUP_CONFIG,
   getBackupManager,
   triggerBackup,
-  executeImmediateBackup
+  executeImmediateBackup,
+  sanitizeMaxBackups
 } from '../../src/utils/backup.js';
 
 // ==================== Mock 模块 ====================
@@ -103,6 +104,33 @@ describe('Backup System', () => {
       expect(BACKUP_CONFIG.AUTO_CLEANUP_ENABLED).toBe(true);
       expect(BACKUP_CONFIG.EVENT_DRIVEN_ENABLED).toBe(true);
       expect(BACKUP_CONFIG.SCHEDULED_BACKUP_ENABLED).toBe(true);
+    });
+  });
+
+  describe('sanitizeMaxBackups', () => {
+    it('合法整数应原样返回', () => {
+      expect(sanitizeMaxBackups(0)).toBe(0);
+      expect(sanitizeMaxBackups(50)).toBe(50);
+      expect(sanitizeMaxBackups(1000)).toBe(1000);
+    });
+
+    it('负数应回退默认值', () => {
+      expect(sanitizeMaxBackups(-1)).toBe(100);
+    });
+
+    it('超范围应回退默认值', () => {
+      expect(sanitizeMaxBackups(1001)).toBe(100);
+    });
+
+    it('小数应回退默认值', () => {
+      expect(sanitizeMaxBackups(3.5)).toBe(100);
+    });
+
+    it('非数字类型应回退默认值', () => {
+      expect(sanitizeMaxBackups(null)).toBe(100);
+      expect(sanitizeMaxBackups(undefined)).toBe(100);
+      expect(sanitizeMaxBackups('50')).toBe(100);
+      expect(sanitizeMaxBackups(NaN)).toBe(100);
     });
   });
 
@@ -512,8 +540,8 @@ describe('Backup System', () => {
 
       const key = manager._generateBackupKey();
 
-      // 格式: backup_YYYY-MM-DD_HH-MM-SS-mmm.json（含毫秒）
-      expect(key).toMatch(/^backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}-[a-z0-9]{4}\.json$/);
+      // 格式: backup_YYYY-MM-DD_HH-MM-SS-mmm-UTC-xxxx.json（含毫秒和UTC标记）
+      expect(key).toMatch(/^backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}-UTC-[a-z0-9]{4}\.json$/);
     });
 
     it('应该包含当前日期和时间', () => {
@@ -593,9 +621,11 @@ describe('Backup System', () => {
       ];
       env.SECRETS_KV.list.mockResolvedValueOnce({ keys: mockKeys });
 
-      // 修改限制为1，只保留最新的
-      const originalMax = BACKUP_CONFIG.MAX_BACKUPS;
-      BACKUP_CONFIG.MAX_BACKUPS = 1;
+      // 通过 KV 设置限制为1，只保留最新的
+      env.SECRETS_KV.get.mockImplementation(async (key) => {
+        if (key === 'settings') return JSON.stringify({ maxBackups: 1 });
+        return null;
+      });
 
       await manager._cleanupOldBackupsAsync();
 
@@ -603,9 +633,83 @@ describe('Backup System', () => {
       expect(env.SECRETS_KV.delete).toHaveBeenCalledWith('backup_2024-01-01_12-00-00.json');
       expect(env.SECRETS_KV.delete).toHaveBeenCalledWith('backup_2024-01-02_12-00-00.json');
       expect(env.SECRETS_KV.delete).not.toHaveBeenCalledWith('backup_2024-01-03_12-00-00.json');
+    });
 
-      // 恢复配置
-      BACKUP_CONFIG.MAX_BACKUPS = originalMax;
+    it('应该从 KV 设置读取用户自定义的 maxBackups', async () => {
+      const env = createMockEnv();
+      const manager = new BackupManager(env);
+
+      // 用户设置 maxBackups 为 2
+      env.SECRETS_KV.get.mockImplementation(async (key) => {
+        if (key === 'settings') return JSON.stringify({ maxBackups: 2 });
+        return null;
+      });
+
+      const mockKeys = Array.from({ length: 5 }, (_, i) => ({
+        name: `backup_2024-01-0${i + 1}_12-00-00.json`
+      }));
+      env.SECRETS_KV.list.mockResolvedValueOnce({ keys: mockKeys });
+
+      await manager._cleanupOldBackupsAsync();
+
+      // 保留最新2个，删除3个
+      expect(env.SECRETS_KV.delete).toHaveBeenCalledTimes(3);
+    });
+
+    it('maxBackups 设为 0 时不应清理', async () => {
+      const env = createMockEnv();
+      const manager = new BackupManager(env);
+
+      env.SECRETS_KV.get.mockImplementation(async (key) => {
+        if (key === 'settings') return JSON.stringify({ maxBackups: 0 });
+        return null;
+      });
+
+      await manager._cleanupOldBackupsAsync();
+
+      expect(env.SECRETS_KV.list).not.toHaveBeenCalled();
+      expect(env.SECRETS_KV.delete).not.toHaveBeenCalled();
+    });
+
+    it('KV 设置读取失败时应回退到默认值', async () => {
+      const env = createMockEnv();
+      const manager = new BackupManager(env);
+
+      env.SECRETS_KV.get.mockImplementation(async (key) => {
+        if (key === 'settings') throw new Error('KV read error');
+        return null;
+      });
+
+      // 50 个备份，默认 100，不应清理
+      const mockKeys = Array.from({ length: 50 }, (_, i) => ({
+        name: `backup_2024-01-${String(i + 1).padStart(2, '0')}_12-00-00.json`
+      }));
+      env.SECRETS_KV.list.mockResolvedValueOnce({ keys: mockKeys });
+
+      await manager._cleanupOldBackupsAsync();
+
+      expect(env.SECRETS_KV.delete).not.toHaveBeenCalled();
+    });
+
+    it('KV 中 maxBackups 为非法值时应回退到默认值', async () => {
+      const env = createMockEnv();
+      const manager = new BackupManager(env);
+
+      // KV 被手工写入负数
+      env.SECRETS_KV.get.mockImplementation(async (key) => {
+        if (key === 'settings') return JSON.stringify({ maxBackups: -5 });
+        return null;
+      });
+
+      // 50 个备份，回退默认 100，不应清理
+      const mockKeys = Array.from({ length: 50 }, (_, i) => ({
+        name: `backup_2024-01-${String(i + 1).padStart(2, '0')}_12-00-00.json`
+      }));
+      env.SECRETS_KV.list.mockResolvedValueOnce({ keys: mockKeys });
+
+      await manager._cleanupOldBackupsAsync();
+
+      expect(env.SECRETS_KV.delete).not.toHaveBeenCalled();
     });
 
     it('应该只清理 backup_ 开头的文件', async () => {

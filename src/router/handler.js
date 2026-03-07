@@ -19,6 +19,8 @@ import {
 import { handleFaviconProxy } from '../api/favicon.js';
 import { handleGetWebDAVConfig, handleSaveWebDAVConfig, handleTestWebDAV, handleDeleteWebDAVConfig } from '../api/webdav.js';
 import { handleGetS3Config, handleSaveS3Config, handleTestS3, handleDeleteS3Config } from '../api/s3.js';
+import { handleChangePassword } from '../api/password.js';
+import { handleGetSettings, handleSaveSettings } from '../api/settings.js';
 
 // UI 页面生成器
 import { createMainPage } from '../ui/page.js';
@@ -279,6 +281,26 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 			return handleExportBackup(request, env, backupKey);
 		}
 		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
+	// 修改密码 API
+	if (pathname === '/api/change-password') {
+		if (method === 'POST') {
+			return handleChangePassword(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
+	// 系统设置 API
+	if (pathname === '/api/settings') {
+		switch (method) {
+			case 'GET':
+				return handleGetSettings(request, env);
+			case 'POST':
+				return handleSaveSettings(request, env);
+			default:
+				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+		}
 	}
 
 	// WebDAV 配置 API

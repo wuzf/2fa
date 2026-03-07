@@ -209,6 +209,7 @@ export async function testWebDAVConnection(config) {
 
 	let all520 = true;
 	let connectOk = false;
+	let successMethod = null;
 
 	for (const { method, headers } of methods) {
 		const controller = new AbortController();
@@ -225,6 +226,7 @@ export async function testWebDAVConnection(config) {
 
 			if (response.ok || response.status === 207) {
 				connectOk = true;
+				successMethod = method;
 				break;
 			}
 
@@ -242,6 +244,7 @@ export async function testWebDAVConnection(config) {
 
 			if (response.status === 404 && method !== 'PROPFIND') {
 				connectOk = true;
+				successMethod = method;
 				break;
 			}
 
@@ -319,7 +322,7 @@ export async function testWebDAVConnection(config) {
 		clearTimeout(timeoutId);
 
 		if (putResponse.ok || putResponse.status === 201 || putResponse.status === 204) {
-			return { success: true, message: `连接成功，已验证写入权限（测试文件：${testFileName}）` };
+			return { success: true, message: `连接成功，已验证写入权限（测试文件：${testFileName}）`, method: successMethod };
 		}
 
 		if (putResponse.status === 404) {

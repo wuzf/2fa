@@ -236,7 +236,7 @@ describe('Backup API Module', () => {
       const data = await response.json();
 
       expect(data.success).toBe(true);
-      expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+      expect(ctx.waitUntil).toHaveBeenCalledTimes(2); // WebDAV + S3 推送
       // waitUntil 接收的应该是一个 Promise
       expect(ctx.waitUntil.mock.calls[0][0]).toBeInstanceOf(Promise);
     });

@@ -187,6 +187,18 @@ export function getUICode() {
       hideModal('toolsModal');
     }
 
+    // 设置模态框相关函数
+    function showSettingsModal() {
+      showModal('settingsModal', () => {
+        // 重置到第一个标签页
+        switchSettingsTab('security');
+      });
+    }
+
+    function hideSettingsModal() {
+      hideModal('settingsModal');
+    }
+
     // 折叠式菜单控制函数
     function toggleActionMenu() {
       const mainBtn = document.getElementById('mainActionBtn');
