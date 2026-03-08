@@ -4,6 +4,7 @@
 
 import { createJsonResponse, createErrorResponse } from '../utils/response.js';
 import { getLogger } from '../utils/logger.js';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../utils/rateLimit.js';
 import { ValidationError, errorToResponse, logError } from '../utils/errors.js';
 
 const KV_SETTINGS_KEY = 'settings';
@@ -64,6 +65,19 @@ export async function handleSaveSettings(request, env) {
 	const logger = getLogger(env);
 
 	try {
+		// 🛡️ Rate Limiting: 防止频繁修改设置
+		const clientIP = getClientIdentifier(request, 'ip');
+		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+
+		if (!rateLimitInfo.allowed) {
+			logger.warn('保存设置速率限制超出', {
+				clientIP,
+				limit: rateLimitInfo.limit,
+				resetAt: rateLimitInfo.resetAt,
+			});
+			return createRateLimitResponse(rateLimitInfo, request);
+		}
+
 		const body = await request.json();
 
 		// 读取现有设置

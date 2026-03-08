@@ -5,111 +5,11 @@
 import { createJsonResponse, createErrorResponse } from '../utils/response.js';
 import { checkRateLimit, createRateLimitResponse, getClientIdentifier, RATE_LIMIT_PRESETS } from '../utils/rateLimit.js';
 import { getLogger } from '../utils/logger.js';
+import { validatePasswordStrength, verifyPassword, hashPassword } from '../utils/auth.js';
 import { ValidationError, AuthenticationError, ConfigurationError, ErrorFactory, errorToResponse, logError } from '../utils/errors.js';
 
 // KV 存储键
 const KV_USER_PASSWORD_KEY = 'user_password';
-
-// 密码配置
-const PASSWORD_MIN_LENGTH = 8;
-const PBKDF2_ITERATIONS = 100000;
-
-/**
- * 验证密码强度
- * @param {string} password - 密码
- * @returns {Object} { valid: boolean, message: string }
- */
-function validatePasswordStrength(password) {
-	if (!password || password.length < PASSWORD_MIN_LENGTH) {
-		return {
-			valid: false,
-			message: `密码长度至少为 ${PASSWORD_MIN_LENGTH} 位`,
-		};
-	}
-
-	const hasUpperCase = /[A-Z]/.test(password);
-	const hasLowerCase = /[a-z]/.test(password);
-	const hasNumber = /[0-9]/.test(password);
-	const hasSymbol = /[^A-Za-z0-9]/.test(password);
-
-	if (!hasUpperCase) {
-		return { valid: false, message: '密码必须包含至少一个大写字母' };
-	}
-	if (!hasLowerCase) {
-		return { valid: false, message: '密码必须包含至少一个小写字母' };
-	}
-	if (!hasNumber) {
-		return { valid: false, message: '密码必须包含至少一个数字' };
-	}
-	if (!hasSymbol) {
-		return { valid: false, message: '密码必须包含至少一个特殊字符' };
-	}
-
-	return { valid: true, message: '密码强度符合要求' };
-}
-
-/**
- * 验证密码
- * @param {string} password - 明文密码
- * @param {string} storedHash - 存储的哈希值（格式：salt$hash）
- * @returns {Promise<boolean>} 是否匹配
- */
-async function verifyPassword(password, storedHash) {
-	try {
-		const [saltB64, hashB64] = storedHash.split('$');
-		if (!saltB64 || !hashB64) {
-			return false;
-		}
-
-		const salt = Uint8Array.from(atob(saltB64), (c) => c.charCodeAt(0));
-		const encoder = new TextEncoder();
-		const passwordBuffer = encoder.encode(password);
-		const keyMaterial = await crypto.subtle.importKey('raw', passwordBuffer, { name: 'PBKDF2' }, false, ['deriveBits']);
-
-		const hashBuffer = await crypto.subtle.deriveBits(
-			{
-				name: 'PBKDF2',
-				salt: salt,
-				iterations: PBKDF2_ITERATIONS,
-				hash: 'SHA-256',
-			},
-			keyMaterial,
-			256,
-		);
-
-		const calculatedHashB64 = btoa(String.fromCharCode(...new Uint8Array(hashBuffer)));
-		return calculatedHashB64 === hashB64;
-	} catch {
-		return false;
-	}
-}
-
-/**
- * 使用 PBKDF2 加密密码
- * @param {string} password - 明文密码
- * @returns {Promise<string>} 加密后的密码（格式：salt$hash）
- */
-async function hashPassword(password) {
-	const salt = crypto.getRandomValues(new Uint8Array(16));
-	const encoder = new TextEncoder();
-	const passwordBuffer = encoder.encode(password);
-	const keyMaterial = await crypto.subtle.importKey('raw', passwordBuffer, { name: 'PBKDF2' }, false, ['deriveBits']);
-
-	const hashBuffer = await crypto.subtle.deriveBits(
-		{
-			name: 'PBKDF2',
-			salt: salt,
-			iterations: PBKDF2_ITERATIONS,
-			hash: 'SHA-256',
-		},
-		keyMaterial,
-		256,
-	);
-
-	const saltB64 = btoa(String.fromCharCode(...salt));
-	const hashB64 = btoa(String.fromCharCode(...new Uint8Array(hashBuffer)));
-	return `${saltB64}$${hashB64}`;
-}
 
 /**
  * 处理修改密码请求

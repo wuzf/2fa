@@ -287,7 +287,11 @@ async function _pushToSingleS3(backupKey, backupContent, config, env) {
 			const errorMsg = fetchError.name === 'AbortError' ? 'S3 推送超时（15s）' : `S3 推送失败: ${fetchError.message}`;
 			logger.warn(errorMsg, { backupKey, targetName: config.name });
 
-			await _recordS3StatusError(env, config.id, backupKey, errorMsg);
+			try {
+				await _recordS3StatusError(env, config.id, backupKey, errorMsg);
+			} catch {
+				// 静默忽略
+			}
 			return { success: false, id: config.id, name: config.name, backupKey, error: errorMsg };
 		}
 	} catch (error) {
@@ -304,6 +308,31 @@ async function _pushToSingleS3(backupKey, backupContent, config, env) {
 }
 
 // ==================== 连接测试 ====================
+
+/**
+ * 将 fetch 异常转换为简短友好提示
+ * @private
+ */
+function _friendlyFetchError(error, prefix = '连接') {
+	const msg = error.message || '';
+
+	if (/redirect/i.test(msg) || msg.length > 200) {
+		return `${prefix}失败：Endpoint 地址不正确或存在重定向`;
+	}
+	if (/dns|getaddrinfo|ENOTFOUND/i.test(msg)) {
+		return `${prefix}失败：域名无法解析`;
+	}
+	if (/ECONNREFUSED/i.test(msg)) {
+		return `${prefix}失败：连接被拒绝`;
+	}
+	if (/certificate|ssl|tls/i.test(msg)) {
+		return `${prefix}失败：SSL 证书错误`;
+	}
+
+	// 兜底：截断过长的消息
+	const short = msg.length > 60 ? msg.slice(0, 60) + '…' : msg;
+	return `${prefix}失败：${short}`;
+}
 
 /**
  * 测试 S3 连接
@@ -359,7 +388,7 @@ export async function testS3Connection(config) {
 			return { success: false, message: '连接超时（15s），请检查 Endpoint 地址' };
 		}
 
-		return { success: false, message: `连接失败：${error.message}` };
+		return { success: false, message: _friendlyFetchError(error) };
 	}
 
 	// 第二步：上传测试文件
@@ -395,7 +424,7 @@ export async function testS3Connection(config) {
 			return { success: false, message: '写入测试超时（15s）' };
 		}
 
-		return { success: false, message: `写入测试异常：${error.message}` };
+		return { success: false, message: _friendlyFetchError(error, '写入') };
 	}
 }
 

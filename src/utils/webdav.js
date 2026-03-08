@@ -298,7 +298,11 @@ async function _pushToSingleWebDAV(backupKey, backupContent, config, env) {
 			const errorMsg = fetchError.name === 'AbortError' ? 'WebDAV 推送超时（15s）' : `WebDAV 推送失败: ${fetchError.message}`;
 			logger.warn(errorMsg, { backupKey, targetName: config.name });
 
-			await _recordWebDAVStatusError(env, config.id, backupKey, errorMsg);
+			try {
+				await _recordWebDAVStatusError(env, config.id, backupKey, errorMsg);
+			} catch {
+				// 静默忽略
+			}
 			return { success: false, id: config.id, name: config.name, backupKey, error: errorMsg };
 		}
 	} catch (error) {
@@ -315,6 +319,30 @@ async function _pushToSingleWebDAV(backupKey, backupContent, config, env) {
 }
 
 // ==================== 连接测试 ====================
+
+/**
+ * 将 fetch 异常转换为简短友好提示
+ * @private
+ */
+function _friendlyFetchError(error, prefix = '连接') {
+	const msg = error.message || '';
+
+	if (/redirect/i.test(msg) || msg.length > 200) {
+		return `${prefix}失败：服务器地址不正确或存在重定向`;
+	}
+	if (/dns|getaddrinfo|ENOTFOUND/i.test(msg)) {
+		return `${prefix}失败：域名无法解析`;
+	}
+	if (/ECONNREFUSED/i.test(msg)) {
+		return `${prefix}失败：连接被拒绝`;
+	}
+	if (/certificate|ssl|tls/i.test(msg)) {
+		return `${prefix}失败：SSL 证书错误`;
+	}
+
+	const short = msg.length > 60 ? msg.slice(0, 60) + '…' : msg;
+	return `${prefix}失败：${short}`;
+}
 
 /**
  * 测试 WebDAV 连接
@@ -471,7 +499,7 @@ export async function testWebDAVConnection(config) {
 			return { success: false, message: '写入测试超时（15s）' };
 		}
 
-		return { success: false, message: `写入测试异常：${error.message}` };
+		return { success: false, message: _friendlyFetchError(error, '写入测试') };
 	}
 }
 

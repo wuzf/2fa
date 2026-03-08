@@ -75,7 +75,7 @@ const PBKDF2_ITERATIONS = 100000; // PBKDF2 迭代次数
  * @param {string} password - 密码
  * @returns {Object} { valid: boolean, message: string }
  */
-function validatePasswordStrength(password) {
+export function validatePasswordStrength(password) {
 	if (!password || password.length < PASSWORD_MIN_LENGTH) {
 		return {
 			valid: false,
@@ -111,7 +111,7 @@ function validatePasswordStrength(password) {
  * @returns {Promise<string>} 加密后的密码（格式：salt$hash）
  * @throws {ValidationError} 密码强度不符合要求时抛出错误
  */
-async function hashPassword(password) {
+export async function hashPassword(password) {
 	// 🔒 强制验证密码强度（防御性编程）
 	const validation = validatePasswordStrength(password);
 	if (!validation.valid) {
@@ -155,7 +155,7 @@ async function hashPassword(password) {
  * @param {Object} env - 环境变量对象（可选，用于日志）
  * @returns {Promise<boolean>} 是否匹配
  */
-async function verifyPassword(password, storedHash, env = null) {
+export async function verifyPassword(password, storedHash, env = null) {
 	try {
 		// 分离盐值和哈希值
 		const [saltB64, hashB64] = storedHash.split('$');

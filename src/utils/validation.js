@@ -253,7 +253,7 @@ export const restoreBackupSchema = new Schema({
 		type: 'string',
 		message: '备份键不能为空',
 		validator: (v) => {
-			if (!v.startsWith('backup_') || !v.endsWith('.json')) {
+			if (!/^backup_\d{4}-\d{2}-\d{2}(?:_[\w-]+)?\.json$/.test(v)) {
 				return '备份文件名格式不正确，应为 backup_YYYY-MM-DD_HH-MM-SS-mmm-xxxx.json';
 			}
 			return true;

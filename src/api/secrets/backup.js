@@ -95,13 +95,17 @@ export async function handleBackupSecrets(request, env, ctx) {
 			await env.SECRETS_KV.put(backupKey, backupContent);
 
 			// WebDAV 自动推送（通过 ctx.waitUntil 托管，不阻塞响应且保证执行完成）
-			const webdavPromise = pushToWebDAV(backupKey, backupContent, env);
+			const webdavPromise = pushToWebDAV(backupKey, backupContent, env).catch((err) => {
+				logger.warn('WebDAV 推送异常（不影响备份）', {}, err);
+			});
 			if (ctx) {
 				ctx.waitUntil(webdavPromise);
 			}
 
 			// S3 自动推送
-			const s3Promise = pushToS3(backupKey, backupContent, env);
+			const s3Promise = pushToS3(backupKey, backupContent, env).catch((err) => {
+				logger.warn('S3 推送异常（不影响备份）', {}, err);
+			});
 			if (ctx) {
 				ctx.waitUntil(s3Promise);
 			}
@@ -157,7 +161,8 @@ export async function handleBackupSecrets(request, env, ctx) {
 function parseBackupTimeFromKey(keyName) {
 	try {
 		// 解析 backup_2025-09-14_07-52-16-123.json（含毫秒）或 backup_2025-09-14_07-52-16.json 格式
-		const match = keyName.match(/backup_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-(\d{3}))?(?:-[a-z0-9]{4})?\.json/);
+		// 兼容 BackupManager 生成的 -UTC-xxxx 后缀和旧格式的 -xxxx 后缀
+		const match = keyName.match(/backup_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-(\d{3}))?(?:-UTC)?(?:-[a-z0-9]{2,6})?\.json/);
 		if (match) {
 			const dateStr = match[1]; // 2025-09-14
 			const timeStr = match[2]; // 07-52-16
