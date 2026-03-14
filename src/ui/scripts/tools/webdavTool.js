@@ -11,14 +11,19 @@ export function getWebdavToolCode() {
 	return `
     // ==================== WebDAV 同步工具（多目标） ====================
 
-    function showWebdavModal() {
+    let _webdavOnClose = null;
+
+    function showWebdavModal(onClose) {
+      _webdavOnClose = typeof onClose === 'function' ? onClose : null;
       showModal('webdavModal', () => {
         loadWebdavDestinations();
       });
     }
 
     function hideWebdavModal() {
-      hideModal('webdavModal');
+      const onClose = _webdavOnClose;
+      _webdavOnClose = null;
+      hideModal('webdavModal', onClose);
     }
 
     async function loadWebdavDestinations() {

@@ -178,7 +178,7 @@ function getHTMLBody() {
   
   
   <!-- 二维码扫描器模态框 -->
-  <div id="qrScanModal" class="modal">
+  <div id="qrScanModal" class="modal fab-modal">
     <div class="modal-content">
       <div class="modal-header">
         <h2>📷 扫描二维码添加密钥</h2>
@@ -225,7 +225,7 @@ function getHTMLBody() {
   </div>
   
   <!-- 添加/编辑密钥模态框 -->
-  <div id="secretModal" class="modal">
+  <div id="secretModal" class="modal fab-modal">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="modalTitle">添加新密钥</h2>
@@ -320,7 +320,7 @@ function getHTMLBody() {
   </div>
 
   <!-- 批量导入模态框 -->
-  <div id="importModal" class="modal">
+  <div id="importModal" class="modal fab-modal">
     <div class="modal-content import-modal-compact">
       <div class="modal-header">
         <h2>📥 批量导入密钥</h2>
@@ -399,7 +399,7 @@ function getHTMLBody() {
   </div>
 
   <!-- 还原配置模态框 -->
-  <div id="restoreModal" class="modal">
+  <div id="restoreModal" class="modal fab-modal">
     <div class="modal-content">
       <div class="modal-header">
         <h2>🔄 还原配置</h2>
@@ -447,7 +447,7 @@ function getHTMLBody() {
   </div>
   
   <!-- 实用工具模态框 -->
-  <div id="toolsModal" class="modal">
+  <div id="toolsModal" class="modal fab-modal">
     <div class="modal-content">
       <div class="modal-header">
         <h2>🔧 实用工具</h2>
@@ -507,7 +507,7 @@ function getHTMLBody() {
   </div>
 
   <!-- 二维码生成工具模态框 -->
-  <div id="qrGenerateModal" class="modal">
+  <div id="qrGenerateModal" class="modal fab-modal">
     <div class="modal-content">
       <div class="modal-header">
         <h2>🔄 二维码生成</h2>
@@ -543,7 +543,7 @@ function getHTMLBody() {
   </div>
   
   <!-- Base32编解码工具模态框 -->
-  <div id="base32Modal" class="modal">
+  <div id="base32Modal" class="modal fab-modal">
     <div class="modal-content">
       <div class="modal-header">
         <h2>🔐 Base32 编解码</h2>
@@ -593,7 +593,7 @@ function getHTMLBody() {
   </div>
   
   <!-- 时间戳工具模态框 -->
-  <div id="timestampModal" class="modal">
+  <div id="timestampModal" class="modal fab-modal">
     <div class="modal-content">
       <div class="modal-header">
         <h2>⏱️ 时间戳工具</h2>
@@ -639,7 +639,7 @@ function getHTMLBody() {
   </div>
   
   <!-- 密钥检查器模态框 -->
-  <div id="keyCheckModal" class="modal">
+  <div id="keyCheckModal" class="modal fab-modal">
     <div class="modal-content">
       <div class="modal-header">
         <h2>✅ 密钥检查器</h2>
@@ -672,7 +672,7 @@ function getHTMLBody() {
   </div>
   
   <!-- 二维码解析工具模态框 -->
-  <div id="qrDecodeModal" class="modal">
+  <div id="qrDecodeModal" class="modal fab-modal">
     <div class="modal-content">
       <div class="modal-header">
         <h2>🔍 二维码解析</h2>
@@ -726,7 +726,7 @@ function getHTMLBody() {
   </div>
   
   <!-- 密钥生成器模态框 -->
-  <div id="keyGeneratorModal" class="modal">
+  <div id="keyGeneratorModal" class="modal fab-modal">
     <div class="modal-content">
       <div class="modal-header">
         <h2>🎲 密钥生成器</h2>
@@ -762,7 +762,7 @@ function getHTMLBody() {
   </div>
 
   <!-- WebDAV 同步配置模态框 -->
-  <div id="webdavModal" class="modal">
+  <div id="webdavModal" class="modal fab-modal">
     <div class="modal-content">
       <div class="modal-header">
         <h2>☁️ WebDAV 同步</h2>
@@ -823,7 +823,7 @@ function getHTMLBody() {
   </div>
 
   <!-- S3 同步配置模态框 -->
-  <div id="s3Modal" class="modal">
+  <div id="s3Modal" class="modal fab-modal">
     <div class="modal-content">
       <div class="modal-header">
         <h2>🪣 S3 同步</h2>
@@ -894,7 +894,7 @@ function getHTMLBody() {
   </div>
 
   <!-- 设置模态框 -->
-  <div id="settingsModal" class="modal">
+  <div id="settingsModal" class="modal fab-modal-lg">
     <div class="modal-content settings-modal-content">
       <div class="modal-header">
         <h2>设置</h2>
@@ -1070,7 +1070,7 @@ function getHTMLBody() {
   </div>
 
   <!-- 导出格式选择模态框 -->
-  <div id="exportFormatModal" class="modal">
+  <div id="exportFormatModal" class="modal fab-modal">
     <div class="modal-content export-modal-compact">
       <div class="modal-header">
         <h2>选择导出格式</h2>
@@ -1238,7 +1238,7 @@ function getHTMLBody() {
   </div>
 
   <!-- 二级格式选择模态框 -->
-  <div id="subFormatModal" class="modal">
+  <div id="subFormatModal" class="modal fab-modal-sm">
     <div class="modal-content sub-format-modal">
       <div class="modal-header">
         <h2 id="subFormatTitle">选择导出格式</h2>
@@ -1251,8 +1251,8 @@ function getHTMLBody() {
   </div>
 
   <!-- FreeOTP 原版导出密码模态框 -->
-  <div id="freeotpExportModal" class="modal">
-    <div class="modal-content" style="max-width: 400px;">
+  <div id="freeotpExportModal" class="modal fab-modal-sm">
+    <div class="modal-content">
       <div class="modal-header">
         <h2>🔒 FreeOTP 加密导出</h2>
         <button class="close-btn" onclick="hideFreeOTPExportModal()">&times;</button>
@@ -1281,8 +1281,8 @@ function getHTMLBody() {
   </div>
 
   <!-- TOTP Authenticator 导出密码模态框 -->
-  <div id="totpAuthExportModal" class="modal">
-    <div class="modal-content" style="max-width: 400px;">
+  <div id="totpAuthExportModal" class="modal fab-modal-sm">
+    <div class="modal-content">
       <div class="modal-header">
         <h2>⏱️ TOTP Authenticator 加密导出</h2>
         <button class="close-btn" onclick="hideTOTPAuthExportModal()">&times;</button>
@@ -1311,8 +1311,8 @@ function getHTMLBody() {
   </div>
 
   <!-- 备份导出格式选择模态框 -->
-  <div id="backupExportFormatModal" class="modal">
-    <div class="modal-content" style="max-width: 600px;">
+  <div id="backupExportFormatModal" class="modal fab-modal">
+    <div class="modal-content">
       <div class="modal-header">
         <h2>📤 选择备份导出格式</h2>
         <button class="close-btn" onclick="hideBackupExportFormatModal()">&times;</button>
@@ -1378,29 +1378,29 @@ function getHTMLBody() {
   </div>
 
   <!-- 登录模态框 -->
-  <div id="loginModal" class="modal" style="display: none;">
-    <div class="modal-content" style="max-width: 400px;">
-      <h2 style="text-align: center; margin-bottom: 10px; color: var(--text-primary);">🔐 身份验证</h2>
-      <p style="text-align: center; color: var(--text-secondary); margin-bottom: 20px; font-size: 14px;">
+  <div id="loginModal" class="modal login-modal">
+    <div class="modal-content login-modal-content">
+      <h2 class="login-modal-title">🔐 身份验证</h2>
+      <p class="login-modal-description">
         请输入密码以管理密钥<br>
-        <small style="color: var(--text-tertiary);">或点击"取消"使用 OTP 生成功能</small>
+        <small class="login-modal-hint">或点击"取消"使用 OTP 生成功能</small>
       </p>
       <div class="form-group">
         <label for="loginToken">密码</label>
         <input type="password" id="loginToken" placeholder="请输入您的密码" autocomplete="current-password" name="password">
-        <div style="font-size: 12px; color: var(--text-tertiary); margin-top: 5px;">
+        <div class="login-modal-hint">
           提示：输入您设置的密码
         </div>
       </div>
-      <div class="button-group" style="margin-top: 20px; display: flex; gap: 10px;">
-        <button onclick="window.location.href='/otp'" class="btn-secondary" style="flex: 1; padding: 14px 28px; font-size: 16px; font-weight: 600;">
+      <div class="button-group login-modal-actions">
+        <button onclick="window.location.href='/otp'" class="btn btn-secondary login-modal-cancel-btn">
           取消
         </button>
-        <button onclick="handleLoginSubmit()" class="btn-primary" style="flex: 1; padding: 14px 28px; font-size: 16px; font-weight: 600;">
+        <button onclick="handleLoginSubmit()" class="btn btn-primary login-modal-submit-btn">
           登录
         </button>
       </div>
-      <div id="loginError" style="display: none; margin-top: 15px; padding: 10px; background: var(--danger-light); border-radius: 8px; color: var(--danger-dark); font-size: 14px; text-align: center;"></div>
+      <div id="loginError" class="login-modal-error"></div>
     </div>
   </div>
 
@@ -1457,13 +1457,13 @@ function getHTMLBody() {
         <span class="item-icon">🔄</span>
         <span class="item-text">还原配置</span>
       </div>
-      <div class="submenu-item" onclick="showSettingsModal(); closeActionMenu();">
-        <span class="item-icon">⚙️</span>
-        <span class="item-text">设置</span>
-      </div>
       <div class="submenu-item" onclick="showToolsModal(); closeActionMenu();">
         <span class="item-icon">🔧</span>
         <span class="item-text">实用工具</span>
+      </div>
+      <div class="submenu-item" onclick="showSettingsModal(); closeActionMenu();">
+        <span class="item-icon">⚙️</span>
+        <span class="item-text">系统设置</span>
       </div>
     </div>
   </div>

@@ -24,6 +24,11 @@ export function createQuickOtpPage(otp, options = {}) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>2FA OTP Generator</title>
     <style>
+      :root {
+        --quick-primary: #2196f3;
+        --quick-success: #4caf50;
+      }
+
       body {
         font-family: monospace;
         display: flex;
@@ -44,20 +49,20 @@ export function createQuickOtpPage(otp, options = {}) {
         font-weight: bold;
         letter-spacing: 8px;
         margin: 20px 0;
-        color: #4CAF50;
+        color: var(--quick-success);
         cursor: pointer;
         user-select: none;
-        transition: transform 0.1s;
+        transition: color 0.1s ease, opacity 0.1s ease;
       }
       .token:hover {
-        transform: scale(1.05);
+        color: var(--quick-primary);
       }
       .token:active {
-        transform: scale(0.95);
+        opacity: 0.8;
       }
       .copied-message {
         font-size: 14px;
-        color: #4CAF50;
+        color: var(--quick-success);
         opacity: 0;
         transition: opacity 0.3s;
         margin-top: 10px;

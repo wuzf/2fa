@@ -17,14 +17,19 @@ export function getS3ToolCode() {
       return div.innerHTML;
     }
 
-    function showS3Modal() {
+    let _s3OnClose = null;
+
+    function showS3Modal(onClose) {
+      _s3OnClose = typeof onClose === 'function' ? onClose : null;
       showModal('s3Modal', () => {
         loadS3Destinations();
       });
     }
 
     function hideS3Modal() {
-      hideModal('s3Modal');
+      const onClose = _s3OnClose;
+      _s3OnClose = null;
+      hideModal('s3Modal', onClose);
     }
 
     async function loadS3Destinations() {

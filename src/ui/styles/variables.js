@@ -45,6 +45,21 @@ export function getVariables() {
       --primary-800: #1565c0;
       --primary-900: #0d47a1;
 
+      /* 圆角 */
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+
+      /* 品牌映射 */
+      --primary: var(--primary-500);
+      --primary-rgb: 33, 150, 243;
+      --action-btn-bg: var(--primary-600);
+      --action-btn-hover: var(--primary-700);
+      --action-btn-shadow: 0 4px 12px rgba(33, 150, 243, 0.30);
+      --qr-btn-color: var(--primary-600);
+      --qr-btn-hover-bg: var(--primary-600);
+      --progress-mini-fill: #8B5CF6;
+
       /* 功能色 */
       --success-light: #e8f5e8;
       --success: #4caf50;
@@ -136,6 +151,9 @@ export function getVariables() {
       --modal-border: #e9ecef;
       --modal-overlay: rgba(0, 0, 0, 0.8);
       --modal-header-border: #e9ecef;
+      --fab-modal-max-width: 600px;
+      --fab-modal-sm-max-width: 450px;
+      --fab-modal-lg-max-width: 680px;
 
       /* 进度条 */
       --progress-bg: #e9ecef;
@@ -165,7 +183,7 @@ export function getVariables() {
       --menu-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 
       /* 导入相关 */
-      --import-instructions-bg: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      --import-instructions-bg: var(--gray-50);
       --import-instructions-border: #e9ecef;
       --import-method-bg: #ffffff;
       --import-method-border: #dee2e6;
@@ -173,18 +191,18 @@ export function getVariables() {
       --import-example-bg: #fff3cd;
       --import-example-text: #856404;
       --import-example-border: #ffeaa7;
-      --import-file-bg: linear-gradient(135deg, #f8f9fa 0%, #e3f2fd 100%);
+      --import-file-bg: var(--primary-50);
       --import-file-border: #17a2b8;
 
       /* 还原配置 */
-      --restore-instructions-bg: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+      --restore-instructions-bg: var(--warning-light);
       --restore-instructions-border: #ff9800;
       --restore-warning-bg: rgba(255, 255, 255, 0.7);
       --restore-warning-text: #d84315;
       --restore-warning-border: rgba(216, 67, 21, 0.2);
 
       /* 备份列表 */
-      --backup-header-bg: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+      --backup-header-bg: var(--primary-50);
       --backup-header-border: #2196f3;
       --backup-header-text: #1976d2;
       --backup-select-bg: #ffffff;
@@ -192,17 +210,17 @@ export function getVariables() {
 
       /* 备份表格 */
       --table-bg: #ffffff;
-      --table-header-bg: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%);
+      --table-header-bg: var(--success);
       --table-header-text: #ffffff;
       --table-header-border: #388e3c;
       --table-border: #e0e0e0;
-      --table-row-hover: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      --table-row-hover: var(--bg-hover);
 
       /* 工具 */
       --tool-bg: #ffffff;
       --tool-border: #e9ecef;
       --tool-hover-bg: #f8f9fa;
-      --tool-icon-bg: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      --tool-icon-bg: var(--gray-50);
       --tool-icon-border: #dee2e6;
 
       /* Toast 提示 */
@@ -340,7 +358,7 @@ export function getVariables() {
       --menu-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 
       /* 导入相关 */
-      --import-instructions-bg: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+      --import-instructions-bg: #2d3748;
       --import-instructions-border: #4a5568;
       --import-method-bg: #1a202c;
       --import-method-border: #4a5568;
@@ -348,18 +366,18 @@ export function getVariables() {
       --import-example-bg: #744210;
       --import-example-text: #fbd38d;
       --import-example-border: #ed8936;
-      --import-file-bg: linear-gradient(135deg, #1e3a5f 0%, #2d4a6f 100%);
+      --import-file-bg: #1e3a5f;
       --import-file-border: #2196f3;
 
       /* 还原配置 */
-      --restore-instructions-bg: linear-gradient(135deg, #3a2a1a 0%, #4a3a2a 100%);
+      --restore-instructions-bg: #3a2a1a;
       --restore-instructions-border: #ff9800;
       --restore-warning-bg: rgba(0, 0, 0, 0.3);
       --restore-warning-text: #ffab91;
       --restore-warning-border: rgba(255, 87, 34, 0.3);
 
       /* 备份列表 */
-      --backup-header-bg: linear-gradient(135deg, #1e3a5f 0%, #2d4a6f 100%);
+      --backup-header-bg: #1e3a5f;
       --backup-header-border: #2196f3;
       --backup-header-text: #42a5f5;
       --backup-select-bg: #1a1a1a;
@@ -367,17 +385,17 @@ export function getVariables() {
 
       /* 备份表格 */
       --table-bg: #1a1a1a;
-      --table-header-bg: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
+      --table-header-bg: #1b5e20;
       --table-header-text: #ffffff;
       --table-header-border: #2e7d32;
       --table-border: #333333;
-      --table-row-hover: linear-gradient(135deg, #2a2a2a 0%, #3a3a3a 100%);
+      --table-row-hover: var(--bg-hover);
 
       /* 工具 */
       --tool-bg: #2d3748;
       --tool-border: #4a5568;
       --tool-hover-bg: #4a5568;
-      --tool-icon-bg: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+      --tool-icon-bg: #4a5568;
       --tool-icon-border: #4a5568;
 
       /* Toast 提示 */

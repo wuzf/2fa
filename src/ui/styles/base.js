@@ -75,7 +75,6 @@ export function getBaseStyles() {
     }
 
     .back-to-top:hover {
-      transform: translateY(-2px) scale(1.05);
       box-shadow: var(--shadow-lg);
       background: var(--back-to-top-hover);
     }
@@ -90,10 +89,6 @@ export function getBaseStyles() {
       line-height: 1;
       transition: transform 0.3s ease;
       color: var(--back-to-top-text);
-    }
-
-    .back-to-top:hover .back-to-top-icon {
-      transform: translateY(-2px);
     }
 
     /* 主题切换按钮 */
@@ -135,7 +130,6 @@ export function getBaseStyles() {
     }
 
     .theme-toggle-float:hover {
-      transform: translateY(-2px) scale(1.05);
       box-shadow: var(--shadow-lg);
       background: var(--theme-toggle-hover);
     }
@@ -185,7 +179,7 @@ export function getBaseStyles() {
       align-items: center;
       background: var(--search-bg);
       border: 2px solid var(--search-border);
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       padding: 0;
       transition: border-color 0.2s ease;
       box-shadow: none;
@@ -292,7 +286,7 @@ export function getBaseStyles() {
     .sort-select {
       padding: 10px 12px;
       border: 2px solid var(--border-primary);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       background: var(--input-bg-focus);
       color: var(--text-primary);
       font-size: 14px;
@@ -322,7 +316,7 @@ export function getBaseStyles() {
     }
 
     .main-action-button {
-      background: #8e44ad;  /* 品牌紫色 - 保持不变 */
+      background: #8e44ad;
       color: white;
       border: none;
       width: 48px;
@@ -334,7 +328,7 @@ export function getBaseStyles() {
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(142, 68, 173, 0.3);
+      box-shadow: var(--action-btn-shadow);
       -webkit-tap-highlight-color: transparent;
       -webkit-touch-callout: none;
       -webkit-user-select: none;
@@ -345,9 +339,8 @@ export function getBaseStyles() {
     }
 
     .main-action-button:hover {
-      background: #7d3c98;  /* 品牌紫色hover - 保持不变 */
-      transform: translateY(-2px) scale(1.05);
-      box-shadow: 0 6px 20px rgba(142, 68, 173, 0.4);
+      background: #7d3c98;
+      box-shadow: var(--shadow-lg);
     }
 
     .main-action-button:active {
@@ -374,8 +367,11 @@ export function getBaseStyles() {
       border: 1px solid var(--menu-border);
       opacity: 0;
       visibility: hidden;
-      transform: translateY(-10px) scale(0.95);
-      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      transform: translateY(-8px);
+      transition:
+        opacity 0.2s ease,
+        visibility 0.2s ease,
+        transform 0.2s ease;
       z-index: 1000;
       min-width: 180px;
       overflow: hidden;
@@ -385,7 +381,7 @@ export function getBaseStyles() {
     .action-submenu.show {
       opacity: 1;
       visibility: visible;
-      transform: translateY(0) scale(1);
+      transform: translateY(0);
     }
 
     .submenu-item {
@@ -406,11 +402,6 @@ export function getBaseStyles() {
 
     .action-submenu.show .submenu-item:hover {
       background: var(--menu-item-hover);
-      transform: translateX(4px);
-    }
-
-    .action-submenu.show .submenu-item:active {
-      transform: translateX(2px) scale(0.98);
     }
 
     .item-icon {
@@ -429,69 +420,33 @@ export function getBaseStyles() {
 
     /* 为每个菜单项添加特色颜色 - 根据新顺序调整 */
     .action-submenu.show .submenu-item:nth-child(1):hover {
-      background: linear-gradient(135deg, var(--primary-50) 0%, var(--primary-100) 100%);
-      color: var(--primary-500);
+      background: var(--primary-50);
+      color: var(--primary-600);
     }
 
     .action-submenu.show .submenu-item:nth-child(2):hover {
-      background: linear-gradient(135deg, var(--success-light) 0%, #d4f1d4 100%);
-      color: var(--success);
+      background: var(--success-light);
+      color: var(--success-dark);
     }
 
     .action-submenu.show .submenu-item:nth-child(3):hover {
-      background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
-      color: #9c27b0;
+      background: var(--info-light);
+      color: var(--info-dark);
     }
 
     .action-submenu.show .submenu-item:nth-child(4):hover {
-      background: linear-gradient(135deg, var(--warning-light) 0%, #ffe0b2 100%);
-      color: var(--warning);
+      background: var(--warning-light);
+      color: var(--warning-dark);
     }
 
     .action-submenu.show .submenu-item:nth-child(5):hover {
-      background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-      color: #1976d2;
+      background: var(--primary-50);
+      color: var(--primary-700);
     }
 
     .action-submenu.show .submenu-item:nth-child(6):hover {
-      background: linear-gradient(135deg, #fce4ec 0%, #f8bbd9 100%);
-      color: #c2185b;
-    }
-
-    /* 子菜单项的入场动画 */
-    .action-submenu .submenu-item {
-      transform: translateX(-20px);
-      opacity: 0;
-      transition: all 0.3s ease;
-    }
-
-    .action-submenu.show .submenu-item {
-      transform: translateX(0);
-      opacity: 1;
-    }
-
-    .action-submenu.show .submenu-item:nth-child(1) {
-      transition-delay: 0.05s;
-    }
-
-    .action-submenu.show .submenu-item:nth-child(2) {
-      transition-delay: 0.1s;
-    }
-
-    .action-submenu.show .submenu-item:nth-child(3) {
-      transition-delay: 0.15s;
-    }
-
-    .action-submenu.show .submenu-item:nth-child(4) {
-      transition-delay: 0.2s;
-    }
-
-    .action-submenu.show .submenu-item:nth-child(5) {
-      transition-delay: 0.25s;
-    }
-
-    .action-submenu.show .submenu-item:nth-child(6) {
-      transition-delay: 0.3s;
+      background: var(--danger-light);
+      color: var(--danger-dark);
     }
 
     /* 背景遮罩 */
@@ -539,7 +494,7 @@ export function getBaseStyles() {
 
     @media (max-width: 480px) {
       .search-input-wrapper {
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
       }
 
       .search-icon {
@@ -568,7 +523,7 @@ export function getBaseStyles() {
         padding: 9px 12px;
         font-size: 14px;
         height: 42px;
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
       }
 
       .action-menu-float {

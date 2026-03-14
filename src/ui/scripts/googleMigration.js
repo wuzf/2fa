@@ -409,12 +409,11 @@ export function getGoogleMigrationCode() {
       // 创建导出选择模态框
       const modal = document.createElement('div');
       modal.id = 'exportToGoogleModal';
-      modal.className = 'modal';
+      modal.className = 'modal fab-modal';
       modal.style.display = 'flex';
 
       const content = document.createElement('div');
-      content.className = 'modal-content';
-      content.style.maxWidth = '500px';
+      content.className = 'modal-content fab-modal-content';
       content.style.maxHeight = '80vh';
       content.style.overflow = 'auto';
 
@@ -531,7 +530,7 @@ export function getGoogleMigrationCode() {
       if (!modal) {
         modal = document.createElement('div');
         modal.id = 'exportQRCodeModal';
-        modal.className = 'modal';
+        modal.className = 'modal fab-modal-sm';
         modal.style.display = 'flex';
         document.body.appendChild(modal);
       }
@@ -541,7 +540,7 @@ export function getGoogleMigrationCode() {
       const totalSecrets = batches.reduce(function(sum, b) { return sum + b.length; }, 0);
 
       modal.innerHTML =
-        '<div class="modal-content" style="max-width: 400px; text-align: center;">' +
+        '<div class="modal-content fab-modal-sm-content" style="text-align: center;">' +
           '<div class="modal-header">' +
             '<h2>📱 扫描导入到 Google Authenticator</h2>' +
             '<button class="close-btn" onclick="closeExportQRCodeModal()">&times;</button>' +
@@ -619,12 +618,11 @@ export function getGoogleMigrationCode() {
       // 创建预览模态框
       const modal = document.createElement('div');
       modal.id = 'migrationPreviewModal';
-      modal.className = 'modal';
+      modal.className = 'modal fab-modal';
       modal.style.display = 'flex';
 
       const content = document.createElement('div');
-      content.className = 'modal-content';
-      content.style.maxWidth = '500px';
+      content.className = 'modal-content fab-modal-content';
       content.style.maxHeight = '80vh';
       content.style.overflow = 'auto';
 
@@ -683,12 +681,11 @@ export function getGoogleMigrationCode() {
       // 创建结果模态框
       const modal = document.createElement('div');
       modal.id = 'importResultModal';
-      modal.className = 'modal';
+      modal.className = 'modal fab-modal-sm';
       modal.style.display = 'flex';
 
       const content = document.createElement('div');
-      content.className = 'modal-content';
-      content.style.maxWidth = '450px';
+      content.className = 'modal-content fab-modal-sm-content';
       content.style.maxHeight = '80vh';
       content.style.overflow = 'auto';
 

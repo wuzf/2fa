@@ -24,7 +24,7 @@ export function getModalStyles() {
     .modal-content {
       background: var(--modal-bg);
       border: 1px solid var(--modal-border);
-      border-radius: 20px;
+      border-radius: var(--radius-lg);
       padding: 30px;
       max-width: 600px;
       width: 100%;
@@ -40,6 +40,22 @@ export function getModalStyles() {
       scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
     }
 
+    /* FAB 链路弹窗统一宽度 */
+    .fab-modal .modal-content,
+    .modal-content.fab-modal-content {
+      max-width: var(--fab-modal-max-width, 600px);
+    }
+
+    .fab-modal-sm .modal-content,
+    .modal-content.fab-modal-sm-content {
+      max-width: var(--fab-modal-sm-max-width, 450px);
+    }
+
+    .fab-modal-lg .modal-content,
+    .modal-content.fab-modal-lg-content {
+      max-width: var(--fab-modal-lg-max-width, 680px);
+    }
+
     /* 模态框滚动条样式 */
     .modal-content::-webkit-scrollbar {
       width: 8px;
@@ -47,12 +63,12 @@ export function getModalStyles() {
 
     .modal-content::-webkit-scrollbar-track {
       background: var(--scrollbar-track);
-      border-radius: 20px;
+      border-radius: var(--radius-lg);
     }
 
     .modal-content::-webkit-scrollbar-thumb {
       background: var(--scrollbar-thumb);
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       border: 2px solid transparent;
       background-clip: content-box;
     }
@@ -82,7 +98,7 @@ export function getModalStyles() {
       background: var(--primary);
       color: white;
       padding: 16px 32px;
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       font-size: 16px;
       font-weight: 600;
       z-index: 999999;
@@ -152,7 +168,6 @@ export function getModalStyles() {
     .close-btn:hover {
       color: var(--danger-dark);
       background: var(--danger-light);
-      transform: scale(1.1);
     }
 
     .form-group {
@@ -171,7 +186,7 @@ export function getModalStyles() {
       width: 100%;
       padding: 14px 16px;
       border: 2px solid var(--input-border);
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       font-size: 16px;
       transition: all 0.3s ease;
       background: var(--input-bg);
@@ -189,7 +204,7 @@ export function getModalStyles() {
       width: 100%;
       padding: 14px 16px;
       border: 2px solid var(--input-border);
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       font-size: 16px;
       background: var(--input-bg-focus);
       color: var(--input-text);
@@ -207,7 +222,7 @@ export function getModalStyles() {
     .form-section {
       margin: 25px 0;
       border: 2px solid var(--border-primary);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       overflow: hidden;
       background: var(--bg-secondary);
       box-shadow: var(--shadow-sm);
@@ -216,7 +231,6 @@ export function getModalStyles() {
 
     .form-section:hover {
       border-color: var(--border-focus);
-      box-shadow: var(--shadow-md);
     }
 
     .section-header {
@@ -289,7 +303,7 @@ export function getModalStyles() {
       font-size: 14px;
       padding: 12px 16px;
       border: 2px solid var(--input-border);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       background: var(--input-bg-focus);
       color: var(--input-text);
       transition: all 0.3s ease;
@@ -314,7 +328,7 @@ export function getModalStyles() {
       color: var(--text-secondary);
       background: var(--info-light);
       padding: 14px 16px;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       border-left: 4px solid var(--border-focus);
       margin-top: 15px;
       line-height: 1.5;
@@ -345,7 +359,7 @@ export function getModalStyles() {
     @media (max-width: 480px) {
       .form-section {
         margin: 20px 0;
-        border-radius: 10px;
+        border-radius: var(--radius-md);
       }
 
       .form-group-small select,
@@ -372,7 +386,7 @@ export function getModalStyles() {
     .btn {
       padding: 14px 24px;
       border: none;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       font-size: 15px;
       font-weight: 500;
       cursor: pointer;
@@ -402,6 +416,64 @@ export function getModalStyles() {
       background: var(--btn-secondary-hover);
     }
 
+    /* 登录模态框 */
+    .login-modal {
+      z-index: 100001;
+    }
+
+    .login-modal-content {
+      max-width: 400px;
+    }
+
+    .login-modal-title {
+      text-align: center;
+      margin-bottom: 10px;
+      color: var(--text-primary);
+    }
+
+    .login-modal-description {
+      text-align: center;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .login-modal-hint {
+      color: var(--text-tertiary);
+      font-size: 12px;
+    }
+
+    .form-group .login-modal-hint {
+      display: block;
+      margin-top: 5px;
+    }
+
+    .login-modal-actions {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .login-modal-error {
+      display: none;
+      margin-top: 15px;
+      padding: 10px;
+      background: var(--danger-light);
+      border-radius: var(--radius-sm);
+      color: var(--danger-dark);
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .login-modal-cancel-btn,
+    .login-modal-submit-btn {
+      flex: 1;
+      padding: 14px 28px;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
     .empty-state {
       text-align: center;
       padding: 40px 20px;
@@ -422,7 +494,7 @@ export function getModalStyles() {
     /* 导入模态框样式 */
     .import-instructions {
       background: var(--import-instructions-bg);
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       padding: 20px;
       margin-bottom: 25px;
       border: 1px solid var(--import-instructions-border);
@@ -443,7 +515,7 @@ export function getModalStyles() {
     .import-method {
       background: var(--import-method-bg);
       border: 1px solid var(--import-method-border);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       padding: 12px 15px;
       margin-bottom: 10px;
       font-size: 14px;
@@ -459,35 +531,16 @@ export function getModalStyles() {
     .file-import-section {
       background: var(--import-file-bg);
       border: 2px dashed var(--import-file-border);
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       padding: 25px;
       text-align: center;
       margin-bottom: 25px;
       transition: all 0.3s ease;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .file-import-section::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: linear-gradient(45deg, transparent 30%, rgba(23, 162, 184, 0.05) 50%, transparent 70%);
-      transform: translateX(-100%);
-      transition: transform 0.6s ease;
-    }
-
-    .file-import-section:hover::before {
-      transform: translateX(100%);
     }
 
     .file-import-section:hover {
       border-color: var(--info-dark);
       background: var(--import-file-bg);
-      transform: translateY(-2px);
       box-shadow: var(--shadow-md);
     }
 
@@ -501,7 +554,7 @@ export function getModalStyles() {
     .import-example {
       background: var(--import-example-bg);
       border: 1px solid var(--import-example-border);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       padding: 12px;
       font-size: 13px;
       margin-top: 12px;
@@ -511,7 +564,7 @@ export function getModalStyles() {
     .import-example code {
       background: var(--card-bg);
       padding: 4px 6px;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
       word-break: break-all;
       display: block;
@@ -523,7 +576,7 @@ export function getModalStyles() {
     /* 实用工具模态框样式 */
     .tools-list {
       background: var(--tool-bg);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       overflow: hidden;
       margin-top: 20px;
     }
@@ -543,12 +596,10 @@ export function getModalStyles() {
 
     .tool-item:hover {
       background-color: var(--tool-hover-bg);
-      transform: translateX(5px);
     }
 
     .tool-item:active {
       background-color: var(--bg-active);
-      transform: translateX(2px);
     }
 
     .tool-icon {
@@ -561,7 +612,7 @@ export function getModalStyles() {
       justify-content: center;
       flex-shrink: 0;
       background: var(--tool-icon-bg);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       border: 1px solid var(--tool-icon-border);
     }
 
@@ -592,11 +643,11 @@ export function getModalStyles() {
     .import-file-btn {
       font-size: 15px;
       padding: 12px 20px;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
     }
 
     .import-textarea {
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       border: 2px solid var(--input-border);
       font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
       font-size: 13px;
@@ -622,13 +673,13 @@ export function getModalStyles() {
 
     .import-form-actions .btn {
       padding: 12px 20px;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       font-size: 14px;
     }
 
     .import-preview {
       background: var(--import-instructions-bg);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       padding: 20px;
       margin: 20px 0;
       border: 1px solid var(--import-instructions-border);
@@ -647,12 +698,12 @@ export function getModalStyles() {
 
     .import-preview::-webkit-scrollbar-track {
       background: var(--scrollbar-track);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
     }
 
     .import-preview::-webkit-scrollbar-thumb {
       background: var(--scrollbar-thumb);
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       border: 2px solid transparent;
       background-clip: content-box;
     }
@@ -680,7 +731,7 @@ export function getModalStyles() {
     .import-preview-item {
       background: var(--card-bg);
       border: 1px solid var(--border-secondary);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       padding: 12px 15px;
       margin-bottom: 10px;
       font-size: 14px;
@@ -689,7 +740,6 @@ export function getModalStyles() {
     }
 
     .import-preview-item:hover {
-      transform: translateY(-1px);
       box-shadow: var(--shadow-md);
     }
 
@@ -741,7 +791,7 @@ export function getModalStyles() {
       width: 100%;
       padding: 12px;
       border: 2px solid var(--input-border);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       font-size: 14px;
       font-family: monospace;
       resize: vertical;
@@ -759,7 +809,7 @@ export function getModalStyles() {
 
     .qr-code-container {
       background: var(--bg-secondary);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       padding: 30px;
       margin: 20px 0;
       border: 1px solid var(--border-primary);
@@ -776,7 +826,7 @@ export function getModalStyles() {
       height: auto;
       margin: 0 auto;
       display: block;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       box-shadow: var(--shadow-sm);
     }
 
@@ -785,7 +835,7 @@ export function getModalStyles() {
       height: 200px;
       margin: 0 auto;
       display: block;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       border: 1px solid var(--border-secondary);
       background: var(--card-bg);
       padding: 10px;
@@ -793,7 +843,7 @@ export function getModalStyles() {
 
     .qr-info {
       background: var(--info-light);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       padding: 15px;
       margin: 20px 0;
       font-size: 14px;
@@ -831,7 +881,7 @@ export function getModalStyles() {
         margin-bottom: 20px;
         padding: 12px;
         background: var(--bg-secondary);
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
         border: 1px solid var(--border-primary);
       }
 
@@ -967,7 +1017,7 @@ export function getModalStyles() {
         padding-right: 36px;
         font-size: 13px;
         border: 1px solid var(--table-border);
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
         background: var(--backup-select-bg);
         background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
         background-repeat: no-repeat;
@@ -1077,7 +1127,7 @@ export function getModalStyles() {
 
     /* ==================== 导出格式选择 - 紧凑网格布局 ==================== */
     .export-modal-compact {
-      max-width: 520px;
+      max-width: var(--fab-modal-max-width, 600px);
     }
 
     .export-summary {
@@ -1086,7 +1136,7 @@ export function getModalStyles() {
       align-items: center;
       padding: 12px 16px;
       background: var(--bg-secondary);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       margin-bottom: 20px;
       gap: 12px;
     }
@@ -1155,7 +1205,7 @@ export function getModalStyles() {
       padding: 14px 8px;
       background: var(--bg-primary);
       border: 2px solid var(--border-primary);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       cursor: pointer;
       transition: all 0.2s ease;
       min-height: 72px;
@@ -1164,12 +1214,10 @@ export function getModalStyles() {
     .format-card:hover {
       border-color: var(--success);
       background: var(--bg-hover);
-      transform: translateY(-2px);
       box-shadow: var(--shadow-md);
     }
 
     .format-card:active {
-      transform: translateY(0);
       box-shadow: var(--shadow-sm);
     }
 
@@ -1199,14 +1247,14 @@ export function getModalStyles() {
       margin-top: 4px;
       padding: 2px 6px;
       background: var(--success-light, rgba(76, 175, 80, 0.1));
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       white-space: nowrap;
     }
 
     .format-details {
       margin: 16px 0;
       border: 1px solid var(--border-primary);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       overflow: hidden;
     }
 
@@ -1283,7 +1331,7 @@ export function getModalStyles() {
       .format-card {
         padding: 12px 6px;
         min-height: 68px;
-        border-radius: 10px;
+        border-radius: var(--radius-md);
       }
 
       .format-icon {
@@ -1317,7 +1365,7 @@ export function getModalStyles() {
 
     /* ==================== 导入模态框 - 紧凑优化布局 ==================== */
     .import-modal-compact {
-      max-width: 520px;
+      max-width: var(--fab-modal-max-width, 600px);
     }
 
     /* ==================== 智能输入区样式 ==================== */
@@ -1330,7 +1378,7 @@ export function getModalStyles() {
       min-height: 140px;
       padding: 14px 16px;
       border: 2px dashed var(--import-file-border);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       background: var(--import-file-bg);
       color: var(--text-primary);
       font-size: 14px;
@@ -1389,7 +1437,7 @@ export function getModalStyles() {
       padding: 10px 18px;
       font-size: 14px;
       font-weight: 500;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
     }
 
     .import-file-hint {
@@ -1407,7 +1455,7 @@ export function getModalStyles() {
       padding: 10px 14px;
       background: var(--success-light);
       border: 1px solid var(--success);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       margin-bottom: 12px;
       font-size: 13px;
     }
@@ -1438,7 +1486,7 @@ export function getModalStyles() {
       color: var(--text-tertiary);
       cursor: pointer;
       padding: 4px 8px;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       font-size: 14px;
       transition: all 0.2s;
       flex-shrink: 0;
@@ -1483,7 +1531,7 @@ export function getModalStyles() {
     .import-format-details {
       margin: 8px 0;
       border: 1px solid var(--border-primary);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       overflow: hidden;
     }
 
@@ -1541,7 +1589,7 @@ export function getModalStyles() {
     /* 紧凑预览区 */
     .import-preview-compact {
       background: var(--bg-secondary);
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       padding: 14px;
       margin: 16px 0;
       border: 1px solid var(--border-primary);
@@ -1627,7 +1675,7 @@ export function getModalStyles() {
         min-height: 120px;
         padding: 12px 14px;
         font-size: 13px;
-        border-radius: 10px;
+        border-radius: var(--radius-md);
       }
 
       .import-file-btn-wrapper {
@@ -1712,7 +1760,7 @@ export function getModalStyles() {
 
     /* 二级格式选择模态框 */
     .sub-format-modal {
-      max-width: 450px;
+      max-width: var(--fab-modal-sm-max-width, 450px);
     }
 
     .sub-format-list {
@@ -1729,7 +1777,7 @@ export function getModalStyles() {
       padding: 16px;
       background: var(--bg-primary);
       border: 2px solid var(--border-primary);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       cursor: pointer;
       transition: all 0.2s ease;
     }
@@ -1737,7 +1785,6 @@ export function getModalStyles() {
     .sub-format-option:hover {
       border-color: var(--accent-color);
       background: var(--bg-hover);
-      transform: translateY(-2px);
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
 
@@ -1778,7 +1825,7 @@ export function getModalStyles() {
     /* 二级格式选择 - 移动端适配 */
     @media (max-width: 480px) {
       .sub-format-modal {
-        max-width: 95vw;
+        max-width: 100%;
       }
 
       .sub-format-option {
@@ -1795,7 +1842,7 @@ export function getModalStyles() {
     /* ==================== 设置模态框样式 ==================== */
 
     .settings-modal-content {
-      max-width: 680px;
+      max-width: var(--fab-modal-lg-max-width, 680px);
       padding: 0;
       overflow: hidden;
     }
@@ -1916,7 +1963,7 @@ export function getModalStyles() {
       width: 100%;
       padding: 10px 12px;
       border: 1px solid var(--border-primary);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       background: var(--input-bg, var(--bg-secondary));
       color: var(--text-primary);
       font-size: 14px;
@@ -1931,7 +1978,7 @@ export function getModalStyles() {
 
     .change-password-result {
       padding: 10px 12px;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       font-size: 13px;
       line-height: 1.5;
     }
@@ -1952,7 +1999,7 @@ export function getModalStyles() {
     .sync-card {
       background: var(--bg-secondary);
       border: 1px solid var(--border-primary);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       padding: 16px;
       cursor: pointer;
       transition: all 0.2s ease;
@@ -1995,7 +2042,7 @@ export function getModalStyles() {
     .sync-status {
       font-size: 12px;
       padding: 4px 10px;
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       font-weight: 500;
       flex-shrink: 0;
     }
@@ -2013,7 +2060,7 @@ export function getModalStyles() {
     .settings-info-box {
       margin-top: 16px;
       padding: 12px;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       font-size: 12px;
       color: var(--text-tertiary);
       background: var(--bg-secondary);
@@ -2034,7 +2081,7 @@ export function getModalStyles() {
       padding: 10px 12px;
       background: var(--bg-secondary);
       border: 1px solid var(--border-primary);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       cursor: pointer;
       transition: all 0.2s ease;
     }
@@ -2057,7 +2104,7 @@ export function getModalStyles() {
       width: 100%;
       padding: 10px 12px;
       border: 1px solid var(--border-primary);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       background: var(--input-bg, var(--bg-secondary));
       color: var(--text-primary);
       font-size: 14px;
@@ -2080,7 +2127,7 @@ export function getModalStyles() {
       width: 80px;
       padding: 8px 10px;
       border: 1px solid var(--border-primary);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       background: var(--input-bg, var(--bg-secondary));
       color: var(--text-primary);
       font-size: 14px;

@@ -12,7 +12,7 @@ export function getComponentStyles() {
 
     .secret-card {
       background: var(--card-bg);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       padding: 16px;
       padding-top: 20px;
       border: 1px solid var(--card-border);
@@ -32,7 +32,6 @@ export function getComponentStyles() {
     .secret-card:hover {
       border-color: var(--card-hover-border);
       box-shadow: var(--card-hover-shadow);
-      transform: translateY(-1px);
     }
 
     .secret-header {
@@ -124,7 +123,7 @@ export function getComponentStyles() {
       right: -8px;
       background: var(--menu-bg);
       border: 1px solid var(--menu-border);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       min-width: 80px;
       width: fit-content;
       box-shadow: var(--menu-shadow);
@@ -193,12 +192,12 @@ export function getComponentStyles() {
     }
 
     .qr-btn {
-      border-color: #9b59b6;
-      color: #9b59b6;
+      border-color: var(--qr-btn-color);
+      color: var(--qr-btn-color);
     }
 
     .qr-btn:hover {
-      background: #9b59b6;
+      background: var(--qr-btn-hover-bg);
       color: var(--btn-primary-text);
     }
 
@@ -495,7 +494,7 @@ export function getComponentStyles() {
     }
 
     .dest-toggle input:checked + .dest-toggle-slider {
-      background: var(--primary, #8B5CF6);
+      background: var(--primary);
     }
 
     .dest-toggle input:checked + .dest-toggle-slider:before {
@@ -609,7 +608,6 @@ export function getComponentStyles() {
     }
 
     .pwa-install-btn-float:hover {
-      transform: translateY(-2px) scale(1.05);
       box-shadow: var(--shadow-lg);
       background: var(--theme-toggle-hover);
     }
@@ -639,7 +637,7 @@ export function getComponentStyles() {
       top: 0;
       left: 0;
       right: 0;
-      background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+      background: var(--warning-dark);
       color: white;
       padding: 12px 20px;
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
@@ -658,23 +656,11 @@ export function getComponentStyles() {
 
     .offline-banner-icon {
       font-size: 20px;
-      animation: pulse 2s infinite;
     }
 
     .offline-banner-text {
       font-size: 14px;
       font-weight: 600;
-    }
-
-    @keyframes pulse {
-      0%, 100% {
-        opacity: 1;
-        transform: scale(1);
-      }
-      50% {
-        opacity: 0.8;
-        transform: scale(0.95);
-      }
     }
 
     /* 离线模式下的页面样式调整 */

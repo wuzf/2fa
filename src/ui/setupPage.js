@@ -3,6 +3,8 @@
  * 用于用户首次访问时设置管理员密码
  */
 
+import { getVariables } from './styles/variables.js';
+
 /**
  * 创建首次设置页面
  * @returns {Response} HTML响应
@@ -15,7 +17,22 @@ export async function createSetupPage() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>首次设置 - 2FA 密钥管理器</title>
 
+  <script>
+    (function() {
+      try {
+        const theme = localStorage.getItem('theme') || 'auto';
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const dataTheme = (theme === 'dark' || (theme === 'auto' && prefersDark)) ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', dataTheme);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    })();
+  </script>
+
   <style>
+    ${getVariables()}
+
     * {
       margin: 0;
       padding: 0;
@@ -24,33 +41,22 @@ export async function createSetupPage() {
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: var(--bg-secondary);
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 20px;
+      color: var(--text-primary);
     }
 
     .setup-container {
-      background: white;
-      border-radius: 20px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      background: var(--bg-primary);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-xl);
       max-width: 480px;
       width: 100%;
       padding: 40px;
-      animation: fadeIn 0.6s ease-out;
-    }
-
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
     }
 
     .setup-header {
@@ -61,39 +67,29 @@ export async function createSetupPage() {
     .setup-icon {
       font-size: 64px;
       margin-bottom: 15px;
-      animation: bounce 1s ease-in-out infinite;
-    }
-
-    @keyframes bounce {
-      0%, 100% {
-        transform: translateY(0);
-      }
-      50% {
-        transform: translateY(-10px);
-      }
     }
 
     .setup-title {
       font-size: 28px;
       font-weight: 700;
-      color: #2c3e50;
+      color: var(--text-primary);
       margin-bottom: 10px;
     }
 
     .setup-description {
       font-size: 15px;
-      color: #7f8c8d;
+      color: var(--text-secondary);
       line-height: 1.6;
     }
 
     .security-notice {
-      background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
-      border-left: 4px solid #ff9800;
-      border-radius: 8px;
+      background: var(--warning-light);
+      border-left: 4px solid var(--warning-dark);
+      border-radius: var(--radius-sm);
       padding: 15px;
       margin-bottom: 25px;
       font-size: 13px;
-      color: #e65100;
+      color: var(--warning-dark);
       line-height: 1.5;
     }
 
@@ -111,7 +107,7 @@ export async function createSetupPage() {
       display: block;
       font-size: 14px;
       font-weight: 600;
-      color: #2c3e50;
+      color: var(--text-primary);
       margin-bottom: 8px;
     }
 
@@ -122,17 +118,20 @@ export async function createSetupPage() {
     .form-input {
       width: 100%;
       padding: 14px 40px 14px 16px;
-      border: 2px solid #e9ecef;
-      border-radius: 10px;
+      border: 2px solid var(--input-border);
+      border-radius: var(--radius-md);
       font-size: 15px;
       transition: all 0.3s ease;
       font-family: inherit;
+      background: var(--input-bg);
+      color: var(--text-primary);
     }
 
     .form-input:focus {
       outline: none;
-      border-color: #667eea;
-      box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+      border-color: var(--input-border-focus);
+      background: var(--input-bg-focus);
+      box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.12);
     }
 
     .toggle-password {
@@ -145,21 +144,21 @@ export async function createSetupPage() {
       cursor: pointer;
       font-size: 20px;
       padding: 5px;
-      color: #95a5a6;
+      color: var(--text-tertiary);
       transition: color 0.2s;
     }
 
     .toggle-password:hover {
-      color: #667eea;
+      color: var(--primary-600);
     }
 
     .password-requirements {
-      background: #f8f9fa;
-      border-radius: 8px;
+      background: var(--bg-secondary);
+      border-radius: var(--radius-sm);
       padding: 12px 15px;
       margin-top: 10px;
       font-size: 12px;
-      color: #6c757d;
+      color: var(--text-secondary);
     }
 
     .password-requirements ul {
@@ -184,7 +183,7 @@ export async function createSetupPage() {
     .password-strength {
       margin-top: 10px;
       height: 4px;
-      background: #e9ecef;
+      background: var(--border-primary);
       border-radius: 2px;
       overflow: hidden;
     }
@@ -203,50 +202,49 @@ export async function createSetupPage() {
     .submit-button {
       width: 100%;
       padding: 16px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: var(--primary-600);
       color: white;
       border: none;
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       font-size: 16px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.3s ease;
+      transition: background-color 0.2s ease;
       margin-top: 10px;
     }
 
     .submit-button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+      background: var(--primary-700);
     }
 
     .submit-button:active {
-      transform: translateY(0);
+      opacity: 0.9;
     }
 
     .submit-button:disabled {
-      background: #95a5a6;
+      background: var(--text-tertiary);
       cursor: not-allowed;
-      transform: none;
+      opacity: 0.8;
     }
 
     .error-message {
-      background: #fee;
-      border: 1px solid #fcc;
-      border-radius: 8px;
+      background: var(--danger-light);
+      border: 1px solid var(--danger-dark);
+      border-radius: var(--radius-sm);
       padding: 12px;
       margin-bottom: 20px;
-      color: #c0392b;
+      color: var(--danger-darker);
       font-size: 14px;
       display: none;
     }
 
     .success-message {
-      background: #e8f5e9;
-      border: 1px solid #c8e6c9;
-      border-radius: 8px;
+      background: var(--success-light);
+      border: 1px solid var(--success-dark);
+      border-radius: var(--radius-sm);
       padding: 12px;
       margin-bottom: 20px;
-      color: #2e7d32;
+      color: var(--success-dark);
       font-size: 14px;
       display: none;
     }
@@ -265,60 +263,6 @@ export async function createSetupPage() {
 
     @keyframes spin {
       to { transform: rotate(360deg); }
-    }
-
-    /* 深色模式 */
-    @media (prefers-color-scheme: dark) {
-      body {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-      }
-
-      .setup-container {
-        background: #1e1e1e;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-      }
-
-      .setup-title {
-        color: #ffffff;
-      }
-
-      .setup-description {
-        color: #b0b0b0;
-      }
-
-      .security-notice {
-        background: linear-gradient(135deg, #3a2a1a 0%, #4a3a2a 100%);
-        border-left-color: #ff9800;
-        color: #ffab91;
-      }
-
-      .form-label {
-        color: #ffffff;
-      }
-
-      .form-input {
-        background: #2a2a2a;
-        border-color: #404040;
-        color: #ffffff;
-      }
-
-      .form-input:focus {
-        border-color: #667eea;
-        background: #333333;
-      }
-
-      .password-requirements {
-        background: #2a2a2a;
-        color: #b0b0b0;
-      }
-
-      .toggle-password {
-        color: #b0b0b0;
-      }
-
-      .toggle-password:hover {
-        color: #667eea;
-      }
     }
 
     /* 响应式设计 */

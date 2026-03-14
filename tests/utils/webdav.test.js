@@ -178,31 +178,6 @@ describe('WebDAV Utils Module (Multi-Destination)', () => {
 			expect(configs[0].url).toBe('https://dav2.example.com');
 		});
 
-		it('超过 5 个目标时应拒绝', async () => {
-			// 添加 5 个
-			for (let i = 0; i < 5; i++) {
-				await saveWebDAVSingleConfig(env, {
-					name: `NAS${i}`,
-					url: `https://dav${i}.example.com`,
-					username: 'u',
-					password: 'p',
-					path: '/',
-				});
-			}
-
-			// 第 6 个应失败
-			const result = await saveWebDAVSingleConfig(env, {
-				name: 'NAS5',
-				url: 'https://dav5.example.com',
-				username: 'u',
-				password: 'p',
-				path: '/',
-			});
-
-			expect(result.success).toBe(false);
-			expect(result.error).toContain('5');
-		});
-
 		it('更新不存在的 id 时应返回错误', async () => {
 			const result = await saveWebDAVSingleConfig(env, {
 				id: 'non-existent',

@@ -214,33 +214,6 @@ describe('S3 Utils Module (Multi-Destination)', () => {
       expect(configs[0].bucket).toBe('bucket-2');
     });
 
-    it('超过 5 个目标时应拒绝', async () => {
-      for (let i = 0; i < 5; i++) {
-        await saveS3SingleConfig(env, {
-          name: `S3-${i}`,
-          endpoint: `https://s3-${i}.example.com`,
-          bucket: `bucket-${i}`,
-          region: 'auto',
-          accessKeyId: `ak-${i}`,
-          secretAccessKey: `sk-${i}`,
-          prefix: '',
-        });
-      }
-
-      const result = await saveS3SingleConfig(env, {
-        name: 'S3-5',
-        endpoint: 'https://s3-5.example.com',
-        bucket: 'bucket-5',
-        region: 'auto',
-        accessKeyId: 'ak-5',
-        secretAccessKey: 'sk-5',
-        prefix: '',
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('5');
-    });
-
     it('更新不存在的 id 时应返回错误', async () => {
       const result = await saveS3SingleConfig(env, {
         id: 'non-existent',

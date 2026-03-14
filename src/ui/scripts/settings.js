@@ -98,7 +98,7 @@ export function getSettingsCode() {
       hideSettingsModal();
       // 延迟打开以避免两个模态框重叠
       setTimeout(() => {
-        showWebdavModal();
+        showWebdavModal(() => showSettingsModal());
       }, 350);
     }
 
@@ -108,7 +108,7 @@ export function getSettingsCode() {
     function openS3FromSettings() {
       hideSettingsModal();
       setTimeout(() => {
-        showS3Modal();
+        showS3Modal(() => showSettingsModal());
       }, 350);
     }
 
