@@ -6,7 +6,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
-**主要特性：** TOTP/HOTP 验证码自动生成 · 二维码扫描/图片识别/粘贴截图/拖拽图片添加密钥 · AES-GCM 256 位加密存储 · 从 Google Authenticator、Aegis、2FAS、Bitwarden 等应用批量导入 · 多格式导出（TXT/JSON/CSV/HTML/Google 迁移二维码） · 自动备份与还原 · 深色/浅色主题 · 响应式设计适配手机/平板/桌面
+**主要特性：** TOTP/HOTP 验证码自动生成 · 二维码扫描/图片识别/粘贴截图/拖拽图片添加密钥 · AES-GCM 256 位加密存储 · 从 Google Authenticator、Aegis、2FAS、Bitwarden 等应用批量导入 · 多格式导出（TXT/JSON/CSV/HTML/Google 迁移二维码） · 自动备份与还原 · WebDAV/S3 远程备份同步 · 设置面板（密码修改/备份配置） · 深色/浅色主题 · 响应式设计适配手机/平板/桌面
 
 ## 📸 截图预览
 
@@ -94,9 +94,27 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 ### 备份与还原
 
-系统自动备份（数据变化后自动触发 + 每天定时检查），保留最近 100 个备份。
+系统自动备份（数据变化后自动触发 + 每天定时检查），保留最近 100 个备份（可在设置中调整）。
 
 点击悬浮按钮 → **🔄 还原配置** 查看备份列表、预览内容、还原或导出。
+
+#### 远程备份
+
+支持将备份同步到远程存储，数据变更时自动推送，可配置多个备份目标：
+
+- **WebDAV** — 支持标准 WebDAV 协议的网盘或自建服务（⚠️ 不支持经 Cloudflare 代理的服务如坚果云，会触发 520 回环错误）
+- **S3 兼容存储** — 支持 AWS S3、Cloudflare R2、MinIO、阿里云 OSS 等 S3 兼容服务
+
+在 **设置 → 备份配置** 中添加和管理远程备份目标。
+
+### 设置
+
+点击悬浮按钮 → **⚙️ 设置**：
+
+- **修改密码** — 更改管理密码
+- **登录有效期** — 自定义 JWT 过期时间
+- **备份保留数量** — 调整自动备份保留份数
+- **远程备份** — 配置 WebDAV/S3 备份目标
 
 ### 安装为手机应用（PWA）
 
@@ -111,7 +129,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 - **数据加密**：配置 `ENCRYPTION_KEY` 后所有密钥和备份使用 AES-GCM 256 位加密
 - **传输**：全程 HTTPS，TLS 1.2+
 - **隐私**：OTP 在客户端生成，不收集使用数据，完全开源
-- **登录有效期**：30 天，活跃使用自动续期（剩余 < 7 天时自动延长 30 天）
+- **登录有效期**：默认 30 天，可在设置中自定义，活跃使用自动续期（剩余 < 7 天时自动延长）
 
 ## 🔗 公开 OTP API
 
