@@ -218,6 +218,20 @@ describe('Encryption Utils', () => {
       expect(decrypted).toEqual(testSecrets);
     });
 
+    it('检测到加密数据但未配置密钥时应该拒绝读取', async () => {
+      const env = createMockEnv(testEncryptionKey);
+      const envWithoutKey = createMockEnv(null);
+      const encrypted = await encryptSecrets(testSecrets, env);
+
+      await expect(decryptSecrets(encrypted, envWithoutKey)).rejects.toThrow('ENCRYPTION_KEY');
+    });
+
+    it('明文数据损坏时应该拒绝读取', async () => {
+      const env = createMockEnv(testEncryptionKey);
+
+      await expect(decryptSecrets('{"broken"', env)).rejects.toThrow('密钥数据格式无效');
+    });
+
     it('没有加密密钥时应该以明文存储', async () => {
       const envWithoutKey = createMockEnv(null);
 

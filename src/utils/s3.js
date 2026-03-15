@@ -91,8 +91,8 @@ export async function getS3Configs(env) {
 		logger.info('S3 配置迁移完成', { id, name: newConfig.name });
 		return configs;
 	} catch (error) {
-		logger.warn('读取 S3 配置失败', { error: error.message });
-		return [];
+		logger.error('读取 S3 配置失败', { error: error.message }, error);
+		throw error;
 	}
 }
 

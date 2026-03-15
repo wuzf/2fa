@@ -81,6 +81,22 @@ function createMockRequest(body = {}, method = 'POST', url = 'https://example.co
   };
 }
 
+async function seedEncryptedSecret(env, overrides = {}) {
+  const response = await handleAddSecret(createMockRequest({
+    name: 'Seed Secret',
+    secret: 'JBSWY3DPEHPK3PXP',
+    ...overrides
+  }), env);
+  const data = await response.json();
+
+  return {
+    response,
+    data,
+    secretId: data.data.secret.id,
+    rawData: await env.SECRETS_KV.get('secrets', 'text')
+  };
+}
+
 // ==================== 测试套件 ====================
 
 describe('API Secrets Module', () => {
@@ -146,6 +162,19 @@ describe('API Secrets Module', () => {
       expect(response.status).toBe(500);
       expect(data.error).toBeDefined();
       expect(data.error).toContain('获取密钥列表失败');
+    });
+
+    it('已有加密数据但缺少 ENCRYPTION_KEY 时应该返回 500', async () => {
+      const env = createMockEnv();
+      await seedEncryptedSecret(env);
+      delete env.ENCRYPTION_KEY;
+
+      const response = await handleGetSecrets(env);
+      const data = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(data.error).toBe('ConfigurationError');
+      expect(data.message).toContain('ENCRYPTION_KEY');
     });
   });
 
@@ -309,6 +338,23 @@ describe('API Secrets Module', () => {
       expect(data.data.secret.id).toBeDefined();
       expect(data.data.secret.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     });
+
+    it('缺少 ENCRYPTION_KEY 时不应覆盖已有加密数据', async () => {
+      const env = createMockEnv();
+      const { rawData } = await seedEncryptedSecret(env);
+      delete env.ENCRYPTION_KEY;
+
+      const response = await handleAddSecret(createMockRequest({
+        name: 'New Secret',
+        secret: 'MFRGGZDFMZTWQ2LK'
+      }), env);
+      const data = await response.json();
+      const rawAfter = await env.SECRETS_KV.get('secrets', 'text');
+
+      expect(response.status).toBe(500);
+      expect(data.error).toBe('ConfigurationError');
+      expect(rawAfter).toBe(rawData);
+    });
   });
 
   describe('handleUpdateSecret', () => {
@@ -416,6 +462,23 @@ describe('API Secrets Module', () => {
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
     });
+
+    it('缺少 ENCRYPTION_KEY 时更新不应覆盖已有加密数据', async () => {
+      const env = createMockEnv();
+      const { secretId, rawData } = await seedEncryptedSecret(env);
+      delete env.ENCRYPTION_KEY;
+
+      const response = await handleUpdateSecret(createMockRequest({
+        name: 'Updated Secret',
+        secret: 'MFRGGZDFMZTWQ2LK'
+      }, 'PUT', `https://example.com/api/secrets/${secretId}`), env);
+      const data = await response.json();
+      const rawAfter = await env.SECRETS_KV.get('secrets', 'text');
+
+      expect(response.status).toBe(500);
+      expect(data.error).toBe('ConfigurationError');
+      expect(rawAfter).toBe(rawData);
+    });
   });
 
   describe('handleDeleteSecret', () => {
@@ -478,6 +541,23 @@ describe('API Secrets Module', () => {
       expect(secrets.find(s => s.name === 'GitHub')).toBeDefined();
       expect(secrets.find(s => s.name === 'Bitbucket')).toBeDefined();
       expect(secrets.find(s => s.name === 'GitLab')).toBeUndefined();
+    });
+
+    it('缺少 ENCRYPTION_KEY 时删除不应覆盖已有加密数据', async () => {
+      const env = createMockEnv();
+      const { secretId, rawData } = await seedEncryptedSecret(env);
+      delete env.ENCRYPTION_KEY;
+
+      const response = await handleDeleteSecret(
+        createMockRequest({}, 'DELETE', `https://example.com/api/secrets/${secretId}`),
+        env,
+      );
+      const data = await response.json();
+      const rawAfter = await env.SECRETS_KV.get('secrets', 'text');
+
+      expect(response.status).toBe(500);
+      expect(data.error).toBe('ConfigurationError');
+      expect(rawAfter).toBe(rawData);
     });
   });
 
@@ -559,6 +639,24 @@ describe('API Secrets Module', () => {
       expect(response.status).toBe(400);
       expect(data.error).toBeDefined();
       expect(data.error).toContain('请求验证失败');
+    });
+
+    it('缺少 ENCRYPTION_KEY 时批量导入不应覆盖已有加密数据', async () => {
+      const env = createMockEnv();
+      const { rawData } = await seedEncryptedSecret(env);
+      delete env.ENCRYPTION_KEY;
+
+      const response = await handleBatchAddSecrets(createMockRequest({
+        secrets: [
+          { name: 'GitLab', secret: 'MFRGGZDFMZTWQ2LK' }
+        ]
+      }), env);
+      const data = await response.json();
+      const rawAfter = await env.SECRETS_KV.get('secrets', 'text');
+
+      expect(response.status).toBe(500);
+      expect(data.error).toBe('ConfigurationError');
+      expect(rawAfter).toBe(rawData);
     });
   });
 

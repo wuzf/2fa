@@ -206,11 +206,10 @@ export async function decryptSecrets(data, env) {
 	if (isEncrypted(data)) {
 		// 数据已加密，需要解密
 		if (!env.ENCRYPTION_KEY) {
-			console.error('⚠️  数据已加密但未配置 ENCRYPTION_KEY。');
-			console.error('⚠️  无法读取加密的数据，将返回空列表。');
-			console.error('⚠️  如果需要访问加密数据，请配置正确的 ENCRYPTION_KEY。');
-			console.error('⚠️  如果想重新开始，旧的加密数据将被忽略。');
-			return [];
+			throw new ConfigurationError('检测到已有加密数据，但未配置 ENCRYPTION_KEY', {
+				hint: '请恢复原来的 ENCRYPTION_KEY 后再访问、修改、导出或恢复数据',
+				actionRequired: 'restore_original_encryption_key',
+			});
 		}
 		return decryptData(data, env);
 	} else {
@@ -224,7 +223,10 @@ export async function decryptSecrets(data, env) {
 			return JSON.parse(data);
 		} catch (error) {
 			console.error('解析未加密数据失败:', error);
-			return [];
+			throw new ValidationError('密钥数据格式无效', {
+				originalError: error.message,
+				hint: '存储中的密钥数据已损坏或格式不兼容，请修复后再重试',
+			});
 		}
 	}
 }

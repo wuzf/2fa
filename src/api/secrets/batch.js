@@ -11,7 +11,7 @@ import { getLogger } from '../../utils/logger.js';
 import { validateRequest, batchImportSchema, addSecretSchema, checkDuplicateSecret } from '../../utils/validation.js';
 import { createJsonResponse, createErrorResponse } from '../../utils/response.js';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../../utils/rateLimit.js';
-import { ValidationError, StorageError, CryptoError, errorToResponse, logError } from '../../utils/errors.js';
+import { ValidationError, StorageError, CryptoError, ConfigurationError, errorToResponse, logError } from '../../utils/errors.js';
 import { KV_KEYS } from '../../utils/constants.js';
 
 /**
@@ -148,7 +148,12 @@ export async function handleBatchAddSecrets(request, env, ctx) {
 		);
 	} catch (error) {
 		// 如果是已知的错误类型，记录并转换
-		if (error instanceof ValidationError || error instanceof StorageError || error instanceof CryptoError) {
+		if (
+			error instanceof ValidationError ||
+			error instanceof StorageError ||
+			error instanceof CryptoError ||
+			error instanceof ConfigurationError
+		) {
 			logError(error, logger, { operation: 'handleBatchAddSecrets' });
 			return errorToResponse(error, request);
 		}

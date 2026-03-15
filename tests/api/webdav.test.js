@@ -233,6 +233,40 @@ describe('WebDAV API Module (Multi-Destination)', () => {
 			expect(response.status).toBe(200);
 			expect(data.success).toBe(true);
 		});
+
+		it('缺少 ENCRYPTION_KEY 时不应覆盖已有加密配置', async () => {
+			const addResp = await handleSaveWebDAVConfig(
+				createMockRequest({
+					name: 'NAS',
+					url: 'https://dav.example.com',
+					username: 'user',
+					password: 'old-pass',
+					path: '/',
+				}),
+				env,
+			);
+			const addData = await addResp.json();
+			const rawBefore = await env.SECRETS_KV.get('webdav_configs', 'text');
+			delete env.ENCRYPTION_KEY;
+
+			const response = await handleSaveWebDAVConfig(
+				createMockRequest({
+					id: addData.id,
+					name: 'NAS-Updated',
+					url: 'https://dav.example.com',
+					username: 'newuser',
+					password: '',
+					path: '/new-path',
+				}),
+				env,
+			);
+			const data = await response.json();
+			const rawAfter = await env.SECRETS_KV.get('webdav_configs', 'text');
+
+			expect(response.status).toBe(500);
+			expect(data.message).toContain('ENCRYPTION_KEY');
+			expect(rawAfter).toBe(rawBefore);
+		});
 	});
 
 	// ==================== handleDeleteWebDAVConfig ====================

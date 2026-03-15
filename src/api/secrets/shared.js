@@ -73,10 +73,10 @@ export async function saveSecretsToKV(env, secrets, reason = 'update', options =
  * 获取所有密钥
  *
  * 自动解密数据（如果已加密）
- * 错误时返回空数组（优雅降级）
  *
  * @param {Object} env - Cloudflare Workers 环境对象
- * @returns {Promise<Array>} 密钥数组（失败时返回空数组）
+ * @returns {Promise<Array>} 密钥数组
+ * @throws {Error} 当存储数据无法安全读取时抛出异常，避免误把异常当作空数据覆盖保存
  */
 export async function getAllSecrets(env) {
 	const logger = getLogger(env);
@@ -86,6 +86,6 @@ export async function getAllSecrets(env) {
 		return await decryptSecrets(secretsData, env);
 	} catch (error) {
 		logger.error('获取密钥列表失败', { errorMessage: error.message }, error);
-		return [];
+		throw error;
 	}
 }

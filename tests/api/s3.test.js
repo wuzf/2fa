@@ -263,6 +263,38 @@ describe('S3 API Module (Multi-Destination)', () => {
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
     });
+
+    it('缺少 ENCRYPTION_KEY 时不应覆盖已有加密配置', async () => {
+      const addResp = await handleSaveS3Config(createMockRequest({
+        name: 'R2',
+        endpoint: 'https://s3.example.com',
+        bucket: 'backup',
+        region: 'auto',
+        accessKeyId: 'ak',
+        secretAccessKey: 'old-sk',
+        prefix: '',
+      }), env);
+      const addData = await addResp.json();
+      const rawBefore = await env.SECRETS_KV.get('s3_configs', 'text');
+      delete env.ENCRYPTION_KEY;
+
+      const response = await handleSaveS3Config(createMockRequest({
+        id: addData.id,
+        name: 'R2-Updated',
+        endpoint: 'https://s3.example.com',
+        bucket: 'backup',
+        region: 'us-east-1',
+        accessKeyId: 'new-ak',
+        secretAccessKey: '',
+        prefix: 'new/',
+      }), env);
+      const data = await response.json();
+      const rawAfter = await env.SECRETS_KV.get('s3_configs', 'text');
+
+      expect(response.status).toBe(500);
+      expect(data.message).toContain('ENCRYPTION_KEY');
+      expect(rawAfter).toBe(rawBefore);
+    });
   });
 
   // ==================== handleDeleteS3Config ====================

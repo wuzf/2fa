@@ -22,6 +22,7 @@ import {
 	ConflictError,
 	StorageError,
 	CryptoError,
+	ConfigurationError,
 	ErrorFactory,
 	errorToResponse,
 	logError,
@@ -54,7 +55,12 @@ export async function handleGetSecrets(env) {
 		timer.cancel();
 
 		// 如果是已知的错误类型，记录并转换
-		if (error instanceof StorageError || error instanceof CryptoError || error instanceof ValidationError) {
+		if (
+			error instanceof StorageError ||
+			error instanceof CryptoError ||
+			error instanceof ValidationError ||
+			error instanceof ConfigurationError
+		) {
 			logError(error, logger, { operation: 'handleGetSecrets' });
 			if (monitoring && monitoring.getErrorMonitor) {
 				monitoring.getErrorMonitor().captureError(error, { operation: 'handleGetSecrets' }, ErrorSeverity.ERROR);
@@ -146,7 +152,8 @@ export async function handleAddSecret(request, env, ctx) {
 			error instanceof ConflictError ||
 			error instanceof ValidationError ||
 			error instanceof StorageError ||
-			error instanceof CryptoError
+			error instanceof CryptoError ||
+			error instanceof ConfigurationError
 		) {
 			logError(error, logger, { operation: 'handleAddSecret' });
 			if (monitoring && monitoring.getErrorMonitor) {
@@ -253,7 +260,8 @@ export async function handleUpdateSecret(request, env, ctx) {
 			error instanceof ConflictError ||
 			error instanceof ValidationError ||
 			error instanceof StorageError ||
-			error instanceof CryptoError
+			error instanceof CryptoError ||
+			error instanceof ConfigurationError
 		) {
 			logError(error, logger, { operation: 'handleUpdateSecret' });
 			if (monitoring && monitoring.getErrorMonitor) {
@@ -325,7 +333,8 @@ export async function handleDeleteSecret(request, env, ctx) {
 			error instanceof NotFoundError ||
 			error instanceof ValidationError ||
 			error instanceof StorageError ||
-			error instanceof CryptoError
+			error instanceof CryptoError ||
+			error instanceof ConfigurationError
 		) {
 			logError(error, logger, { operation: 'handleDeleteSecret' });
 			if (monitoring && monitoring.getErrorMonitor) {
