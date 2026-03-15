@@ -646,6 +646,28 @@ Current Version ID: 63b40cd3-91de-421b-bd97-f556cc27fa83
 
 **Q4: 如何更新到最新版本？**
 
+如果你是 **一键部署** 用户，统一使用 GitHub 仓库中的 **Sync Upstream** 工作流原地升级。无论有没有设置 `ENCRYPTION_KEY`，都是同一套流程：
+
+如果你的仓库里还没有 **Actions → Sync Upstream**，说明你是一键部署的老用户，仓库创建时还没有这个工作流。先在自己的仓库中新增文件 `/.github/workflows/sync-upstream.yml`，内容复制自上游仓库文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次；之后再按下面步骤升级。
+
+1. 打开一键部署生成的 GitHub 仓库
+2. 进入 **Actions** → **Sync Upstream**
+3. 点击 **Run workflow**
+4. 等待工作流提交最新代码
+5. 如果工作流摘要提示 `wrangler.toml requires manual review`，就在当前仓库中合并 `wrangler.toml` 的必要变更
+6. Cloudflare 会自动重新部署同一个 Worker
+
+这种方式不会删除原 Worker、KV 绑定或 Secrets，已经配置好的 `ENCRYPTION_KEY` 会继续生效；没有配置 `ENCRYPTION_KEY` 的用户也照样用这套流程升级。
+
+⚠️ **重要**：
+
+- `ENCRYPTION_KEY` 是解密已有数据的主密钥，请在首次创建时保存到密码管理器
+- Cloudflare Secret 保存后不会再次显示原值
+- 正常升级不要删除 Worker、GitHub 仓库或 KV 命名空间
+- 如果 Cloudflare 没有自动部署，就在当前 Worker 的 **Deployments** 页面重新部署最新提交，而不是删除后重装
+
+如果你是 **本地 clone + wrangler deploy** 用户，按下面命令升级：
+
 ```bash
 # 1. 在项目文件夹中打开命令行
 cd path/to/2fa
@@ -1285,7 +1307,34 @@ npx wrangler kv:key delete "user_password" --namespace-id=your-kv-id
 
 ## 升级指南
 
-### 从旧版本升级
+### 一键部署升级（推荐）
+
+适用于通过 Deploy 按钮创建 GitHub 仓库并连接 Cloudflare 的用户。
+
+如果你的仓库里还没有 **Actions → Sync Upstream**，先在自己的仓库中新增文件 `/.github/workflows/sync-upstream.yml`，内容复制自上游仓库文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次；之后就都按下面步骤升级。
+
+1. 打开自己的 GitHub 仓库
+2. 进入 **Actions** → **Sync Upstream**
+3. 点击 **Run workflow**
+4. 等待工作流提交最新代码
+5. 如果工作流摘要提示 `wrangler.toml requires manual review`，在当前仓库中按 diff 合并必要配置
+6. 等待 Cloudflare 自动重新部署同一个 Worker
+
+**优点**：
+
+- 不需要删除 Worker
+- 不需要删除 GitHub 仓库
+- 不需要重新绑定 KV
+- 不需要重新填写 `ENCRYPTION_KEY`
+- 不区分是否设置了 `ENCRYPTION_KEY`
+
+**注意**：
+
+- 工作流会优先保留当前仓库中的部署配置，避免覆盖你的 Worker 名称、KV ID、路由和现有部署设置
+- 如果工作流摘要里提示 `wrangler.toml requires manual review`，请在当前仓库里按提示手动合并必要配置，然后再次触发 Cloudflare 对同一 Worker 的部署
+- 如果你改过项目源码，而不只是用默认一键部署，请先自行评估差异
+
+### 本地克隆升级
 
 ```bash
 # 1. 备份当前数据

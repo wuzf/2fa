@@ -1,0 +1,92 @@
+name: Sync Upstream
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: Upstream branch or tag to sync
+        required: false
+        default: main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      UPSTREAM_REPO: wuzf/2fa
+      UPSTREAM_REF: ${{ inputs.upstream_ref }}
+
+    steps:
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone upstream repository
+        run: |
+          git clone --depth=1 --branch "$UPSTREAM_REF" "https://github.com/$UPSTREAM_REPO.git" ../upstream
+
+      - name: Preserve local deployment config
+        run: |
+          cp wrangler.toml /tmp/local-wrangler.toml
+
+      - name: Sync files from upstream
+        run: |
+          rsync -a --delete \
+            --exclude '.git/' \
+            --exclude 'wrangler.toml' \
+            ../upstream/ ./
+
+      - name: Restore local deployment config
+        run: |
+          cp /tmp/local-wrangler.toml wrangler.toml
+
+      - name: Summarize wrangler.toml differences
+        run: |
+          {
+            echo '### In-place upgrade'
+            echo ''
+            echo 'This workflow upgrades the current repository in place and keeps the same Cloudflare Worker, KV bindings, and existing Secrets.'
+            echo 'The upgrade path is the same whether `ENCRYPTION_KEY` is configured or not.'
+            echo 'Do not delete the Worker, GitHub repository, KV namespace, or re-create `ENCRYPTION_KEY` for a normal upgrade.'
+            echo ''
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if ! diff -u ../upstream/wrangler.toml wrangler.toml > /tmp/wrangler.diff; then
+            {
+              echo '### wrangler.toml requires manual review'
+              echo ''
+              echo 'Code sync is complete, but upstream changed `wrangler.toml`.'
+              echo 'This workflow keeps your local `wrangler.toml` unchanged so the current Worker name, KV IDs, routes, and deployment-specific settings are not overwritten.'
+              echo 'Review the diff below in the current repository, merge only the required config changes, commit them, and let Cloudflare redeploy the same Worker.'
+              echo ''
+              echo '```diff'
+              sed -n '1,200p' /tmp/wrangler.diff
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo '### wrangler.toml'
+              echo ''
+              echo 'No `wrangler.toml` changes require review. After this push, Cloudflare can redeploy the same Worker directly from the updated repository.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Commit and push changes
+        run: |
+          if git diff --quiet --exit-code; then
+            echo "No upstream changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: sync upstream ($UPSTREAM_REF)"
+          git push

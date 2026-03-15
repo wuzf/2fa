@@ -24,6 +24,8 @@
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wuzf/2fa)
 
+> 推荐一键部署；所有用户统一通过 **Sync Upstream** 原地升级，禁止通过删除 Worker、删除仓库或重装方式升级。
+
 1. 点击上方按钮，使用 GitHub 登录并授权
 2. 登录 Cloudflare 账户，点击 **Deploy** 等待部署完成（KV 存储自动创建）
 3. 打开 Cloudflare 给你的 Workers 链接，**设置管理密码**即可开始使用
@@ -38,18 +40,49 @@ openssl rand -base64 32
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-> 不配置也可正常使用，但建议配置以加密保护 2FA 密钥数据。
+> `ENCRYPTION_KEY` 是解密现有数据的主密钥。**推荐设置**，前提是你会把原始值立即保存到密码管理器、离线备份或其他安全位置。
+>
+> 如果你无法确保保存原值，**宁可暂时不设置，也不要设置后丢失**：
+>
+> - 设置后：密钥列表、自动备份、WebDAV/S3 凭据都会加密存储
+> - 丢失后：Cloudflare 不会再次显示原值，已有加密数据和加密备份将无法读取或恢复
+> - 当前程序行为：检测到已有加密数据但缺少 `ENCRYPTION_KEY` 时，会直接锁定读取和修改，避免误覆盖旧数据
 
 #### 版本更新
 
-一键部署会在你的 GitHub 账户下创建一个独立仓库（非 Fork），无法通过同步上游的方式获取更新。更新到最新版本的步骤：
+一键部署生成的是独立仓库（非 Fork），升级统一使用仓库自带的 **Sync Upstream** 工作流原地完成。
 
-1. **备份数据（建议）** — 正常操作不会丢失数据，但以防万一，建议先通过 **📤 批量导出** 或 **🔄 还原配置** 导出一份备份
-2. **删除 Worker** — 在 Cloudflare Dashboard → Workers & Pages 中删除 `2fa` Worker
-3. **删除 GitHub 仓库** — 在 GitHub 删除一键部署时自动创建的 `2fa` 仓库
-4. **重新一键部署** — 再次点击上方 Deploy 按钮，完成部署即为最新版本
+**这套升级方法对所有用户都一样**：
 
-> ⚠️ **请勿删除 Cloudflare 上的 KV 命名空间**，你的密钥数据存储在 KV 中，重新部署后会自动关联已有数据。如果之前配置了 `ENCRYPTION_KEY`，重新部署后需要在 Worker Settings 中重新添加相同的密钥。
+- 不管你有没有设置 `ENCRYPTION_KEY`，都走同一套流程
+- 不删除 Worker
+- 不删除 GitHub 仓库
+- 不删除 KV 命名空间
+- 不通过“重装”升级
+
+如果你的仓库里还看不到 **Actions → Sync Upstream**，说明你是一键部署的老用户，仓库创建时还没有这个工作流。先在自己的仓库中新增文件 `/.github/workflows/sync-upstream.yml`，内容复制自上游仓库文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次；以后就都按下面步骤原地升级。
+
+1. 打开一键部署生成的 GitHub 仓库
+2. 进入 **Actions** → **Sync Upstream**
+3. 点击 **Run workflow**
+4. 等待工作流把上游最新代码同步到当前仓库
+5. 如果工作流摘要提示 `wrangler.toml requires manual review`，就在**当前仓库**中按提示合并 `wrangler.toml`
+6. Cloudflare 会基于当前仓库重新部署**同一个 Worker**
+
+这种方式不会动现有 Worker、KV 绑定或 Secrets。**如果你已经设置了 `ENCRYPTION_KEY`，升级时无需重新填写；如果你没设置，也照样用这套流程升级。**
+
+> ⚠️ `ENCRYPTION_KEY` 是解密现有数据的主密钥，请务必在首次创建时保存到密码管理器。Cloudflare Secret 保存后不会再次显示原值；正常升级不需要重新填写，但如果你把它删了又没保存原值，已有加密数据将无法恢复。
+
+#### 如果工作流提示需要手动处理
+
+`Sync Upstream` 的设计目标是始终在**同一仓库、同一 Worker**上完成升级。少数情况下如果上游改了 `wrangler.toml`，工作流会提示你手动确认配置差异。这时也不要删除 Worker，直接在当前仓库处理即可：
+
+1. 在 GitHub Actions 的运行摘要里查看 `wrangler.toml` diff
+2. 打开当前仓库里的 `wrangler.toml`
+3. 只合并确实需要的新配置，保留你当前 Worker 的名称、KV 绑定、路由和现有部署设置
+4. 提交修改后，等待 Cloudflare 重新部署同一个 Worker
+
+> 如果 Cloudflare 没有自动开始重新部署，也是在 **Deployments** 页面重新部署当前仓库的最新提交，而不是删除后重装。
 
 ## 📖 使用指南
 
@@ -126,7 +159,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ## 🔒 安全
 
 - **密码**：PBKDF2-SHA256（100,000 次迭代）加盐哈希，JWT 存储在 HttpOnly + Secure + SameSite=Strict Cookie 中
-- **数据加密**：配置 `ENCRYPTION_KEY` 后所有密钥和备份使用 AES-GCM 256 位加密
+- **数据加密**：配置 `ENCRYPTION_KEY` 后所有密钥、备份以及 WebDAV/S3 凭据使用 AES-GCM 256 位加密；请务必保存原始密钥，丢失后无法解密已有数据
 - **传输**：全程 HTTPS，TLS 1.2+
 - **隐私**：OTP 在客户端生成，不收集使用数据，完全开源
 - **登录有效期**：默认 30 天，可在设置中自定义，活跃使用自动续期（剩余 < 7 天时自动延长）
