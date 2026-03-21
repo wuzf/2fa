@@ -30,6 +30,9 @@
 2. 登录 Cloudflare 账户，点击 **Deploy** 等待部署完成（KV 存储自动创建）
 3. 打开 Cloudflare 给你的 Workers 链接，**设置管理密码**即可开始使用
 
+> Git 自动构建会直接使用仓库中的 `wrangler.toml` 部署；当前配置已显式声明 `SECRETS_KV`，Wrangler 会在首次部署时自动创建所需 KV，并在后续部署中继续复用当前 Worker 已绑定的资源。
+> 如果你在 Cloudflare Dashboard 中手动配置 Git 构建命令，**部署命令请使用 `npm run deploy`，不要直接写 `npx wrangler deploy`**，这样会保留项目里的版本注入流程，并和仓库默认部署入口保持一致。
+
 #### 推荐：启用数据加密
 
 部署后，在 **Cloudflare Dashboard → Worker → Settings → Variables** 中添加 Secret `ENCRYPTION_KEY`：
@@ -50,37 +53,31 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 #### 版本更新
 
-一键部署生成的是独立仓库（非 Fork），升级统一使用仓库自带的 **Sync Upstream** 工作流原地完成。
+一键部署生成的是独立仓库（非 Fork），升级统一使用 **Sync Upstream** 工作流原地完成。
 
-**这套升级方法对所有用户都一样**：
+> ⚠️ **升级前务必先备份数据**：在执行版本更新前，请先通过 **批量导出** 或 **还原配置 → 导出备份** 将当前数据导出到本地，以防操作失败导致数据丢失。
 
-- 不管你有没有设置 `ENCRYPTION_KEY`，都走同一套流程
-- 不删除 Worker
-- 不删除 GitHub 仓库
-- 不删除 KV 命名空间
-- 不通过“重装”升级
+> ⚠️**首次升级前需要添加工作流文件**：一键部署创建的仓库如果不包含 `.github/workflows/` 目录。请先在自己的仓库中新增文件 `.github/workflows/sync-upstream.yml`，内容复制自上游仓库文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次。之后就都按下面步骤原地升级。
 
-如果你的仓库里还看不到 **Actions → Sync Upstream**，说明你是一键部署的老用户，仓库创建时还没有这个工作流。先在自己的仓库中新增文件 `/.github/workflows/sync-upstream.yml`，内容复制自上游仓库文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次；以后就都按下面步骤原地升级。
-
-1. 打开一键部署生成的 GitHub 仓库
+1. 打开一键部署时在你 GitHub 上生成的 2fa 仓库
 2. 进入 **Actions** → **Sync Upstream**
 3. 点击 **Run workflow**
 4. 等待工作流把上游最新代码同步到当前仓库
-5. 如果工作流摘要提示 `wrangler.toml requires manual review`，就在**当前仓库**中按提示合并 `wrangler.toml`
+5. 工作流会自动以最新上游配置为基础，合并你当前仓库里的 Worker 名称、KV 绑定和常见部署配置
 6. Cloudflare 会基于当前仓库重新部署**同一个 Worker**
 
 这种方式不会动现有 Worker、KV 绑定或 Secrets。**如果你已经设置了 `ENCRYPTION_KEY`，升级时无需重新填写；如果你没设置，也照样用这套流程升级。**
 
 > ⚠️ `ENCRYPTION_KEY` 是解密现有数据的主密钥，请务必在首次创建时保存到密码管理器。Cloudflare Secret 保存后不会再次显示原值；正常升级不需要重新填写，但如果你把它删了又没保存原值，已有加密数据将无法恢复。
 
-#### 如果工作流提示需要手动处理
+#### 如果你想检查合并结果
 
-`Sync Upstream` 的设计目标是始终在**同一仓库、同一 Worker**上完成升级。少数情况下如果上游改了 `wrangler.toml`，工作流会提示你手动确认配置差异。这时也不要删除 Worker，直接在当前仓库处理即可：
+`Sync Upstream` 的设计目标是始终在**同一仓库、同一 Worker**上完成升级。现在工作流会自动合并 `wrangler.toml`，并在摘要中展示与上游的差异，便于你确认哪些值来自本地部署配置：
 
 1. 在 GitHub Actions 的运行摘要里查看 `wrangler.toml` diff
 2. 打开当前仓库里的 `wrangler.toml`
-3. 只合并确实需要的新配置，保留你当前 Worker 的名称、KV 绑定、路由和现有部署设置
-4. 提交修改后，等待 Cloudflare 重新部署同一个 Worker
+3. 确认 Worker 名称、KV 绑定、路由和现有部署设置仍然正确
+4. 如果你自己维护了非常特殊的 `wrangler.toml` 配置，再按需要补充提交
 
 > 如果 Cloudflare 没有自动开始重新部署，也是在 **Deployments** 页面重新部署当前仓库的最新提交，而不是删除后重装。
 

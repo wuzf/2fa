@@ -93,6 +93,9 @@
 
 ✅ **完成标志**：重新部署成功，没有错误提示
 
+> 说明：如果后续改为使用 Git 自动构建，Cloudflare 会直接读取仓库中的 `wrangler.toml` 进行部署。当前项目配置已显式声明 `SECRETS_KV`，Wrangler 会在首次部署时自动创建所需 KV，并在后续部署中继续复用当前 Worker 已绑定的资源。
+> 如果你在 Cloudflare Dashboard 中手动填写 Git 构建命令，**部署命令请使用 `npm run deploy`，不要直接写 `npx wrangler deploy`**，这样会保留项目里的版本注入流程，并和仓库默认部署入口保持一致。
+
 ---
 
 ### 第 4 步：（强烈推荐）配置加密密钥
@@ -648,13 +651,13 @@ Current Version ID: 63b40cd3-91de-421b-bd97-f556cc27fa83
 
 如果你是 **一键部署** 用户，统一使用 GitHub 仓库中的 **Sync Upstream** 工作流原地升级。无论有没有设置 `ENCRYPTION_KEY`，都是同一套流程：
 
-如果你的仓库里还没有 **Actions → Sync Upstream**，说明你是一键部署的老用户，仓库创建时还没有这个工作流。先在自己的仓库中新增文件 `/.github/workflows/sync-upstream.yml`，内容复制自上游仓库文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次；之后再按下面步骤升级。
+一键部署创建的仓库不包含 `.github/workflows/` 目录。如果你的仓库里还没有 **Actions → Sync Upstream**，先在自己的仓库中新增文件 `.github/workflows/sync-upstream.yml`，内容复制自上游仓库文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次；之后再按下面步骤升级。
 
 1. 打开一键部署生成的 GitHub 仓库
 2. 进入 **Actions** → **Sync Upstream**
 3. 点击 **Run workflow**
 4. 等待工作流提交最新代码
-5. 如果工作流摘要提示 `wrangler.toml requires manual review`，就在当前仓库中合并 `wrangler.toml` 的必要变更
+5. 工作流会自动以最新上游配置为基础，合并你当前仓库里的 Worker 名称、KV 绑定和常见部署配置
 6. Cloudflare 会自动重新部署同一个 Worker
 
 这种方式不会删除原 Worker、KV 绑定或 Secrets，已经配置好的 `ENCRYPTION_KEY` 会继续生效；没有配置 `ENCRYPTION_KEY` 的用户也照样用这套流程升级。
@@ -1311,13 +1314,13 @@ npx wrangler kv:key delete "user_password" --namespace-id=your-kv-id
 
 适用于通过 Deploy 按钮创建 GitHub 仓库并连接 Cloudflare 的用户。
 
-如果你的仓库里还没有 **Actions → Sync Upstream**，先在自己的仓库中新增文件 `/.github/workflows/sync-upstream.yml`，内容复制自上游仓库文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次；之后就都按下面步骤升级。
+一键部署创建的仓库不包含 `.github/workflows/` 目录。如果你的仓库里还没有 **Actions → Sync Upstream**，先在自己的仓库中新增文件 `.github/workflows/sync-upstream.yml`，内容复制自上游仓库文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次；之后就都按下面步骤升级。
 
 1. 打开自己的 GitHub 仓库
 2. 进入 **Actions** → **Sync Upstream**
 3. 点击 **Run workflow**
 4. 等待工作流提交最新代码
-5. 如果工作流摘要提示 `wrangler.toml requires manual review`，在当前仓库中按 diff 合并必要配置
+5. 工作流会自动以最新上游配置为基础，合并你当前仓库里的 Worker 名称、KV 绑定和常见部署配置
 6. 等待 Cloudflare 自动重新部署同一个 Worker
 
 **优点**：
@@ -1330,8 +1333,8 @@ npx wrangler kv:key delete "user_password" --namespace-id=your-kv-id
 
 **注意**：
 
-- 工作流会优先保留当前仓库中的部署配置，避免覆盖你的 Worker 名称、KV ID、路由和现有部署设置
-- 如果工作流摘要里提示 `wrangler.toml requires manual review`，请在当前仓库里按提示手动合并必要配置，然后再次触发 Cloudflare 对同一 Worker 的部署
+- 工作流会优先保留当前仓库中的部署配置，自动合并 Worker 名称、KV ID、路由和常见现有设置
+- GitHub Actions 摘要里的 `wrangler.toml` diff 主要用于审计合并结果；只有在你维护了非常特殊的 `wrangler.toml` 配置时，才需要人工再检查
 - 如果你改过项目源码，而不只是用默认一键部署，请先自行评估差异
 
 ### 本地克隆升级

@@ -4,12 +4,11 @@ compatibility_date = "2024-01-13"
 workers_dev = true
 
 # KV 命名空间
-# 部署时由 scripts/deploy.js 自动查找或创建，无需手动配置
-# 本地开发如需指定 ID，可取消注释下方三行
-# [[kv_namespaces]]
-# binding = "SECRETS_KV"
-# id = "your-kv-namespace-id"
-# preview_id = "your-preview-kv-namespace-id"
+# 始终声明 SECRETS_KV，避免 Git 自动构建部署时丢失绑定。
+# 新版 Wrangler 会在首次部署时自动创建或保持已链接的 KV 资源。
+# 如需固定到指定资源，可在本地补充 id / preview_id。
+[[kv_namespaces]]
+binding = "SECRETS_KV"
 
 # 环境变量 (Secrets)
 # 注意：敏感信息使用 Cloudflare Secrets 安全存储
@@ -50,6 +49,6 @@ SW_VERSION = "v1"
 [env.development]
 name = "2fa-dev"
 
-# [[env.development.kv_namespaces]]
-# binding = "SECRETS_KV"
-# id = "your-dev-kv-namespace-id"
+# 绑定项不可继承，开发环境也需要显式声明。
+[[env.development.kv_namespaces]]
+binding = "SECRETS_KV"
