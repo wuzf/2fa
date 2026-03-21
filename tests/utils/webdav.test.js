@@ -119,11 +119,10 @@ describe('WebDAV Utils Module (Multi-Destination)', () => {
 			expect(status.lastSuccess.backupKey).toBe('test.json');
 		});
 
-		it('KV 读取失败时返回空数组', async () => {
+		it('KV 读取失败时应抛出错误', async () => {
 			env.SECRETS_KV.get = vi.fn().mockRejectedValue(new Error('KV error'));
 
-			const configs = await getWebDAVConfigs(env);
-			expect(configs).toEqual([]);
+			await expect(getWebDAVConfigs(env)).rejects.toThrow('KV error');
 		});
 	});
 
