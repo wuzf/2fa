@@ -40,12 +40,11 @@ jobs:
         run: |
           rsync -a --delete \
             --exclude '.git/' \
-            --exclude 'wrangler.toml' \
             ../upstream/ ./
 
-      - name: Restore local deployment config
+      - name: Merge deployment config
         run: |
-          cp /tmp/local-wrangler.toml wrangler.toml
+          node scripts/merge-wrangler-config.js /tmp/local-wrangler.toml wrangler.toml wrangler.toml
 
       - name: Summarize wrangler.toml differences
         run: |
@@ -60,11 +59,10 @@ jobs:
 
           if ! diff -u ../upstream/wrangler.toml wrangler.toml > /tmp/wrangler.diff; then
             {
-              echo '### wrangler.toml requires manual review'
+              echo '### wrangler.toml merged automatically'
               echo ''
-              echo 'Code sync is complete, but upstream changed `wrangler.toml`.'
-              echo 'This workflow keeps your local `wrangler.toml` unchanged so the current Worker name, KV IDs, routes, and deployment-specific settings are not overwritten.'
-              echo 'Review the diff below in the current repository, merge only the required config changes, commit them, and let Cloudflare redeploy the same Worker.'
+              echo 'Code sync is complete. The workflow used the upstream `wrangler.toml` as the base and preserved deployment-specific local settings such as Worker name, KV IDs, routes, and selected environment-specific values.'
+              echo 'The diff below is expected when local deployment settings differ from the upstream defaults.'
               echo ''
               echo '```diff'
               sed -n '1,200p' /tmp/wrangler.diff
