@@ -1971,9 +1971,12 @@ export function getImportCode() {
               }
             }
 
-            if (secret && serviceName) {
+            // 清理密钥中的空格和分隔符
+            const cleanedSecret = secret ? secret.replace(/[\\s\\-+]/g, '') : secret;
+
+            if (cleanedSecret && serviceName) {
               // 验证Base32格式
-              if (validateBase32(secret)) {
+              if (validateBase32(cleanedSecret)) {
                 item.className += ' valid';
 
                 // 构建显示文本（包含参数信息）
@@ -1991,7 +1994,7 @@ export function getImportCode() {
                 importPreviewData.push({
                   serviceName: serviceName,
                   account: account,
-                  secret: secret.toUpperCase(),
+                  secret: cleanedSecret.toUpperCase(),
                   type: type,
                   digits: digits,
                   period: period,

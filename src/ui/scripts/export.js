@@ -363,7 +363,7 @@ export function getExportCode() {
         }
 
         const params = new URLSearchParams({
-          secret: secret.secret.toUpperCase(),
+          secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
           digits: (secret.digits || 6).toString(),
           period: (secret.period || 30).toString(),
           algorithm: secret.algorithm || 'SHA1',
@@ -392,7 +392,7 @@ export function getExportCode() {
           const entry = {
             issuer: secret.name,
             account: secret.account || '',
-            secret: secret.secret.toUpperCase(),
+            secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
             type: type,
             digits: secret.digits || 6,
             period: secret.period || 30,
@@ -431,7 +431,7 @@ export function getExportCode() {
         const row = [
           escapeCSV(secret.name),
           escapeCSV(secret.account || ''),
-          escapeCSV(secret.secret.toUpperCase()),
+          escapeCSV(secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase()),
           escapeCSV(secret.type || 'TOTP'),
           secret.digits || 6,
           secret.period || 30,
@@ -475,7 +475,7 @@ export function getExportCode() {
           }
 
           const params = new URLSearchParams({
-            secret: secret.secret.toUpperCase(),
+            secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
             digits: (secret.digits || 6).toString(),
             period: (secret.period || 30).toString(),
             algorithm: secret.algorithm || 'SHA1',
@@ -589,7 +589,7 @@ export function getExportCode() {
           htmlParts.push('        <tr>\\n' +
             '          <td class="service">' + escapeHTML(data.serviceName) + '</td>\\n' +
             '          <td class="account">' + escapeHTML(data.accountName || '-') + '</td>\\n' +
-            '          <td class="secret">' + escapeHTML(data.secret.secret.toUpperCase()) + '</td>\\n' +
+            '          <td class="secret">' + escapeHTML(data.secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase()) + '</td>\\n' +
             '          <td class="param">' + escapeHTML(data.secret.type || 'TOTP') + '</td>\\n' +
             '          <td class="param">' + (data.secret.digits || 6) + '</td>\\n' +
             '          <td class="param">' + (data.secret.period || 30) + '</td>\\n' +
@@ -653,7 +653,7 @@ export function getExportCode() {
           favorite: false,
           icon: null,
           info: {
-            secret: secret.secret.toUpperCase(),
+            secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
             algo: algo,
             digits: secret.digits || 6,
             period: secret.period || 30
@@ -712,7 +712,7 @@ export function getExportCode() {
 
         return {
           name: secret.name || '',
-          secret: secret.secret.toUpperCase(),
+          secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
           updatedAt: now,
           otp: {
             label: secret.account || '',
@@ -769,7 +769,7 @@ export function getExportCode() {
         const algorithm = (secret.algorithm || 'SHA1').toUpperCase();
 
         const entry = {
-          secret: secret.secret.toUpperCase(),
+          secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
           issuer: secret.name || '',
           label: secret.account || '',
           digits: secret.digits || 6,
@@ -898,7 +898,7 @@ export function getExportCode() {
           userName: secret.account || '',
           originalUserName: secret.account || '',
           pushNotification: false,
-          secret: secret.secret.toUpperCase(),
+          secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
           timeStep: secret.period || 30,
           digits: secret.digits || 6,
           creationTimestamp: Date.now(),
@@ -963,7 +963,7 @@ export function getExportCode() {
         let label = encodeURIComponent(accountName || serviceName);
 
         const params = new URLSearchParams({
-          secret: secret.secret.toUpperCase(),
+          secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
           issuer: serviceName,
           algorithm: algo,
           digits: (secret.digits || 6).toString(),
@@ -1021,7 +1021,7 @@ export function getExportCode() {
           Icon: null,
           Issuer: serviceName,
           Username: accountName,
-          Secret: secret.secret.toUpperCase(),
+          Secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
           Pin: null,
           Algorithm: algoMap[algo] !== undefined ? algoMap[algo] : 0,
           Digits: digits,
@@ -1078,7 +1078,7 @@ export function getExportCode() {
         }
 
         const params = new URLSearchParams({
-          secret: secret.secret.toUpperCase(),
+          secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
           algorithm: algo,
           digits: digits.toString(),
           period: period.toString(),
@@ -1146,7 +1146,7 @@ export function getExportCode() {
         }
 
         const params = new URLSearchParams({
-          secret: secret.secret.toUpperCase(),
+          secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
           algorithm: algo,
           digits: digits.toString(),
           period: period.toString(),

@@ -199,8 +199,11 @@ export function getPreviewImportCode() {
               }
             }
 
-            if (secret && serviceName) {
-              if (validateBase32(secret)) {
+            // 清理密钥中的空格和分隔符
+            const cleanedSecret = secret ? secret.replace(/[\\s\\-+]/g, '') : secret;
+
+            if (cleanedSecret && serviceName) {
+              if (validateBase32(cleanedSecret)) {
                 item.className += ' valid';
 
                 let displayInfo = serviceName;
@@ -216,7 +219,7 @@ export function getPreviewImportCode() {
                 importPreviewData.push({
                   serviceName: serviceName,
                   account: account,
-                  secret: secret.toUpperCase(),
+                  secret: cleanedSecret.toUpperCase(),
                   type: type,
                   digits: digits,
                   period: period,
