@@ -2,6 +2,8 @@
 
 基于 Cloudflare Workers 的两步验证密钥管理系统。免费部署、全球加速、支持 PWA 离线使用。
 
+**[English](README_EN.md)**
+
 ![Version](https://img.shields.io/badge/version-1.3.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
