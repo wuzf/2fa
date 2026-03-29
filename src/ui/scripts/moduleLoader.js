@@ -3,10 +3,10 @@
  * 实现按需加载大型功能模块，优化首次加载性能
  *
  * 可延迟加载的模块：
- * - import.js (34KB/896行) - 导入功能
- * - export.js (16KB/375行) - 导出功能
- * - backup.js (355行) - 备份管理
- * - qrcode.js (29KB/786行) - 二维码生成
+ * - import 模块（src/ui/scripts/import/index.js 入口）- 导入功能
+ * - export.js - 导出功能
+ * - backup.js - 备份管理
+ * - qrcode.js - 二维码生成
  * - tools.js + 工具模块 - 工具集
  */
 

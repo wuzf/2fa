@@ -134,7 +134,7 @@ export function getImportUICode() {
 
       const reader = new FileReader();
       reader.onload = function(e) {
-        const content = e.target.result;
+        const content = decodeImportFileContent(file.name, e.target.result);
         document.getElementById('importText').value = content;
 
         // 自动预览
@@ -145,7 +145,7 @@ export function getImportUICode() {
       reader.onerror = function() {
         showCenterToast('❌', '读取文件失败');
       };
-      reader.readAsText(file);
+      reader.readAsArrayBuffer(file);
     }
 
     // 更新导入统计信息（新的内联统计）

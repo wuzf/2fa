@@ -8,7 +8,7 @@
  * @returns {string} JavaScript 代码
  */
 export function getImportUtilsCode() {
-	return `
+	return String.raw`
     // ========== 导入工具函数 ==========
 
     /**
@@ -97,6 +97,62 @@ export function getImportUtilsCode() {
       fields.push(current.trim());
 
       return fields;
+    }
+
+    /**
+     * 将 Uint8Array 转成二进制字符串
+     * 保留 Java 序列化等二进制格式中的原始字节值
+     * @param {Uint8Array} bytes - 原始字节数组
+     * @returns {string} 二进制字符串
+     */
+    function bytesToBinaryString(bytes) {
+      let result = '';
+      const chunkSize = 0x8000;
+
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.slice(i, i + chunkSize);
+        result += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+
+      return result;
+    }
+
+    /**
+     * 解码导入文件内容
+     * 兼容普通 UTF-8/UTF-16 文本以及 FreeOTP 的 Java 序列化二进制备份
+     * @param {string} fileName - 文件名
+     * @param {ArrayBuffer|Uint8Array} arrayBuffer - 文件二进制内容
+     * @returns {string} 解码后的文本内容
+     */
+    function decodeImportFileContent(fileName, arrayBuffer) {
+      const bytes = arrayBuffer instanceof Uint8Array ? arrayBuffer : new Uint8Array(arrayBuffer);
+      const lowerFileName = String(fileName || '').toLowerCase();
+
+      if (bytes.length >= 2) {
+        if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+          return new TextDecoder('utf-16le').decode(bytes);
+        }
+
+        if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+          return new TextDecoder('utf-16be').decode(bytes);
+        }
+
+        // Java Object Serialization Stream Magic: 0xACED
+        if (bytes[0] === 0xac && bytes[1] === 0xed) {
+          return bytesToBinaryString(bytes);
+        }
+      }
+
+      const utf8Text = new TextDecoder('utf-8').decode(bytes);
+      if (!utf8Text.includes('\uFFFD')) {
+        return utf8Text;
+      }
+
+      if (lowerFileName.endsWith('.xml') || lowerFileName.endsWith('.authpro') || lowerFileName.endsWith('.encrypt')) {
+        return bytesToBinaryString(bytes);
+      }
+
+      return utf8Text;
     }
 `;
 }

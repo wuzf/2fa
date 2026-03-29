@@ -259,6 +259,7 @@ export function getPreviewImportCode() {
 
       updateImportStats(validCount, invalidCount, skippedCount);
       previewDiv.style.display = 'block';
+      executeBtn.textContent = '📥 导入';
       executeBtn.disabled = validCount === 0;
     }
 `;
