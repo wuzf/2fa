@@ -1387,7 +1387,41 @@ function getHTMLBody() {
       </p>
       <div class="form-group">
         <label for="loginToken">密码</label>
-        <input type="password" id="loginToken" placeholder="请输入您的密码" autocomplete="current-password" name="password">
+        <div class="login-password-wrapper">
+          <input type="password" id="loginToken" placeholder="请输入您的密码" autocomplete="current-password" name="password">
+          <button
+            type="button"
+            id="loginPasswordToggle"
+            class="login-password-toggle"
+            onclick="toggleLoginPasswordVisibility()"
+            aria-label="显示密码"
+            title="显示密码"
+          >
+            <svg
+              class="login-password-icon login-password-icon-show"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                d="M12 5C7 5 2.7 8.1 1 12c1.7 3.9 6 7 11 7s9.3-3.1 11-7c-1.7-3.9-6-7-11-7Zm0 11.5A4.5 4.5 0 1 1 12 7a4.5 4.5 0 0 1 0 9.5Z"
+                fill="currentColor"
+              />
+              <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+            </svg>
+            <svg
+              class="login-password-icon login-password-icon-hide"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                d="M3.3 4.7 2 6l3.1 3.1A13.7 13.7 0 0 0 1 12c1.7 3.9 6 7 11 7 2 0 3.9-.5 5.5-1.3L20.7 21l1.3-1.3L3.3 4.7Zm8.7 12.3c-2.8 0-5-2.2-5-5 0-.8.2-1.6.5-2.3l6.8 6.8c-.7.3-1.5.5-2.3.5Zm0-10c5 0 9.3 3.1 11 7a12 12 0 0 1-3.9 4.7l-2-2a5 5 0 0 0-6.8-6.8l-2-2C9.5 7.3 10.7 7 12 7Z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
+        </div>
         <div class="login-modal-hint">
           提示：输入您设置的密码
         </div>

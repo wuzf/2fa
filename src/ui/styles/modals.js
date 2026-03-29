@@ -449,6 +449,61 @@ export function getModalStyles() {
       margin-top: 5px;
     }
 
+    .login-password-wrapper {
+      position: relative;
+    }
+
+    .login-password-wrapper input {
+      padding-right: 56px;
+    }
+
+    .login-password-toggle {
+      position: absolute;
+      top: 50%;
+      right: 12px;
+      transform: translateY(-50%);
+      border: none;
+      background: transparent;
+      color: var(--text-tertiary);
+      cursor: pointer;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      transition: color 0.2s ease, background-color 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .login-password-toggle:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    .login-password-toggle:focus-visible {
+      outline: 2px solid var(--input-border-focus);
+      outline-offset: 2px;
+    }
+
+    .login-password-icon {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+
+    .login-password-icon-hide {
+      display: none;
+    }
+
+    .login-password-toggle.is-visible .login-password-icon-show {
+      display: none;
+    }
+
+    .login-password-toggle.is-visible .login-password-icon-hide {
+      display: block;
+    }
+
     .login-modal-actions {
       margin-top: 20px;
       display: flex;

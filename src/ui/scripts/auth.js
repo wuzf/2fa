@@ -68,6 +68,30 @@ export function getAuthCode() {
       }
     }
 
+    function setLoginPasswordVisibility(visible) {
+      const tokenInput = document.getElementById('loginToken');
+      const toggleButton = document.getElementById('loginPasswordToggle');
+
+      if (!tokenInput || !toggleButton) {
+        return;
+      }
+
+      tokenInput.type = visible ? 'text' : 'password';
+      toggleButton.classList.toggle('is-visible', visible);
+      toggleButton.setAttribute('aria-label', visible ? '隐藏密码' : '显示密码');
+      toggleButton.title = visible ? '隐藏密码' : '显示密码';
+    }
+
+    function toggleLoginPasswordVisibility() {
+      const tokenInput = document.getElementById('loginToken');
+
+      if (!tokenInput) {
+        return;
+      }
+
+      setLoginPasswordVisibility(tokenInput.type === 'password');
+    }
+
     // 显示登录模态框
     function showLoginModal() {
       const modal = document.getElementById('loginModal');
@@ -88,6 +112,7 @@ export function getAuthCode() {
 
       errorDiv.style.display = 'none';
       tokenInput.value = '';
+      setLoginPasswordVisibility(false);
 
       setTimeout(() => tokenInput.focus(), 100);
 
