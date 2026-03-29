@@ -120,15 +120,26 @@ export function getPreviewImportCode() {
       }
       // 检测并解析JSON格式
       else if (text.trim().startsWith('{') || text.trim().startsWith('[')) {
+        let jsonData;
+
         try {
-          const jsonData = JSON.parse(text);
+          jsonData = JSON.parse(text);
+        } catch (jsonError) {
+          console.log('JSON解析失败，按OTPAuth URL格式解析:', jsonError.message);
+        }
+
+        if (jsonData) {
+          try {
           lines = parseJsonImport(jsonData);
           if (lines.length === 0) {
             showCenterToast('❌', '未找到有效的密钥数据');
             return;
           }
-        } catch (jsonError) {
-          console.log('JSON解析失败,按OTPAuth URL格式解析:', jsonError.message);
+          } catch (parseError) {
+            console.error('JSON导入解析失败:', parseError);
+            showCenterToast('❌', parseError.message || '未识别的 JSON 导入格式');
+            return;
+          }
         }
       }
       // 检测并解析CSV格式

@@ -150,6 +150,326 @@ export function getJSONParserCode() {
 	return `
     // ========== JSON 解析器 ==========
 
+    function normalizeJsonImportType(type) {
+      return String(type || 'TOTP').toLowerCase() === 'hotp' ? 'hotp' : 'totp';
+    }
+
+    function normalizeJsonImportAlgorithm(algorithm) {
+      return String(algorithm || 'SHA1').toUpperCase();
+    }
+
+    function normalizeJsonImportSecret(secret) {
+      if (Array.isArray(secret)) {
+        return bytesToBase32(secret);
+      }
+
+      return String(secret || '').replace(/[\\s\\-+]/g, '').toUpperCase();
+    }
+
+    function buildJsonImportLabel(issuer, account, fallbackLabel) {
+      if (issuer && account) {
+        return encodeURIComponent(issuer) + ':' + encodeURIComponent(account);
+      }
+
+      if (fallbackLabel) {
+        return encodeURIComponent(fallbackLabel);
+      }
+
+      if (issuer) {
+        return encodeURIComponent(issuer);
+      }
+
+      if (account) {
+        return encodeURIComponent(account);
+      }
+
+      return 'Unknown';
+    }
+
+    function buildJsonImportOTPAuthUrl({
+      issuer = '',
+      account = '',
+      secret = '',
+      type = 'TOTP',
+      digits = 6,
+      period = 30,
+      algorithm = 'SHA1',
+      counter = 0,
+      label = ''
+    }) {
+      const cleanSecret = normalizeJsonImportSecret(secret);
+      if (!cleanSecret) {
+        return null;
+      }
+
+      const normalizedType = normalizeJsonImportType(type);
+      const normalizedAlgorithm = normalizeJsonImportAlgorithm(algorithm);
+      const parsedDigits = parseInt(digits, 10) || 6;
+      const parsedPeriod = parseInt(period, 10) || 30;
+      const parsedCounter = parseInt(counter, 10) || 0;
+      const finalLabel = buildJsonImportLabel(issuer, account, label);
+      const params = new URLSearchParams();
+
+      params.set('secret', cleanSecret);
+      if (issuer) params.set('issuer', issuer);
+      if (parsedDigits !== 6) params.set('digits', parsedDigits);
+      if (normalizedType === 'totp' && parsedPeriod !== 30) params.set('period', parsedPeriod);
+      if (normalizedType === 'hotp') params.set('counter', parsedCounter);
+      if (normalizedAlgorithm !== 'SHA1') params.set('algorithm', normalizedAlgorithm);
+
+      return 'otpauth://' + normalizedType + '/' + finalLabel + '?' + params.toString();
+    }
+
+    function parseStandardJsonEntries(entries, mapper, formatName) {
+      const otpauthUrls = [];
+
+      entries.forEach((entry, index) => {
+        try {
+          const fields = mapper(entry, index);
+          if (!fields) {
+            return;
+          }
+
+          const otpauthUrl = buildJsonImportOTPAuthUrl(fields);
+          if (otpauthUrl) {
+            otpauthUrls.push(otpauthUrl);
+          } else {
+            console.warn('跳过无密钥的 ' + formatName + ' 条目 (索引 ' + index + ')');
+          }
+        } catch (err) {
+          console.error('解析 ' + formatName + ' 条目失败 (索引 ' + index + '):', err);
+        }
+      });
+
+      console.log('成功解析 ' + formatName + ' 格式，共 ' + otpauthUrls.length + ' 条');
+      return otpauthUrls;
+    }
+
+    function parseUriEntries(entries, selector, formatName) {
+      const otpauthUrls = [];
+
+      entries.forEach((entry, index) => {
+        try {
+          const uri = selector(entry, index);
+          if (typeof uri !== 'string' || !uri.trim()) {
+            console.warn('跳过无 otpauth URI 的 ' + formatName + ' 条目 (索引 ' + index + ')');
+            return;
+          }
+
+          const trimmedUri = uri.trim().replace(/&amp;/g, '&');
+          if (!trimmedUri.startsWith('otpauth://')) {
+            console.warn('跳过非 otpauth URI 的 ' + formatName + ' 条目 (索引 ' + index + ')');
+            return;
+          }
+
+          otpauthUrls.push(trimmedUri);
+        } catch (err) {
+          console.error('解析 ' + formatName + ' 条目失败 (索引 ' + index + '):', err);
+        }
+      });
+
+      console.log('成功解析 ' + formatName + ' 格式，共 ' + otpauthUrls.length + ' 条');
+      return otpauthUrls;
+    }
+
+    function parseAppJSON(jsonData) {
+      return parseStandardJsonEntries(
+        jsonData.secrets || [],
+        secret => ({
+          issuer: secret.name || '',
+          account: secret.account || '',
+          secret: secret.secret || '',
+          type: secret.type || 'TOTP',
+          digits: secret.digits || 6,
+          period: secret.period || 30,
+          algorithm: secret.algorithm || 'SHA1',
+          counter: secret.counter || 0
+        }),
+        '本应用 JSON'
+      );
+    }
+
+    function parseFreeOTPPlusJSON(jsonData) {
+      return parseStandardJsonEntries(
+        jsonData.tokens || [],
+        token => ({
+          issuer: token.issuerExt || token.issuerInt || '',
+          account: token.label || '',
+          secret: token.secret || '',
+          type: token.type || 'TOTP',
+          digits: token.digits || 6,
+          period: token.period || 30,
+          algorithm: token.algo || token.algorithm || 'SHA1',
+          counter: token.counter || 0
+        }),
+        'FreeOTP+ JSON'
+      );
+    }
+
+    function parseAegisJSON(jsonData) {
+      const entries = jsonData?.db?.entries || [];
+
+      return parseStandardJsonEntries(
+        entries,
+        entry => ({
+          issuer: entry.issuer || '',
+          account: entry.name || '',
+          secret: entry.info?.secret || '',
+          type: entry.type || 'totp',
+          digits: entry.info?.digits || 6,
+          period: entry.info?.period || 30,
+          algorithm: entry.info?.algo || 'SHA1',
+          counter: entry.info?.counter || 0
+        }),
+        'Aegis JSON'
+      );
+    }
+
+    function parseBitwardenJSON(jsonData) {
+      const items = Array.isArray(jsonData) ? jsonData : (jsonData.items || []);
+      const otpauthUrls = [];
+
+      items.forEach((item, index) => {
+        try {
+          const totpValue = String(item?.login?.totp || '').trim();
+          if (!totpValue) {
+            console.warn('跳过无 totp 字段的 Bitwarden Authenticator 条目 (索引 ' + index + ')');
+            return;
+          }
+
+          if (totpValue.startsWith('otpauth://')) {
+            otpauthUrls.push(totpValue.replace(/&amp;/g, '&'));
+            return;
+          }
+
+          const issuer = item?.name || '';
+          const account = item?.login?.username || '';
+          const otpauthUrl = buildJsonImportOTPAuthUrl({
+            issuer: issuer,
+            account: account,
+            label: issuer || account || 'Unknown',
+            secret: totpValue,
+            type: 'TOTP'
+          });
+
+          if (!otpauthUrl) {
+            console.warn('跳过无密钥的 Bitwarden Authenticator 条目 (索引 ' + index + ')');
+            return;
+          }
+
+          otpauthUrls.push(otpauthUrl);
+        } catch (err) {
+          console.error('解析 Bitwarden Authenticator 条目失败 (索引 ' + index + '):', err);
+        }
+      });
+
+      console.log('成功解析 Bitwarden Authenticator JSON 格式，共 ' + otpauthUrls.length + ' 条');
+      return otpauthUrls;
+    }
+
+    function parseProtonJSON(jsonData) {
+      const entries = Array.isArray(jsonData) ? jsonData : (jsonData.entries || []);
+      return parseUriEntries(entries, entry => entry?.content?.uri, 'Proton Authenticator JSON');
+    }
+
+    function parseAndOTPJSON(jsonData) {
+      const entries = Array.isArray(jsonData) ? jsonData : (jsonData.accounts || []);
+
+      return parseStandardJsonEntries(
+        entries,
+        entry => ({
+          issuer: entry.issuer || '',
+          account: entry.label || entry.account || '',
+          secret: entry.secret || '',
+          type: entry.type || 'TOTP',
+          digits: entry.digits || 6,
+          period: entry.period || 30,
+          algorithm: entry.algorithm || 'SHA1',
+          counter: entry.counter || 0
+        }),
+        'andOTP JSON'
+      );
+    }
+
+    function isLastPassAccountsJSON(accounts) {
+      return accounts.some(item => item && typeof item === 'object' && (
+        'issuerName' in item ||
+        'userName' in item ||
+        'originalIssuerName' in item ||
+        'originalUserName' in item ||
+        'name' in item ||
+        'timeStep' in item ||
+        'folderData' in item ||
+        'pushNotification' in item
+      ));
+    }
+
+    function isAndOTPWrappedAccountsJSON(accounts) {
+      return accounts.some(item => item && typeof item === 'object' && (
+        'label' in item ||
+        'account' in item
+      ) && ('secret' in item));
+    }
+
+    function parseAuthProType(type) {
+      if (type === 1 || String(type) === '1') {
+        return 'hotp';
+      }
+
+      return 'totp';
+    }
+
+    function parseAuthProAlgorithm(algorithm) {
+      if (algorithm === 1 || String(algorithm) === '1') {
+        return 'SHA256';
+      }
+
+      if (algorithm === 2 || String(algorithm) === '2') {
+        return 'SHA512';
+      }
+
+      if (typeof algorithm === 'string' && algorithm.toUpperCase().startsWith('SHA')) {
+        return algorithm.toUpperCase();
+      }
+
+      return 'SHA1';
+    }
+
+    function parseAuthProJSON(jsonData) {
+      return parseStandardJsonEntries(
+        jsonData.Authenticators || [],
+        authenticator => ({
+          issuer: authenticator.Issuer || '',
+          account: authenticator.Username || '',
+          label: authenticator.Issuer || authenticator.Username || 'Unknown',
+          secret: authenticator.Secret || '',
+          type: parseAuthProType(authenticator.Type),
+          digits: authenticator.Digits || 6,
+          period: authenticator.Period || 30,
+          algorithm: parseAuthProAlgorithm(authenticator.Algorithm),
+          counter: authenticator.Counter || 0
+        }),
+        'Authenticator Pro JSON'
+      );
+    }
+
+    function parse2FASJSON(jsonData) {
+      return parseStandardJsonEntries(
+        jsonData.services || [],
+        service => ({
+          issuer: service.otp?.issuer || service.name || '',
+          account: service.otp?.account || service.otp?.label || '',
+          secret: service.secret || '',
+          type: service.otp?.tokenType || 'TOTP',
+          digits: service.otp?.digits || 6,
+          period: service.otp?.period || 30,
+          algorithm: service.otp?.algorithm || 'SHA1',
+          counter: service.otp?.counter || 0
+        }),
+        '2FAS JSON'
+      );
+    }
+
     /**
      * 解析 LastPass JSON 格式
      * @param {Object} jsonData - JSON 数据
@@ -177,29 +497,21 @@ export function getJSONParserCode() {
               return;
             }
 
-            // 清理密钥
-            const cleanSecret = secret.replace(/\\s+/g, '').toUpperCase();
+            const otpauthUrl = buildJsonImportOTPAuthUrl({
+              issuer: issuer,
+              account: name,
+              secret: secret,
+              type: 'TOTP',
+              digits: digits,
+              period: period,
+              algorithm: algo
+            });
 
-            // 构建 otpauth:// URL
-            let label = '';
-            if (issuer && name) {
-              label = encodeURIComponent(issuer) + ':' + encodeURIComponent(name);
-            } else if (issuer) {
-              label = encodeURIComponent(issuer);
-            } else if (name) {
-              label = encodeURIComponent(name);
-            } else {
-              label = 'Unknown';
+            if (!otpauthUrl) {
+              console.warn('跳过无密钥的 LastPass 条目 (索引 ' + index + ')');
+              return;
             }
 
-            const params = new URLSearchParams();
-            params.set('secret', cleanSecret);
-            if (issuer) params.set('issuer', issuer);
-            if (digits !== 6) params.set('digits', digits);
-            if (period !== 30) params.set('period', period);
-            if (algo !== 'SHA1') params.set('algorithm', algo);
-
-            const otpauthUrl = 'otpauth://totp/' + label + '?' + params.toString();
             otpauthUrls.push(otpauthUrl);
 
             console.log('LastPass 条目 ' + (index + 1) + ':', issuer, name);
@@ -214,6 +526,85 @@ export function getJSONParserCode() {
       }
 
       return otpauthUrls;
+    }
+
+    /**
+     * 统一解析支持的 JSON 导入格式
+     * @param {Object|Array} jsonData - JSON 数据
+     * @returns {Array<string>} otpauth:// URL 数组
+     */
+    function parseJsonImport(jsonData) {
+      if (Array.isArray(jsonData)) {
+        if (jsonData.every(item => typeof item === 'string')) {
+          const otpauthUrls = jsonData
+            .map(item => String(item || '').trim())
+            .filter(item => item.startsWith('otpauth://'));
+
+          if (otpauthUrls.length > 0) {
+            return otpauthUrls;
+          }
+        }
+
+        if (jsonData.some(item => item && typeof item === 'object' && ('secret' in item) && ('label' in item || 'issuer' in item))) {
+          return parseAndOTPJSON(jsonData);
+        }
+
+        if (jsonData.some(item => item?.login?.totp)) {
+          return parseBitwardenJSON(jsonData);
+        }
+
+        if (jsonData.some(item => item?.content?.uri)) {
+          return parseProtonJSON(jsonData);
+        }
+
+        throw new Error('未识别的 JSON 导入格式');
+      }
+
+      if (!jsonData || typeof jsonData !== 'object') {
+        throw new Error('未识别的 JSON 导入格式');
+      }
+
+      if (Array.isArray(jsonData.secrets)) {
+        return parseAppJSON(jsonData);
+      }
+
+      if (Array.isArray(jsonData.tokens)) {
+        return parseFreeOTPPlusJSON(jsonData);
+      }
+
+      if (Array.isArray(jsonData.Authenticators)) {
+        return parseAuthProJSON(jsonData);
+      }
+
+      if (jsonData.db && Array.isArray(jsonData.db.entries)) {
+        return parseAegisJSON(jsonData);
+      }
+
+      if (Array.isArray(jsonData.items)) {
+        return parseBitwardenJSON(jsonData);
+      }
+
+      if (Array.isArray(jsonData.accounts)) {
+        if (isLastPassAccountsJSON(jsonData.accounts)) {
+          return parseLastPassJSON(jsonData);
+        }
+
+        if (isAndOTPWrappedAccountsJSON(jsonData.accounts)) {
+          return parseAndOTPJSON(jsonData);
+        }
+
+        return parseLastPassJSON(jsonData);
+      }
+
+      if (Array.isArray(jsonData.entries)) {
+        return parseProtonJSON(jsonData);
+      }
+
+      if (Array.isArray(jsonData.services)) {
+        return parse2FASJSON(jsonData);
+      }
+
+      throw new Error('未识别的 JSON 导入格式');
     }
 `;
 }
