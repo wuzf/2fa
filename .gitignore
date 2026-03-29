@@ -170,3 +170,7 @@ dist
 
 .dev.vars
 .wrangler/
+
+# Local AI tooling artifacts
+CLAUDE.md
+.claude/
