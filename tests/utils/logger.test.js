@@ -95,7 +95,7 @@ describe('Logger System', () => {
       expect(logger.minLevel).toBe(LogLevel.INFO);
       expect(logger.environment).toBe('development');
       expect(logger.serviceName).toBe('2fa');
-      expect(logger.version).toBe('1.0.0');
+      expect(logger.version).toBe('1.3.0');
       expect(logger.enableConsole).toBe(true);
       expect(logger.enableRemote).toBe(false);
       expect(logger.remoteEndpoint).toBeNull();
@@ -107,7 +107,7 @@ describe('Logger System', () => {
         minLevel: LogLevel.WARN, // 使用非0值避免 0 || default 的问题
         environment: 'production',
         serviceName: 'test-service',
-        version: '2.0.0',
+        version: '1.3.0',
         enableConsole: false,
         enableRemote: true,
         remoteEndpoint: 'https://logs.example.com',
@@ -117,7 +117,7 @@ describe('Logger System', () => {
       expect(logger.minLevel).toBe(LogLevel.WARN);
       expect(logger.environment).toBe('production');
       expect(logger.serviceName).toBe('test-service');
-      expect(logger.version).toBe('2.0.0');
+      expect(logger.version).toBe('1.3.0');
       expect(logger.enableConsole).toBe(false);
       expect(logger.enableRemote).toBe(true);
       expect(logger.remoteEndpoint).toBe('https://logs.example.com');
@@ -141,7 +141,7 @@ describe('Logger System', () => {
       expect(logEntry).toMatchObject({
         level: 'INFO',
         service: '2fa',
-        version: '1.0.0',
+        version: '1.3.0',
         environment: 'development',
         message: 'Test message'
       });

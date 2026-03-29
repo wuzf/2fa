@@ -124,8 +124,11 @@ function findExistingKvId(workerName) {
     // 按优先级匹配，覆盖 wrangler auto-provision、Dashboard 创建、老版本等命名格式
     const match =
       namespaces.find(ns => ns.title === `${workerName}-SECRETS_KV`) ||
-      namespaces.find(ns => ns.title.includes('SECRETS_KV')) ||
+      namespaces.find(ns => ns.title === `${workerName}-secrets-kv`) ||
+      namespaces.find(ns => ns.title === 'SECRETS_KV') ||
       namespaces.find(ns => ns.title === workerName) ||
+      namespaces.find(ns => ns.title.includes('SECRETS_KV')) ||
+      namespaces.find(ns => ns.title.includes('secrets-kv')) ||
       (namespaces.length === 1 ? namespaces[0] : null);
 
     return match ? { id: match.id, title: match.title } : null;

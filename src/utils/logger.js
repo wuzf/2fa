@@ -47,7 +47,7 @@ class Logger {
 		this.minLevel = options.minLevel || LogLevel.INFO;
 		this.environment = options.environment || 'development';
 		this.serviceName = options.serviceName || '2fa';
-		this.version = options.version || '1.0.0';
+		this.version = options.version || '1.3.0';
 		this.enableConsole = options.enableConsole !== false;
 		this.enableRemote = options.enableRemote || false;
 		this.remoteEndpoint = options.remoteEndpoint || null;
@@ -287,7 +287,7 @@ export function getLogger(env = null) {
 			minLevel,
 			environment: env?.ENVIRONMENT || 'development',
 			serviceName: '2fa',
-			version: '2.0.0',
+			version: '1.3.0',
 			enableConsole: true,
 			enableRemote: env?.LOG_REMOTE_ENDPOINT ? true : false,
 			remoteEndpoint: env?.LOG_REMOTE_ENDPOINT || null,

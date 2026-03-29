@@ -40,7 +40,7 @@ class MonitoringConfig {
 		// 自定义配置
 		this.environment = options.environment || 'production';
 		this.serviceName = options.serviceName || '2fa';
-		this.version = options.version || '2.0.0';
+		this.version = options.version || '1.3.0';
 	}
 
 	/**
@@ -495,14 +495,14 @@ export function getMonitoring(env = null) {
 			sentryDsn: env?.SENTRY_DSN || null,
 			sentryEnabled: !!env?.SENTRY_DSN,
 			sentryEnvironment: env?.ENVIRONMENT || 'production',
-			sentryRelease: env?.VERSION || '2.0.0',
+			sentryRelease: env?.VERSION || '1.3.0',
 			errorSampleRate: parseFloat(env?.ERROR_SAMPLE_RATE || '1.0'),
 			traceSampleRate: parseFloat(env?.TRACE_SAMPLE_RATE || '0.1'),
 			enablePerformanceMonitoring: env?.ENABLE_PERFORMANCE_MONITORING !== 'false',
 			slowRequestThreshold: parseInt(env?.SLOW_REQUEST_THRESHOLD || '3000'),
 			environment: env?.ENVIRONMENT || 'production',
 			serviceName: '2fa',
-			version: env?.VERSION || '2.0.0',
+			version: env?.VERSION || '1.3.0',
 		});
 
 		defaultMonitoring = new MonitoringManager(config);
