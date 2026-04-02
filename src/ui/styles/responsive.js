@@ -570,16 +570,16 @@ export function getResponsiveStyles() {
       }
       
       .secrets-list {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
         gap: 12px;
         justify-content: center;
         text-align: left;
       }
-      
+
       .content {
         text-align: center;
       }
-      
+
       .secret-header {
         flex-wrap: nowrap;
         align-items: center;
@@ -653,9 +653,9 @@ export function getResponsiveStyles() {
         max-width: 750px;
       }
 
-      /* iPad 和平板两列卡片布局 */
+      /* iPad 和平板动态多列卡片布局 */
       .secrets-list {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 14px;
         justify-content: center;
         text-align: left;
@@ -838,11 +838,11 @@ export function getResponsiveStyles() {
       }
 
       .container {
-        max-width: 900px;
+        max-width: 1400px;
       }
 
       .secrets-list {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 16px;
         justify-content: center;
         text-align: left;

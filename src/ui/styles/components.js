@@ -4,7 +4,7 @@
 export function getComponentStyles() {
 	return `    .secrets-list {
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: 10px;
       justify-content: center;
       margin: 0 auto;
