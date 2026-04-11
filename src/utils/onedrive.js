@@ -5,6 +5,7 @@
 
 import { decryptData, isEncrypted } from './encryption.js';
 import { getLogger } from './logger.js';
+import { getBackupContentType } from './backup-format.js';
 import {
 	extractOAuthProviderError as extractProviderError,
 	parseOAuthJsonResponse as parseJsonResponse,
@@ -286,7 +287,7 @@ async function uploadOneDriveFile(fileName, fileContent, config, env, options = 
 			method: 'PUT',
 			headers: {
 				Authorization: `Bearer ${accessToken}`,
-				'Content-Type': 'application/json',
+				'Content-Type': getBackupContentType(fileName, { encrypted: fileContent.startsWith('v1:') }),
 			},
 			body: fileContent,
 		});

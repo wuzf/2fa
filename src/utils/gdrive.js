@@ -5,6 +5,7 @@
 
 import { decryptData, isEncrypted } from './encryption.js';
 import { getLogger } from './logger.js';
+import { getBackupContentType } from './backup-format.js';
 import {
 	extractOAuthProviderError,
 	parseOAuthJsonResponse as parseJsonResponse,
@@ -298,7 +299,7 @@ async function uploadGoogleDriveFile(fileName, fileContent, config, env, options
 					method: 'PATCH',
 					headers: {
 						Authorization: `Bearer ${accessToken}`,
-						'Content-Type': 'application/json',
+						'Content-Type': getBackupContentType(fileName, { encrypted: fileContent.startsWith('v1:') }),
 					},
 					body: fileContent,
 				},
@@ -312,6 +313,7 @@ async function uploadGoogleDriveFile(fileName, fileContent, config, env, options
 			const boundary = `2fa-${crypto.randomUUID()}`;
 			const metadata = JSON.stringify({
 				name: fileName,
+				mimeType: getBackupContentType(fileName, { encrypted: fileContent.startsWith('v1:') }).split(';')[0],
 				parents: [folderId],
 			});
 			const multipartBody =
@@ -319,7 +321,7 @@ async function uploadGoogleDriveFile(fileName, fileContent, config, env, options
 				'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
 				`${metadata}\r\n` +
 				`--${boundary}\r\n` +
-				'Content-Type: application/json\r\n\r\n' +
+				`Content-Type: ${getBackupContentType(fileName, { encrypted: fileContent.startsWith('v1:') })}\r\n\r\n` +
 				`${fileContent}\r\n` +
 				`--${boundary}--`;
 

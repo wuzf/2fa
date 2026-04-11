@@ -108,6 +108,68 @@ export function getUtilsCode() {
       return new Date().toISOString().split('T')[0];
     }
 
+    const DEFAULT_EXPORT_FORMAT_OPTIONS = ['txt', 'json', 'csv', 'html'];
+    let defaultExportFormatRequest = null;
+
+    function normalizeDefaultExportFormat(format) {
+      const normalized = String(format || '').trim().toLowerCase();
+      return DEFAULT_EXPORT_FORMAT_OPTIONS.includes(normalized) ? normalized : 'json';
+    }
+
+    function getCachedDefaultExportFormat() {
+      try {
+        return normalizeDefaultExportFormat(localStorage.getItem('defaultExportFormat') || 'json');
+      } catch {
+        return 'json';
+      }
+    }
+
+    function cacheDefaultExportFormat(format) {
+      const normalized = normalizeDefaultExportFormat(format);
+      try {
+        localStorage.setItem('defaultExportFormat', normalized);
+      } catch {
+        // ignore localStorage failures
+      }
+      return normalized;
+    }
+
+    async function getServerDefaultExportFormat(options = {}) {
+      const forceRefresh = options.forceRefresh === true;
+      if (!forceRefresh && defaultExportFormatRequest) {
+        return defaultExportFormatRequest;
+      }
+
+      const requestPromise = (async () => {
+        const fallbackFormat = getCachedDefaultExportFormat();
+        if (typeof authenticatedFetch !== 'function') {
+          return fallbackFormat;
+        }
+
+        try {
+          const response = await authenticatedFetch('/api/settings');
+          if (!response.ok) {
+            return fallbackFormat;
+          }
+
+          const data = await response.json();
+          return cacheDefaultExportFormat(data.defaultExportFormat);
+        } catch {
+          return fallbackFormat;
+        }
+      })();
+
+      defaultExportFormatRequest = requestPromise;
+
+      try {
+        return await requestPromise;
+      } finally {
+        if (defaultExportFormatRequest === requestPromise) {
+          defaultExportFormatRequest = null;
+        }
+      }
+    }
+
     /**
      * 下载文件到本地
      * @param {string} content - 文件内容

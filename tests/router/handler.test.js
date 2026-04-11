@@ -573,7 +573,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleGetBackups).toHaveBeenCalledWith(request, env);
+      expect(handleGetBackups).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(200);
     });
 

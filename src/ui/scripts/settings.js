@@ -13,6 +13,9 @@ export function getSettingsCode() {
 
     // 当前激活的设置标签
     let activeSettingsTab = 'security';
+    let preferencesLoadRequestId = 0;
+    let defaultExportFormatChangeVersion = 0;
+    let defaultExportFormatSaveRequestId = 0;
 
     /**
      * 切换设置标签
@@ -256,24 +259,34 @@ export function getSettingsCode() {
      */
     async function loadPreferences() {
       // 主题模式
+      const requestId = ++preferencesLoadRequestId;
+      const formatVersionAtStart = defaultExportFormatChangeVersion;
+
       const currentTheme = localStorage.getItem('theme') || 'auto';
       const themeRadios = document.querySelectorAll('input[name="settingsTheme"]');
       themeRadios.forEach(radio => {
         radio.checked = radio.value === currentTheme;
       });
 
-      // 默认导出格式
-      const defaultFormat = localStorage.getItem('defaultExportFormat') || 'json';
       const formatSelect = document.getElementById('settingsDefaultExportFormat');
+      const localDefaultFormat = localStorage.getItem('defaultExportFormat') || 'json';
       if (formatSelect) {
-        formatSelect.value = defaultFormat;
+        formatSelect.value = localDefaultFormat;
       }
 
-      // 登录有效期和备份保留数量（从服务器读取）
+      // 默认导出格式、登录有效期和备份保留数量（从服务器读取）
       try {
         const resp = await authenticatedFetch('/api/settings');
         if (resp.ok) {
           const data = await resp.json();
+          if (requestId !== preferencesLoadRequestId) {
+            return;
+          }
+
+          if (formatSelect && data.defaultExportFormat && defaultExportFormatChangeVersion === formatVersionAtStart) {
+            formatSelect.value = data.defaultExportFormat;
+            localStorage.setItem('defaultExportFormat', data.defaultExportFormat);
+          }
           const jwtInput = document.getElementById('settingsJwtExpiryDays');
           if (jwtInput && data.jwtExpiryDays) {
             jwtInput.value = data.jwtExpiryDays;
@@ -300,11 +313,37 @@ export function getSettingsCode() {
     /**
      * 保存默认导出格式
      */
-    function saveDefaultExportFormat() {
+    async function saveDefaultExportFormat() {
       const formatSelect = document.getElementById('settingsDefaultExportFormat');
-      if (formatSelect) {
-        localStorage.setItem('defaultExportFormat', formatSelect.value);
-        showCenterToast('✅', '导出格式已保存');
+      if (!formatSelect) return;
+      const selectedFormat = formatSelect.value;
+      const requestId = ++defaultExportFormatSaveRequestId;
+      defaultExportFormatChangeVersion += 1;
+
+      try {
+        const resp = await authenticatedFetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ defaultExportFormat: selectedFormat }),
+        });
+        const data = await resp.json();
+        if (requestId !== defaultExportFormatSaveRequestId) {
+          return;
+        }
+
+        if (resp.ok && data.success) {
+          const savedFormat = (data.settings && data.settings.defaultExportFormat) || selectedFormat;
+          formatSelect.value = savedFormat;
+          localStorage.setItem('defaultExportFormat', savedFormat);
+          showCenterToast('✅', '默认导出格式已保存，导出弹窗会优先使用该格式');
+        } else {
+          showCenterToast('❌', data.message || '保存默认导出格式失败');
+        }
+      } catch {
+        if (requestId !== defaultExportFormatSaveRequestId) {
+          return;
+        }
+        showCenterToast('❌', '网络错误，请稍后重试');
       }
     }
 

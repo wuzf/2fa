@@ -366,6 +366,10 @@ export class PerformanceTimer {
  * 请求日志中间件
  * 自动记录 HTTP 请求和响应
  */
+PerformanceTimer.prototype.getDuration = function getDuration() {
+	return Date.now() - this.startTime;
+};
+
 export function createRequestLogger(logger = null) {
 	const log = logger || getLogger();
 

@@ -173,6 +173,62 @@ describe('Google Drive Utils', () => {
 		expect(status.lastError).toBeNull();
 	});
 
+	it('should set Google Drive upload MIME from backup format and encryption state', async () => {
+		await saveGoogleDriveSingleConfig(env, {
+			name: 'Primary Google Drive',
+			folderPath: '/2FA-Backups',
+			authorized: true,
+			enabled: true,
+			refreshToken: 'refresh-token',
+			accessToken: 'valid-access-token',
+			accessTokenExpiresAt: new Date(Date.now() + 3600_000).toISOString(),
+		});
+
+		const uploadBodies = [];
+		globalThis.fetch = vi.fn(async (url, options = {}) => {
+			const stringUrl = String(url);
+
+			if (stringUrl.startsWith('https://www.googleapis.com/drive/v3/files?')) {
+				const urlObj = new URL(stringUrl);
+				const q = urlObj.searchParams.get('q') || '';
+
+				if (q.includes("mimeType = 'application/vnd.google-apps.folder'")) {
+					return new Response(JSON.stringify({ files: [{ id: 'folder-id-1', name: '2FA-Backups' }] }), {
+						status: 200,
+						headers: { 'Content-Type': 'application/json' },
+					});
+				}
+
+				if (q.includes("name = 'backup_test.csv'") || q.includes("name = 'backup_test.html'")) {
+					return new Response(JSON.stringify({ files: [] }), {
+						status: 200,
+						headers: { 'Content-Type': 'application/json' },
+					});
+				}
+			}
+
+			if (stringUrl.startsWith('https://www.googleapis.com/upload/drive/v3/files?') && options.method === 'POST') {
+				uploadBodies.push(String(options.body));
+				return new Response(JSON.stringify({ id: 'file-id-1' }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
+
+			throw new Error(`Unexpected fetch: ${stringUrl}`);
+		});
+
+		const resultCsv = await pushToAllGoogleDrive('backup_test.csv', 'service,secret', env);
+		const resultEncrypted = await pushToAllGoogleDrive('backup_test.html', 'v1:encrypted-backup', env);
+
+		expect(resultCsv.successCount).toBe(1);
+		expect(resultEncrypted.successCount).toBe(1);
+		expect(uploadBodies[0]).toContain('"mimeType":"text/csv"');
+		expect(uploadBodies[0]).toContain('Content-Type: text/csv;charset=utf-8');
+		expect(uploadBodies[1]).toContain('"mimeType":"application/octet-stream"');
+		expect(uploadBodies[1]).toContain('Content-Type: application/octet-stream');
+	});
+
 	it('should escape Google Drive parent ids when composing folder and file queries', async () => {
 		await saveGoogleDriveSingleConfig(env, {
 			name: 'Escaped Parent Target',

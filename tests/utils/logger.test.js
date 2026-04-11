@@ -680,6 +680,15 @@ describe('Logger System', () => {
 
       expect(timer.logger).toBeDefined();
     });
+
+    it('getDuration() should return the elapsed time before end()', () => {
+      const logger = new Logger();
+      const timer = new PerformanceTimer('Test', logger);
+
+      vi.advanceTimersByTime(120);
+
+      expect(timer.getDuration()).toBe(120);
+    });
   });
 
   describe('createRequestLogger', () => {

@@ -11,6 +11,7 @@
 
 import { encryptData, decryptData, isEncrypted } from './encryption.js';
 import { getLogger } from './logger.js';
+import { getBackupContentType } from './backup-format.js';
 
 const WEBDAV_USER_AGENT = '2FA-Manager/1.0 (Cloudflare Workers; WebDAV Client)';
 // ==================== 多目标配置管理 ====================
@@ -246,7 +247,7 @@ async function _pushToSingleWebDAV(backupKey, backupContent, config, env) {
 				signal: controller.signal,
 				headers: {
 					Authorization: authHeader,
-					'Content-Type': 'application/json',
+					'Content-Type': getBackupContentType(backupKey, { encrypted: backupContent.startsWith('v1:') }),
 					'User-Agent': WEBDAV_USER_AGENT,
 				},
 				body: backupContent,
@@ -262,7 +263,7 @@ async function _pushToSingleWebDAV(backupKey, backupContent, config, env) {
 						signal: controller.signal,
 						headers: {
 							Authorization: authHeader,
-							'Content-Type': 'application/json',
+							'Content-Type': getBackupContentType(backupKey, { encrypted: backupContent.startsWith('v1:') }),
 							'User-Agent': WEBDAV_USER_AGENT,
 						},
 						body: backupContent,

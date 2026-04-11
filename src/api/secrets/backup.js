@@ -1,41 +1,45 @@
 /**
- * 备份处理器 - 备份创建和获取
- *
- * 包含功能:
- * - handleBackupSecrets: 创建新备份（带 Rate Limiting）
- * - handleGetBackups: 获取备份列表
- * - parseBackupTimeFromKey: 从备份文件名解析时间
- *
- * 注意: 备份使用 encryptData/decryptData（加密整个对象）
- *       与 CRUD 的 encryptSecrets/decryptSecrets（加密数组）不同
+ * Backup creation and listing handlers.
  */
 
 import { getAllSecrets } from './shared.js';
 import { getLogger } from '../../utils/logger.js';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../../utils/rateLimit.js';
-import { encryptData, decryptData } from '../../utils/encryption.js';
 import { createJsonResponse, createErrorResponse } from '../../utils/response.js';
-import { saveDataHash } from '../../worker.js';
 import { ValidationError, StorageError, CryptoError, BusinessLogicError, errorToResponse, logError } from '../../utils/errors.js';
 import { pushToWebDAV } from '../../utils/webdav.js';
 import { pushToS3 } from '../../utils/s3.js';
 import { pushToOneDrive } from '../../utils/onedrive.js';
 import { pushToGoogleDrive } from '../../utils/gdrive.js';
+import { saveDataHash } from '../../utils/data-hash.js';
+import {
+	ensureBackupIndexes,
+	getBackupIndexState,
+	getBackupKeyFromIndexKey,
+	listAllBackupIndexEntries,
+	listAllBackupKeys,
+	listBackupIndexPage,
+	putBackupRecord,
+} from '../../utils/backup-index.js';
+import {
+	createBackupEntry,
+	decodeBackupEntry,
+	getBackupFormatFromKey,
+	getPortableSkippedInvalidCount,
+	isValidBackupKey,
+	parseBackupTimeFromKey,
+} from '../../utils/backup-format.js';
+
+const INDEX_CURSOR_PREFIX = 'idx:';
+const INTERNAL_BACKUP_FORMAT = 'json';
 
 /**
- * 处理手动备份密钥
- * 🔒 备份数据也会加密存储（使用 encryptData）
- *
- * @param {Request} request - HTTP 请求对象
- * @param {Object} env - 环境变量对象
- * @param {Object} [ctx] - Cloudflare Workers 执行上下文
- * @returns {Response} HTTP响应
+ * Handle manual backup creation.
  */
 export async function handleBackupSecrets(request, env, ctx) {
 	const logger = getLogger(env);
 
 	try {
-		// 🛡️ Rate Limiting: 防止频繁备份滥用
 		const clientIP = getClientIdentifier(request, 'ip');
 		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
 
@@ -53,50 +57,40 @@ export async function handleBackupSecrets(request, env, ctx) {
 			timestamp: new Date().toISOString(),
 		});
 
-		// 获取所有密钥（已解密）
 		const secrets = await getAllSecrets(env);
 
 		if (secrets && secrets.length > 0) {
-			// 创建备份数据结构
-			const backupData = {
-				timestamp: new Date().toISOString(),
-				version: '1.0',
-				count: secrets.length,
-				secrets: secrets,
-			};
+			const backupEntry = await createBackupEntry(secrets, env, {
+				format: INTERNAL_BACKUP_FORMAT,
+				reason: 'manual',
+				strict: true,
+			});
+			const {
+				backupKey,
+				backupContent,
+				encrypted: isEncrypted,
+				format: storedFormat,
+				timestamp,
+				count: storedCount,
+				metadata,
+			} = backupEntry;
 
-			// 生成备份文件名（含毫秒，避免同秒覆盖）
-			const now = new Date();
-			const dateStr = now.toISOString().split('T')[0];
-			const timeStr = now.toISOString().split('T')[1].replace(/:/g, '-').replace('.', '-').replace('Z', '');
-			const rand = Math.random().toString(36).slice(2, 6);
-			const backupKey = `backup_${dateStr}_${timeStr}-${rand}.json`;
-
-			// 🔒 加密备份数据（如果配置了 ENCRYPTION_KEY）
-			let backupContent;
-			let isEncrypted = false;
-
-			if (env.ENCRYPTION_KEY) {
-				// 加密整个备份对象
-				backupContent = await encryptData(backupData, env);
-				isEncrypted = true;
+			if (isEncrypted) {
 				logger.info('备份数据已加密', {
 					backupKey,
 					encrypted: true,
+					format: storedFormat,
 				});
 			} else {
-				// 向后兼容:如果没有配置加密密钥，仍然以明文保存
-				backupContent = JSON.stringify(backupData, null, 2);
 				logger.warn('备份数据以明文保存', {
 					backupKey,
 					reason: '未配置 ENCRYPTION_KEY',
+					format: storedFormat,
 				});
 			}
 
-			// 存储备份到KV
-			await env.SECRETS_KV.put(backupKey, backupContent);
+			await putBackupRecord(env, backupKey, backupContent, metadata);
 
-			// WebDAV 自动推送（通过 ctx.waitUntil 托管，不阻塞响应且保证执行完成）
 			const webdavPromise = pushToWebDAV(backupKey, backupContent, env).catch((err) => {
 				logger.warn('WebDAV 推送异常（不影响备份）', {}, err);
 			});
@@ -104,7 +98,6 @@ export async function handleBackupSecrets(request, env, ctx) {
 				ctx.waitUntil(webdavPromise);
 			}
 
-			// S3 自动推送
 			const s3Promise = pushToS3(backupKey, backupContent, env).catch((err) => {
 				logger.warn('S3 推送异常（不影响备份）', {}, err);
 			});
@@ -128,35 +121,41 @@ export async function handleBackupSecrets(request, env, ctx) {
 
 			logger.info('手动备份完成', {
 				backupKey,
-				secretCount: secrets.length,
+				secretCount: storedCount,
 				encrypted: isEncrypted,
+				format: storedFormat,
 			});
 
-			// 更新数据哈希值（手动备份也需要更新哈希值）
-			await saveDataHash(env, secrets);
+			await saveDataHash(env, secrets, {
+				reason: 'manual',
+				skippedInvalidCount: backupEntry.skippedInvalidCount,
+			});
 
 			return createJsonResponse({
 				success: true,
-				message: `备份完成，共备份 ${secrets.length} 个密钥`,
-				backupKey: backupKey,
-				count: secrets.length,
-				timestamp: backupData.timestamp,
+				message: `备份完成，共备份 ${storedCount} 个密钥`,
+				backupKey,
+				count: storedCount,
+				timestamp,
 				encrypted: isEncrypted,
-			});
-		} else {
-			throw new BusinessLogicError('没有密钥需要备份', {
-				operation: 'backup',
-				secretsCount: 0,
+				format: storedFormat,
 			});
 		}
+
+		throw new BusinessLogicError('没有密钥需要备份', {
+			operation: 'backup',
+			secretsCount: 0,
+		});
 	} catch (error) {
-		// 如果是已知的错误类型，记录并转换
+		if (error.message?.startsWith('备份包含无效密钥')) {
+			return createErrorResponse('备份数据无效', error.message, 400, request);
+		}
+
 		if (error instanceof BusinessLogicError || error instanceof StorageError || error instanceof CryptoError) {
 			logError(error, logger, { operation: 'handleBackupSecrets' });
 			return errorToResponse(error);
 		}
 
-		// 未知错误
 		logger.error(
 			'手动备份任务执行失败',
 			{
@@ -168,215 +167,463 @@ export async function handleBackupSecrets(request, env, ctx) {
 	}
 }
 
-/**
- * 从备份文件名解析时间
- *
- * @param {string} keyName - 备份文件名，如 backup_2025-09-14_07-52-16-123.json 或 backup_2025-09-14_07-52-16.json
- * @returns {string} ISO时间字符串，解析失败时返回 'unknown'
- */
-function parseBackupTimeFromKey(keyName) {
+function parseBackupListOffset(cursor) {
+	if (!cursor) {
+		return 0;
+	}
+
+	const offset = Number.parseInt(cursor, 10);
+	return Number.isInteger(offset) && offset >= 0 ? offset : 0;
+}
+
+function getBackupListStartIndex(entries, cursor) {
+	if (!cursor) {
+		return 0;
+	}
+
+	if (/^\d+$/.test(cursor)) {
+		return parseBackupListOffset(cursor);
+	}
+
+	if (!isValidBackupKey(cursor)) {
+		return 0;
+	}
+
+	const exactIndex = entries.findIndex((entry) => entry.name === cursor);
+	if (exactIndex !== -1) {
+		return exactIndex + 1;
+	}
+
+	const insertionIndex = entries.findIndex((entry) => entry.name.localeCompare(cursor) < 0);
+	return insertionIndex === -1 ? entries.length : insertionIndex;
+}
+
+function parseIndexedCursor(cursor) {
+	if (typeof cursor !== 'string' || !cursor.startsWith(INDEX_CURSOR_PREFIX)) {
+		return null;
+	}
+
+	const rawCursor = cursor.slice(INDEX_CURSOR_PREFIX.length);
+	if (!rawCursor) {
+		return null;
+	}
+
+	const separatorIndex = rawCursor.indexOf('|');
+	if (separatorIndex === -1) {
+		return {
+			rawCursor: decodeIndexedCursorValue(rawCursor),
+			anchorBackupKey: null,
+			offset: /^\d+$/.test(rawCursor) ? parseBackupListOffset(rawCursor) : null,
+		};
+	}
+
+	const indexCursorPart = rawCursor.slice(0, separatorIndex);
+	const anchorBackupKey = rawCursor.slice(separatorIndex + 1);
+	const offsetMatch = indexCursorPart.match(/^(\d+):(.*)$/);
+	const rawCursorValue = offsetMatch ? offsetMatch[2] : indexCursorPart;
+
+	return {
+		rawCursor: decodeIndexedCursorValue(rawCursorValue),
+		anchorBackupKey: isValidBackupKey(anchorBackupKey) ? anchorBackupKey : null,
+		offset: offsetMatch ? parseBackupListOffset(offsetMatch[1]) : null,
+	};
+}
+
+function decodeIndexedCursorValue(value) {
 	try {
-		// 解析 backup_2025-09-14_07-52-16-123.json（含毫秒）或 backup_2025-09-14_07-52-16.json 格式
-		// 兼容 BackupManager 生成的 -UTC-xxxx 后缀和旧格式的 -xxxx 后缀
-		const match = keyName.match(/backup_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:-(\d{3}))?(?:-UTC)?(?:-[a-z0-9]{2,6})?\.json/);
-		if (match) {
-			const dateStr = match[1]; // 2025-09-14
-			const timeStr = match[2]; // 07-52-16
-			const ms = match[3] || '000';
-			const isoTime = `${dateStr}T${timeStr.replace(/-/g, ':')}.${ms}Z`;
-			return isoTime;
-		}
-
-		// 兼容旧格式 backup_2025-09-14.json
-		const oldMatch = keyName.match(/backup_(\d{4}-\d{2}-\d{2})\.json/);
-		if (oldMatch) {
-			return `${oldMatch[1]}T00:00:00.000Z`;
-		}
-
-		return 'unknown';
+		return decodeURIComponent(value);
 	} catch {
-		// 解析失败时返回默认值（静默处理，避免日志污染）
-		return 'unknown';
+		return value;
 	}
 }
 
+function buildIndexedCursor(cursor, anchorBackupKey, offset = null) {
+	if (!cursor) {
+		return null;
+	}
+
+	if (/^\d+$/.test(cursor) || !isValidBackupKey(anchorBackupKey)) {
+		return `${INDEX_CURSOR_PREFIX}${cursor}`;
+	}
+
+	const encodedCursor = encodeURIComponent(cursor);
+	if (Number.isInteger(offset) && offset >= 0) {
+		return `${INDEX_CURSOR_PREFIX}${offset}:${encodedCursor}|${anchorBackupKey}`;
+	}
+
+	return `${INDEX_CURSOR_PREFIX}${encodedCursor}|${anchorBackupKey}`;
+}
+
+function getIndexedCursorOffset(cursor, parsedIndexedCursor = null) {
+	if (!cursor) {
+		return 0;
+	}
+
+	if (Number.isInteger(parsedIndexedCursor?.offset)) {
+		return parsedIndexedCursor.offset;
+	}
+
+	if (typeof cursor !== 'string' || !/^\d+$/.test(cursor)) {
+		return null;
+	}
+
+	return parseBackupListOffset(cursor);
+}
+
+function resolveKeyListingCursor(cursor, parsedIndexedCursor) {
+	if (parsedIndexedCursor?.anchorBackupKey) {
+		return parsedIndexedCursor.anchorBackupKey;
+	}
+
+	if (typeof parsedIndexedCursor?.rawCursor === 'string' && /^\d+$/.test(parsedIndexedCursor.rawCursor)) {
+		return parsedIndexedCursor.rawCursor;
+	}
+
+	if (cursor && !String(cursor).startsWith(INDEX_CURSOR_PREFIX)) {
+		return cursor;
+	}
+
+	return undefined;
+}
+
+function isOpaqueLegacyBackupCursor(cursor) {
+	return (
+		typeof cursor === 'string' &&
+		cursor.length > 0 &&
+		!cursor.startsWith(INDEX_CURSOR_PREFIX) &&
+		!/^\d+$/.test(cursor) &&
+		!isValidBackupKey(cursor)
+	);
+}
+
+function mapBackupEntriesToIndexEntries(entries) {
+	return entries.map((entry) => ({
+		...entry,
+		metadata: {
+			backupKey: entry.name,
+			...(entry.metadata || {}),
+		},
+	}));
+}
+
+function listBackupEntriesFromLoadedKeys(allBackupEntries, options = {}) {
+	const loadAll = options.loadAll === true;
+	const limit = options.limit || 50;
+	const cursor = options.cursor;
+	const startIndex = loadAll ? 0 : getBackupListStartIndex(allBackupEntries, cursor);
+	const endIndex = loadAll ? allBackupEntries.length : startIndex + limit;
+	const pageEntries = allBackupEntries.slice(startIndex, endIndex);
+
+	return {
+		backupIndexEntries: mapBackupEntriesToIndexEntries(pageEntries),
+		hasMore: !loadAll && endIndex < allBackupEntries.length,
+		nextCursor: loadAll ? null : endIndex < allBackupEntries.length ? pageEntries[pageEntries.length - 1]?.name || null : null,
+	};
+}
+
+async function listBackupEntriesFromKeys(env, options = {}) {
+	const allBackupEntries = (await listAllBackupKeys(env)).sort((a, b) => b.name.localeCompare(a.name));
+	return listBackupEntriesFromLoadedKeys(allBackupEntries, options);
+}
+
+async function listBackupEntriesFromLegacyKvCursor(env, options = {}) {
+	const listResult = await env.SECRETS_KV.list({
+		prefix: 'backup_',
+		limit: options.limit || 50,
+		...(options.cursor ? { cursor: options.cursor } : {}),
+	});
+	const validEntries = listResult.keys.filter((entry) => isValidBackupKey(entry.name)).reverse();
+	const nextCursor =
+		!listResult.list_complete && validEntries.length > 0
+			? validEntries[validEntries.length - 1].name
+			: !listResult.list_complete
+				? listResult.cursor || null
+				: null;
+
+	return {
+		backupIndexEntries: mapBackupEntriesToIndexEntries(validEntries),
+		hasMore: !listResult.list_complete,
+		nextCursor,
+	};
+}
+
+async function findMissingIndexedBackupKeys(env, indexEntries = [], options = {}) {
+	const maxChecks =
+		Number.isInteger(options.maxChecks) && options.maxChecks > 0 ? Math.min(indexEntries.length, options.maxChecks) : indexEntries.length;
+	const entriesToCheck = indexEntries.slice(0, maxChecks);
+	const existenceChecks = await Promise.all(
+		entriesToCheck.map(async (indexEntry) => {
+			const backupKey = indexEntry.metadata?.backupKey || getBackupKeyFromIndexKey(indexEntry.name);
+			if (!isValidBackupKey(backupKey)) {
+				return backupKey || indexEntry.name;
+			}
+
+			const backupContent = await env.SECRETS_KV.get(backupKey, 'text');
+			return backupContent ? null : backupKey;
+		}),
+	);
+
+	return existenceChecks.filter(Boolean);
+}
+
 /**
- * 处理获取备份列表
- * 🔒 检测并显示备份的加密状态
- * ⚡ 性能优化：使用KV原生prefix过滤和分页
- *
- * 查询参数:
- * - limit: 返回的备份数量（默认50，最大1000，或者使用 'all'/'0' 加载所有）
- * - cursor: 分页游标（用于获取下一页，仅在非loadAll模式下有效）
- * - details: 是否获取详细信息（默认true）
- *
- * @param {Request} request - HTTP请求对象
- * @param {Object} env - 环境变量对象
- * @returns {Response} HTTP响应
+ * Handle backup listing.
  */
-export async function handleGetBackups(request, env) {
+export async function handleGetBackups(request, env, ctx) {
 	const logger = getLogger(env);
 
 	try {
-		// 解析查询参数
 		const url = new URL(request.url);
 		const limitParam = url.searchParams.get('limit') || '50';
 		const cursor = url.searchParams.get('cursor') || undefined;
 		const includeDetails = url.searchParams.get('details') !== 'false';
 
-		// 支持 limit=all 或 limit=0 来加载所有备份
 		let limit;
 		let loadAll = false;
 
 		if (limitParam.toLowerCase() === 'all' || limitParam === '0') {
 			loadAll = true;
-			limit = 1000; // KV list() 单次最大限制
+			limit = 1000;
 		} else {
-			// 移除100的限制，允许更大的值（最大1000，KV的单次限制）
-			limit = Math.min(parseInt(limitParam, 10), 1000);
+			const parsedLimit = Number.parseInt(limitParam, 10);
+			limit = Number.isInteger(parsedLimit) ? Math.min(parsedLimit, 1000) : 50;
 		}
 
 		logger.debug('获取备份列表', { limit, loadAll, cursor, includeDetails });
 
-		// ⚡ 使用KV原生prefix过滤，避免内存过滤
-		const listOptions = {
-			prefix: 'backup_',
-			limit: limit,
+		const indexState = await getBackupIndexState(env);
+		const parsedIndexedCursor = parseIndexedCursor(cursor);
+		const indexCursor = parsedIndexedCursor?.rawCursor || null;
+		const keyListingCursor = resolveKeyListingCursor(cursor, parsedIndexedCursor);
+		const useOpaqueLegacyCursor = !loadAll && isOpaqueLegacyBackupCursor(cursor);
+		const stateCount = Number.isInteger(indexState?.count) ? indexState.count : null;
+		const canFallbackToKeyListing = loadAll || !cursor || keyListingCursor !== undefined;
+		const useLegacyOffsetCursor = !loadAll && cursor && /^\d+$/.test(cursor);
+		const useBackupAnchorCursor = !loadAll && cursor && isValidBackupKey(cursor);
+		const useIndexedListing = indexState?.version === 2 && !useLegacyOffsetCursor && !useBackupAnchorCursor && !useOpaqueLegacyCursor;
+		let backupIndexEntries;
+		let hasMore;
+		let nextCursor;
+		let usedKeyListing = false;
+
+		const scheduleIndexRebuild = () => {
+			if (ctx?.waitUntil) {
+				ctx.waitUntil(
+					ensureBackupIndexes(env, { force: true }).catch((error) => {
+						logger.warn('备份索引缺失，后台重建失败', { errorMessage: error.message }, error);
+					}),
+				);
+			}
 		};
 
-		if (cursor && !loadAll) {
-			listOptions.cursor = cursor;
-		}
+		if (useOpaqueLegacyCursor) {
+			const legacyListing = await listBackupEntriesFromLegacyKvCursor(env, { limit, cursor });
+			backupIndexEntries = legacyListing.backupIndexEntries;
+			hasMore = legacyListing.hasMore;
+			nextCursor = legacyListing.nextCursor;
+			usedKeyListing = true;
+		} else if (useIndexedListing) {
+			if (loadAll) {
+				backupIndexEntries = await listAllBackupIndexEntries(env);
+				hasMore = false;
+				nextCursor = null;
+				const missingIndexedBackupKeys = backupIndexEntries.length > 0 ? await findMissingIndexedBackupKeys(env, backupIndexEntries) : [];
 
-		// 🔄 如果需要加载所有备份，循环获取所有分页
-		let allBackupKeys = [];
-		let currentCursor = cursor;
-		let hasMore = true;
+				if ((stateCount !== null && backupIndexEntries.length !== stateCount) || missingIndexedBackupKeys.length > 0) {
+					const keyListing = listBackupEntriesFromLoadedKeys(
+						(await listAllBackupKeys(env)).sort((a, b) => b.name.localeCompare(a.name)),
+						{ limit, loadAll, cursor: keyListingCursor },
+					);
+					backupIndexEntries = keyListing.backupIndexEntries;
+					hasMore = keyListing.hasMore;
+					nextCursor = keyListing.nextCursor;
+					usedKeyListing = true;
 
-		if (loadAll) {
-			// 循环获取所有备份，直到没有更多数据
-			while (hasMore) {
-				const pageOptions = {
-					prefix: 'backup_',
-					limit: 1000, // 每页最大1000
-				};
-
-				if (currentCursor) {
-					pageOptions.cursor = currentCursor;
+					logger.warn('备份索引不完整，已回退到真实备份键列表', {
+						expectedCount: stateCount,
+						actualIndexCount: backupIndexEntries.length,
+						missingIndexedBackupKeys: missingIndexedBackupKeys.slice(0, 3),
+					});
+					scheduleIndexRebuild();
 				}
-
-				const pageResult = await env.SECRETS_KV.list(pageOptions);
-				allBackupKeys = allBackupKeys.concat(pageResult.keys);
-
-				hasMore = !pageResult.list_complete;
-				currentCursor = pageResult.cursor;
-
-				logger.debug('获取备份分页', {
-					pageSize: pageResult.keys.length,
-					totalSoFar: allBackupKeys.length,
-					hasMore,
+			} else {
+				const pageResult = await listBackupIndexPage(env, {
+					limit,
+					...(indexCursor ? { cursor: indexCursor } : {}),
 				});
+				backupIndexEntries = pageResult.keys;
+				hasMore = !pageResult.list_complete;
+				const currentOffset = getIndexedCursorOffset(indexCursor, parsedIndexedCursor);
+				nextCursor =
+					hasMore && pageResult.cursor
+						? buildIndexedCursor(
+								pageResult.cursor,
+								backupIndexEntries[backupIndexEntries.length - 1]?.metadata?.backupKey ||
+									getBackupKeyFromIndexKey(backupIndexEntries[backupIndexEntries.length - 1]?.name),
+								currentOffset === null ? null : currentOffset + backupIndexEntries.length,
+							)
+						: null;
+
+				const remainingCountFromState = stateCount === null || currentOffset === null ? null : Math.max(stateCount - currentOffset, 0);
+				const expectedPageSize = remainingCountFromState === null ? null : Math.min(limit, remainingCountFromState);
+				const indexLooksIncomplete =
+					(expectedPageSize !== null && backupIndexEntries.length < expectedPageSize) ||
+					(expectedPageSize === null && backupIndexEntries.length === 0 && stateCount !== 0);
+				const indexLooksOverflowed = remainingCountFromState !== null && backupIndexEntries.length > remainingCountFromState;
+				const missingIndexedBackupKeys = backupIndexEntries.length > 0 ? await findMissingIndexedBackupKeys(env, backupIndexEntries) : [];
+				const indexContainsMissingBackups = missingIndexedBackupKeys.length > 0;
+				const indexPageDisagreesWithState = indexLooksIncomplete || indexLooksOverflowed || indexContainsMissingBackups;
+
+				if (indexPageDisagreesWithState && canFallbackToKeyListing) {
+					const keyListing = await listBackupEntriesFromKeys(env, { limit, loadAll, cursor: keyListingCursor });
+					backupIndexEntries = keyListing.backupIndexEntries;
+					hasMore = keyListing.hasMore;
+					nextCursor = keyListing.nextCursor;
+					usedKeyListing = true;
+
+					logger.warn('备份索引不完整，已回退到真实备份键列表', {
+						expectedPageSize,
+						remainingCountFromState,
+						actualPageSize: pageResult.keys.length,
+						offset: currentOffset,
+						missingIndexedBackupKeys: missingIndexedBackupKeys.slice(0, 3),
+					});
+					scheduleIndexRebuild();
+				} else if (indexPageDisagreesWithState) {
+					logger.warn('备份索引不完整，但当前游标缺少可回退锚点，保留索引分页结果并安排重建', {
+						offset: currentOffset,
+						remainingCountFromState,
+						actualPageSize: pageResult.keys.length,
+						missingIndexedBackupKeys: missingIndexedBackupKeys.slice(0, 3),
+					});
+					scheduleIndexRebuild();
+				}
 			}
 		} else {
-			// 单次获取（分页模式）
-			const listResult = await env.SECRETS_KV.list(listOptions);
-			allBackupKeys = listResult.keys;
-			hasMore = !listResult.list_complete;
-			currentCursor = listResult.cursor;
+			const keyListing = await listBackupEntriesFromKeys(env, { limit, loadAll, cursor: keyListingCursor ?? cursor });
+			backupIndexEntries = keyListing.backupIndexEntries;
+			hasMore = keyListing.hasMore;
+			nextCursor = keyListing.nextCursor;
+			usedKeyListing = true;
+
+			if (ctx?.waitUntil && indexState?.version !== 2 && !useBackupAnchorCursor) {
+				ctx.waitUntil(
+					ensureBackupIndexes(env).catch((error) => {
+						logger.warn('备份索引后台回填失败', { errorMessage: error.message }, error);
+					}),
+				);
+			}
 		}
-
-		const backupKeys = allBackupKeys;
-
-		// 备份key格式: backup_YYYY-MM-DD_HH-MM-SS.json
-		// 天然按时间顺序排列，但我们需要倒序（最新的在前）
-
-		// 🔄 倒序排列（最新的在前）
-		// 由于key名称格式为 backup_YYYY-MM-DD_HH-MM-SS.json
-		// 字典序倒序即为时间倒序
-		backupKeys.reverse();
 
 		let backupDetails;
 
 		if (includeDetails) {
-			// 详细模式：获取每个备份的count和加密状态
 			backupDetails = await Promise.all(
-				backupKeys.map(async (key) => {
+				backupIndexEntries.map(async (indexEntry) => {
 					try {
-						const backupContent = await env.SECRETS_KV.get(key.name, 'text');
+						const backupKey = indexEntry.metadata?.backupKey || getBackupKeyFromIndexKey(indexEntry.name);
+						const backupMetadata = { ...(indexEntry.metadata || {}) };
+						delete backupMetadata.backupKey;
 
-						// 🔒 检测备份是否加密
-						const isEncrypted = backupContent && backupContent.startsWith('v1:');
+						const hasStoredSkippedInvalidCount = Object.prototype.hasOwnProperty.call(backupMetadata, 'skippedInvalidCount');
+						const metadataCount = Number.isInteger(backupMetadata.count) ? backupMetadata.count : null;
+						const metadataEncrypted = typeof backupMetadata.encrypted === 'boolean' ? backupMetadata.encrypted : null;
+						let count = metadataCount ?? -1;
+						let encrypted = metadataEncrypted ?? false;
+						let format = typeof backupMetadata.format === 'string' ? backupMetadata.format : getBackupFormatFromKey(backupKey);
+						let skippedInvalidCount = hasStoredSkippedInvalidCount ? Number.parseInt(backupMetadata.skippedInvalidCount, 10) || 0 : 0;
+						let size =
+							typeof backupMetadata.size === 'number' ? backupMetadata.size : typeof indexEntry.size === 'number' ? indexEntry.size : null;
+						const shouldDecodeBackupContent = metadataCount === null || !hasStoredSkippedInvalidCount;
 
-						let count = 0;
-						if (isEncrypted) {
-							// 加密的备份，需要解密才能获取数量
+						let backupContent = null;
+						if (metadataCount === null || metadataEncrypted === null || !hasStoredSkippedInvalidCount) {
+							backupContent = await env.SECRETS_KV.get(backupKey, 'text');
+							encrypted = metadataEncrypted ?? Boolean(backupContent && backupContent.startsWith('v1:'));
+							size = backupContent?.length || size || 0;
+						}
+
+						if (backupContent && !hasStoredSkippedInvalidCount && !encrypted) {
+							skippedInvalidCount = getPortableSkippedInvalidCount(backupContent, format);
+						}
+
+						if (backupContent && shouldDecodeBackupContent) {
 							try {
-								const decryptedData = await decryptData(backupContent, env);
-								count = decryptedData?.secrets?.length || decryptedData?.count || 0;
+								const decoded = await decodeBackupEntry(backupContent, env, {
+									backupKey,
+									metadata: backupMetadata,
+									encrypted,
+									strict: false,
+								});
+								count = metadataCount ?? decoded.count;
+								encrypted = decoded.encrypted;
+								format = decoded.format || format;
+								skippedInvalidCount = Number.isInteger(decoded.skippedInvalidCount) ? decoded.skippedInvalidCount : skippedInvalidCount;
 							} catch (error) {
 								logger.error(
-									'解密备份失败',
+									'读取备份详情失败',
 									{
-										backupKey: key.name,
+										backupKey,
 										errorMessage: error.message,
 									},
 									error,
 								);
-								count = -1; // 表示无法读取
-							}
-						} else {
-							// 明文备份，直接解析
-							try {
-								const backupData = JSON.parse(backupContent);
-								count = backupData?.secrets?.length || 0;
-							} catch (error) {
-								logger.error(
-									'解析备份失败',
-									{
-										backupKey: key.name,
-										errorMessage: error.message,
-									},
-									error,
-								);
-								count = -1;
+								if (metadataCount === null) {
+									count = -1;
+								}
 							}
 						}
 
 						return {
-							key: key.name,
-							created: key.metadata?.created || parseBackupTimeFromKey(key.name),
-							count: count,
-							encrypted: isEncrypted,
-							size: backupContent?.length || 0,
-							metadata: key.metadata,
+							key: backupKey,
+							created: backupMetadata.created || parseBackupTimeFromKey(backupKey),
+							count,
+							encrypted,
+							format,
+							partial: skippedInvalidCount > 0,
+							skippedInvalidCount,
+							size,
+							metadata: backupMetadata,
 						};
 					} catch (error) {
 						logger.error(
 							'获取备份详情失败',
 							{
-								backupKey: key.name,
+								backupKey: indexEntry.metadata?.backupKey || getBackupKeyFromIndexKey(indexEntry.name),
 								errorMessage: error.message,
 							},
 							error,
 						);
+
+						const backupKey = indexEntry.metadata?.backupKey || getBackupKeyFromIndexKey(indexEntry.name);
+						const backupMetadata = { ...(indexEntry.metadata || {}) };
+						delete backupMetadata.backupKey;
+
 						return {
-							key: key.name,
-							created: key.metadata?.created || 'unknown',
+							key: backupKey,
+							created: backupMetadata.created || 'unknown',
 							count: -1,
 							encrypted: false,
+							partial: false,
+							skippedInvalidCount: 0,
 							size: 0,
-							metadata: key.metadata,
+							metadata: backupMetadata,
 						};
 					}
 				}),
 			);
 		} else {
-			// 简单模式：仅返回key和时间戳，不读取备份内容
-			backupDetails = backupKeys.map((key) => ({
-				key: key.name,
-				created: key.metadata?.created || parseBackupTimeFromKey(key.name),
-				metadata: key.metadata,
-			}));
+			backupDetails = backupIndexEntries.map((indexEntry) => {
+				const backupKey = indexEntry.metadata?.backupKey || getBackupKeyFromIndexKey(indexEntry.name);
+				const backupMetadata = { ...(indexEntry.metadata || {}) };
+				delete backupMetadata.backupKey;
+
+				return {
+					key: backupKey,
+					created: backupMetadata.created || parseBackupTimeFromKey(backupKey),
+					metadata: backupMetadata,
+				};
+			});
 		}
 
 		const response = {
@@ -386,7 +633,7 @@ export async function handleGetBackups(request, env) {
 			pagination: {
 				limit: loadAll ? backupDetails.length : limit,
 				hasMore: loadAll ? false : hasMore,
-				cursor: loadAll ? null : currentCursor || null,
+				cursor: loadAll ? null : nextCursor,
 				loadedAll: loadAll,
 			},
 		};
@@ -396,17 +643,16 @@ export async function handleGetBackups(request, env) {
 			includeDetails,
 			loadAll,
 			hasMore: loadAll ? false : hasMore,
+			listingSource: useOpaqueLegacyCursor ? 'legacy-cursor' : usedKeyListing ? 'keys' : useIndexedListing ? 'index' : 'keys',
 		});
 
 		return createJsonResponse(response, 200, request);
 	} catch (error) {
-		// 如果是已知的错误类型，记录并转换
 		if (error instanceof StorageError || error instanceof CryptoError || error instanceof ValidationError) {
 			logError(error, logger, { operation: 'handleGetBackups' });
 			return errorToResponse(error, request);
 		}
 
-		// 未知错误
 		logger.error(
 			'获取备份列表失败',
 			{

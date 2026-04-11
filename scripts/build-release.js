@@ -56,6 +56,7 @@ async function buildRelease() {
       format: 'esm',
       target: 'es2022',
       platform: 'neutral',
+      mainFields: ['browser', 'module', 'main'],
       outfile: outputPath,
       minify: shouldMinify,
       sourcemap: false,

@@ -427,6 +427,10 @@ function getHTMLBody() {
             <button type="button" class="btn btn-outline" onclick="loadBackupList()" style="padding: 8px 16px; font-size: 12px;">🔄 刷新</button>
             <button type="button" class="btn btn-outline" onclick="exportSelectedBackup()" id="exportBackupBtn" disabled style="padding: 8px 16px; font-size: 12px;">📥 导出备份</button>
           </div>
+          <div class="backup-pagination" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px;">
+            <span id="backupListStatus" style="font-size: 12px; color: var(--text-secondary);"></span>
+            <button type="button" class="btn btn-outline" id="backupLoadMoreBtn" onclick="loadMoreBackupList()" style="display: none; padding: 8px 16px; font-size: 12px;">加载更多</button>
+          </div>
         </div>
         
         <div class="restore-preview" id="restorePreview" style="display: none;">
@@ -1119,8 +1123,8 @@ function getHTMLBody() {
             </div>
             <div class="settings-divider"></div>
             <div class="settings-section">
-              <h3 class="settings-section-title">默认导出格式</h3>
-              <p class="settings-desc">设置批量导出密钥时的默认格式。</p>
+              <h3 class="settings-section-title">批量导出默认格式</h3>
+              <p class="settings-desc">设置导出弹窗的默认格式。它会影响批量导出和“导出备份”中的默认操作，但不会改变内部备份的完整格式。</p>
               <select id="settingsDefaultExportFormat" class="settings-select" onchange="saveDefaultExportFormat()">
                 <option value="json">JSON</option>
                 <option value="txt">TXT 文本</option>
@@ -1208,6 +1212,7 @@ function getHTMLBody() {
             <option value="account-desc">账户名称 Z-A</option>
           </select>
         </div>
+        <button id="exportUseDefaultBtn" class="btn btn-sm" onclick="exportUsingDefaultFormat()" style="margin-left: auto;">按默认格式导出</button>
       </div>
 
       <!-- 通用格式 -->
@@ -1333,7 +1338,7 @@ function getHTMLBody() {
           <p><strong>OTPAuth</strong> 标准 URI 格式 → Google/Microsoft/Authy/Aegis/2FAS/andOTP/FreeOTP/Ente Auth/WinAuth 等</p>
           <p><strong>JSON</strong> 结构化数据 → 本应用、程序处理</p>
           <p><strong>CSV</strong> 表格格式 → Excel/Numbers/Google Sheets、本应用</p>
-          <p><strong>HTML</strong> 含二维码 → 浏览器查看、打印存档、扫码导入任意应用</p>
+          <p><strong>HTML</strong> 优先内嵌二维码 → 浏览器查看、打印存档、扫码导入；大批量时会保留表格与可恢复数据但不嵌入二维码</p>
           <p><strong>Google</strong> 迁移二维码 → Google Authenticator、支持扫码的验证器</p>
           <p><strong>Aegis</strong> → Aegis Authenticator (Android)</p>
           <p><strong>2FAS</strong> → 2FAS (iOS/Android)</p>
@@ -1439,8 +1444,11 @@ function getHTMLBody() {
       <div class="export-instructions" style="margin-bottom: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 8px; font-size: 14px;">
         <p style="margin: 0; color: var(--text-primary);">
           💡 <strong>导出选中的备份文件</strong><br>
-          <small style="color: var(--text-secondary);">请选择您需要的导出格式，不同格式适用于不同的场景</small>
+          <small style="color: var(--text-secondary);">请选择您需要的导出格式，不同格式适用于不同的场景。这里的默认按钮会读取设置页中的导出偏好，但不会改变内部备份格式。</small>
         </p>
+        <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+          <button id="backupUseDefaultBtn" class="btn btn-sm" onclick="exportSelectedBackupUsingDefaultFormat()">按默认格式导出</button>
+        </div>
       </div>
 
       <div class="export-formats">
@@ -1482,8 +1490,8 @@ function getHTMLBody() {
             <div style="font-size: 32px;">🌐</div>
             <div style="flex: 1;">
               <div style="font-weight: 600; font-size: 16px; margin-bottom: 4px; color: var(--text-primary);">HTML 网页格式</div>
-              <div style="font-size: 13px; color: var(--text-secondary);">包含二维码图片的独立网页，可直接打开查看</div>
-              <div style="font-size: 12px; color: var(--danger); margin-top: 4px;">✓ 内嵌二维码 · 美观排版 · 可打印</div>
+              <div style="font-size: 13px; color: var(--text-secondary);">优先生成内嵌二维码的独立网页，条目过多时会自动保留表格和可恢复数据</div>
+              <div style="font-size: 12px; color: var(--danger); margin-top: 4px;">✓ 优先内嵌二维码 · 美观排版 · 可打印</div>
             </div>
           </div>
         </div>

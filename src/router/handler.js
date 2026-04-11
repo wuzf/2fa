@@ -282,7 +282,7 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 			case 'POST':
 				return handleBackupSecrets(request, env, ctx);
 			case 'GET':
-				return handleGetBackups(request, env);
+				return handleGetBackups(request, env, ctx);
 			default:
 				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 		}

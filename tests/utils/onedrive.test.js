@@ -166,6 +166,52 @@ describe('OneDrive Utils', () => {
 		expect(status.lastError).toBeNull();
 	});
 
+	it('should set OneDrive upload MIME from backup format and encryption state', async () => {
+		await saveOneDriveSingleConfig(env, {
+			name: 'Primary OneDrive',
+			folderPath: '/2FA-Backups',
+			authorized: true,
+			enabled: true,
+			refreshToken: 'refresh-token',
+			accessToken: 'valid-access-token',
+			accessTokenExpiresAt: new Date(Date.now() + 3600_000).toISOString(),
+		});
+
+		const uploadHeaders = [];
+		globalThis.fetch = vi.fn(async (url, options = {}) => {
+			const stringUrl = String(url);
+
+			if (stringUrl.endsWith('/me/drive/special/approot')) {
+				return new Response(JSON.stringify({ id: 'app-root-id' }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
+
+			if (stringUrl.includes('/me/drive/items/app-root-id/children?')) {
+				return new Response(JSON.stringify({ value: [{ id: 'folder-id-1', name: '2FA-Backups', folder: {} }] }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
+
+			if (stringUrl.includes('/me/drive/items/folder-id-1:/') && options.method === 'PUT') {
+				uploadHeaders.push(options.headers);
+				return new Response('', { status: 201 });
+			}
+
+			throw new Error(`Unexpected fetch: ${stringUrl}`);
+		});
+
+		const resultTxt = await pushToAllOneDrive('backup_test.csv', 'service,secret', env);
+		const resultEncrypted = await pushToAllOneDrive('backup_test.html', 'v1:encrypted-backup', env);
+
+		expect(resultTxt.successCount).toBe(1);
+		expect(resultEncrypted.successCount).toBe(1);
+		expect(uploadHeaders[0]['Content-Type']).toBe('text/csv;charset=utf-8');
+		expect(uploadHeaders[1]['Content-Type']).toBe('application/octet-stream');
+	});
+
 	it('should record OneDrive push errors when target is unauthorized', async () => {
 		const created = await saveOneDriveSingleConfig(env, {
 			name: 'Unauthorized Target',

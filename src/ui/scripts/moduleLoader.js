@@ -222,6 +222,7 @@ export function getModuleLoaderCode() {
 
     // 备份管理懒加载
     window.loadBackupList = createLazyWrapper('backup', 'loadBackupList');
+    window.loadMoreBackupList = createLazyWrapper('backup', 'loadMoreBackupList');
     window.showRestoreModal = createLazyWrapper('backup', 'showRestoreModal');
     window.hideRestoreModal = createLazyWrapper('backup', 'hideRestoreModal');
     window.selectBackupFromDropdown = createLazyWrapper('backup', 'selectBackupFromDropdown');

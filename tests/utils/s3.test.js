@@ -350,6 +350,30 @@ describe('S3 Utils Module (Multi-Destination)', () => {
       expect(fetchCall[0]).toBe('https://s3.example.com/bucket/backup/backup_test.json');
     });
 
+    it('应根据备份格式和加密状态设置上传 MIME', async () => {
+      await saveS3SingleConfig(env, {
+        name: 'R2-1',
+        endpoint: 'https://s3.example.com',
+        bucket: 'bucket',
+        region: 'auto',
+        accessKeyId: 'ak',
+        secretAccessKey: 'sk',
+        prefix: 'backup/',
+      });
+
+      mockAwsFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      await pushToAllS3('backup_test.txt', 'otpauth://totp/test', env);
+      await pushToAllS3('backup_test.html', 'v1:encrypted-backup', env);
+
+      expect(mockAwsFetch.mock.calls[0][1].headers['Content-Type']).toBe('text/plain;charset=utf-8');
+      expect(mockAwsFetch.mock.calls[1][1].headers['Content-Type']).toBe('application/octet-stream');
+    });
+
     it('单目标推送失败时应记录错误状态', async () => {
       const addResult = await saveS3SingleConfig(env, {
         name: 'R2-1',
