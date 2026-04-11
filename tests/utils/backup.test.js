@@ -49,6 +49,16 @@ vi.mock('../../src/utils/webdav.js', () => ({
   pushToAllWebDAV: vi.fn(async () => ({ success: true }))
 }));
 
+// Mock OneDrive
+vi.mock('../../src/utils/onedrive.js', () => ({
+  pushToAllOneDrive: vi.fn(async () => ({ success: true }))
+}));
+
+// Mock Google Drive
+vi.mock('../../src/utils/gdrive.js', () => ({
+  pushToAllGoogleDrive: vi.fn(async () => ({ success: true }))
+}));
+
 // ==================== Mock 工具 ====================
 
 /**

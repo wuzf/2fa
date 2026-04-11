@@ -25,6 +25,22 @@ import {
 	handleToggleWebDAV,
 } from '../api/webdav.js';
 import { handleGetS3Configs, handleSaveS3Config, handleTestS3, handleDeleteS3Config, handleToggleS3 } from '../api/s3.js';
+import {
+	handleDeleteOneDriveConfig,
+	handleGetOneDriveConfigs,
+	handleOneDriveOAuthCallback,
+	handleSaveOneDriveConfig,
+	handleStartOneDriveOAuth,
+	handleToggleOneDrive,
+} from '../api/onedrive.js';
+import {
+	handleDeleteGoogleDriveConfig,
+	handleGetGoogleDriveConfigs,
+	handleGoogleDriveOAuthCallback,
+	handleSaveGoogleDriveConfig,
+	handleStartGoogleDriveOAuth,
+	handleToggleGoogleDrive,
+} from '../api/gdrive.js';
 import { handleChangePassword } from '../api/password.js';
 import { handleGetSettings, handleSaveSettings } from '../api/settings.js';
 
@@ -357,6 +373,70 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 	if (pathname === '/api/s3/toggle') {
 		if (method === 'POST') {
 			return handleToggleS3(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
+	// OneDrive 配置 API
+	if (pathname === '/api/onedrive/config') {
+		switch (method) {
+			case 'GET':
+				return handleGetOneDriveConfigs(request, env);
+			case 'POST':
+				return handleSaveOneDriveConfig(request, env);
+			case 'DELETE':
+				return handleDeleteOneDriveConfig(request, env);
+			default:
+				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+		}
+	}
+	if (pathname === '/api/onedrive/toggle') {
+		if (method === 'POST') {
+			return handleToggleOneDrive(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+	if (pathname === '/api/onedrive/oauth/start') {
+		if (method === 'POST') {
+			return handleStartOneDriveOAuth(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+	if (pathname === '/api/onedrive/oauth/callback') {
+		if (method === 'GET') {
+			return handleOneDriveOAuthCallback(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
+	// Google Drive 配置 API
+	if (pathname === '/api/gdrive/config') {
+		switch (method) {
+			case 'GET':
+				return handleGetGoogleDriveConfigs(request, env);
+			case 'POST':
+				return handleSaveGoogleDriveConfig(request, env);
+			case 'DELETE':
+				return handleDeleteGoogleDriveConfig(request, env);
+			default:
+				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+		}
+	}
+	if (pathname === '/api/gdrive/toggle') {
+		if (method === 'POST') {
+			return handleToggleGoogleDrive(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+	if (pathname === '/api/gdrive/oauth/start') {
+		if (method === 'POST') {
+			return handleStartGoogleDriveOAuth(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+	if (pathname === '/api/gdrive/oauth/callback') {
+		if (method === 'GET') {
+			return handleGoogleDriveOAuthCallback(request, env);
 		}
 		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 	}

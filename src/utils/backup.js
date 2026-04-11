@@ -22,6 +22,8 @@ import { getLogger } from './logger.js';
 import { getMonitoring } from './monitoring.js';
 import { pushToAllWebDAV } from './webdav.js';
 import { pushToAllS3 } from './s3.js';
+import { pushToAllOneDrive } from './onedrive.js';
+import { pushToAllGoogleDrive } from './gdrive.js';
 
 /**
  * 备份配置
@@ -157,6 +159,20 @@ class BackupManager {
 			});
 			if (ctx) {
 				ctx.waitUntil(s3Promise);
+			}
+
+			const oneDrivePromise = pushToAllOneDrive(backupKey, backupContent, this.env).catch((err) => {
+				this.logger.warn('OneDrive 推送异常（不影响备份）', {}, err);
+			});
+			if (ctx) {
+				ctx.waitUntil(oneDrivePromise);
+			}
+
+			const googleDrivePromise = pushToAllGoogleDrive(backupKey, backupContent, this.env).catch((err) => {
+				this.logger.warn('Google Drive 推送异常（不影响备份）', {}, err);
+			});
+			if (ctx) {
+				ctx.waitUntil(googleDrivePromise);
 			}
 
 			const duration = Date.now() - startTime;

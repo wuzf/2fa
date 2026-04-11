@@ -874,6 +874,8 @@ export function requiresAuth(pathname) {
 		'/icon-512.png', // PWA 图标
 		'/favicon.ico', // 网站图标
 		'/otp', // OTP 生成页面（无参数）
+		'/api/onedrive/oauth/callback',
+		'/api/gdrive/oauth/callback',
 	];
 
 	// 精确匹配公开路径

@@ -241,8 +241,12 @@ export function getModuleLoaderCode() {
     window.showKeyGeneratorTool = createLazyWrapper('tools', 'showKeyGeneratorTool');
     window.showWebdavTool = createLazyWrapper('tools', 'showWebdavTool');
     window.showS3Tool = createLazyWrapper('tools', 'showS3Tool');
+    window.showOneDriveTool = createLazyWrapper('tools', 'showOneDriveTool');
+    window.showGoogleDriveTool = createLazyWrapper('tools', 'showGoogleDriveTool');
     window.showWebdavModal = createLazyWrapper('tools', 'showWebdavModal');
     window.showS3Modal = createLazyWrapper('tools', 'showS3Modal');
+    window.showOneDriveModal = createLazyWrapper('tools', 'showOneDriveModal');
+    window.showGoogleDriveModal = createLazyWrapper('tools', 'showGoogleDriveModal');
 
     // 二维码功能懒加载
     window.showSecretQRCode = createLazyWrapper('qrcode', 'showSecretQRCode');

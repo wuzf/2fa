@@ -8,7 +8,7 @@ A two-factor authentication key management system built on Cloudflare Workers. F
 
 **[中文文档](README.md)**
 
-**Key Features:** TOTP/HOTP code auto-generation · QR code scanning/image recognition/paste screenshot/drag & drop image to add keys · AES-GCM 256-bit encrypted storage · Bulk import from Google Authenticator, Aegis, 2FAS, Bitwarden, etc. · Multi-format export (TXT/JSON/CSV/HTML/Google migration QR codes) · Auto backup & restore · WebDAV/S3 remote backup sync · Settings panel (password change/backup config) · Dark/Light theme · Responsive design for mobile/tablet/desktop
+**Key Features:** TOTP/HOTP code auto-generation · QR code scanning/image recognition/paste screenshot/drag & drop image to add keys · AES-GCM 256-bit encrypted storage · Bulk import from Google Authenticator, Aegis, 2FAS, Bitwarden, etc. · Multi-format export (TXT/JSON/CSV/HTML/Google migration QR codes) · Auto backup & restore · WebDAV/S3/OneDrive/Google Drive remote backup sync · Settings panel (password change/sync settings) · Dark/Light theme · Responsive design for mobile/tablet/desktop
 
 ## 📸 Screenshots
 
@@ -49,7 +49,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 >
 > If you cannot ensure the original value is saved, **it's better to not set it at all than to set it and lose it**:
 >
-> - Once set: Secret list, auto backups, and WebDAV/S3 credentials are all encrypted
+> - Once set: Secret list, auto backups, and WebDAV/S3/OneDrive/Google Drive credentials are all encrypted
 > - If lost: Cloudflare will not show the original value again; existing encrypted data and encrypted backups cannot be read or restored
 > - Current behavior: When encrypted data is detected but `ENCRYPTION_KEY` is missing, the system locks reads and writes to prevent accidental overwriting of old data
 
@@ -136,8 +136,12 @@ Supports syncing backups to remote storage, automatically pushing on data change
 
 - **WebDAV** — Supports standard WebDAV protocol cloud drives or self-hosted services (⚠️ Does not support Cloudflare-proxied services like Nutstore/jianguoyun, which trigger 520 loop errors)
 - **S3-Compatible Storage** — Supports AWS S3, Cloudflare R2, MinIO, Alibaba Cloud OSS, and other S3-compatible services
+- **OneDrive** — After Microsoft OAuth authorization, backups are written into a subfolder inside the app-specific OneDrive folder
+- **Google Drive** — After Google OAuth authorization, backups are written into the configured Google Drive folder
 
-Add and manage remote backup targets in **Settings → Backup Config**.
+Add and manage remote backup targets in **Settings → Sync Settings**.
+
+Detailed setup steps: [Cloud Drive Setup](docs/CLOUD_DRIVE_SETUP.md) (currently Chinese).
 
 ### Settings
 
@@ -146,7 +150,7 @@ Click the floating button → **⚙️ Settings**:
 - **Change Password** — Change the admin password
 - **Login Validity** — Customize JWT expiration time
 - **Backup Retention Count** — Adjust auto backup retention count
-- **Remote Backup** — Configure WebDAV/S3 backup targets
+- **Remote Backup** — Configure WebDAV/S3/OneDrive/Google Drive backup targets
 
 ### Install as Mobile App (PWA)
 
@@ -158,7 +162,7 @@ After installation, use it like a native app in full screen with offline access 
 ## 🔒 Security
 
 - **Password**: PBKDF2-SHA256 (100,000 iterations) salted hash, JWT stored in HttpOnly + Secure + SameSite=Strict cookies
-- **Data Encryption**: With `ENCRYPTION_KEY` configured, all secrets, backups, and WebDAV/S3 credentials are encrypted with AES-GCM 256-bit; make sure to save the original key — encrypted data cannot be decrypted if lost
+- **Data Encryption**: With `ENCRYPTION_KEY` configured, all secrets, backups, and WebDAV/S3/OneDrive/Google Drive credentials are encrypted with AES-GCM 256-bit; make sure to save the original key — encrypted data cannot be decrypted if lost
 - **Transport**: HTTPS throughout, TLS 1.2+
 - **Privacy**: OTP generated client-side, no usage data collected, fully open source
 - **Login Validity**: Default 30 days, customizable in settings, auto-renewed on active use (auto-extended when < 7 days remaining)
@@ -177,13 +181,14 @@ Parameters: `type` (totp/hotp), `digits` (6/8), `period` (30/60/120), `algorithm
 
 ## 📚 More Documentation
 
-| Document                                 | Description                            |
-| ---------------------------------------- | -------------------------------------- |
-| [Deployment Guide](docs/DEPLOYMENT.md)   | Manual deployment, KV config, Secrets  |
-| [API Reference](docs/API_REFERENCE.md)   | Complete API endpoint documentation    |
-| [Architecture](docs/ARCHITECTURE.md)     | System architecture & technical design |
-| [Development Guide](docs/DEVELOPMENT.md) | Local development, testing, code style |
-| [PWA Guide](docs/PWA_GUIDE.md)           | PWA installation & offline features    |
+| Document                                       | Description                                   |
+| ---------------------------------------------- | --------------------------------------------- |
+| [Deployment Guide](docs/DEPLOYMENT.md)         | Manual deployment, KV config, Secrets         |
+| [Cloud Drive Setup](docs/CLOUD_DRIVE_SETUP.md) | OneDrive / Google Drive setup steps (Chinese) |
+| [API Reference](docs/API_REFERENCE.md)         | Complete API endpoint documentation           |
+| [Architecture](docs/ARCHITECTURE.md)           | System architecture & technical design        |
+| [Development Guide](docs/DEVELOPMENT.md)       | Local development, testing, code style        |
+| [PWA Guide](docs/PWA_GUIDE.md)                 | PWA installation & offline features           |
 
 ## 🤝 Contributing
 

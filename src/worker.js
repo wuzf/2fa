@@ -21,6 +21,8 @@ import { getMonitoring, ErrorSeverity } from './utils/monitoring.js';
 import { KV_KEYS } from './utils/constants.js';
 import { pushToAllWebDAV } from './utils/webdav.js';
 import { pushToAllS3 } from './utils/s3.js';
+import { pushToAllOneDrive } from './utils/onedrive.js';
+import { pushToAllGoogleDrive } from './utils/gdrive.js';
 import { sanitizeMaxBackups } from './utils/backup.js';
 
 /**
@@ -512,6 +514,12 @@ export default {
 
 			// S3 自动推送
 			ctx.waitUntil(pushToAllS3(backupKey, backupContent, env));
+
+			// OneDrive 自动推送
+			ctx.waitUntil(pushToAllOneDrive(backupKey, backupContent, env));
+
+			// Google Drive 自动推送
+			ctx.waitUntil(pushToAllGoogleDrive(backupKey, backupContent, env));
 
 			logger.info('自动备份完成', {
 				backupKey,

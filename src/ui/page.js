@@ -893,6 +893,96 @@ function getHTMLBody() {
     </div>
   </div>
 
+  <!-- OneDrive 同步配置模态框 -->
+  <div id="oneDriveModal" class="modal fab-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>🗂️ OneDrive 同步</h2>
+        <button class="close-btn" onclick="hideOneDriveModal()">&times;</button>
+      </div>
+
+      <div class="tool-section">
+        <div id="oneDriveOauthWarning" class="advanced-info" style="display:none; margin-bottom: 12px; padding: 12px; border-radius: 6px; font-size: 12px; color: var(--warning-color, #b45309); background: var(--bg-secondary); line-height: 1.6;"></div>
+
+        <div id="oneDriveDestinationList" style="margin-bottom: 15px;"></div>
+
+        <button class="btn btn-primary" id="oneDriveAddBtn" onclick="showOneDriveForm()" style="width: 100%; padding: 10px; font-size: 13px; margin-bottom: 15px;">+ 添加 OneDrive 目标</button>
+
+        <div id="oneDriveFormArea" style="display: none;">
+          <div style="padding: 15px; border-radius: 8px; border: 1px solid var(--border-primary); background: var(--bg-secondary); margin-bottom: 12px;">
+            <input type="hidden" id="oneDriveEditId" value="" />
+
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">目标名称</label>
+              <input type="text" id="oneDriveName" class="secret-input" placeholder="例如：工作账户、个人账户" maxlength="30" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="margin-bottom: 15px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">应用目录子路径</label>
+              <input type="text" id="oneDriveFolderPath" class="secret-input" value="/2FA-Backups" placeholder="/2FA-Backups" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+              <button class="btn btn-info" id="oneDriveAuthorizeBtn" onclick="authorizeOneDriveDest(document.getElementById('oneDriveEditId').value)" style="flex: 1; padding: 10px; font-size: 13px;">保存并授权</button>
+              <button class="btn btn-primary" id="oneDriveSaveBtn" onclick="saveOneDriveConfig()" style="flex: 1; padding: 10px; font-size: 13px;">保存</button>
+            </div>
+            <button class="btn" onclick="hideOneDriveForm()" style="width: 100%; padding: 10px; font-size: 13px; background: var(--bg-primary); color: var(--text-secondary); border: 1px solid var(--border-primary);">取消</button>
+          </div>
+        </div>
+
+        <div class="advanced-info" style="margin-top: 10px; padding: 12px; border-radius: 6px; font-size: 12px; color: var(--text-tertiary); background: var(--bg-secondary); line-height: 1.6;">
+          OneDrive 使用 Microsoft Graph 应用专用目录保存备份。授权成功后，每次备份都会自动推送到该目录下的指定子路径。
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Google Drive 同步配置模态框 -->
+  <div id="googleDriveModal" class="modal fab-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>📁 Google Drive 同步</h2>
+        <button class="close-btn" onclick="hideGoogleDriveModal()">&times;</button>
+      </div>
+
+      <div class="tool-section">
+        <div id="googleDriveOauthWarning" class="advanced-info" style="display:none; margin-bottom: 12px; padding: 12px; border-radius: 6px; font-size: 12px; color: var(--warning-color, #b45309); background: var(--bg-secondary); line-height: 1.6;"></div>
+
+        <div id="googleDriveDestinationList" style="margin-bottom: 15px;"></div>
+
+        <button class="btn btn-primary" id="googleDriveAddBtn" onclick="showGoogleDriveForm()" style="width: 100%; padding: 10px; font-size: 13px; margin-bottom: 15px;">+ 添加 Google Drive 目标</button>
+
+        <div id="googleDriveFormArea" style="display: none;">
+          <div style="padding: 15px; border-radius: 8px; border: 1px solid var(--border-primary); background: var(--bg-secondary); margin-bottom: 12px;">
+            <input type="hidden" id="googleDriveEditId" value="" />
+
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">目标名称</label>
+              <input type="text" id="googleDriveName" class="secret-input" placeholder="例如：主备份盘、个人盘" maxlength="30" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="margin-bottom: 15px;">
+              <label style="display: block; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); font-size: 13px;">备份目录</label>
+              <input type="text" id="googleDriveFolderPath" class="secret-input" value="/2FA-Backups" placeholder="/2FA-Backups" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-primary); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+              <button class="btn btn-info" id="googleDriveAuthorizeBtn" onclick="authorizeGoogleDriveDest(document.getElementById('googleDriveEditId').value)" style="flex: 1; padding: 10px; font-size: 13px;">保存并授权</button>
+              <button class="btn btn-primary" id="googleDriveSaveBtn" onclick="saveGoogleDriveConfig()" style="flex: 1; padding: 10px; font-size: 13px;">保存</button>
+            </div>
+            <button class="btn" onclick="hideGoogleDriveForm()" style="width: 100%; padding: 10px; font-size: 13px; background: var(--bg-primary); color: var(--text-secondary); border: 1px solid var(--border-primary);">取消</button>
+          </div>
+        </div>
+
+        <div class="advanced-info" style="margin-top: 10px; padding: 12px; border-radius: 6px; font-size: 12px; color: var(--text-tertiary); background: var(--bg-secondary); line-height: 1.6;">
+          Google Drive 授权成功后，会自动在你的个人网盘目录下创建并更新备份文件。推送失败不会影响本地备份。
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- 设置模态框 -->
   <div id="settingsModal" class="modal fab-modal-lg">
     <div class="modal-content settings-modal-content">
@@ -972,6 +1062,34 @@ function getHTMLBody() {
                     </div>
                   </div>
                   <span id="settingsS3Status" class="sync-status not-configured">未配置</span>
+                </div>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="sync-card" onclick="openOneDriveFromSettings()">
+                <div class="sync-card-header">
+                  <div class="sync-card-info">
+                    <span class="sync-card-icon">🗂️</span>
+                    <div>
+                      <div class="sync-card-title">OneDrive 同步</div>
+                      <div class="sync-card-desc">自动推送备份到 Microsoft OneDrive</div>
+                    </div>
+                  </div>
+                  <span id="settingsOneDriveStatus" class="sync-status not-configured">未配置</span>
+                </div>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="sync-card" onclick="openGoogleDriveFromSettings()">
+                <div class="sync-card-header">
+                  <div class="sync-card-info">
+                    <span class="sync-card-icon">📁</span>
+                    <div>
+                      <div class="sync-card-title">Google Drive 同步</div>
+                      <div class="sync-card-desc">自动推送备份到 Google Drive</div>
+                    </div>
+                  </div>
+                  <span id="settingsGoogleDriveStatus" class="sync-status not-configured">未配置</span>
                 </div>
               </div>
             </div>

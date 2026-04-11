@@ -360,6 +360,56 @@ export const s3ConfigSchema = new Schema({
 });
 
 /**
+ * OAuth 网盘配置验证规则
+ */
+export const cloudDriveConfigSchema = new Schema({
+	id: { required: false, type: 'string' },
+	name: {
+		required: true,
+		type: 'string',
+		message: '目标名称不能为空',
+		transform: (v) => v.trim(),
+		validator: (v) => {
+			if (v.trim().length > 30) {
+				return `目标名称过长，最多支持30个字符（当前：${v.trim().length}）`;
+			}
+			return true;
+		},
+	},
+	folderPath: {
+		required: false,
+		type: 'string',
+		default: '/2FA-Backups',
+		transform: (v) => {
+			const normalized = (v || '/2FA-Backups').trim().replace(/\/+/g, '/').replace(/\/+$/, '');
+			return normalized.startsWith('/') ? normalized || '/' : '/' + normalized;
+		},
+		validator: (v) => {
+			const normalized = (v || '/2FA-Backups').trim().replace(/\/+/g, '/').replace(/\/+$/, '');
+			const finalPath = normalized.startsWith('/') ? normalized || '/' : '/' + normalized;
+
+			if (finalPath.length > 200) {
+				return '备份目录过长，最多支持 200 个字符';
+			}
+
+			const segments = finalPath.split('/').filter(Boolean);
+			if (segments.some((segment) => segment === '.' || segment === '..')) {
+				return '备份目录不能包含 "." 或 ".."';
+			}
+
+			return true;
+		},
+	},
+});
+
+/**
+ * 仅包含目标 ID 的验证规则
+ */
+export const destinationIdSchema = new Schema({
+	id: { required: true, type: 'string', message: '目标 ID 不能为空' },
+});
+
+/**
  * 目标启用/禁用切换验证规则
  */
 export const toggleDestinationSchema = new Schema({

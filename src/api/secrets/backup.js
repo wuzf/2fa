@@ -19,6 +19,8 @@ import { saveDataHash } from '../../worker.js';
 import { ValidationError, StorageError, CryptoError, BusinessLogicError, errorToResponse, logError } from '../../utils/errors.js';
 import { pushToWebDAV } from '../../utils/webdav.js';
 import { pushToS3 } from '../../utils/s3.js';
+import { pushToOneDrive } from '../../utils/onedrive.js';
+import { pushToGoogleDrive } from '../../utils/gdrive.js';
 
 /**
  * 处理手动备份密钥
@@ -108,6 +110,20 @@ export async function handleBackupSecrets(request, env, ctx) {
 			});
 			if (ctx) {
 				ctx.waitUntil(s3Promise);
+			}
+
+			const oneDrivePromise = pushToOneDrive(backupKey, backupContent, env).catch((err) => {
+				logger.warn('OneDrive 推送异常（不影响备份）', {}, err);
+			});
+			if (ctx) {
+				ctx.waitUntil(oneDrivePromise);
+			}
+
+			const googleDrivePromise = pushToGoogleDrive(backupKey, backupContent, env).catch((err) => {
+				logger.warn('Google Drive 推送异常（不影响备份）', {}, err);
+			});
+			if (ctx) {
+				ctx.waitUntil(googleDrivePromise);
 			}
 
 			logger.info('手动备份完成', {

@@ -89,6 +89,50 @@ export function getSettingsCode() {
           s3StatusEl.className = 'sync-status not-configured';
         }
       }
+
+      // 加载 OneDrive 状态
+      try {
+        const oneDriveResp = await authenticatedFetch('/api/onedrive/config');
+        const oneDriveData = await oneDriveResp.json();
+        const oneDriveStatusEl = document.getElementById('settingsOneDriveStatus');
+        if (oneDriveStatusEl) {
+          if (oneDriveData.count > 0) {
+            oneDriveStatusEl.textContent = '已配置' + oneDriveData.count + ' 个目标';
+            oneDriveStatusEl.className = 'sync-status configured';
+          } else {
+            oneDriveStatusEl.textContent = '未配置';
+            oneDriveStatusEl.className = 'sync-status not-configured';
+          }
+        }
+      } catch {
+        const oneDriveStatusEl = document.getElementById('settingsOneDriveStatus');
+        if (oneDriveStatusEl) {
+          oneDriveStatusEl.textContent = '加载失败';
+          oneDriveStatusEl.className = 'sync-status not-configured';
+        }
+      }
+
+      // 加载 Google Drive 状态
+      try {
+        const googleDriveResp = await authenticatedFetch('/api/gdrive/config');
+        const googleDriveData = await googleDriveResp.json();
+        const googleDriveStatusEl = document.getElementById('settingsGoogleDriveStatus');
+        if (googleDriveStatusEl) {
+          if (googleDriveData.count > 0) {
+            googleDriveStatusEl.textContent = '已配置' + googleDriveData.count + ' 个目标';
+            googleDriveStatusEl.className = 'sync-status configured';
+          } else {
+            googleDriveStatusEl.textContent = '未配置';
+            googleDriveStatusEl.className = 'sync-status not-configured';
+          }
+        }
+      } catch {
+        const googleDriveStatusEl = document.getElementById('settingsGoogleDriveStatus');
+        if (googleDriveStatusEl) {
+          googleDriveStatusEl.textContent = '加载失败';
+          googleDriveStatusEl.className = 'sync-status not-configured';
+        }
+      }
     }
 
     /**
@@ -109,6 +153,26 @@ export function getSettingsCode() {
       hideSettingsModal();
       setTimeout(() => {
         showS3Modal(() => showSettingsModal());
+      }, 350);
+    }
+
+    /**
+     * 从设置弹窗打开 OneDrive 配置
+     */
+    function openOneDriveFromSettings() {
+      hideSettingsModal();
+      setTimeout(() => {
+        showOneDriveModal(() => showSettingsModal());
+      }, 350);
+    }
+
+    /**
+     * 从设置弹窗打开 Google Drive 配置
+     */
+    function openGoogleDriveFromSettings() {
+      hideSettingsModal();
+      setTimeout(() => {
+        showGoogleDriveModal(() => showSettingsModal());
       }, 350);
     }
 

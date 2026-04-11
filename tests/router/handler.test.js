@@ -45,6 +45,26 @@ vi.mock('../../src/api/password.js', () => ({
   handleChangePassword: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '密码修改成功' }), { status: 200 }))
 }));
 
+// Mock OneDrive API handlers
+vi.mock('../../src/api/onedrive.js', () => ({
+  handleGetOneDriveConfigs: vi.fn(async (request, env) => new Response(JSON.stringify({ destinations: [], count: 0, maxAllowed: 5, oauthConfigured: true }), { status: 200 })),
+  handleSaveOneDriveConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleDeleteOneDriveConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleToggleOneDrive: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: 'enabled' }), { status: 200 })),
+  handleStartOneDriveOAuth: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, authorizeUrl: 'https://login.microsoftonline.com/' }), { status: 200 })),
+  handleOneDriveOAuthCallback: vi.fn(async (request, env) => new Response('<html>OneDrive OAuth</html>', { status: 200, headers: { 'Content-Type': 'text/html' } }))
+}));
+
+// Mock Google Drive API handlers
+vi.mock('../../src/api/gdrive.js', () => ({
+  handleGetGoogleDriveConfigs: vi.fn(async (request, env) => new Response(JSON.stringify({ destinations: [], count: 0, maxAllowed: 5, oauthConfigured: true }), { status: 200 })),
+  handleSaveGoogleDriveConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleDeleteGoogleDriveConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleToggleGoogleDrive: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: 'enabled' }), { status: 200 })),
+  handleStartGoogleDriveOAuth: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, authorizeUrl: 'https://accounts.google.com/' }), { status: 200 })),
+  handleGoogleDriveOAuthCallback: vi.fn(async (request, env) => new Response('<html>Google Drive OAuth</html>', { status: 200, headers: { 'Content-Type': 'text/html' } }))
+}));
+
 // Mock UI generators
 vi.mock('../../src/ui/page.js', () => ({
   createMainPage: vi.fn(async () => new Response('<html>Main Page</html>', { status: 200, headers: { 'Content-Type': 'text/html' } }))
@@ -69,7 +89,7 @@ vi.mock('../../src/utils/auth.js', () => ({
   verifyAuthWithDetails: vi.fn(async (request, env) => ({ valid: true, token: 'test-token' })),
   requiresAuth: vi.fn((pathname) => {
     // Public routes
-    const publicPaths = ['/', '/api/login', '/api/refresh-token', '/api/setup', '/setup', '/manifest.json', '/sw.js', '/icon-192.png', '/icon-512.png'];
+    const publicPaths = ['/', '/api/login', '/api/refresh-token', '/api/setup', '/setup', '/manifest.json', '/sw.js', '/icon-192.png', '/icon-512.png', '/api/onedrive/oauth/callback', '/api/gdrive/oauth/callback'];
     if (publicPaths.includes(pathname)) return false;
     if (pathname.startsWith('/otp')) return false;
     return true;
@@ -747,6 +767,90 @@ describe('Router Handler', () => {
       expect(body.error).toContain('API未找到');
     });
   });
+
+    it('should handle GET /api/onedrive/config', async () => {
+      const { handleGetOneDriveConfigs } = await import('../../src/api/onedrive.js');
+
+      const request = createMockRequest({ pathname: '/api/onedrive/config' });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleGetOneDriveConfigs).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('should handle POST /api/onedrive/oauth/start', async () => {
+      const { handleStartOneDriveOAuth } = await import('../../src/api/onedrive.js');
+
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/onedrive/oauth/start',
+        body: { id: 'onedrive-1' }
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleStartOneDriveOAuth).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('should handle GET /api/onedrive/oauth/callback', async () => {
+      const { handleOneDriveOAuthCallback } = await import('../../src/api/onedrive.js');
+
+      const request = createMockRequest({
+        pathname: '/api/onedrive/oauth/callback?code=test&state=state-1'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleOneDriveOAuthCallback).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('should handle GET /api/gdrive/config', async () => {
+      const { handleGetGoogleDriveConfigs } = await import('../../src/api/gdrive.js');
+
+      const request = createMockRequest({ pathname: '/api/gdrive/config' });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleGetGoogleDriveConfigs).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('should handle POST /api/gdrive/oauth/start', async () => {
+      const { handleStartGoogleDriveOAuth } = await import('../../src/api/gdrive.js');
+
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/gdrive/oauth/start',
+        body: { id: 'gdrive-1' }
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleStartGoogleDriveOAuth).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('should handle GET /api/gdrive/oauth/callback', async () => {
+      const { handleGoogleDriveOAuthCallback } = await import('../../src/api/gdrive.js');
+
+      const request = createMockRequest({
+        pathname: '/api/gdrive/oauth/callback?code=test&state=state-1'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleGoogleDriveOAuthCallback).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
 
   describe('handleRequest - OTP 生成路由', () => {
     it('应该处理 /otp（无 secret）', async () => {

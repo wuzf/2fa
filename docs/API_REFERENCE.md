@@ -7,6 +7,7 @@
 - [密钥管理 API](#密钥管理-api)
 - [OTP 生成 API](#otp-生成-api)
 - [备份管理 API](#备份管理-api)
+- [云盘同步 API](#云盘同步-api)
 - [认证 API](#认证-api)
 - [错误代码](#错误代码)
 - [Rate Limiting](#rate-limiting)
@@ -33,10 +34,16 @@ Cookie: auth_token=<JWT_TOKEN>
 - `GET /icon-*.png` - PWA 图标
 - `POST /api/login` - 登录
 - `GET /otp/{secret}` - OTP 生成（传统方式）
+- `GET /api/onedrive/oauth/callback` - OneDrive OAuth 回调
+- `GET /api/gdrive/oauth/callback` - Google Drive OAuth 回调
+
+**特殊端点**:
+
+- `POST /api/refresh-token` - 不经过全局认证中间件，但仍要求请求中携带有效 `auth_token` Cookie
 
 **受保护端点**（需要认证）:
 
-- 所有 `/api/*` 端点（除了 `/api/login`）
+- 其余所有 `/api/*` 端点
 
 ### 获取认证 Token
 
@@ -108,21 +115,33 @@ Set-Cookie: auth_token=<NEW_JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-A
 
 ## 端点列表
 
-| 端点                                   | 方法   | 认证 | 限流    | 描述             |
-| -------------------------------------- | ------ | ---- | ------- | ---------------- |
-| [/api/secrets](#获取所有密钥)          | GET    | ✅   | 60/min  | 获取所有密钥     |
-| [/api/secrets](#添加新密钥)            | POST   | ✅   | 60/min  | 添加新密钥       |
-| [/api/secrets/{id}](#更新密钥)         | PUT    | ✅   | 60/min  | 更新指定密钥     |
-| [/api/secrets/{id}](#删除密钥)         | DELETE | ✅   | 60/min  | 删除指定密钥     |
-| [/api/secrets/batch](#批量添加密钥)    | POST   | ✅   | 10/min  | 批量添加密钥     |
-| [/api/generate-otp](#生成-otp)         | POST   | ✅   | 100/min | 生成 OTP         |
-| [/api/backup](#手动触发备份)           | POST   | ✅   | 5/min   | 手动触发备份     |
-| [/api/backups](#获取备份列表)          | GET    | ✅   | 30/min  | 获取备份列表     |
-| [/api/backups/export/{id}](#导出备份)  | GET    | ✅   | 10/min  | 导出指定备份     |
-| [/api/backups/restore/{id}](#恢复备份) | POST   | ✅   | 5/min   | 恢复指定备份     |
-| [/api/login](#获取认证-token)          | POST   | ❌   | 5/min   | 用户登录         |
-| [/api/refresh-token](#token-刷新)      | POST   | ✅   | 60/min  | 刷新 Token       |
-| [/otp/{secret}](#传统-otp-生成)        | GET    | ❌   | 100/min | 生成 OTP（旧版） |
+| 端点                                   | 方法   | 认证 | 限流    | 描述                         |
+| -------------------------------------- | ------ | ---- | ------- | ---------------------------- |
+| [/api/secrets](#获取所有密钥)          | GET    | ✅   | 60/min  | 获取所有密钥                 |
+| [/api/secrets](#添加新密钥)            | POST   | ✅   | 60/min  | 添加新密钥                   |
+| [/api/secrets/{id}](#更新密钥)         | PUT    | ✅   | 60/min  | 更新指定密钥                 |
+| [/api/secrets/{id}](#删除密钥)         | DELETE | ✅   | 60/min  | 删除指定密钥                 |
+| [/api/secrets/batch](#批量添加密钥)    | POST   | ✅   | 10/min  | 批量添加密钥                 |
+| [/api/generate-otp](#生成-otp)         | POST   | ✅   | 100/min | 生成 OTP                     |
+| [/api/backup](#手动触发备份)           | POST   | ✅   | 5/min   | 手动触发备份                 |
+| [/api/backups](#获取备份列表)          | GET    | ✅   | 30/min  | 获取备份列表                 |
+| [/api/backups/export/{id}](#导出备份)  | GET    | ✅   | 10/min  | 导出指定备份                 |
+| [/api/backups/restore/{id}](#恢复备份) | POST   | ✅   | 5/min   | 恢复指定备份                 |
+| `/api/onedrive/config`                 | GET    | ✅   | 30/min  | 获取 OneDrive 目标           |
+| `/api/onedrive/config`                 | POST   | ✅   | 10/min  | 保存 OneDrive 目标           |
+| `/api/onedrive/config?id={id}`         | DELETE | ✅   | 10/min  | 删除 OneDrive 目标           |
+| `/api/onedrive/toggle`                 | POST   | ✅   | 10/min  | 启用或禁用 OneDrive 目标     |
+| `/api/onedrive/oauth/start`            | POST   | ✅   | 10/min  | 启动 OneDrive OAuth          |
+| `/api/onedrive/oauth/callback`         | GET    | ❌   | -       | OneDrive OAuth 回调          |
+| `/api/gdrive/config`                   | GET    | ✅   | 30/min  | 获取 Google Drive 目标       |
+| `/api/gdrive/config`                   | POST   | ✅   | 10/min  | 保存 Google Drive 目标       |
+| `/api/gdrive/config?id={id}`           | DELETE | ✅   | 10/min  | 删除 Google Drive 目标       |
+| `/api/gdrive/toggle`                   | POST   | ✅   | 10/min  | 启用或禁用 Google Drive 目标 |
+| `/api/gdrive/oauth/start`              | POST   | ✅   | 10/min  | 启动 Google Drive OAuth      |
+| `/api/gdrive/oauth/callback`           | GET    | ❌   | -       | Google Drive OAuth 回调      |
+| [/api/login](#获取认证-token)          | POST   | ❌   | 5/min   | 用户登录                     |
+| [/api/refresh-token](#token-刷新)      | POST   | ✅   | 60/min  | 刷新 Token                   |
+| [/otp/{secret}](#传统-otp-生成)        | GET    | ❌   | 100/min | 生成 OTP（旧版）             |
 
 ---
 
@@ -858,6 +877,132 @@ Host: 2fa.example.com
 	"timestamp": "2025-10-24T10:30:00.000Z"
 }
 ```
+
+---
+
+## 云盘同步 API
+
+OneDrive 和 Google Drive 使用同一套目标管理模型:
+
+- 目标配置保存到 KV，可选使用 `ENCRYPTION_KEY` 加密
+- OAuth 授权成功后会立即执行一次自动连接测试
+- 新目标授权成功后默认保持关闭状态，需要用户手动启用
+- 已启用的目标重新授权后，会保留原有启用状态
+
+### 目标配置字段
+
+```json
+{
+	"id": "uuid",
+	"name": "工作盘",
+	"folderPath": "/2FA-Backups"
+}
+```
+
+字段说明:
+
+- `id`: 目标 ID；更新或删除现有目标时使用
+- `name`: 目标名称，最多 30 个字符
+- `folderPath`: 远程备份目录，默认为 `/2FA-Backups`
+
+### OneDrive API
+
+| 端点                           | 方法   | 认证 | 描述                                                              |
+| ------------------------------ | ------ | ---- | ----------------------------------------------------------------- |
+| `/api/onedrive/config`         | GET    | ✅   | 获取 OneDrive 目标列表、授权状态和最近推送结果                    |
+| `/api/onedrive/config`         | POST   | ✅   | 新增或更新 OneDrive 目标                                          |
+| `/api/onedrive/config?id={id}` | DELETE | ✅   | 删除指定 OneDrive 目标                                            |
+| `/api/onedrive/toggle`         | POST   | ✅   | 启用或禁用指定 OneDrive 目标                                      |
+| `/api/onedrive/oauth/start`    | POST   | ✅   | 生成授权链接并启动 OAuth                                          |
+| `/api/onedrive/oauth/callback` | GET    | ❌   | Microsoft 回调地址，返回弹窗 HTML 并通过 `postMessage` 通知主窗口 |
+
+### Google Drive API
+
+| 端点                         | 方法   | 认证 | 描述                                                           |
+| ---------------------------- | ------ | ---- | -------------------------------------------------------------- |
+| `/api/gdrive/config`         | GET    | ✅   | 获取 Google Drive 目标列表、授权状态和最近推送结果             |
+| `/api/gdrive/config`         | POST   | ✅   | 新增或更新 Google Drive 目标                                   |
+| `/api/gdrive/config?id={id}` | DELETE | ✅   | 删除指定 Google Drive 目标                                     |
+| `/api/gdrive/toggle`         | POST   | ✅   | 启用或禁用指定 Google Drive 目标                               |
+| `/api/gdrive/oauth/start`    | POST   | ✅   | 生成授权链接并启动 OAuth                                       |
+| `/api/gdrive/oauth/callback` | GET    | ❌   | Google 回调地址，返回弹窗 HTML 并通过 `postMessage` 通知主窗口 |
+
+### 保存目标
+
+**端点**: `POST /api/onedrive/config` 或 `POST /api/gdrive/config`
+
+**请求体**:
+
+```json
+{
+	"name": "工作盘",
+	"folderPath": "/2FA-Backups"
+}
+```
+
+**成功响应** (200 OK):
+
+```json
+{
+	"success": true,
+	"id": "550e8400-e29b-41d4-a716-446655440000",
+	"message": "配置已保存",
+	"encrypted": true,
+	"warning": null
+}
+```
+
+### 切换启用状态
+
+**端点**: `POST /api/onedrive/toggle` 或 `POST /api/gdrive/toggle`
+
+**请求体**:
+
+```json
+{
+	"id": "550e8400-e29b-41d4-a716-446655440000",
+	"enabled": true
+}
+```
+
+说明:
+
+- 未授权目标不能直接启用
+- 授权成功但连接测试失败时，目标会保持禁用
+
+### 启动 OAuth
+
+**端点**: `POST /api/onedrive/oauth/start` 或 `POST /api/gdrive/oauth/start`
+
+**请求体**:
+
+```json
+{
+	"id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**成功响应** (200 OK):
+
+```json
+{
+	"success": true,
+	"authorizeUrl": "https://provider.example.com/oauth/authorize?...",
+	"callbackOrigin": "https://your-app.example.com"
+}
+```
+
+### OAuth 回调
+
+**端点**: `GET /api/onedrive/oauth/callback` 或 `GET /api/gdrive/oauth/callback`
+
+**认证**: ❌ 不需要
+
+**描述**:
+
+- 这是 OAuth 平台回跳用的公开端点
+- 它会消费一次性 `state`，保存授权结果，并返回一个弹窗页面
+- 弹窗页面会向主窗口发送 `cloudBackupAuthComplete` 消息，然后尝试自动关闭
 
 ---
 
