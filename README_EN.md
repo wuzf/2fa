@@ -127,6 +127,7 @@ Click the floating button → **📤 Bulk Export**, supports TXT, JSON, CSV, HTM
 ### Backup & Restore
 
 The system backs up automatically (triggered on data changes + daily scheduled check), keeping the latest 100 backups (adjustable in settings).
+New backup files follow **Settings → Default Export Format**. Remote auto-backups use the same extension (`txt`, `json`, `csv`, or `html`).
 
 Click the floating button → **🔄 Restore Config** to view backup list, preview content, restore, or export.
 
@@ -149,6 +150,7 @@ Click the floating button → **⚙️ Settings**:
 
 - **Change Password** — Change the admin password
 - **Login Validity** — Customize JWT expiration time
+- **Default Export Format** — Controls the default export choice and the extension used for newly created backups and remote auto-backups
 - **Backup Retention Count** — Adjust auto backup retention count
 - **Remote Backup** — Configure WebDAV/S3/OneDrive/Google Drive backup targets
 

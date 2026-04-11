@@ -352,6 +352,22 @@ self.addEventListener('fetch', event => {
               operationType = 'DELETE';
             }
 
+            if (operationType === 'UNKNOWN') {
+              return new Response(
+                JSON.stringify({
+                  error: '离线不可用',
+                  detail: '当前请求需要在线完成，无法加入离线同步队列',
+                  offline: true,
+                  queued: false
+                }),
+                {
+                  status: 503,
+                  statusText: 'Service Unavailable',
+                  headers: { 'Content-Type': 'application/json' }
+                }
+              );
+            }
+
             // 保存到 IndexedDB
             const operation = {
               type: operationType,

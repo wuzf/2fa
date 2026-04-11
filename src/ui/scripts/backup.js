@@ -365,7 +365,6 @@ export function getBackupCode() {
                     '<th>🔐 服务名称</th>' +
                     '<th>👤 账户信息</th>' +
                     '<th>🔢 类型</th>' +
-                    '<th>⏱️ 创建时间</th>' +
                   '</tr>' +
                 '</thead>' +
                 '<tbody>' +
@@ -374,7 +373,6 @@ export function getBackupCode() {
                       '<td class="service-name">' + escapeHTML(secret.name || '') + '</td>' +
                       '<td class="account-info">' + escapeHTML(secret.account || secret.service || '无账户信息') + '</td>' +
                       '<td class="secret-type">' + escapeHTML(secret.type || 'TOTP') + '</td>' +
-                      '<td class="created-time">' + escapeHTML(secret.createdAt ? new Date(secret.createdAt).toLocaleString('zh-CN') : '未知') + '</td>' +
                     '</tr>'
                   ).join('') +
                 '</tbody>' +

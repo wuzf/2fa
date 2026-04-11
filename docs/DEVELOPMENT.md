@@ -75,7 +75,7 @@ src/
 │       └── responsive.js # 响应式样式
 └── utils/                # 🛠️ 工具函数
     ├── auth.js           # 🔑 JWT 认证（PBKDF2, HttpOnly Cookie）
-    ├── backup.js         # 💾 智能备份（防抖 + 自动清理）
+    ├── backup.js         # 💾 智能备份（事件驱动 + 并发合并 + 自动清理）
     ├── constants.js      # 📋 常量定义
     ├── crypto.js         # 🔐 加密工具（HMAC-SHA1/256）
     ├── encryption.js     # 🔒 AES-GCM 256 位加密
@@ -146,12 +146,13 @@ export default {
 
 - `/` → 主页面 (UI模块)
 - `/setup` → 首次设置页面
-- `/api/secrets` → 密钥管理API
-- `/api/secrets/otp` → OTP生成
-- `/api/secrets/batch` → 批量导入
-- `/api/secrets/backup` → 备份管理
-- `/api/secrets/restore` → 备份恢复
-- `/api/auth/*` → 认证端点
+- `/api/setup`、`/api/login`、`/api/refresh-token` → 首次设置与认证
+- `/api/secrets`、`/api/secrets/{id}`、`/api/secrets/batch`、`/api/secrets/export` → 密钥管理
+- `/api/backup`、`/api/backup/restore`、`/api/backup/export/{backupKey}` → 备份管理
+- `/api/change-password`、`/api/settings` → 密码与系统设置
+- `/api/webdav/*`、`/api/s3/*`、`/api/onedrive/*`、`/api/gdrive/*` → 远程备份目标
+- `/api/favicon/{domain}` → Favicon 代理
+- `/otp`、`/otp/{secret}` → 公开 OTP 接口
 
 **核心功能**:
 
@@ -292,8 +293,8 @@ const otp = binary % 1000000;
 
 **策略**:
 
-- **事件驱动**: 数据变更后自动触发，5分钟防抖
-- **定时任务**: 每10分钟 cron（仅在数据变化时通过SHA-256哈希比较）
+- **事件驱动**: 数据变更后自动触发；有请求上下文时通过 `ctx.waitUntil()` 转入后台执行
+- **定时任务**: 每天一次 cron 兜底检查（仅在数据变化时通过 SHA-256 哈希比较）
 - **自动清理**: 保留最新100个备份
 
 #### 限流模块 (`utils/rateLimit.js`)
@@ -558,10 +559,15 @@ POST   /api/secrets          # 创建新密钥
 PUT    /api/secrets/{id}     # 更新密钥
 DELETE /api/secrets/{id}     # 删除密钥
 POST   /api/secrets/batch    # 批量导入
-POST   /api/secrets/otp      # 生成OTP
-GET    /api/secrets/backup   # 获取备份列表
-POST   /api/secrets/backup   # 创建备份
-POST   /api/secrets/restore  # 恢复备份
+POST   /api/secrets/export   # 批量导出标准 TXT/JSON/CSV/HTML
+GET    /api/backup           # 获取备份列表
+POST   /api/backup           # 创建备份
+POST   /api/backup/restore   # 预览/恢复备份
+GET    /api/backup/export/{backupKey} # 导出备份
+POST   /api/change-password  # 修改密码
+GET    /api/settings         # 读取设置
+POST   /api/settings         # 保存设置
+GET    /otp/{secret}         # 公开 OTP（可加 ?format=json）
 ```
 
 **请求格式**:

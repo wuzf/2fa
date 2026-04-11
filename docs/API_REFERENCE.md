@@ -8,6 +8,7 @@
 - [OTP 生成 API](#otp-生成-api)
 - [备份管理 API](#备份管理-api)
 - [云盘同步 API](#云盘同步-api)
+- [首次设置与系统设置 API](#首次设置与系统设置-api)
 - [认证 API](#认证-api)
 - [错误代码](#错误代码)
 - [Rate Limiting](#rate-limiting)
@@ -28,12 +29,16 @@ Cookie: auth_token=<JWT_TOKEN>
 
 **公开端点**（无需认证）:
 
+- `GET /setup` - 首次设置页面
+- `POST /api/setup` - 首次设置
 - `GET /` - 主页面
 - `GET /manifest.json` - PWA Manifest
 - `GET /sw.js` - Service Worker
 - `GET /icon-*.png` - PWA 图标
 - `POST /api/login` - 登录
-- `GET /otp/{secret}` - OTP 生成（传统方式）
+- `GET /otp` - OTP 使用说明
+- `GET /otp/{secret}` - OTP 生成
+- `GET /api/favicon/{domain}` - Favicon 代理
 - `GET /api/onedrive/oauth/callback` - OneDrive OAuth 回调
 - `GET /api/gdrive/oauth/callback` - Google Drive OAuth 回调
 
@@ -53,22 +58,23 @@ Cookie: auth_token=<JWT_TOKEN>
 
 ```json
 {
-	"username": "admin",
-	"password": "<YOUR_PASSWORD>"
+	"credential": "<YOUR_PASSWORD>"
 }
 ```
 
 **说明**:
 
-- `username`: 固定为 "admin"
-- `password`: 通过网页界面设置的管理员密码
+- `credential`: 通过网页界面设置的管理员密码
 
 **成功响应** (200 OK):
 
 ```json
 {
 	"success": true,
-	"message": "登录成功"
+	"message": "登录成功",
+	"token": "<JWT_TOKEN>",
+	"expiresAt": "2026-05-17T10:30:00.000Z",
+	"expiresIn": "30天"
 }
 ```
 
@@ -94,14 +100,17 @@ Set-Cookie: auth_token=<JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-Age=6
 
 **认证**: ✅ 需要
 
-**描述**: 刷新当前 Token，延长过期时间
+**描述**: 刷新当前 Token，延长过期时间。请求中需要携带有效 `auth_token` Cookie，或通过 `Authorization: Bearer <token>` 头向后兼容。
 
 **成功响应** (200 OK):
 
 ```json
 {
 	"success": true,
-	"message": "Token 刷新成功"
+	"message": "令牌刷新成功",
+	"token": "<NEW_JWT_TOKEN>",
+	"expiresAt": "2026-05-17T10:30:00.000Z",
+	"expiresIn": "30天"
 }
 ```
 
@@ -115,33 +124,37 @@ Set-Cookie: auth_token=<NEW_JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-A
 
 ## 端点列表
 
-| 端点                                   | 方法   | 认证 | 限流    | 描述                         |
-| -------------------------------------- | ------ | ---- | ------- | ---------------------------- |
-| [/api/secrets](#获取所有密钥)          | GET    | ✅   | 60/min  | 获取所有密钥                 |
-| [/api/secrets](#添加新密钥)            | POST   | ✅   | 60/min  | 添加新密钥                   |
-| [/api/secrets/{id}](#更新密钥)         | PUT    | ✅   | 60/min  | 更新指定密钥                 |
-| [/api/secrets/{id}](#删除密钥)         | DELETE | ✅   | 60/min  | 删除指定密钥                 |
-| [/api/secrets/batch](#批量添加密钥)    | POST   | ✅   | 10/min  | 批量添加密钥                 |
-| [/api/generate-otp](#生成-otp)         | POST   | ✅   | 100/min | 生成 OTP                     |
-| [/api/backup](#手动触发备份)           | POST   | ✅   | 5/min   | 手动触发备份                 |
-| [/api/backups](#获取备份列表)          | GET    | ✅   | 30/min  | 获取备份列表                 |
-| [/api/backups/export/{id}](#导出备份)  | GET    | ✅   | 10/min  | 导出指定备份                 |
-| [/api/backups/restore/{id}](#恢复备份) | POST   | ✅   | 5/min   | 恢复指定备份                 |
-| `/api/onedrive/config`                 | GET    | ✅   | 30/min  | 获取 OneDrive 目标           |
-| `/api/onedrive/config`                 | POST   | ✅   | 10/min  | 保存 OneDrive 目标           |
-| `/api/onedrive/config?id={id}`         | DELETE | ✅   | 10/min  | 删除 OneDrive 目标           |
-| `/api/onedrive/toggle`                 | POST   | ✅   | 10/min  | 启用或禁用 OneDrive 目标     |
-| `/api/onedrive/oauth/start`            | POST   | ✅   | 10/min  | 启动 OneDrive OAuth          |
-| `/api/onedrive/oauth/callback`         | GET    | ❌   | -       | OneDrive OAuth 回调          |
-| `/api/gdrive/config`                   | GET    | ✅   | 30/min  | 获取 Google Drive 目标       |
-| `/api/gdrive/config`                   | POST   | ✅   | 10/min  | 保存 Google Drive 目标       |
-| `/api/gdrive/config?id={id}`           | DELETE | ✅   | 10/min  | 删除 Google Drive 目标       |
-| `/api/gdrive/toggle`                   | POST   | ✅   | 10/min  | 启用或禁用 Google Drive 目标 |
-| `/api/gdrive/oauth/start`              | POST   | ✅   | 10/min  | 启动 Google Drive OAuth      |
-| `/api/gdrive/oauth/callback`           | GET    | ❌   | -       | Google Drive OAuth 回调      |
-| [/api/login](#获取认证-token)          | POST   | ❌   | 5/min   | 用户登录                     |
-| [/api/refresh-token](#token-刷新)      | POST   | ✅   | 60/min  | 刷新 Token                   |
-| [/otp/{secret}](#传统-otp-生成)        | GET    | ❌   | 100/min | 生成 OTP（旧版）             |
+| 端点                                        | 方法   | 认证 | 限流    | 描述                         |
+| ------------------------------------------- | ------ | ---- | ------- | ---------------------------- |
+| `/api/setup`                                | POST   | ❌   | 5/min   | 首次设置                     |
+| [/api/secrets](#获取所有密钥)               | GET    | ✅   | 60/min  | 获取所有密钥                 |
+| [/api/secrets](#添加新密钥)                 | POST   | ✅   | 60/min  | 添加新密钥                   |
+| [/api/secrets/{id}](#更新密钥)              | PUT    | ✅   | 60/min  | 更新指定密钥                 |
+| [/api/secrets/{id}](#删除密钥)              | DELETE | ✅   | 60/min  | 删除指定密钥                 |
+| [/api/secrets/batch](#批量添加密钥)         | POST   | ✅   | 20/5m   | 批量添加密钥                 |
+| [/api/secrets/export](#批量导出密钥)        | POST   | ✅   | 10/min  | 导出标准 TXT/JSON/CSV/HTML   |
+| [/api/backup](#手动触发备份)                | POST   | ✅   | 5/min   | 手动触发备份                 |
+| [/api/backup](#获取备份列表)                | GET    | ✅   | 30/min  | 获取备份列表                 |
+| [/api/backup/export/{backupKey}](#导出备份) | GET    | ✅   | 10/min  | 导出指定备份                 |
+| [/api/backup/restore](#恢复备份)            | POST   | ✅   | 5/min   | 恢复或预览指定备份           |
+| `/api/change-password`                      | POST   | ✅   | 10/min  | 修改密码                     |
+| `/api/settings`                             | GET    | ✅   | -       | 获取系统设置                 |
+| `/api/settings`                             | POST   | ✅   | 10/min  | 保存系统设置                 |
+| `/api/onedrive/config`                      | GET    | ✅   | 30/min  | 获取 OneDrive 目标           |
+| `/api/onedrive/config`                      | POST   | ✅   | 10/min  | 保存 OneDrive 目标           |
+| `/api/onedrive/config?id={id}`              | DELETE | ✅   | 10/min  | 删除 OneDrive 目标           |
+| `/api/onedrive/toggle`                      | POST   | ✅   | 10/min  | 启用或禁用 OneDrive 目标     |
+| `/api/onedrive/oauth/start`                 | POST   | ✅   | 10/min  | 启动 OneDrive OAuth          |
+| `/api/onedrive/oauth/callback`              | GET    | ❌   | -       | OneDrive OAuth 回调          |
+| `/api/gdrive/config`                        | GET    | ✅   | 30/min  | 获取 Google Drive 目标       |
+| `/api/gdrive/config`                        | POST   | ✅   | 10/min  | 保存 Google Drive 目标       |
+| `/api/gdrive/config?id={id}`                | DELETE | ✅   | 10/min  | 删除 Google Drive 目标       |
+| `/api/gdrive/toggle`                        | POST   | ✅   | 10/min  | 启用或禁用 Google Drive 目标 |
+| `/api/gdrive/oauth/start`                   | POST   | ✅   | 10/min  | 启动 Google Drive OAuth      |
+| `/api/gdrive/oauth/callback`                | GET    | ❌   | -       | Google Drive OAuth 回调      |
+| [/api/login](#获取认证-token)               | POST   | ❌   | 5/min   | 用户登录                     |
+| [/api/refresh-token](#token-刷新)           | POST   | ✅   | -       | 刷新 Token                   |
+| [/otp/{secret}](#otp-生成)                  | GET    | ❌   | 100/min | 公开 OTP 生成                |
 
 ---
 
@@ -438,6 +451,99 @@ Cookie: auth_token=<JWT_TOKEN>
 
 ---
 
+### 批量导出密钥
+
+**端点**: `POST /api/secrets/export`
+
+**认证**: ✅ 需要
+**描述**: 导出标准 TXT、JSON、CSV、HTML 格式的密钥文件。该接口主要供网页端批量导出功能调用，也可以在携带认证 Cookie 的情况下直接使用。
+
+**请求体**:
+
+```json
+{
+	"format": "json",
+	"filenamePrefix": "2FA-secrets",
+	"metadata": {
+		"source": "export"
+	},
+	"secrets": [
+		{
+			"id": "550e8400-e29b-41d4-a716-446655440000",
+			"name": "GitHub",
+			"account": "user@example.com",
+			"secret": "JBSWY3DPEHPK3PXP",
+			"type": "TOTP",
+			"digits": 6,
+			"period": 30,
+			"algorithm": "SHA1",
+			"counter": 0,
+			"createdAt": "2026-04-16T00:00:00.000Z"
+		}
+	]
+}
+```
+
+**字段说明**:
+
+| 字段             | 类型   | 必填 | 说明                                        |
+| ---------------- | ------ | ---- | ------------------------------------------- |
+| `format`         | String | ✅   | 导出格式，支持 `txt`、`json`、`csv`、`html` |
+| `filenamePrefix` | String | ❌   | 下载文件名前缀                              |
+| `metadata`       | Object | ❌   | 附加元数据，仅写入导出文件内容              |
+| `secrets`        | Array  | ✅   | 待导出的密钥数组                            |
+
+**成功响应** (200 OK):
+
+返回文件下载流，响应头示例：
+
+```http
+Content-Type: application/json;charset=utf-8
+Content-Disposition: attachment; filename="2FA-secrets-data-2026-04-17.json"
+```
+
+**错误响应**:
+
+**400 Bad Request** - 参数错误、无效 profile、空导出或密钥数据无效:
+
+```json
+{
+	"error": "请求验证失败",
+	"message": "请提供密钥数组",
+	"timestamp": "2026-04-17T10:30:00.000Z"
+}
+```
+
+**413 Payload Too Large** - 请求体超过 2 MB:
+
+```json
+{
+	"error": "导出请求过大",
+	"message": "单次导出请求体不能超过 2 MB（当前约 2.1 MB）",
+	"timestamp": "2026-04-17T10:30:00.000Z"
+}
+```
+
+**429 Too Many Requests** - 触发敏感操作限流:
+
+```json
+{
+	"error": "请求过于频繁",
+	"message": "您的请求次数过多，请在 60 秒后重试",
+	"retryAfter": 60,
+	"limit": 10,
+	"remaining": 0
+}
+```
+
+**限制说明**:
+
+- 该接口使用敏感操作限流：`10 次 / 1 分钟`
+- 单次请求体最大 `2 MB`
+- HTML 导出在密钥数量较大时会降级为仅表格、不嵌入二维码的可恢复文件
+
+---
+
 ### 导入格式参考
 
 批量导入功能在客户端自动识别格式并解析为标准结构后调用 `POST /api/secrets/batch`。以下是各应用导出文件的格式说明。
@@ -603,56 +709,45 @@ GitHub,user@example.com,JBSWY3DPEHPK3PXP,TOTP,6,30,SHA1
 
 ### 生成 OTP
 
-**端点**: `POST /api/generate-otp`
+**端点**: `GET /otp/{secret}`
 
-**认证**: ✅ 需要
+**认证**: ❌ 不需要
 
-**描述**: 根据密钥生成一次性密码（OTP）
+**描述**: 公开 OTP 生成接口。默认返回 HTML 页面；当 `format=json` 时返回 JSON。
 
-**请求体**:
+**URL 参数**:
+
+- `secret` (String): Base32 编码的密钥
+
+**查询参数** (可选):
+
+- `type` (String): OTP 类型 (`totp`, `hotp`)，默认 `TOTP`
+- `digits` (Number): OTP 位数，默认 `6`
+- `period` (Number): TOTP 时间步长（秒），默认 `30`
+- `algorithm` (String): 哈希算法，支持 `SHA1`、`SHA256`、`SHA512`
+- `counter` (Number): HOTP 计数器（仅 `HOTP` 使用）
+- `format` (String): `html` 或 `json`，默认 `html`
+
+**请求示例**:
+
+```http
+GET /otp/JBSWY3DPEHPK3PXP?type=totp&digits=6&period=30&format=json HTTP/1.1
+Host: 2fa.example.com
+```
+
+**成功响应** (`format=json`, 200 OK):
 
 ```json
 {
-	"secret": "JBSWY3DPEHPK3PXP",
-	"type": "totp",
-	"options": {
-		"timeStep": 30,
-		"digits": 6,
-		"algorithm": "SHA1"
-	}
+	"token": "123456"
 }
 ```
 
-**字段说明**:
-| 字段 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `secret` | String | ✅ | - | Base32 编码的密钥 |
-| `type` | String | ❌ | `"totp"` | OTP 类型: `totp`, `hotp` |
-| `options.timeStep` | Number | ❌ | `30` | TOTP 时间步长（秒） |
-| `options.digits` | Number | ❌ | `6` | OTP 位数（6 或 8） |
-| `options.algorithm` | String | ❌ | `"SHA1"` | 哈希算法: `SHA1`, `SHA256`, `SHA512` |
-| `options.counter` | Number | ❌ | - | HOTP 计数器（仅 HOTP 需要） |
+**成功响应** (`format=html`, 200 OK):
 
-**成功响应** (200 OK):
-
-```json
-{
-	"otp": "123456",
-	"timeRemaining": 25,
-	"timestamp": "2025-10-24T10:30:00.000Z",
-	"type": "totp",
-	"nextOtp": "654321"
-}
-```
-
-**响应字段说明**:
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `otp` | String | 当前 OTP（6 位数字） |
-| `timeRemaining` | Number | 当前 OTP 剩余有效时间（秒） |
-| `timestamp` | String | 服务器时间戳 |
-| `type` | String | OTP 类型 |
-| `nextOtp` | String | 下一个时段的 OTP（仅 TOTP） |
+- 返回可直接展示的 OTP HTML 页面
+- TOTP 页面会显示剩余有效时间
+- HOTP 页面不会显示倒计时
 
 **错误响应**:
 
@@ -668,46 +763,6 @@ GitHub,user@example.com,JBSWY3DPEHPK3PXP,TOTP,6,30,SHA1
 
 ---
 
-### 传统 OTP 生成
-
-**端点**: `GET /otp/{secret}`
-
-**认证**: ❌ 不需要
-
-**描述**: 简化的 OTP 生成端点（向后兼容旧版本）
-
-**URL 参数**:
-
-- `secret` (String): Base32 编码的密钥
-
-**查询参数** (可选):
-
-- `type` (String): OTP 类型 (`totp`, `hotp`)，默认 `totp`
-- `timeStep` (Number): TOTP 时间步长（秒），默认 `30`
-- `digits` (Number): OTP 位数，默认 `6`
-- `counter` (Number): HOTP 计数器（仅 HOTP）
-
-**请求示例**:
-
-```http
-GET /otp/JBSWY3DPEHPK3PXP?type=totp&digits=6 HTTP/1.1
-Host: 2fa.example.com
-```
-
-**成功响应** (200 OK):
-
-```json
-{
-	"otp": "123456",
-	"timeRemaining": 25,
-	"timestamp": "2025-10-24T10:30:00.000Z",
-	"type": "totp",
-	"nextOtp": "654321"
-}
-```
-
----
-
 ## 备份管理 API
 
 ### 手动触发备份
@@ -716,20 +771,19 @@ Host: 2fa.example.com
 
 **认证**: ✅ 需要
 
-**描述**: 立即触发一次完整备份
+**描述**: 立即触发一次备份。生成的备份文件扩展名会跟随「默认导出格式」设置（`txt` / `json` / `csv` / `html`）。
 
 **成功响应** (200 OK):
 
 ```json
 {
 	"success": true,
-	"data": {
-		"backupId": "backup_1729765800000",
-		"timestamp": "2025-10-24T10:30:00.000Z",
-		"count": 15,
-		"encrypted": true
-	},
-	"message": "备份成功"
+	"message": "备份完成，共备份 15 个密钥",
+	"backupKey": "backup_2026-04-17_06-05-18-599-us85.txt",
+	"count": 15,
+	"timestamp": "2026-04-17T06:05:18.599Z",
+	"encrypted": true,
+	"format": "txt"
 }
 ```
 
@@ -737,7 +791,7 @@ Host: 2fa.example.com
 
 ### 获取备份列表
 
-**端点**: `GET /api/backups`
+**端点**: `GET /api/backup`
 
 **认证**: ✅ 需要
 
@@ -748,25 +802,35 @@ Host: 2fa.example.com
 ```json
 {
 	"success": true,
-	"data": [
+	"backups": [
 		{
-			"id": "backup_1729765800000",
-			"timestamp": "2025-10-24T10:30:00.000Z",
+			"key": "backup_2026-04-17_06-05-18-599-us85.txt",
+			"created": "2026-04-17T06:05:18.599Z",
 			"count": 15,
 			"encrypted": true,
-			"reason": "manual",
-			"size": "2.5 KB"
+			"format": "txt",
+			"partial": false,
+			"skippedInvalidCount": 0,
+			"size": 2048
 		},
 		{
-			"id": "backup_1729765500000",
-			"timestamp": "2025-10-24T10:25:00.000Z",
+			"key": "backup_2026-04-17_06-05-18-552-n8b1.html",
+			"created": "2026-04-17T06:05:18.552Z",
 			"count": 15,
 			"encrypted": true,
-			"reason": "event-driven",
-			"size": "2.5 KB"
+			"format": "html",
+			"partial": false,
+			"skippedInvalidCount": 0,
+			"size": 8192
 		}
 	],
-	"total": 2
+	"count": 2,
+	"pagination": {
+		"limit": 50,
+		"hasMore": false,
+		"cursor": null,
+		"loadedAll": false
+	}
 }
 ```
 
@@ -774,36 +838,22 @@ Host: 2fa.example.com
 
 ### 导出备份
 
-**端点**: `GET /api/backups/export/{id}`
+**端点**: `GET /api/backup/export/{backupKey}?format={format}`
 
 **认证**: ✅ 需要
 
-**描述**: 导出指定备份为 JSON 文件
+**描述**: 将指定备份导出为目标格式文件。支持 `txt`、`json`、`csv`、`html` 四种格式。
 
 **URL 参数**:
 
-- `id` (String): 备份 ID（如 `backup_1729765800000`）
+- `backupKey` (String): 备份文件名（如 `backup_2026-04-17_06-05-18-599-us85.txt`）
+- `format` (String，可选): 导出格式，默认 `txt`
 
-**成功响应** (200 OK):
+**成功响应** (200 OK): 返回下载文件，响应头示例：
 
-```json
-{
-	"id": "backup_1729765800000",
-	"timestamp": "2025-10-24T10:30:00.000Z",
-	"count": 15,
-	"reason": "manual",
-	"encrypted": true,
-	"data": [
-		{
-			"id": "550e8400-e29b-41d4-a716-446655440000",
-			"name": "GitHub",
-			"account": "user@example.com",
-			"secret": "JBSWY3DPEHPK3PXP",
-			"createdAt": "2025-10-20T10:30:00.000Z",
-			"updatedAt": "2025-10-20T10:30:00.000Z"
-		}
-	]
-}
+```http
+Content-Type: text/plain;charset=utf-8
+Content-Disposition: attachment; filename="2FA-backup-2026-04-17.txt"
 ```
 
 **错误响应**:
@@ -832,27 +882,55 @@ Host: 2fa.example.com
 
 ### 恢复备份
 
-**端点**: `POST /api/backups/restore/{id}`
+**端点**: `POST /api/backup/restore`
 
 **认证**: ✅ 需要
 
 **描述**: 从指定备份恢复数据（会覆盖当前数据）
 
-**URL 参数**:
+**请求体**:
 
-- `id` (String): 备份 ID
+```json
+{
+	"backupKey": "backup_2026-04-17_06-05-18-599-us85.txt",
+	"preview": false
+}
+```
+
+- `backupKey`: 备份文件名
+- `preview`: `true` 时仅返回预览，不执行恢复
 
 **成功响应** (200 OK):
 
 ```json
 {
 	"success": true,
+	"message": "恢复备份成功，共恢复 15 个密钥",
+	"backupKey": "backup_2026-04-17_06-05-18-599-us85.txt",
+	"count": 15,
+	"timestamp": "2026-04-17T06:05:18.599Z",
+	"sourceEncrypted": true,
+	"format": "txt"
+}
+```
+
+**预览响应** (`preview: true`):
+
+```json
+{
+	"success": true,
 	"data": {
-		"backupId": "backup_1729765800000",
+		"message": "备份预览获取成功",
+		"backupKey": "backup_2026-04-17_06-05-18-599-us85.txt",
 		"count": 15,
-		"restored": 15
-	},
-	"message": "备份恢复成功"
+		"timestamp": "2026-04-17T06:05:18.599Z",
+		"encrypted": true,
+		"format": "txt",
+		"partial": false,
+		"skippedInvalidCount": 0,
+		"warnings": [],
+		"secrets": []
+	}
 }
 ```
 
@@ -888,6 +966,7 @@ OneDrive 和 Google Drive 使用同一套目标管理模型:
 - OAuth 授权成功后会立即执行一次自动连接测试
 - 新目标授权成功后默认保持关闭状态，需要用户手动启用
 - 已启用的目标重新授权后，会保留原有启用状态
+- 远程自动备份写入的文件扩展名跟随「默认导出格式」设置
 
 ### 目标配置字段
 
@@ -1006,6 +1085,286 @@ OneDrive 和 Google Drive 使用同一套目标管理模型:
 
 ---
 
+## 首次设置与系统设置 API
+
+### 首次设置
+
+**端点**: `POST /api/setup`
+
+**认证**: ❌ 不需要
+
+**描述**: 初始化管理员密码，并在成功后自动登录。
+
+**请求体**:
+
+```json
+{
+	"password": "Str0ng-Pass!",
+	"confirmPassword": "Str0ng-Pass!"
+}
+```
+
+**字段说明**:
+
+- `password`: 新管理员密码
+- `confirmPassword`: 确认密码，必须与 `password` 完全一致
+
+**密码规则**:
+
+- 长度至少 8 位
+- 至少包含 1 个大写字母
+- 至少包含 1 个小写字母
+- 至少包含 1 个数字
+- 至少包含 1 个特殊字符
+
+**成功响应** (200 OK):
+
+```json
+{
+	"success": true,
+	"message": "密码设置成功，已自动登录",
+	"expiresAt": "2026-05-17T10:30:00.000Z",
+	"expiresIn": "30天"
+}
+```
+
+**响应头**:
+
+```http
+Set-Cookie: auth_token=<JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000; Path=/
+```
+
+**错误响应**:
+
+**400 Bad Request** - 参数缺失、两次密码不一致或密码强度不足:
+
+```json
+{
+	"error": "ValidationError",
+	"message": "两次输入的密码不一致",
+	"statusCode": 400,
+	"details": {
+		"issue": "password_mismatch"
+	},
+	"timestamp": "2026-04-17T10:30:00.000Z"
+}
+```
+
+**409 Conflict** - 已完成首次设置:
+
+```json
+{
+	"error": "ConflictError",
+	"message": "密码已设置，无法重复设置。如需修改密码，请联系管理员。",
+	"statusCode": 409,
+	"details": {
+		"operation": "first_time_setup",
+		"alreadyCompleted": true
+	},
+	"timestamp": "2026-04-17T10:30:00.000Z"
+}
+```
+
+**500 Internal Server Error** - KV 未绑定或服务端配置异常:
+
+```json
+{
+	"error": "设置失败",
+	"message": "KV 存储未绑定，请在 Cloudflare Dashboard 或 wrangler.toml 中配置 SECRETS_KV 命名空间后重试",
+	"timestamp": "2026-04-17T10:30:00.000Z"
+}
+```
+
+---
+
+### 修改密码
+
+**端点**: `POST /api/change-password`
+
+**认证**: ✅ 需要
+
+**描述**: 校验当前密码后更新管理员密码。修改成功后，旧 JWT 会因签名密钥变化而失效，客户端应重新登录。
+
+**请求体**:
+
+```json
+{
+	"currentPassword": "Old-Pass1!",
+	"newPassword": "New-Pass2!",
+	"confirmPassword": "New-Pass2!"
+}
+```
+
+**成功响应** (200 OK):
+
+```json
+{
+	"success": true,
+	"message": "密码修改成功，请重新登录"
+}
+```
+
+**错误响应**:
+
+**400 Bad Request** - 参数缺失、两次新密码不一致或新密码强度不足:
+
+```json
+{
+	"error": "ValidationError",
+	"message": "请提供当前密码、新密码和确认密码",
+	"statusCode": 400,
+	"details": {
+		"missing": ["confirmPassword"]
+	},
+	"timestamp": "2026-04-17T10:30:00.000Z"
+}
+```
+
+**401 Unauthorized** - 当前密码错误:
+
+```json
+{
+	"error": "AuthenticationError",
+	"message": "密码错误",
+	"statusCode": 401,
+	"details": {
+		"operation": "change_password"
+	},
+	"timestamp": "2026-04-17T10:30:00.000Z"
+}
+```
+
+**500 Internal Server Error** - 服务端未配置 KV 或尚未完成首次设置:
+
+```json
+{
+	"error": "ConfigurationError",
+	"message": "未设置密码，请先完成首次设置",
+	"statusCode": 500,
+	"details": {
+		"setupRequired": true
+	},
+	"timestamp": "2026-04-17T10:30:00.000Z"
+}
+```
+
+---
+
+### 获取系统设置
+
+**端点**: `GET /api/settings`
+
+**认证**: ✅ 需要
+
+**描述**: 获取当前系统设置。若设置不存在或已损坏，服务端会自动回退到默认值。
+
+**成功响应** (200 OK):
+
+```json
+{
+	"jwtExpiryDays": 30,
+	"maxBackups": 100,
+	"defaultExportFormat": "json"
+}
+```
+
+**字段说明**:
+
+- `jwtExpiryDays`: JWT 登录有效期，范围 `1~365`
+- `maxBackups`: 自动备份保留数量，范围 `0~1000`；`0` 表示不限制
+- `defaultExportFormat`: 默认导出格式，支持 `txt`、`json`、`csv`、`html`
+
+**错误响应**:
+
+**500 Internal Server Error** - 读取设置失败:
+
+```json
+{
+	"error": "获取设置失败",
+	"message": "读取设置时发生错误",
+	"timestamp": "2026-04-17T10:30:00.000Z"
+}
+```
+
+---
+
+### 保存系统设置
+
+**端点**: `POST /api/settings`
+
+**认证**: ✅ 需要
+
+**描述**: 保存系统设置。请求体支持部分更新，未提供的字段保持原值不变。
+
+**请求体**:
+
+```json
+{
+	"jwtExpiryDays": 30,
+	"maxBackups": 100,
+	"defaultExportFormat": "html"
+}
+```
+
+**说明**:
+
+- 可只提交任意一个字段进行局部更新
+- `defaultExportFormat` 不仅影响导出按钮默认选项，也会影响新创建备份文件和远程自动备份的扩展名
+
+**成功响应** (200 OK):
+
+```json
+{
+	"success": true,
+	"message": "设置已保存",
+	"settings": {
+		"jwtExpiryDays": 30,
+		"maxBackups": 100,
+		"defaultExportFormat": "html"
+	}
+}
+```
+
+**错误响应**:
+
+**400 Bad Request** - 字段值非法:
+
+```json
+{
+	"error": "ValidationError",
+	"message": "默认导出格式仅支持：txt, json, csv, html",
+	"statusCode": 400,
+	"details": {
+		"field": "defaultExportFormat",
+		"value": "xml"
+	},
+	"timestamp": "2026-04-17T10:30:00.000Z"
+}
+```
+
+**429 Too Many Requests** - 写入过于频繁:
+
+```json
+{
+	"error": "请求过于频繁",
+	"message": "您的请求过于频繁，请稍后再试",
+	"retryAfter": 30,
+	"timestamp": "2026-04-17T10:30:00.000Z"
+}
+```
+
+**500 Internal Server Error** - 保存设置失败:
+
+```json
+{
+	"error": "保存设置失败",
+	"message": "保存设置时发生错误",
+	"timestamp": "2026-04-17T10:30:00.000Z"
+}
+```
+
+---
+
 ## 认证 API
 
 ### 登录
@@ -1117,16 +1476,17 @@ OneDrive 和 Google Drive 使用同一套目标管理模型:
 
 所有 API 端点都有限流保护，防止滥用和 DDoS 攻击。
 
-| 端点类别                            | 限流规则 | 窗口时间 | 预设名称    |
-| ----------------------------------- | -------- | -------- | ----------- |
-| **登录** (`/api/login`)             | 5 次     | 1 分钟   | `login`     |
-| **标准 API** (`/api/secrets` CRUD)  | 30 次    | 1 分钟   | `api`       |
-| **敏感操作** (删除、导出)           | 10 次    | 1 分钟   | `sensitive` |
-| **批量操作** (`/api/secrets/batch`) | 5 次     | 5 分钟   | `bulk`      |
-| **OTP 生成** (`/otp/*`)             | 100 次   | 1 分钟   | `global`    |
-| **备份管理** (`/api/backup`)        | 5 次     | 1 分钟   | -           |
-| **备份查询** (`/api/backups`)       | 30 次    | 1 分钟   | `api`       |
-| **首次设置** (`/api/setup`)         | 5 次     | 5 分钟   | `bulk`      |
+| 端点类别                             | 限流规则 | 窗口时间 | 预设名称    |
+| ------------------------------------ | -------- | -------- | ----------- |
+| **登录** (`/api/login`)              | 5 次     | 1 分钟   | `login`     |
+| **标准 API** (`/api/secrets` CRUD)   | 30 次    | 1 分钟   | `api`       |
+| **敏感操作** (删除、导出)            | 10 次    | 1 分钟   | `sensitive` |
+| **批量操作** (`/api/secrets/batch`)  | 20 次    | 5 分钟   | `bulk`      |
+| **批量导出** (`/api/secrets/export`) | 10 次    | 1 分钟   | `sensitive` |
+| **OTP 生成** (`/otp/*`)              | 100 次   | 1 分钟   | `global`    |
+| **备份管理** (`/api/backup`)         | 5 次     | 1 分钟   | -           |
+| **备份查询** (`/api/backup`)         | 30 次    | 1 分钟   | `api`       |
+| **首次设置** (`/api/setup`)          | 5 次     | 1 分钟   | `login`     |
 
 ### 限流响应头
 
@@ -1168,25 +1528,24 @@ X-RateLimit-Reset: 1729765860
 
 ### 限流算法
 
-使用**固定窗口计数器 (Fixed Window Counter)** 算法：
+使用**滑动窗口 (Sliding Window)** 算法：
 
 ```
 时间轴: ───────────────────────────→
-         │         窗口1          │         窗口2          │
-      t=0s                    t=60s                   t=120s
-         └─────────────────────┘─────────────────────┘
-            固定 60 秒窗口         新窗口重置计数器
+         [最近 60 秒滑动窗口]
+                ↑ 当前请求时间
 
-请求计数: 每个窗口内的请求数 ≤ 最大请求数
-窗口重置: 到达窗口结束时间时，计数器重置为 0
+统计范围: 仅计算当前时刻向前回溯 windowSeconds 内的请求
+放行条件: 窗口内请求数 < maxAttempts
+窗口移动: 每次请求到来时重新计算，而不是等待整分钟重置
 ```
 
 **算法特点**:
 
-- ✅ 实现简单，性能高效
-- ✅ 内存占用低（只需存储计数和窗口结束时间）
-- ✅ 与 Cloudflare KV 存储完美适配
-- ⚠️ 窗口边界可能存在突发流量（例如在窗口结束前和新窗口开始时各发送最大请求数）
+- ✅ 相比固定窗口，更平滑地限制突发流量
+- ✅ 降低窗口边界瞬时双倍突发的问题
+- ✅ 当前实现基于 Cloudflare KV 持久化限流状态
+- ✅ 所有预设均统一使用 `sliding-window`
 
 **实现说明**:
 
@@ -1211,8 +1570,7 @@ const loginResponse = await fetch('https://2fa.example.com/api/login', {
 		'Content-Type': 'application/json',
 	},
 	body: JSON.stringify({
-		username: 'admin',
-		password: 'YOUR_PASSWORD',
+		credential: 'YOUR_PASSWORD',
 	}),
 	credentials: 'include', // 重要：携带 Cookie
 });
@@ -1257,21 +1615,10 @@ if (response.ok) {
 #### 生成 OTP
 
 ```javascript
-const response = await fetch('https://2fa.example.com/api/generate-otp', {
-	method: 'POST',
-	headers: {
-		'Content-Type': 'application/json',
-	},
-	credentials: 'include',
-	body: JSON.stringify({
-		secret: 'JBSWY3DPEHPK3PXP',
-		type: 'totp',
-	}),
-});
+const response = await fetch('https://2fa.example.com/otp/JBSWY3DPEHPK3PXP?type=totp&period=30&format=json');
 
 const result = await response.json();
-console.log('当前 OTP:', result.otp);
-console.log('剩余时间:', result.timeRemaining, '秒');
+console.log('当前 OTP:', result.token);
 ```
 
 ### cURL
@@ -1281,7 +1628,7 @@ console.log('剩余时间:', result.timeRemaining, '秒');
 ```bash
 curl -X POST https://2fa.example.com/api/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"YOUR_PASSWORD"}' \
+  -d '{"credential":"YOUR_PASSWORD"}' \
   -c cookies.txt  # 保存 Cookie
 ```
 
@@ -1308,7 +1655,7 @@ curl -X POST https://2fa.example.com/api/secrets \
 #### 生成 OTP（无需认证）
 
 ```bash
-curl https://2fa.example.com/otp/JBSWY3DPEHPK3PXP
+curl "https://2fa.example.com/otp/JBSWY3DPEHPK3PXP?format=json"
 ```
 
 ### Python
@@ -1321,8 +1668,7 @@ session = requests.Session()
 login_response = session.post(
     'https://2fa.example.com/api/login',
     json={
-        'username': 'admin',
-        'password': 'YOUR_PASSWORD'
+        'credential': 'YOUR_PASSWORD'
     }
 )
 

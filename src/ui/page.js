@@ -1123,8 +1123,8 @@ function getHTMLBody() {
             </div>
             <div class="settings-divider"></div>
             <div class="settings-section">
-              <h3 class="settings-section-title">批量导出默认格式</h3>
-              <p class="settings-desc">设置导出弹窗的默认格式。它会影响批量导出和“导出备份”中的默认操作，但不会改变内部备份的完整格式。</p>
+              <h3 class="settings-section-title">批量导出和备份导出偏好格式</h3>
+              <p class="settings-desc">设置批量导出和“导出备份”共用的默认格式。它会影响这两个导出弹窗的默认操作，也会用于新创建的手动备份、自动备份和远程自动备份文件。</p>
               <select id="settingsDefaultExportFormat" class="settings-select" onchange="saveDefaultExportFormat()">
                 <option value="json">JSON</option>
                 <option value="txt">TXT 文本</option>
@@ -1444,7 +1444,7 @@ function getHTMLBody() {
       <div class="export-instructions" style="margin-bottom: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 8px; font-size: 14px;">
         <p style="margin: 0; color: var(--text-primary);">
           💡 <strong>导出选中的备份文件</strong><br>
-          <small style="color: var(--text-secondary);">请选择您需要的导出格式，不同格式适用于不同的场景。这里的默认按钮会读取设置页中的导出偏好，但不会改变内部备份格式。</small>
+          <small style="color: var(--text-secondary);">请选择您需要的导出格式，不同格式适用于不同的场景。设置页中的默认导出格式也会用于新创建的备份文件和远程自动备份。</small>
         </p>
         <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
           <button id="backupUseDefaultBtn" class="btn btn-sm" onclick="exportSelectedBackupUsingDefaultFormat()">按默认格式导出</button>

@@ -309,16 +309,16 @@ export function getExportCode() {
 
       switch(format) {
         case 'txt':
-          exportAsOTPAuth(secretsData, opts);
+          await exportStandardFormatViaApi(secretsData, format, opts);
           break;
         case 'json':
-          exportAsJSON(secretsData, opts);
+          await exportStandardFormatViaApi(secretsData, format, opts);
           break;
         case 'csv':
-          exportAsCSV(secretsData, opts);
+          await exportStandardFormatViaApi(secretsData, format, opts);
           break;
         case 'html':
-          await exportAsHTML(secretsData, opts);
+          await exportStandardFormatViaApi(secretsData, format, opts);
           break;
         case 'google':
           // Google Authenticator 导出使用专门的模态框
@@ -385,6 +385,77 @@ export function getExportCode() {
     }
 
     // 导出为 OTPAuth 文本格式
+    async function exportStandardFormatViaApi(sortedSecrets, format, options = {}) {
+      try {
+        showCenterToast('INFO', 'Preparing export file...');
+
+        const response = await authenticatedFetch('/api/secrets/export', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            format: format,
+            filenamePrefix: options.filenamePrefix || '2FA-secrets',
+            metadata: options.metadata || {},
+            secrets: sortedSecrets
+          })
+        });
+
+        if (response.status === 202) {
+          let errorMessage = 'Export requires an online connection';
+          try {
+            const queuedData = await response.clone().json();
+            if (queuedData && queuedData.offline) {
+              errorMessage = queuedData.message || queuedData.detail || errorMessage;
+            }
+          } catch {
+            // ignore non-JSON queued responses
+          }
+          throw new Error(errorMessage);
+        }
+
+        if (response.status !== 200) {
+          let errorMessage = 'Export failed';
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorData.error || errorMessage;
+          } catch {
+            // ignore non-JSON error responses
+          }
+          throw new Error(errorMessage);
+        }
+
+        const contentDisposition = response.headers.get('Content-Disposition');
+        if (!contentDisposition) {
+          throw new Error('Export failed: server did not return a downloadable file');
+        }
+
+        let filename = (options.filenamePrefix || '2FA-secrets') + '-' + format + '-' + getDateString();
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+          if (filenameMatch) {
+            filename = filenameMatch[1];
+          }
+        }
+
+        const blob = await response.blob();
+        const saved = await downloadFile(blob, filename, blob.type || response.headers.get('Content-Type') || 'application/octet-stream');
+        if (saved) {
+          const formatNames = {
+            txt: 'OTPAuth TXT',
+            json: 'JSON',
+            csv: 'CSV',
+            html: 'HTML'
+          };
+          showExportSuccess(sortedSecrets.length, formatNames[format] || format.toUpperCase());
+        }
+      } catch (error) {
+        console.error('Export failed:', error);
+        showCenterToast('ERR', 'Export failed: ' + error.message);
+      }
+    }
+
     async function exportAsOTPAuth(sortedSecrets, options = {}) {
       const filenamePrefix = options.filenamePrefix || '2FA-secrets';
       const formatName = options.formatName || 'otpauth';  // 格式标识，默认 'otpauth'
@@ -525,8 +596,7 @@ export function getExportCode() {
             digits: secret.digits || 6,
             period: secret.period || 30,
             algorithm: String(secret.algorithm || 'SHA1').toUpperCase(),
-            counter: secret.counter || 0,
-            createdAt: secret.createdAt || exportTimestamp
+            counter: secret.counter || 0
           };
           const label = accountName
             ? encodeURIComponent(serviceName) + ':' + encodeURIComponent(accountName)
@@ -586,8 +656,7 @@ export function getExportCode() {
             digits: data.secret.digits,
             period: data.secret.period,
             algorithm: data.secret.algorithm,
-            counter: data.secret.counter || 0,
-            createdAt: data.secret.createdAt || exportTimestamp
+            counter: data.secret.counter || 0
           }))
         }, null, 2));
 

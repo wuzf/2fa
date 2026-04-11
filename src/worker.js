@@ -23,13 +23,11 @@ import { pushToAllS3 } from './utils/s3.js';
 import { pushToAllOneDrive } from './utils/onedrive.js';
 import { pushToAllGoogleDrive } from './utils/gdrive.js';
 import { deleteBackupRecord, listAllBackupKeys, putBackupRecord } from './utils/backup-index.js';
-import { sanitizeMaxBackups } from './utils/backup.js';
+import { resolveConfiguredBackupFormat, sanitizeMaxBackups } from './utils/backup.js';
 import { createBackupEntry, isValidBackupKey, parseBackupTimeFromKey } from './utils/backup-format.js';
 import { generateDataHash, getPendingDataHash, isPendingDataHashFresh, saveDataHash } from './utils/data-hash.js';
 
 export { generateDataHash, saveDataHash } from './utils/data-hash.js';
-
-const INTERNAL_BACKUP_FORMAT = 'json';
 
 /**
  * 获取所有密钥
@@ -114,20 +112,20 @@ async function _hasDataChanged(env, currentSecrets) {
 				const backupKeys = list.keys.filter((key) => isValidBackupKey(key.name));
 				if (backupKeys.length > 0) {
 					backupKeys.sort((a, b) => b.name.localeCompare(a.name));
-					const latestBackupKey = backupKeys[0].name;
-					const latestBackup = await env.SECRETS_KV.get(latestBackupKey, 'json');
+					const latestBackup = backupKeys[0];
+					const latestBackupCount = Number.parseInt(latestBackup.metadata?.count, 10);
 
-					if (latestBackup && latestBackup.count !== currentSecrets.length) {
+					if (Number.isInteger(latestBackupCount) && latestBackupCount !== currentSecrets.length) {
 						logger.info('密钥数量发生变化', {
 							currentCount: currentSecrets.length,
-							lastBackupCount: latestBackup.count,
-							difference: currentSecrets.length - latestBackup.count,
+							lastBackupCount: latestBackupCount,
+							difference: currentSecrets.length - latestBackupCount,
 						});
 						return true;
-					} else if (latestBackup) {
+					} else if (Number.isInteger(latestBackupCount)) {
 						logger.debug('密钥数量未变化', {
 							currentCount: currentSecrets.length,
-							lastBackupCount: latestBackup.count,
+							lastBackupCount: latestBackupCount,
 						});
 					}
 				}
@@ -442,8 +440,9 @@ export default {
 
 			logger.info('检测到数据变化，开始创建备份');
 			timer.checkpoint('开始备份');
+			const backupFormat = await resolveConfiguredBackupFormat(env, logger);
 			const backupEntry = await createBackupEntry(secrets, env, {
-				format: INTERNAL_BACKUP_FORMAT,
+				format: backupFormat,
 				reason: 'scheduled',
 				strict: false,
 			});

@@ -7,6 +7,7 @@ import { getLogger } from '../../utils/logger.js';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../../utils/rateLimit.js';
 import { createJsonResponse, createErrorResponse } from '../../utils/response.js';
 import { ValidationError, StorageError, CryptoError, BusinessLogicError, errorToResponse, logError } from '../../utils/errors.js';
+import { resolveConfiguredBackupFormat } from '../../utils/backup.js';
 import { pushToWebDAV } from '../../utils/webdav.js';
 import { pushToS3 } from '../../utils/s3.js';
 import { pushToOneDrive } from '../../utils/onedrive.js';
@@ -31,7 +32,6 @@ import {
 } from '../../utils/backup-format.js';
 
 const INDEX_CURSOR_PREFIX = 'idx:';
-const INTERNAL_BACKUP_FORMAT = 'json';
 
 /**
  * Handle manual backup creation.
@@ -60,8 +60,9 @@ export async function handleBackupSecrets(request, env, ctx) {
 		const secrets = await getAllSecrets(env);
 
 		if (secrets && secrets.length > 0) {
+			const backupFormat = await resolveConfiguredBackupFormat(env, logger);
 			const backupEntry = await createBackupEntry(secrets, env, {
-				format: INTERNAL_BACKUP_FORMAT,
+				format: backupFormat,
 				reason: 'manual',
 				strict: true,
 			});

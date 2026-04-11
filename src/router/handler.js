@@ -15,6 +15,7 @@ import {
 	handleGetBackups,
 	handleRestoreBackup,
 	handleExportBackup,
+	handleExportSecrets,
 } from '../api/secrets/index.js';
 import { handleFaviconProxy } from '../api/favicon.js';
 import {
@@ -260,6 +261,13 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 	}
 
 	// 单个密钥操作API
+	if (pathname === '/api/secrets/export') {
+		if (method === 'POST') {
+			return handleExportSecrets(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
 	if (pathname.startsWith('/api/secrets/')) {
 		const secretId = pathname.substring('/api/secrets/'.length);
 		if (!secretId) {

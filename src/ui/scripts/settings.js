@@ -274,7 +274,7 @@ export function getSettingsCode() {
         formatSelect.value = localDefaultFormat;
       }
 
-      // 默认导出格式、登录有效期和备份保留数量（从服务器读取）
+      // 导出偏好格式、登录有效期和备份保留数量（从服务器读取）
       try {
         const resp = await authenticatedFetch('/api/settings');
         if (resp.ok) {
@@ -311,7 +311,7 @@ export function getSettingsCode() {
     }
 
     /**
-     * 保存默认导出格式
+     * 保存导出偏好格式
      */
     async function saveDefaultExportFormat() {
       const formatSelect = document.getElementById('settingsDefaultExportFormat');
@@ -335,9 +335,9 @@ export function getSettingsCode() {
           const savedFormat = (data.settings && data.settings.defaultExportFormat) || selectedFormat;
           formatSelect.value = savedFormat;
           localStorage.setItem('defaultExportFormat', savedFormat);
-          showCenterToast('✅', '默认导出格式已保存，导出弹窗会优先使用该格式');
+          showCenterToast('✅', '偏好格式已保存，批量导出和备份导出会优先使用该格式');
         } else {
-          showCenterToast('❌', data.message || '保存默认导出格式失败');
+          showCenterToast('❌', data.message || '保存偏好格式失败');
         }
       } catch {
         if (requestId !== defaultExportFormatSaveRequestId) {

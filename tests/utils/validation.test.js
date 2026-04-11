@@ -372,6 +372,7 @@ describe('Validation Utils', () => {
       expect(secretObj.digits).toBe(6);
       expect(secretObj.period).toBe(30);
       expect(secretObj.algorithm).toBe('SHA1');
+      expect(secretObj).not.toHaveProperty('createdAt');
     });
 
     it('应该生成唯一的 UUID', () => {

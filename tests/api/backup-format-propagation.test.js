@@ -115,7 +115,6 @@ function createSecrets() {
 function normalizeSecretsForAssert(secrets) {
 	return [...secrets]
 		.map((secret) => ({
-			id: secret.id,
 			name: secret.name,
 			account: secret.account || '',
 			secret: secret.secret,
@@ -124,9 +123,8 @@ function normalizeSecretsForAssert(secrets) {
 			period: secret.period || 30,
 			algorithm: secret.algorithm || 'SHA1',
 			counter: secret.counter || 0,
-			createdAt: secret.createdAt,
 		}))
-		.sort((a, b) => a.id.localeCompare(b.id));
+		.sort((a, b) => `${a.name}\u0000${a.account}`.localeCompare(`${b.name}\u0000${b.account}`));
 }
 
 function getBackupKeys(env) {
@@ -135,8 +133,8 @@ function getBackupKeys(env) {
 		.sort();
 }
 
-describe('Backup format isolation', () => {
-	it('keeps manual backups in JSON even when the default export format is csv', async () => {
+describe('Backup format propagation', () => {
+	it('uses the default export format for manual backups', async () => {
 		const env = createMockEnv();
 		const originalSecrets = createSecrets();
 		await env.SECRETS_KV.put('settings', JSON.stringify({ defaultExportFormat: 'csv' }));
@@ -146,15 +144,15 @@ describe('Backup format isolation', () => {
 		const backupData = await backupResponse.json();
 
 		expect(backupResponse.status).toBe(200);
-		expect(backupData.format).toBe('json');
-		expect(backupData.backupKey.endsWith('.json')).toBe(true);
+		expect(backupData.format).toBe('csv');
+		expect(backupData.backupKey.endsWith('.csv')).toBe(true);
 
 		const listResponse = await handleGetBackups(createMockRequest({}, 'GET', 'https://example.com/api/backup'), env);
 		const listData = await listResponse.json();
 		const listedBackup = listData.backups.find((item) => item.key === backupData.backupKey);
 
 		expect(listedBackup).toBeDefined();
-		expect(listedBackup.format).toBe('json');
+		expect(listedBackup.format).toBe('csv');
 
 		const previewResponse = await handleRestoreBackup(
 			createMockRequest({ backupKey: backupData.backupKey, preview: true }, 'POST', 'https://example.com/api/backup/restore'),
@@ -163,7 +161,7 @@ describe('Backup format isolation', () => {
 		const previewData = await previewResponse.json();
 
 		expect(previewResponse.status).toBe(200);
-		expect(previewData.data.format).toBe('json');
+		expect(previewData.data.format).toBe('csv');
 		expect(normalizeSecretsForAssert(previewData.data.secrets)).toEqual(normalizeSecretsForAssert(originalSecrets));
 
 		await env.SECRETS_KV.put(
@@ -195,7 +193,7 @@ describe('Backup format isolation', () => {
 		const restoredSecrets = await getAllSecrets(env);
 
 		expect(restoreResponse.status).toBe(200);
-		expect(restoreData.format).toBe('json');
+		expect(restoreData.format).toBe('csv');
 		expect(normalizeSecretsForAssert(restoredSecrets)).toEqual(normalizeSecretsForAssert(originalSecrets));
 
 		const exportResponse = await handleExportBackup(
@@ -212,7 +210,7 @@ describe('Backup format isolation', () => {
 		expect(exportContent).toContain('GitHub');
 	});
 
-	it('keeps event-driven backups in JSON even when the default export format is txt', async () => {
+	it('uses the default export format for event-driven backups', async () => {
 		const env = createMockEnv();
 		await env.SECRETS_KV.put('settings', JSON.stringify({ defaultExportFormat: 'txt' }));
 
@@ -220,10 +218,10 @@ describe('Backup format isolation', () => {
 
 		const backupKeys = getBackupKeys(env);
 		expect(backupKeys).toHaveLength(1);
-		expect(backupKeys[0].endsWith('.json')).toBe(true);
+		expect(backupKeys[0].endsWith('.txt')).toBe(true);
 
 		const metadata = env.SECRETS_KV.metadata.get(backupKeys[0]);
-		expect(metadata.format).toBe('json');
+		expect(metadata.format).toBe('txt');
 
 		const previewResponse = await handleRestoreBackup(
 			createMockRequest({ backupKey: backupKeys[0], preview: true }, 'POST', 'https://example.com/api/backup/restore'),
@@ -232,12 +230,12 @@ describe('Backup format isolation', () => {
 		const previewData = await previewResponse.json();
 
 		expect(previewResponse.status).toBe(200);
-		expect(previewData.data.format).toBe('json');
+		expect(previewData.data.format).toBe('txt');
 		expect(previewData.data.count).toBe(2);
 		expect(normalizeSecretsForAssert(previewData.data.secrets)).toEqual(normalizeSecretsForAssert(createSecrets()));
 	});
 
-	it('keeps scheduled backups in JSON even when the default export format is html', async () => {
+	it('uses the default export format for scheduled backups', async () => {
 		const env = createMockEnv();
 		await env.SECRETS_KV.put('settings', JSON.stringify({ defaultExportFormat: 'html' }));
 		await env.SECRETS_KV.put('secrets', await encryptSecrets(createSecrets(), env));
@@ -247,11 +245,11 @@ describe('Backup format isolation', () => {
 
 		const backupKeys = getBackupKeys(env);
 		expect(backupKeys).toHaveLength(1);
-		expect(backupKeys[0].endsWith('.json')).toBe(true);
+		expect(backupKeys[0].endsWith('.html')).toBe(true);
 		expect(ctx.waitUntil).toHaveBeenCalledTimes(4);
 
 		const metadata = env.SECRETS_KV.metadata.get(backupKeys[0]);
-		expect(metadata.format).toBe('json');
+		expect(metadata.format).toBe('html');
 
 		const previewResponse = await handleRestoreBackup(
 			createMockRequest({ backupKey: backupKeys[0], preview: true }, 'POST', 'https://example.com/api/backup/restore'),
@@ -260,14 +258,14 @@ describe('Backup format isolation', () => {
 		const previewData = await previewResponse.json();
 
 		expect(previewResponse.status).toBe(200);
-		expect(previewData.data.format).toBe('json');
+		expect(previewData.data.format).toBe('html');
 		expect(previewData.data.count).toBe(2);
 		expect(normalizeSecretsForAssert(previewData.data.secrets)).toEqual(normalizeSecretsForAssert(createSecrets()));
 	});
 });
 
-describe('Backup settings independence', () => {
-	it('does not depend on reading export settings for manual backups', async () => {
+describe('Backup settings fallback', () => {
+	it('falls back to JSON for manual backups when settings cannot be read', async () => {
 		const env = createMockEnv();
 		const originalSecrets = createSecrets();
 		await env.SECRETS_KV.put('secrets', await encryptSecrets(originalSecrets, env));
@@ -288,7 +286,7 @@ describe('Backup settings independence', () => {
 		expect(backupData.backupKey.endsWith('.json')).toBe(true);
 	});
 
-	it('does not depend on reading export settings for event-driven backups', async () => {
+	it('falls back to JSON for event-driven backups when settings cannot be read', async () => {
 		const env = createMockEnv();
 
 		const originalGet = env.SECRETS_KV.get.bind(env.SECRETS_KV);
@@ -306,7 +304,7 @@ describe('Backup settings independence', () => {
 		expect(backupKeys[0].endsWith('.json')).toBe(true);
 	});
 
-	it('does not depend on reading export settings for scheduled backups', async () => {
+	it('falls back to JSON for scheduled backups when settings cannot be read', async () => {
 		const env = createMockEnv();
 		await env.SECRETS_KV.put('secrets', await encryptSecrets(createSecrets(), env));
 

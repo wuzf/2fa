@@ -331,6 +331,44 @@ describe('backup format HTML decoding', () => {
 	});
 });
 
+describe('backup format JSON decoding', () => {
+	it('restores legacy JSON exports that use exportDate and issuer fields', () => {
+		const legacyJson = JSON.stringify({
+			version: '1.0',
+			exportDate: '2026-04-16T03:30:00.000Z',
+			count: 1,
+			secrets: [
+				{
+					issuer: 'GitHub',
+					account: 'user@example.com',
+					secret: 'JBSWY3DPEHPK3PXP',
+					type: 'TOTP',
+					digits: 6,
+					period: 30,
+					algorithm: 'SHA1',
+				},
+			],
+		});
+
+		const decoded = decodeBackupContent(legacyJson, 'json', {
+			strict: true,
+		});
+
+		expect(decoded.format).toBe('json');
+		expect(decoded.timestamp).toBe('2026-04-16T03:30:00.000Z');
+		expect(decoded.count).toBe(1);
+		expect(decoded.secrets[0]).toMatchObject({
+			name: 'GitHub',
+			account: 'user@example.com',
+			secret: 'JBSWY3DPEHPK3PXP',
+			type: 'TOTP',
+			digits: 6,
+			period: 30,
+			algorithm: 'SHA1',
+		});
+	});
+});
+
 describe('backup format partial metadata portability', () => {
 	it('marks invalid Base32 secrets as partial data during encoding', async () => {
 		const encoded = await encodeBackupContent(

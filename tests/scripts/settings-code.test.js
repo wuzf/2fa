@@ -17,5 +17,6 @@ describe('settings module code generation', () => {
 		expect(code).toContain('body: JSON.stringify({ defaultExportFormat: selectedFormat }),');
 		expect(code).toContain('if (requestId !== defaultExportFormatSaveRequestId) {');
 		expect(code).toContain('const savedFormat = (data.settings && data.settings.defaultExportFormat) || selectedFormat;');
+		expect(code).toContain('偏好格式已保存，批量导出和备份导出会优先使用该格式');
 	});
 });

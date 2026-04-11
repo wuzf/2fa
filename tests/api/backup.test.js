@@ -217,8 +217,8 @@ describe('Backup API Module', () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.format).toBe('json');
-      expect(data.backupKey).toMatch(/^backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}-[a-z0-9]{4}\.json$/);
+      expect(data.format).toBe('txt');
+      expect(data.backupKey).toMatch(/^backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}-[a-z0-9]{4}\.txt$/);
 
       const stored = await env.SECRETS_KV.get(data.backupKey, 'text');
       expect(stored.startsWith('v1:')).toBe(true);
@@ -244,8 +244,9 @@ describe('Backup API Module', () => {
       const listData = await listResp.json();
       const found = listData.backups.find(item => item.key === backupData.backupKey);
 
-      expect(backupData.format).toBe('json');
-      expect(found.format).toBe('json');
+      expect(backupData.format).toBe('csv');
+      expect(backupData.backupKey.endsWith('.csv')).toBe(true);
+      expect(found.format).toBe('csv');
       expect(found.count).toBe(1);
     });
 
@@ -272,11 +273,11 @@ describe('Backup API Module', () => {
       }), env);
       const restoreData = await restoreResp.json();
 
-      expect(backupData.format).toBe('json');
-      expect(backupData.backupKey.endsWith('.json')).toBe(true);
+      expect(backupData.format).toBe('html');
+      expect(backupData.backupKey.endsWith('.html')).toBe(true);
       expect(restoreResp.status).toBe(200);
       expect(restoreData.data.count).toBe(1);
-      expect(restoreData.data.format).toBe('json');
+      expect(restoreData.data.format).toBe('html');
     });
 
     it('应在 html 手动备份文件中嵌入二维码图片', async () => {
@@ -305,22 +306,12 @@ describe('Backup API Module', () => {
       const exportContent = await exportResp.text();
 
       expect(backupResp.status).toBe(200);
-      expect(backupData.backupKey.endsWith('.json')).toBe(true);
-      expect(stored.trim().startsWith('{')).toBe(true);
-      expect(stored).not.toContain('<img src="data:image/svg+xml;base64,');
-      expect(stored).not.toContain('__2fa_backup_data__');
+      expect(backupData.backupKey.endsWith('.html')).toBe(true);
+      expect(stored).toContain('<img src="data:image/svg+xml;base64,');
+      expect(stored).toContain('__2fa_backup_data__');
       expect(exportResp.status).toBe(200);
       expect(exportContent).toContain('<img src="data:image/svg+xml;base64,');
       expect(exportContent).toContain('__2fa_backup_data__');
-      return;
-
-      expect(backupResp.status).toBe(200);
-      expect(backupData.backupKey.endsWith('.html')).toBe(true);
-      expect(stored).toContain('二维码');
-      expect(stored).toContain('每行二维码可直接扫码导入');
-      expect(stored).toContain('<img src="data:image/svg+xml;base64,');
-      expect(stored).not.toContain('Export to generate');
-      expect(stored).toContain('__2fa_backup_data__');
     });
 
     it('应该在没有密钥时返回错误', async () => {

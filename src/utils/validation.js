@@ -597,11 +597,6 @@ export function createSecretObject(
 		counter: normalizedType === 'HOTP' ? parseInt(counter) : undefined,
 	};
 
-	// 如果是新建密钥，添加创建时间
-	if (!existingId) {
-		secretObject.createdAt = new Date().toISOString();
-	}
-
 	return secretObject;
 }
 

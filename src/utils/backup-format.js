@@ -10,8 +10,9 @@ import { DEFAULT_EXPORT_FORMAT } from './settings.js';
 import { validateBase32 } from './validation.js';
 
 export const BACKUP_FILE_FORMATS = ['txt', 'json', 'csv', 'html'];
+export const DOWNLOAD_CONTENT_PROFILES = ['backup'];
 const BACKUP_KEY_EXTENSION_PATTERN = 'txt|json|csv|html';
-const BACKUP_CSV_HEADERS = ['服务名称', '账户信息', '密钥', '类型', '位数', '周期(秒)', '算法', '计数器', '创建时间'];
+const BACKUP_CSV_HEADERS = ['服务名称', '账户信息', '密钥', '类型', '位数', '周期(秒)', '算法', '计数器'];
 const BACKUP_KEY_REGEX = new RegExp(`^backup_\\d{4}-\\d{2}-\\d{2}(?:_[\\w-]+)?\\.(${BACKUP_KEY_EXTENSION_PATTERN})$`);
 const BACKUP_TIME_REGEX = new RegExp(
 	`backup_(\\d{4}-\\d{2}-\\d{2})_(\\d{2}-\\d{2}-\\d{2})(?:-(\\d{3}))?(?:-UTC)?(?:-[a-z0-9]{2,6})?\\.(${BACKUP_KEY_EXTENSION_PATTERN})$`,
@@ -23,6 +24,7 @@ export const MAX_HTML_QR_EXPORT_SECRETS = 250;
 const HTML_QR_BATCH_SIZE = 20;
 const BACKUP_METADATA_PREFIX = '# 2FA-BACKUP-META';
 const HTML_PARTIAL_WARNING_REGEX = /2FA-BACKUP-PARTIAL\s+skippedInvalidCount=(\d+)/i;
+const DEFAULT_DOWNLOAD_CONTENT_PROFILE = 'backup';
 
 function sanitizeSkippedInvalidCount(value) {
 	const parsed = Number.parseInt(value, 10);
@@ -42,6 +44,17 @@ function isValidBackupSecretValue(value) {
 
 export function sanitizeBackupFormat(value) {
 	return resolveBackupFormat(value);
+}
+
+export function sanitizeDownloadContentProfile(value) {
+	const profile = String(value || '')
+		.trim()
+		.toLowerCase();
+	if (!profile) {
+		return DEFAULT_DOWNLOAD_CONTENT_PROFILE;
+	}
+
+	return DOWNLOAD_CONTENT_PROFILES.includes(profile) ? profile : '';
 }
 
 export function isValidBackupKey(backupKey) {
@@ -119,18 +132,19 @@ export function getPortableSkippedInvalidCount(content, formatOrKey) {
 	}
 }
 
-export function normalizeBackupSecrets(secrets = [], timestamp = new Date().toISOString(), options = {}) {
+export function normalizeBackupSecrets(secrets = [], _timestamp = new Date().toISOString(), options = {}) {
 	const strict = options.strict === true;
 	const onInvalid = typeof options.onInvalid === 'function' ? options.onInvalid : null;
 	const invalidSecrets = [];
 	const normalizedSecrets = secrets
 		.map((secret, index) => {
+			const normalizedName = String(secret?.name || secret?.issuer || secret?.issuerExt || 'Unknown').trim() || 'Unknown';
 			const cleanSecret = sanitizeBackupSecretValue(secret?.secret);
 
 			if (!cleanSecret || !isValidBackupSecretValue(cleanSecret)) {
 				const invalidSecret = {
 					index,
-					name: String(secret?.name || '').trim(),
+					name: normalizedName,
 				};
 				invalidSecrets.push(invalidSecret);
 				onInvalid?.(invalidSecret);
@@ -139,15 +153,14 @@ export function normalizeBackupSecrets(secrets = [], timestamp = new Date().toIS
 
 			return {
 				id: typeof secret.id === 'string' && secret.id ? secret.id : crypto.randomUUID(),
-				name: String(secret.name || 'Unknown').trim() || 'Unknown',
-				account: String(secret.account || '').trim(),
+				name: normalizedName,
+				account: String(secret.account || secret.label || '').trim(),
 				secret: cleanSecret,
-				type: String(secret.type || 'TOTP').toUpperCase() === 'HOTP' ? 'HOTP' : 'TOTP',
+				type: String(secret.type || secret.tokenType || 'TOTP').toUpperCase() === 'HOTP' ? 'HOTP' : 'TOTP',
 				digits: parseInteger(secret.digits, 6),
-				period: parseInteger(secret.period, 30),
-				algorithm: String(secret.algorithm || 'SHA1').toUpperCase(),
+				period: parseInteger(secret.period ?? secret.timeStep, 30),
+				algorithm: String(secret.algorithm || secret.algo || 'SHA1').toUpperCase(),
 				counter: parseInteger(secret.counter, 0),
-				createdAt: secret.createdAt || timestamp,
 			};
 		})
 		.filter(Boolean);
@@ -182,6 +195,10 @@ export async function encodeBackupContent(secrets, options = {}) {
 		skippedInvalidCount,
 		secrets: normalizedSecrets,
 	};
+
+	if (options.metadata && typeof options.metadata === 'object' && !Array.isArray(options.metadata)) {
+		payload.metadata = options.metadata;
+	}
 
 	switch (format) {
 		case 'txt':
@@ -390,7 +407,36 @@ export async function buildDownloadContent(secrets, format, options = {}) {
 		content: encoded.content,
 		contentType: getBackupContentType(format),
 		extension: encoded.format,
+		filename: getDownloadFilename(encoded.format, {
+			timestamp: options.timestamp || encoded.timestamp,
+			reason: options.reason,
+			filenamePrefix: options.filenamePrefix,
+		}),
 	};
+}
+
+export function getDownloadFilename(format, options = {}) {
+	const normalizedFormat = sanitizeBackupFormat(format);
+	const dateStr = getDownloadDateString(options.timestamp);
+
+	if (options.reason === 'export') {
+		const prefix = String(options.filenamePrefix || '2FA-secrets').trim() || '2FA-secrets';
+		switch (normalizedFormat) {
+			case 'txt':
+				return `${prefix}-otpauth-${dateStr}.txt`;
+			case 'json':
+				return `${prefix}-data-${dateStr}.json`;
+			case 'csv':
+				return `${prefix}-table-${dateStr}.csv`;
+			case 'html':
+				return `${prefix}-backup-${dateStr}.html`;
+			default:
+				return `${prefix}-${dateStr}.${normalizedFormat}`;
+		}
+	}
+
+	const prefix = String(options.filenamePrefix || '2FA-backup').trim() || '2FA-backup';
+	return `${prefix}-${dateStr}.${normalizedFormat}`;
 }
 
 function decodeJsonBackupContent(content, options = {}) {
@@ -438,7 +484,7 @@ function decodeTextBackupContent(content, options = {}) {
 	const invalidLines = [];
 	const secrets = lines
 		.map((line, index) => {
-			const parsed = parseOTPAuthUrl(line, timestamp);
+			const parsed = parseOTPAuthUrl(line);
 			if (!parsed) {
 				invalidLines.push(index + 1);
 				return null;
@@ -491,7 +537,6 @@ function decodeCsvBackupContent(content, options = {}) {
 	const periodIndex = findHeaderIndex(headers, ['周期(秒)', '周期', 'period']);
 	const algorithmIndex = findHeaderIndex(headers, ['算法', 'algorithm']);
 	const counterIndex = findHeaderIndex(headers, ['计数器', 'counter']);
-	const createdAtIndex = findHeaderIndex(headers, ['创建时间', 'createdat', 'created_at']);
 
 	if (secretIndex === -1) {
 		throw new Error('解析失败：备份 CSV 数据格式不正确');
@@ -522,7 +567,6 @@ function decodeCsvBackupContent(content, options = {}) {
 					.trim()
 					.toUpperCase() || 'SHA1',
 			counter: parseInteger(fields[counterIndex], 0),
-			createdAt: String(fields[createdAtIndex] || timestamp).trim() || timestamp,
 		});
 	}
 
@@ -622,7 +666,6 @@ function decodeHtmlTableBackupContent(content, options = {}) {
 					.trim()
 					.toUpperCase() || 'SHA1',
 			counter: hasCounterColumn ? parseInteger(cells[7], 0) : 0,
-			createdAt: timestamp,
 		});
 	});
 
@@ -663,7 +706,6 @@ function buildCSVContent(secrets) {
 				secret.period || 30,
 				escapeCSV(secret.algorithm || 'SHA1'),
 				secret.counter || 0,
-				escapeCSV(secret.createdAt || new Date().toISOString()),
 			].join(','),
 		);
 	});
@@ -891,28 +933,34 @@ function buildOTPAuthUrl(secret) {
 	const serviceName = String(secret.name || 'Unknown').trim() || 'Unknown';
 	const accountName = String(secret.account || '').trim();
 	const label = accountName ? `${encodeURIComponent(serviceName)}:${encodeURIComponent(accountName)}` : encodeURIComponent(serviceName);
-	const params = new URLSearchParams({
-		secret: String(secret.secret || '')
+	const params = new URLSearchParams();
+
+	params.set(
+		'secret',
+		String(secret.secret || '')
 			.replace(/[\s\-+]/g, '')
 			.toUpperCase(),
-		digits: String(secret.digits || 6),
-		algorithm: String(secret.algorithm || 'SHA1').toUpperCase(),
-	});
-
-	if (serviceName) {
-		params.set('issuer', serviceName);
-	}
+	);
+	params.set('digits', String(secret.digits || 6));
 
 	if (String(secret.type || 'TOTP').toUpperCase() === 'HOTP') {
 		params.set('counter', String(secret.counter || 0));
+		params.set('algorithm', String(secret.algorithm || 'SHA1').toUpperCase());
+		if (serviceName) {
+			params.set('issuer', serviceName);
+		}
 		return `otpauth://hotp/${label}?${params.toString()}`;
 	}
 
 	params.set('period', String(secret.period || 30));
+	params.set('algorithm', String(secret.algorithm || 'SHA1').toUpperCase());
+	if (serviceName) {
+		params.set('issuer', serviceName);
+	}
 	return `otpauth://totp/${label}?${params.toString()}`;
 }
 
-function parseOTPAuthUrl(uri, timestamp) {
+function parseOTPAuthUrl(uri) {
 	const normalized = String(uri || '')
 		.trim()
 		.replace(/&amp;/g, '&');
@@ -947,7 +995,6 @@ function parseOTPAuthUrl(uri, timestamp) {
 		period: parseInteger(url.searchParams.get('period'), 30),
 		algorithm: String(url.searchParams.get('algorithm') || 'SHA1').toUpperCase(),
 		counter: parseInteger(url.searchParams.get('counter'), 0),
-		createdAt: timestamp || new Date().toISOString(),
 	};
 }
 
@@ -1101,6 +1148,12 @@ function safeDecodeURIComponent(value) {
 function parseInteger(value, fallback) {
 	const parsed = Number.parseInt(value, 10);
 	return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getDownloadDateString(timestamp) {
+	const parsedDate = timestamp ? new Date(timestamp) : new Date();
+	const safeDate = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+	return safeDate.toISOString().split('T')[0];
 }
 
 function resolveBackupFormat(...values) {

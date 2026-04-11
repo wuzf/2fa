@@ -16,6 +16,7 @@ vi.mock('../../src/api/secrets/index.js', () => ({
   handleDeleteSecret: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
   handleGenerateOTP: vi.fn(async (secret, request) => new Response(JSON.stringify({ token: '123456' }), { status: 200 })),
   handleBatchAddSecrets: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleExportSecrets: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
   handleBackupSecrets: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
   handleGetBackups: vi.fn(async (request, env) => new Response(JSON.stringify({ backups: [] }), { status: 200 })),
   handleRestoreBackup: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),

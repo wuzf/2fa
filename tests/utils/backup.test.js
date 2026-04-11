@@ -12,6 +12,7 @@ import {
   executeImmediateBackup,
   sanitizeMaxBackups
 } from '../../src/utils/backup.js';
+import { generateBackupKey } from '../../src/utils/backup-format.js';
 
 // ==================== Mock 模块 ====================
 
@@ -727,12 +728,12 @@ describe('Backup System', () => {
     });
   });
 
-  describe('_generateBackupKey - 备份文件名生成', () => {
+  describe('generateBackupKey - 备份文件名生成', () => {
     it('应该生成正确格式的备份文件名', () => {
       const env = createMockEnv();
       const manager = new BackupManager(env);
 
-      const key = manager._generateBackupKey();
+      const key = generateBackupKey('json', { includeUtcMarker: true });
 
       // 格式: backup_YYYY-MM-DD_HH-MM-SS-mmm-UTC-xxxx.json（含毫秒和UTC标记）
       expect(key).toMatch(/^backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}-UTC-[a-z0-9]{4}\.json$/);
@@ -743,7 +744,7 @@ describe('Backup System', () => {
       const manager = new BackupManager(env);
 
       const now = new Date();
-      const key = manager._generateBackupKey();
+      const key = generateBackupKey('json', { includeUtcMarker: true, now });
 
       const dateStr = now.toISOString().split('T')[0];
       expect(key).toContain(dateStr);
@@ -753,12 +754,12 @@ describe('Backup System', () => {
       const env = createMockEnv();
       const manager = new BackupManager(env);
 
-      const key1 = manager._generateBackupKey();
+      const key1 = generateBackupKey('json', { includeUtcMarker: true });
 
       // 等待1秒
       vi.advanceTimersByTime(1000);
 
-      const key2 = manager._generateBackupKey();
+      const key2 = generateBackupKey('json', { includeUtcMarker: true });
 
       expect(key1).not.toBe(key2);
     });
@@ -1281,7 +1282,7 @@ describe('Backup System', () => {
 
       const start = performance.now();
       for (let i = 0; i < 1000; i++) {
-        manager._generateBackupKey();
+        generateBackupKey('json', { includeUtcMarker: true });
       }
       const end = performance.now();
 
@@ -1345,6 +1346,34 @@ describe('Backup System resilience', () => {
         reason: 'secret-updated',
         skippedInvalidCount: 1
       })
+    );
+  });
+});
+
+describe('Backup format settings', () => {
+  it('uses the configured default export format when creating backups', async () => {
+    const { encryptData } = await import('../../src/utils/encryption.js');
+    const env = createMockEnv();
+    const manager = new BackupManager(env);
+    const secrets = createTestSecrets(2);
+
+    env.SECRETS_KV.get.mockImplementation(async (key) => {
+      if (key === 'settings') {
+        return JSON.stringify({ defaultExportFormat: 'csv' });
+      }
+      return null;
+    });
+
+    const result = await manager.executeBackup(secrets, 'secret-updated');
+
+    expect(result.format).toBe('csv');
+    expect(result.backupKey.endsWith('.csv')).toBe(true);
+    expect(encryptData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: 'csv',
+        reason: 'secret-updated'
+      }),
+      env
     );
   });
 });

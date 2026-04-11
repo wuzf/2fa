@@ -24,8 +24,9 @@ import { pushToAllS3 } from './s3.js';
 import { pushToAllOneDrive } from './onedrive.js';
 import { pushToAllGoogleDrive } from './gdrive.js';
 import { deleteBackupRecord, listAllBackupKeys, putBackupRecord } from './backup-index.js';
-import { createBackupEntry, generateBackupKey } from './backup-format.js';
+import { createBackupEntry } from './backup-format.js';
 import { clearPendingDataHash, saveDataHash } from './data-hash.js';
+import { DEFAULT_EXPORT_FORMAT, getDefaultExportFormat } from './settings.js';
 
 /**
  * 备份配置
@@ -45,7 +46,17 @@ const BACKUP_CONFIG = {
 	SCHEDULED_BACKUP_ENABLED: true,
 };
 
-const INTERNAL_BACKUP_FORMAT = 'json';
+export async function resolveConfiguredBackupFormat(env, logger) {
+	return getDefaultExportFormat(env, {
+		fallbackOnError: true,
+		onError: (error) => {
+			logger?.warn?.('读取默认备份格式失败，已回退为 JSON', {
+				errorMessage: error.message,
+				fallbackFormat: DEFAULT_EXPORT_FORMAT,
+			});
+		},
+	});
+}
 
 /**
  * 校验 maxBackups 值，非法值回退默认 100
@@ -125,8 +136,9 @@ class BackupManager {
 				secretCount: secrets.length,
 			});
 
+			const backupFormat = await resolveConfiguredBackupFormat(this.env, this.logger);
 			const backupEntry = await createBackupEntry(secrets, this.env, {
-				format: INTERNAL_BACKUP_FORMAT,
+				format: backupFormat,
 				reason,
 				includeUtcMarker: true,
 				strict: reason === 'manual',
@@ -379,14 +391,6 @@ class BackupManager {
 		this.pendingReason = lastPendingBackup?.reason || null;
 		this.pendingCtx = lastPendingBackup?.ctx || null;
 		this.pendingCompletion = lastPendingBackup?.completionHandles?.[0] || null;
-	}
-
-	/**
-	 * 生成备份文件名（使用 UTC 保证排序一致性）
-	 * @private
-	 */
-	_generateBackupKey() {
-		return generateBackupKey('json', { includeUtcMarker: true });
 	}
 
 	/**
