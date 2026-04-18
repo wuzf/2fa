@@ -228,7 +228,8 @@ describe('OneDrive API', () => {
 		const listResponse = await handleGetOneDriveConfigs(createMockRequest({}, 'GET'), env);
 		const listData = await listResponse.json();
 		expect(listData.destinations[0].authorized).toBe(true);
-		expect(listData.destinations[0].enabled).toBe(false);
+		// 首次授权 + 连接测试通过后，目标默认启用，用户无需再手动打开开关。
+		expect(listData.destinations[0].enabled).toBe(true);
 		expect(listData.destinations[0].account.email).toBe('user@example.com');
 		expect(listData.destinations[0].status.lastSuccess).toBeNull();
 	});

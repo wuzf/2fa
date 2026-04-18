@@ -1045,6 +1045,7 @@ export function getResponsiveStyles() {
       backdrop-filter: blur(10px);
       border: 1px solid var(--toast-border);
       min-width: 200px;
+      max-width: min(90vw, 560px);
       text-align: center;
       font-size: 16px;
       font-weight: 500;
@@ -1057,7 +1058,10 @@ export function getResponsiveStyles() {
 
     .toast-message {
       flex: 1;
-      white-space: nowrap;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      line-height: 1.5;
     }
 
     /* 响应式设计 */

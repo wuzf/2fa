@@ -209,11 +209,17 @@ export async function completeGoogleDriveAuthorization(env, { id, tokenData, pro
 		throw new Error('Google Drive 未返回 refresh token，请删除旧授权后重试');
 	}
 
+	// First-time authorization → enable by default so the user doesn't need to
+	// toggle the switch manually after authorizing (which was the most common
+	// cause of "edits don't trigger Google Drive sync" reports). Re-authorization
+	// preserves whatever the user had explicitly chosen.
+	const isFirstAuthorization = !existing.authorized;
+	const nextEnabled = isFirstAuthorization ? true : !!existing.enabled;
+
 	const result = await saveGoogleDriveSingleConfig(env, {
 		id,
 		authorized: true,
-		// Reauthorization should preserve the user's existing sync toggle.
-		enabled: !!existing.enabled,
+		enabled: nextEnabled,
 		refreshToken,
 		accessToken: tokenData.accessToken,
 		accessTokenExpiresAt: tokenData.accessTokenExpiresAt,
