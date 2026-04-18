@@ -42,6 +42,7 @@ async function buildRelease() {
     // 生成版本信息
     const buildDate = new Date().toISOString();
     const version = packageJson.version;
+    const serviceWorkerVersion = `v${version}-${buildDate.replace(/[^\d]/g, '').slice(0, 14)}`;
 
     console.log('📦 项目信息：');
     console.log(`   名称: ${packageJson.name}`);
@@ -78,6 +79,7 @@ async function buildRelease() {
       define: {
         'process.env.VERSION': JSON.stringify(version),
         'process.env.BUILD_DATE': JSON.stringify(buildDate),
+        'globalThis.__BUILD_SW_VERSION__': JSON.stringify(serviceWorkerVersion),
       },
       external: [],
       logLevel: 'info',
@@ -178,18 +180,42 @@ wrangler secret put ENCRYPTION_KEY
 - Type: Secret
 - Value: [你的 32 字节 base64 密钥]
 
+### 4. 按需配置云盘 OAuth（可选）
+
+如果你准备启用 OneDrive / Google Drive 远程备份，还需要额外配置：
+
+- \`ONEDRIVE_CLIENT_ID\`
+- \`ONEDRIVE_CLIENT_SECRET\`
+- \`GOOGLE_DRIVE_CLIENT_ID\`
+- \`GOOGLE_DRIVE_CLIENT_SECRET\`
+- \`OAUTH_REDIRECT_BASE_URL\`（使用自定义域名时推荐显式配置，例如 \`https://2fa.example.com\`）
+
+完成变量配置后，再参考网盘备份配置指南：
+
+- https://github.com/wuzf/2fa/blob/main/docs/CLOUD_DRIVE_SETUP.md
+
+### 5. Service Worker 版本
+
+当前 release 构建已内嵌 Service Worker 版本回退值：
+
+- \`${serviceWorkerVersion}\`
+
+即使你直接把 \`dist/worker.js\` 粘贴到 Cloudflare Dashboard 部署，PWA 缓存版本也会随本次构建一起更新。
+
 ## 🔒 安全建议
 
 1. **必须设置加密密钥**: 使用 \`ENCRYPTION_KEY\` 保护存储的 2FA 密钥
 2. **设置访问密码**: 首次访问时会提示设置密码
 3. **使用 HTTPS**: Cloudflare Workers 默认使用 HTTPS
 4. **定期备份**: 使用应用内的备份功能定期导出数据
+5. **保留原始加密密钥**: 丢失 \`ENCRYPTION_KEY\` 后无法解密已有密钥、备份和远程同步凭据
 
 ## 📚 更多信息
 
 - [项目主页](https://github.com/wuzf/2fa)
 - [完整文档](https://github.com/wuzf/2fa/blob/main/README.md)
 - [部署指南](https://github.com/wuzf/2fa/blob/main/docs/DEPLOYMENT.md)
+- [网盘备份配置指南](https://github.com/wuzf/2fa/blob/main/docs/CLOUD_DRIVE_SETUP.md)
 
 ## 📝 版本信息
 

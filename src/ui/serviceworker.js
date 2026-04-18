@@ -8,12 +8,14 @@
  * @returns {Response} Service Worker JavaScript 响应
  */
 export function createServiceWorker(env = {}) {
+	const embeddedBuildVersion = typeof globalThis.__BUILD_SW_VERSION__ === 'string' ? globalThis.__BUILD_SW_VERSION__ : '';
 	// 🚀 自动版本管理：从环境变量读取版本号
 	// 支持多种版本策略：
 	// 1. env.SW_VERSION - 构建时注入的版本号（推荐）
 	// 2. env.BUILD_TIMESTAMP - 构建时间戳
-	// 3. 'v1' - 默认版本（后备）
-	const version = env.SW_VERSION || env.BUILD_TIMESTAMP || 'v1';
+	// 3. __BUILD_SW_VERSION__ - 单文件 release 构建时内嵌的版本号
+	// 4. 'v1' - 默认版本（后备）
+	const version = env.SW_VERSION || env.BUILD_TIMESTAMP || embeddedBuildVersion || 'v1';
 
 	// 生成缓存名称
 	const CACHE_NAME = `2fa-cache-${version}`;

@@ -4,7 +4,7 @@
 
 **[English](README_EN.md)**
 
-![Version](https://img.shields.io/badge/version-1.3.0-blue)
+![Version](https://img.shields.io/badge/version-1.4.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
@@ -123,6 +123,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ### 批量导出
 
 点击悬浮按钮 → **📤 批量导出**，支持 TXT、JSON、CSV、HTML 格式，以及生成 **Google Authenticator 迁移二维码**（可直接扫码导入）。
+标准 TXT / JSON / CSV / HTML 导出在在线时优先使用统一后端格式；离线或请求体过大时会自动回退到本地兼容导出，继续保证 PWA 可用性。
 
 ### 备份与还原
 

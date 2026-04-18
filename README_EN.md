@@ -2,7 +2,7 @@
 
 A two-factor authentication key management system built on Cloudflare Workers. Free to deploy, globally accelerated, with PWA offline support.
 
-![Version](https://img.shields.io/badge/version-1.3.0-blue)
+![Version](https://img.shields.io/badge/version-1.4.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
@@ -123,6 +123,7 @@ Click the floating button → **📥 Bulk Import**, supports file import or text
 ### Bulk Export
 
 Click the floating button → **📤 Bulk Export**, supports TXT, JSON, CSV, HTML formats, as well as generating **Google Authenticator migration QR codes** (can be scanned to import directly).
+Standard TXT / JSON / CSV / HTML exports prefer the unified backend format while online, and automatically fall back to a compatible local export when offline or when the request body is too large.
 
 ### Backup & Restore
 
