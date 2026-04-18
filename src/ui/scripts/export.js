@@ -385,7 +385,39 @@ export function getExportCode() {
     }
 
     // 导出为 OTPAuth 文本格式
+    async function exportStandardFormatLocally(sortedSecrets, format, options = {}) {
+      switch (format) {
+        case 'txt':
+          await exportAsOTPAuth(sortedSecrets, {
+            ...options,
+            formatName: 'otpauth'
+          });
+          return;
+        case 'json':
+          await exportAsJSON(sortedSecrets, options);
+          return;
+        case 'csv':
+          await exportAsCSV(sortedSecrets, options);
+          return;
+        case 'html':
+          await exportAsHTML(sortedSecrets, options);
+          return;
+        default:
+          throw new Error('Unsupported export format');
+      }
+    }
+
+    function shouldFallbackToLocalStandardExport(responseStatus, errorData) {
+      return responseStatus === 413 || Boolean(errorData && errorData.offline === true);
+    }
+
     async function exportStandardFormatViaApi(sortedSecrets, format, options = {}) {
+      const fallbackToLocalExport = async (reasonMessage) => {
+        console.warn('Export API unavailable, falling back to local export:', reasonMessage);
+        showCenterToast('⚠️', reasonMessage);
+        await exportStandardFormatLocally(sortedSecrets, format, options);
+      };
+
       try {
         showCenterToast('INFO', 'Preparing export file...');
 
@@ -417,12 +449,23 @@ export function getExportCode() {
 
         if (response.status !== 200) {
           let errorMessage = 'Export failed';
+          let errorData = null;
+
           try {
-            const errorData = await response.json();
+            errorData = await response.json();
             errorMessage = errorData.message || errorData.error || errorMessage;
           } catch {
             // ignore non-JSON error responses
           }
+
+          if (shouldFallbackToLocalStandardExport(response.status, errorData)) {
+            const fallbackMessage = response.status === 413
+              ? '导出内容较大，已切换为本地兼容导出'
+              : '当前离线，已切换为本地兼容导出';
+            await fallbackToLocalExport(fallbackMessage);
+            return;
+          }
+
           throw new Error(errorMessage);
         }
 
@@ -451,35 +494,49 @@ export function getExportCode() {
           showExportSuccess(sortedSecrets.length, formatNames[format] || format.toUpperCase());
         }
       } catch (error) {
+        const errorMessage = error && error.message ? error.message : 'Export failed';
+        const isNetworkFailure = error && (error.name === 'TypeError' || /Failed to fetch|NetworkError/i.test(errorMessage));
+
+        if (isNetworkFailure) {
+          await fallbackToLocalExport('当前无法连接在线导出服务，已切换为本地兼容导出');
+          return;
+        }
+
         console.error('Export failed:', error);
-        showCenterToast('ERR', 'Export failed: ' + error.message);
+        showCenterToast('ERR', 'Export failed: ' + errorMessage);
       }
+    }
+
+    function buildLocalOTPAuthUrl(secret) {
+      const serviceName = String(secret.name || 'Unknown').trim() || 'Unknown';
+      const accountName = secret.account ? String(secret.account).trim() : '';
+      const type = String(secret.type || 'TOTP').toUpperCase() === 'HOTP' ? 'HOTP' : 'TOTP';
+      const label = accountName
+        ? encodeURIComponent(serviceName) + ':' + encodeURIComponent(accountName)
+        : encodeURIComponent(serviceName);
+      const params = new URLSearchParams({
+        secret: String(secret.secret || '').replace(/[\\s\\-+]/g, '').toUpperCase(),
+        digits: String(secret.digits || 6),
+        algorithm: String(secret.algorithm || 'SHA1').toUpperCase()
+      });
+
+      if (serviceName) {
+        params.set('issuer', serviceName);
+      }
+
+      if (type === 'HOTP') {
+        params.set('counter', String(secret.counter || 0));
+        return 'otpauth://hotp/' + label + '?' + params.toString();
+      }
+
+      params.set('period', String(secret.period || 30));
+      return 'otpauth://totp/' + label + '?' + params.toString();
     }
 
     async function exportAsOTPAuth(sortedSecrets, options = {}) {
       const filenamePrefix = options.filenamePrefix || '2FA-secrets';
       const formatName = options.formatName || 'otpauth';  // 格式标识，默认 'otpauth'
-      const otpauthUrls = sortedSecrets.map(secret => {
-        const serviceName = secret.name.trim();
-        const accountName = secret.account ? secret.account.trim() : '';
-
-        let label;
-        if (accountName) {
-          label = encodeURIComponent(serviceName) + ':' + encodeURIComponent(accountName);
-        } else {
-          label = encodeURIComponent(serviceName);
-        }
-
-        const params = new URLSearchParams({
-          secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
-          digits: (secret.digits || 6).toString(),
-          period: (secret.period || 30).toString(),
-          algorithm: secret.algorithm || 'SHA1',
-          issuer: serviceName
-        });
-
-        return 'otpauth://totp/' + label + '?' + params.toString();
-      });
+      const otpauthUrls = sortedSecrets.map(secret => buildLocalOTPAuthUrl(secret));
 
       const content = otpauthUrls.join('\\n');
       const saved = await downloadFile(content, filenamePrefix + '-' + formatName + '-' + getDateString() + '.txt', 'text/plain;charset=utf-8');

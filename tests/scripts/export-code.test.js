@@ -10,6 +10,10 @@ describe('export module code generation', () => {
 		expect(code).toContain("authenticatedFetch('/api/secrets/export'");
 		expect(code).not.toContain("profile: 'bulk-export-legacy'");
 		expect(code).toContain('response.status === 202');
+		expect(code).toContain('async function exportStandardFormatLocally(');
+		expect(code).toContain('response.status === 413');
+		expect(code).toContain('errorData && errorData.offline === true');
+		expect(code).toContain('await exportStandardFormatLocally(sortedSecrets, format, options);');
 		expect(code).toContain("server did not return a downloadable file");
 		expect(code).toContain('const blob = await response.blob();');
 	});
