@@ -1,17 +1,21 @@
 /**
- * Settings API 单元测试
+ * Settings API unit tests.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+
 import { handleGetSettings, handleSaveSettings } from '../../src/api/settings.js';
 
-// --- MockKV ---
 class MockKV {
 	constructor() {
 		this.store = new Map();
+		this.getError = null;
 	}
 
 	async get(key) {
+		if (this.getError) {
+			throw this.getError;
+		}
 		const value = this.store.get(key);
 		return value === undefined ? null : value;
 	}
@@ -53,28 +57,78 @@ describe('Settings API', () => {
 	});
 
 	describe('handleGetSettings', () => {
-		it('KV 为空时应返回默认值', async () => {
+		it('returns defaults when KV is empty', async () => {
 			const resp = await handleGetSettings(createGetRequest(), env);
 			const data = await resp.json();
 
 			expect(resp.status).toBe(200);
 			expect(data.jwtExpiryDays).toBe(30);
 			expect(data.maxBackups).toBe(100);
+			expect(data.defaultExportFormat).toBe('json');
 		});
 
-		it('KV 有值时应合并默认值', async () => {
-			await env.SECRETS_KV.put('settings', JSON.stringify({ maxBackups: 50 }));
+		it('merges saved settings with defaults', async () => {
+			await env.SECRETS_KV.put('settings', JSON.stringify({ maxBackups: 50, defaultExportFormat: 'txt' }));
 
 			const resp = await handleGetSettings(createGetRequest(), env);
 			const data = await resp.json();
 
 			expect(data.maxBackups).toBe(50);
-			expect(data.jwtExpiryDays).toBe(30); // 默认值补全
+			expect(data.jwtExpiryDays).toBe(30);
+			expect(data.defaultExportFormat).toBe('txt');
+		});
+
+		it('sanitizes invalid stored defaultExportFormat values on read', async () => {
+			await env.SECRETS_KV.put('settings', JSON.stringify({ maxBackups: 50, defaultExportFormat: 'xml' }));
+
+			const resp = await handleGetSettings(createGetRequest(), env);
+			const data = await resp.json();
+
+			expect(data.maxBackups).toBe(50);
+			expect(data.defaultExportFormat).toBe('json');
+		});
+
+		it('falls back to defaults when stored settings JSON is corrupted', async () => {
+			await env.SECRETS_KV.put('settings', '{bad json');
+
+			const resp = await handleGetSettings(createGetRequest(), env);
+			const data = await resp.json();
+
+			expect(resp.status).toBe(200);
+			expect(data).toMatchObject({
+				jwtExpiryDays: 30,
+				maxBackups: 100,
+				defaultExportFormat: 'json',
+			});
+		});
+
+		it('falls back to defaults when stored settings root is not an object', async () => {
+			await env.SECRETS_KV.put('settings', JSON.stringify(['legacy']));
+
+			const resp = await handleGetSettings(createGetRequest(), env);
+			const data = await resp.json();
+
+			expect(resp.status).toBe(200);
+			expect(data).toMatchObject({
+				jwtExpiryDays: 30,
+				maxBackups: 100,
+				defaultExportFormat: 'json',
+			});
+		});
+
+		it('returns 500 when reading settings from KV fails', async () => {
+			env.SECRETS_KV.getError = new Error('kv unavailable');
+
+			const resp = await handleGetSettings(createGetRequest(), env);
+			const data = await resp.json();
+
+			expect(resp.status).toBe(500);
+			expect(data.error).toBe('获取设置失败');
 		});
 	});
 
-	describe('handleSaveSettings - maxBackups 校验', () => {
-		it('合法整数 50 应保存成功', async () => {
+	describe('handleSaveSettings - maxBackups validation', () => {
+		it('accepts 50', async () => {
 			const resp = await handleSaveSettings(createMockRequest({ maxBackups: 50 }), env);
 			const data = await resp.json();
 
@@ -83,7 +137,7 @@ describe('Settings API', () => {
 			expect(data.settings.maxBackups).toBe(50);
 		});
 
-		it('0 应保存成功（表示不限制）', async () => {
+		it('accepts 0 as unlimited', async () => {
 			const resp = await handleSaveSettings(createMockRequest({ maxBackups: 0 }), env);
 			const data = await resp.json();
 
@@ -91,7 +145,7 @@ describe('Settings API', () => {
 			expect(data.settings.maxBackups).toBe(0);
 		});
 
-		it('1000 应保存成功（上界）', async () => {
+		it('accepts 1000 as upper bound', async () => {
 			const resp = await handleSaveSettings(createMockRequest({ maxBackups: 1000 }), env);
 			const data = await resp.json();
 
@@ -99,62 +153,15 @@ describe('Settings API', () => {
 			expect(data.settings.maxBackups).toBe(1000);
 		});
 
-		it('null 应被拒绝', async () => {
-			const resp = await handleSaveSettings(createMockRequest({ maxBackups: null }), env);
-			expect(resp.status).toBe(400);
+		it('rejects invalid values', async () => {
+			const invalidValues = [null, false, true, '', '   ', -1, 1001, 3.5, [], [5], {}];
+			for (const value of invalidValues) {
+				const resp = await handleSaveSettings(createMockRequest({ maxBackups: value }), env);
+				expect(resp.status).toBe(400);
+			}
 		});
 
-		it('false 应被拒绝', async () => {
-			const resp = await handleSaveSettings(createMockRequest({ maxBackups: false }), env);
-			expect(resp.status).toBe(400);
-		});
-
-		it('true 应被拒绝', async () => {
-			const resp = await handleSaveSettings(createMockRequest({ maxBackups: true }), env);
-			expect(resp.status).toBe(400);
-		});
-
-		it('空字符串应被拒绝', async () => {
-			const resp = await handleSaveSettings(createMockRequest({ maxBackups: '' }), env);
-			expect(resp.status).toBe(400);
-		});
-
-		it('纯空白字符串应被拒绝', async () => {
-			const resp = await handleSaveSettings(createMockRequest({ maxBackups: '   ' }), env);
-			expect(resp.status).toBe(400);
-		});
-
-		it('负数应被拒绝', async () => {
-			const resp = await handleSaveSettings(createMockRequest({ maxBackups: -1 }), env);
-			expect(resp.status).toBe(400);
-		});
-
-		it('超范围 1001 应被拒绝', async () => {
-			const resp = await handleSaveSettings(createMockRequest({ maxBackups: 1001 }), env);
-			expect(resp.status).toBe(400);
-		});
-
-		it('小数应被拒绝', async () => {
-			const resp = await handleSaveSettings(createMockRequest({ maxBackups: 3.5 }), env);
-			expect(resp.status).toBe(400);
-		});
-
-		it('空数组应被拒绝', async () => {
-			const resp = await handleSaveSettings(createMockRequest({ maxBackups: [] }), env);
-			expect(resp.status).toBe(400);
-		});
-
-		it('单元素数组 [5] 应被拒绝', async () => {
-			const resp = await handleSaveSettings(createMockRequest({ maxBackups: [5] }), env);
-			expect(resp.status).toBe(400);
-		});
-
-		it('对象应被拒绝', async () => {
-			const resp = await handleSaveSettings(createMockRequest({ maxBackups: {} }), env);
-			expect(resp.status).toBe(400);
-		});
-
-		it('字符串数字 "50" 应保存成功', async () => {
+		it('accepts numeric string values', async () => {
 			const resp = await handleSaveSettings(createMockRequest({ maxBackups: '50' }), env);
 			const data = await resp.json();
 
@@ -162,17 +169,109 @@ describe('Settings API', () => {
 			expect(data.settings.maxBackups).toBe(50);
 		});
 
-		it('拒绝的值不应写入 KV', async () => {
-			// 先写入合法值
+		it('does not overwrite KV when validation fails', async () => {
 			await handleSaveSettings(createMockRequest({ maxBackups: 50 }), env);
-
-			// 尝试写入非法值
 			await handleSaveSettings(createMockRequest({ maxBackups: '   ' }), env);
 
-			// 确认 KV 中仍然是 50
 			const raw = await env.SECRETS_KV.get('settings');
 			const settings = JSON.parse(raw);
 			expect(settings.maxBackups).toBe(50);
+		});
+	});
+
+	describe('handleSaveSettings - defaultExportFormat validation', () => {
+		it('accepts txt', async () => {
+			const resp = await handleSaveSettings(createMockRequest({ defaultExportFormat: 'txt' }), env);
+			const data = await resp.json();
+
+			expect(resp.status).toBe(200);
+			expect(data.settings.defaultExportFormat).toBe('txt');
+		});
+
+		it('normalizes uppercase format names', async () => {
+			const resp = await handleSaveSettings(createMockRequest({ defaultExportFormat: 'HTML' }), env);
+			const data = await resp.json();
+
+			expect(resp.status).toBe(200);
+			expect(data.settings.defaultExportFormat).toBe('html');
+		});
+
+		it('rejects unsupported formats', async () => {
+			const resp = await handleSaveSettings(createMockRequest({ defaultExportFormat: 'xml' }), env);
+			expect(resp.status).toBe(400);
+		});
+
+		it('persists alongside other settings', async () => {
+			await handleSaveSettings(createMockRequest({ maxBackups: 20 }), env);
+			await handleSaveSettings(createMockRequest({ defaultExportFormat: 'csv' }), env);
+
+			const raw = await env.SECRETS_KV.get('settings');
+			const settings = JSON.parse(raw);
+			expect(settings.maxBackups).toBe(20);
+			expect(settings.defaultExportFormat).toBe('csv');
+		});
+
+		it('rewrites invalid stored defaultExportFormat values when saving other settings', async () => {
+			await env.SECRETS_KV.put('settings', JSON.stringify({ maxBackups: 10, defaultExportFormat: 'xml' }));
+			await handleSaveSettings(createMockRequest({ jwtExpiryDays: 45 }), env);
+
+			const raw = await env.SECRETS_KV.get('settings');
+			const settings = JSON.parse(raw);
+			expect(settings.jwtExpiryDays).toBe(45);
+			expect(settings.defaultExportFormat).toBe('json');
+		});
+
+		it('uses defaults to recover malformed settings when saving', async () => {
+			await env.SECRETS_KV.put('settings', '{bad json');
+
+			const resp = await handleSaveSettings(createMockRequest({ defaultExportFormat: 'csv' }), env);
+			const data = await resp.json();
+
+			expect(resp.status).toBe(200);
+			expect(data.settings).toMatchObject({
+				jwtExpiryDays: 30,
+				maxBackups: 100,
+				defaultExportFormat: 'csv',
+			});
+
+			const stored = JSON.parse(await env.SECRETS_KV.get('settings'));
+			expect(stored).toMatchObject({
+				jwtExpiryDays: 30,
+				maxBackups: 100,
+				defaultExportFormat: 'csv',
+			});
+		});
+
+		it('uses defaults to recover non-object settings when saving', async () => {
+			await env.SECRETS_KV.put('settings', JSON.stringify('legacy'));
+
+			const resp = await handleSaveSettings(createMockRequest({ maxBackups: 20 }), env);
+			const data = await resp.json();
+
+			expect(resp.status).toBe(200);
+			expect(data.settings).toMatchObject({
+				jwtExpiryDays: 30,
+				maxBackups: 20,
+				defaultExportFormat: 'json',
+			});
+
+			const stored = JSON.parse(await env.SECRETS_KV.get('settings'));
+			expect(stored).toMatchObject({
+				jwtExpiryDays: 30,
+				maxBackups: 20,
+				defaultExportFormat: 'json',
+			});
+		});
+
+		it('returns 500 when loading current settings fails before save', async () => {
+			env.SECRETS_KV.getError = new Error('kv unavailable');
+
+			const resp = await handleSaveSettings(createMockRequest({ defaultExportFormat: 'csv' }), env);
+			const data = await resp.json();
+
+			expect(resp.status).toBe(500);
+			expect(data.error).toBe('保存设置失败');
+			expect(env.SECRETS_KV.store.has('settings')).toBe(false);
 		});
 	});
 });

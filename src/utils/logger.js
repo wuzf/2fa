@@ -47,7 +47,7 @@ class Logger {
 		this.minLevel = options.minLevel || LogLevel.INFO;
 		this.environment = options.environment || 'development';
 		this.serviceName = options.serviceName || '2fa';
-		this.version = options.version || '1.3.0';
+		this.version = options.version || '1.4.0';
 		this.enableConsole = options.enableConsole !== false;
 		this.enableRemote = options.enableRemote || false;
 		this.remoteEndpoint = options.remoteEndpoint || null;
@@ -287,7 +287,7 @@ export function getLogger(env = null) {
 			minLevel,
 			environment: env?.ENVIRONMENT || 'development',
 			serviceName: '2fa',
-			version: '1.3.0',
+			version: '1.4.0',
 			enableConsole: true,
 			enableRemote: env?.LOG_REMOTE_ENDPOINT ? true : false,
 			remoteEndpoint: env?.LOG_REMOTE_ENDPOINT || null,
@@ -366,6 +366,10 @@ export class PerformanceTimer {
  * 请求日志中间件
  * 自动记录 HTTP 请求和响应
  */
+PerformanceTimer.prototype.getDuration = function getDuration() {
+	return Date.now() - this.startTime;
+};
+
 export function createRequestLogger(logger = null) {
 	const log = logger || getLogger();
 

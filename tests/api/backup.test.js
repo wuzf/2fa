@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import worker from '../../src/worker.js';
 import {
   handleBackupSecrets,
   handleGetBackups
@@ -13,7 +14,10 @@ import {
   handleRestoreBackup,
   handleExportBackup
 } from '../../src/api/secrets/restore.js';
-import { saveSecretsToKV } from '../../src/api/secrets/shared.js';
+import { getAllSecrets, saveSecretsToKV } from '../../src/api/secrets/shared.js';
+import { encryptSecrets } from '../../src/utils/encryption.js';
+import { createBackupEntry } from '../../src/utils/backup-format.js';
+import { buildBackupIndexMetadata, createBackupIndexKey, ensureBackupIndexes, putBackupRecord } from '../../src/utils/backup-index.js';
 
 // ==================== Mock 模块 ====================
 
@@ -21,6 +25,7 @@ import { saveSecretsToKV } from '../../src/api/secrets/shared.js';
 class MockKV {
   constructor() {
     this.store = new Map();
+    this.metadata = new Map();
   }
 
   async get(key, type = 'text') {
@@ -35,14 +40,16 @@ class MockKV {
 
   async put(key, value, options = {}) {
     this.store.set(key, value);
+    this.metadata.set(key, options.metadata || null);
   }
 
   async delete(key) {
     this.store.delete(key);
+    this.metadata.delete(key);
   }
 
   async list(options = {}) {
-    const keys = Array.from(this.store.keys());
+    const keys = Array.from(this.store.keys()).sort();
     const prefix = options.prefix || '';
     const limit = options.limit || 1000;
     const cursor = options.cursor;
@@ -56,7 +63,7 @@ class MockKV {
     return {
       keys: pageKeys.map(name => ({
         name,
-        metadata: { created: new Date().toISOString() }
+        metadata: this.metadata.get(name) || { created: new Date().toISOString() }
       })),
       list_complete: startIndex + limit >= filteredKeys.length,
       cursor: (startIndex + limit < filteredKeys.length) ? String(startIndex + limit) : undefined
@@ -65,6 +72,7 @@ class MockKV {
 
   clear() {
     this.store.clear();
+    this.metadata.clear();
   }
 }
 
@@ -100,6 +108,21 @@ function createMockRequest(body = {}, method = 'POST', url = 'https://example.co
   };
 }
 
+function waitForTick() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function waitForCondition(predicate, maxTicks = 20) {
+  for (let attempt = 0; attempt < maxTicks; attempt += 1) {
+    if (predicate()) {
+      return;
+    }
+    await waitForTick();
+  }
+
+  throw new Error('Condition was not met in time');
+}
+
 // ==================== 测试套件 ====================
 
 describe('Backup API Module', () => {
@@ -133,6 +156,162 @@ describe('Backup API Module', () => {
       expect(data.backupKey).toMatch(/^backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}-[a-z0-9]{4}\.json$/);
       expect(data.count).toBe(1);
       expect(data.encrypted).toBe(true);
+      expect(data.format).toBe('json');
+    });
+
+    it('索引状态写入失败时仍应保留备份并通过列表接口可见', async () => {
+      const env = createMockEnv();
+      const originalPut = env.SECRETS_KV.put.bind(env.SECRETS_KV);
+
+      await originalPut('backup_index_state_v1', JSON.stringify({ version: 2, count: 0 }));
+      await originalPut('secrets', await encryptSecrets([
+        {
+          id: '1',
+          name: 'GitHub',
+          account: 'user@example.com',
+          secret: 'JBSWY3DPEHPK3PXP',
+          type: 'TOTP'
+        }
+      ], env));
+
+      env.SECRETS_KV.put = vi.fn(async (key, value, options = {}) => {
+        if (key === 'backup_index_state_v1') {
+          throw new Error('state write failed');
+        }
+        return originalPut(key, value, options);
+      });
+
+      const response = await handleBackupSecrets(createMockRequest(), env);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(await env.SECRETS_KV.get(data.backupKey, 'text')).toBeTruthy();
+      expect(await env.SECRETS_KV.get('backup_index_state_v1', 'text')).toBeNull();
+
+      const listResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup'),
+        env
+      );
+      const listData = await listResponse.json();
+
+      expect(listResponse.status).toBe(200);
+      expect(listData.backups.map((backup) => backup.key)).toContain(data.backupKey);
+    });
+
+    it('应按设置使用 txt 作为手动备份格式', async () => {
+      const env = createMockEnv();
+      await env.SECRETS_KV.put('settings', JSON.stringify({ defaultExportFormat: 'txt' }));
+
+      await env.SECRETS_KV.put('secrets', await encryptSecrets([
+        {
+          id: '1',
+          name: 'GitHub',
+          account: 'user@example.com',
+          secret: 'JBSWY3DPEHPK3PXP',
+          type: 'TOTP'
+        }
+      ], env));
+
+      const response = await handleBackupSecrets(createMockRequest(), env);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.format).toBe('txt');
+      expect(data.backupKey).toMatch(/^backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}-[a-z0-9]{4}\.txt$/);
+
+      const stored = await env.SECRETS_KV.get(data.backupKey, 'text');
+      expect(stored.startsWith('v1:')).toBe(true);
+    });
+
+    it('应按设置使用 csv 作为手动备份格式并在列表中返回格式', async () => {
+      const env = createMockEnv();
+      await env.SECRETS_KV.put('settings', JSON.stringify({ defaultExportFormat: 'csv' }));
+
+      await env.SECRETS_KV.put('secrets', await encryptSecrets([
+        {
+          id: '1',
+          name: 'GitHub',
+          account: 'user@example.com',
+          secret: 'JBSWY3DPEHPK3PXP',
+          type: 'TOTP'
+        }
+      ], env));
+
+      const backupResp = await handleBackupSecrets(createMockRequest(), env);
+      const backupData = await backupResp.json();
+      const listResp = await handleGetBackups(createMockRequest({}, 'GET', 'https://example.com/api/backup'), env);
+      const listData = await listResp.json();
+      const found = listData.backups.find(item => item.key === backupData.backupKey);
+
+      expect(backupData.format).toBe('csv');
+      expect(backupData.backupKey.endsWith('.csv')).toBe(true);
+      expect(found.format).toBe('csv');
+      expect(found.count).toBe(1);
+    });
+
+    it('应按设置使用 html 作为手动备份格式并可恢复', async () => {
+      const env = createMockEnv();
+      await env.SECRETS_KV.put('settings', JSON.stringify({ defaultExportFormat: 'html' }));
+
+      await saveSecretsToKV(env, [
+        {
+          id: '1',
+          name: 'GitHub',
+          account: 'user@example.com',
+          secret: 'JBSWY3DPEHPK3PXP',
+          type: 'TOTP'
+        }
+      ], 'test');
+
+      const backupResp = await handleBackupSecrets(createMockRequest(), env);
+      const backupData = await backupResp.json();
+
+      const restoreResp = await handleRestoreBackup(createMockRequest({
+        backupKey: backupData.backupKey,
+        preview: true
+      }), env);
+      const restoreData = await restoreResp.json();
+
+      expect(backupData.format).toBe('html');
+      expect(backupData.backupKey.endsWith('.html')).toBe(true);
+      expect(restoreResp.status).toBe(200);
+      expect(restoreData.data.count).toBe(1);
+      expect(restoreData.data.format).toBe('html');
+    });
+
+    it('应在 html 手动备份文件中嵌入二维码图片', async () => {
+      const env = createMockEnv();
+      delete env.ENCRYPTION_KEY;
+      await env.SECRETS_KV.put('settings', JSON.stringify({ defaultExportFormat: 'html' }));
+
+      await saveSecretsToKV(env, [
+        {
+          id: '1',
+          name: 'GitHub',
+          account: 'user@example.com',
+          secret: 'JBSWY3DPEHPK3PXP',
+          type: 'TOTP'
+        }
+      ], 'test');
+
+      const backupResp = await handleBackupSecrets(createMockRequest(), env);
+      const backupData = await backupResp.json();
+      const stored = await env.SECRETS_KV.get(backupData.backupKey, 'text');
+      const exportResp = await handleExportBackup(
+        createMockRequest({}, 'GET', `https://example.com/api/backup/export/${backupData.backupKey}`, { format: 'html' }),
+        env,
+        backupData.backupKey
+      );
+      const exportContent = await exportResp.text();
+
+      expect(backupResp.status).toBe(200);
+      expect(backupData.backupKey.endsWith('.html')).toBe(true);
+      expect(stored).toContain('<img src="data:image/svg+xml;base64,');
+      expect(stored).toContain('__2fa_backup_data__');
+      expect(exportResp.status).toBe(200);
+      expect(exportContent).toContain('<img src="data:image/svg+xml;base64,');
+      expect(exportContent).toContain('__2fa_backup_data__');
     });
 
     it('应该在没有密钥时返回错误', async () => {
@@ -145,6 +324,35 @@ describe('Backup API Module', () => {
       expect(response.status).toBe(400);
       expect(data.error).toBeDefined();
       expect(data.message).toContain('没有密钥需要备份');
+    });
+
+    it('应该在检测到无效密钥条目时阻止生成备份', async () => {
+      const env = createMockEnv();
+
+      await env.SECRETS_KV.put('secrets', await encryptSecrets([
+        {
+          id: '1',
+          name: 'GitHub',
+          account: 'user@example.com',
+          secret: 'JBSWY3DPEHPK3PXP',
+          type: 'TOTP'
+        },
+        {
+          id: '2',
+          name: 'Broken entry',
+          account: 'broken@example.com',
+          secret: '   ',
+          type: 'TOTP'
+        }
+      ], env));
+
+      const response = await handleBackupSecrets(createMockRequest(), env);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toContain('备份数据无效');
+      expect(data.message).toContain('备份包含无效密钥');
+      expect(Array.from(env.SECRETS_KV.store.keys()).filter((key) => key.startsWith('backup_'))).toHaveLength(0);
     });
 
     it('应该创建加密的备份', async () => {
@@ -189,6 +397,7 @@ describe('Backup API Module', () => {
       const data = await response.json();
 
       expect(data.encrypted).toBe(false);
+      expect(data.format).toBe('json');
 
       // 验证备份是明文
       const backupContent = await env.SECRETS_KV.get(data.backupKey, 'text');
@@ -236,7 +445,7 @@ describe('Backup API Module', () => {
       const data = await response.json();
 
       expect(data.success).toBe(true);
-      expect(ctx.waitUntil).toHaveBeenCalledTimes(2); // WebDAV + S3 推送
+      expect(ctx.waitUntil).toHaveBeenCalledTimes(4); // WebDAV + S3 + OneDrive + Google Drive 推送
       // waitUntil 接收的应该是一个 Promise
       expect(ctx.waitUntil.mock.calls[0][0]).toBeInstanceOf(Promise);
     });
@@ -320,6 +529,131 @@ describe('Backup API Module', () => {
       expect(backup.size).toBeGreaterThan(0);
     });
 
+    it('应优先使用 metadata 返回备份详情而不回读正文', async () => {
+      const env = createMockEnv();
+      const backupKey = 'backup_2026-04-16_00-00-00-000-large.html';
+      const backupContent = '<!DOCTYPE html><html><body>large backup payload</body></html>';
+      await env.SECRETS_KV.put(backupKey, backupContent, {
+        metadata: {
+          created: '2026-04-16T00:00:00.000Z',
+          format: 'html',
+          count: 250,
+          encrypted: false,
+          skippedInvalidCount: 0,
+          size: 1024 * 1024,
+          version: 2
+        }
+      });
+
+      const originalGet = env.SECRETS_KV.get.bind(env.SECRETS_KV);
+      const getSpy = vi.fn((...args) => originalGet(...args));
+      env.SECRETS_KV.get = getSpy;
+
+      const response = await handleGetBackups(createMockRequest({}, 'GET', 'https://example.com/api/backup'), env);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.backups).toHaveLength(1);
+      expect(data.backups[0]).toMatchObject({
+        key: backupKey,
+        format: 'html',
+        count: 250,
+        encrypted: false,
+        partial: false,
+        size: 1024 * 1024
+      });
+      expect(getSpy.mock.calls.filter(([key]) => key === backupKey)).toHaveLength(0);
+    });
+
+    it('应对新创建的完整备份直接使用 metadata 而不回读正文', async () => {
+      const env = createMockEnv();
+      const entry = await createBackupEntry([
+        {
+          id: '1',
+          name: 'GitHub',
+          account: 'user@example.com',
+          secret: 'JBSWY3DPEHPK3PXP',
+          type: 'TOTP'
+        }
+      ], env, {
+        format: 'json',
+        reason: 'manual',
+        strict: true
+      });
+
+      await env.SECRETS_KV.put(entry.backupKey, entry.backupContent, {
+        metadata: entry.metadata
+      });
+
+      const originalGet = env.SECRETS_KV.get.bind(env.SECRETS_KV);
+      const getSpy = vi.fn((...args) => originalGet(...args));
+      env.SECRETS_KV.get = getSpy;
+
+      const response = await handleGetBackups(createMockRequest({}, 'GET', 'https://example.com/api/backup'), env);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.backups).toHaveLength(1);
+      expect(data.backups[0]).toMatchObject({
+        key: entry.backupKey,
+        format: 'json',
+        count: 1,
+        encrypted: true,
+        partial: false,
+        skippedInvalidCount: 0
+      });
+      expect(getSpy.mock.calls.filter(([key]) => key === entry.backupKey)).toHaveLength(0);
+    });
+
+    it('应在列表中识别 metadata 丢失后的 HTML 不完整备份', async () => {
+      const env = createMockEnv();
+      const entry = await createBackupEntry([
+        {
+          id: '1',
+          name: 'GitHub',
+          account: 'user@example.com',
+          secret: 'JBSWY3DPEHPK3PXP',
+          type: 'TOTP'
+        },
+        {
+          id: '2',
+          name: 'Broken',
+          account: 'broken@example.com',
+          secret: '   ',
+          type: 'TOTP'
+        }
+      ], {}, {
+        format: 'html',
+        reason: 'scheduled',
+        strict: false
+      });
+      const damagedHtml = String(entry.backupContent)
+        .replace(/<script id="__2fa_backup_data__"[\s\S]*?<\/script>/i, '')
+        .replace(/<meta[^>]*name="2fa-backup-meta"[^>]*>/i, '')
+        .replace(/\sdata-skipped-invalid-count="\d+"/gi, '')
+        .replace(/<p class="partial-warning">[\s\S]*?<\/p>/i, '')
+        .replace('</tbody>', '<tr><td>Broken</td><td></td><td></td></tr></tbody>');
+      const metadataWithoutPartial = { ...entry.metadata };
+      delete metadataWithoutPartial.skippedInvalidCount;
+
+      await env.SECRETS_KV.put(entry.backupKey, damagedHtml, {
+        metadata: metadataWithoutPartial
+      });
+
+      const response = await handleGetBackups(createMockRequest({}, 'GET', 'https://example.com/api/backup'), env);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.backups).toHaveLength(1);
+      expect(data.backups[0]).toMatchObject({
+        key: entry.backupKey,
+        format: 'html',
+        count: 1,
+        partial: true,
+        skippedInvalidCount: 1
+      });
+    });
+
     it('应该支持分页参数', async () => {
       const env = createMockEnv();
 
@@ -343,7 +677,1267 @@ describe('Backup API Module', () => {
       expect(data.pagination.limit).toBe(2);
     });
 
+    it('应该在分页模式下按最新优先返回备份', async () => {
+      const env = createMockEnv();
+      const backupKeys = [
+        'backup_2026-04-14_00-00-00-000-a.json',
+        'backup_2026-04-15_00-00-00-000-b.json',
+        'backup_2026-04-16_00-00-00-000-c.json',
+        'backup_2026-04-17_00-00-00-000-d.json'
+      ];
+
+      for (const [index, backupKey] of backupKeys.entries()) {
+        await env.SECRETS_KV.put(
+          backupKey,
+          JSON.stringify({
+            timestamp: `2026-04-${String(14 + index).padStart(2, '0')}T00:00:00.000Z`,
+            version: '1.0',
+            count: 1,
+            secrets: [{ id: String(index + 1), name: `Test${index + 1}`, secret: 'JBSWY3DPEHPK3PXP' }]
+          }),
+          {
+            metadata: {
+              created: `2026-04-${String(14 + index).padStart(2, '0')}T00:00:00.000Z`,
+              count: 1,
+              encrypted: false,
+              format: 'json',
+              version: 2
+            }
+          }
+        );
+      }
+
+      const firstPageResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', { limit: '2' }),
+        env
+      );
+      const firstPageData = await firstPageResponse.json();
+
+      expect(firstPageResponse.status).toBe(200);
+      expect(firstPageData.backups.map((backup) => backup.key)).toEqual([
+        'backup_2026-04-17_00-00-00-000-d.json',
+        'backup_2026-04-16_00-00-00-000-c.json'
+      ]);
+      expect(firstPageData.pagination.cursor).toBeTruthy();
+      expect(firstPageData.pagination.hasMore).toBe(true);
+
+      const secondPageResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', {
+          limit: '2',
+          cursor: firstPageData.pagination.cursor
+        }),
+        env
+      );
+      const secondPageData = await secondPageResponse.json();
+
+      expect(secondPageResponse.status).toBe(200);
+      expect(secondPageData.backups.map((backup) => backup.key)).toEqual([
+        'backup_2026-04-15_00-00-00-000-b.json',
+        'backup_2026-04-14_00-00-00-000-a.json'
+      ]);
+      expect(secondPageData.pagination.cursor).toBeNull();
+      expect(secondPageData.pagination.hasMore).toBe(false);
+    });
+    it('应在毫秒级时间差下保持最新备份优先，并忽略旧索引状态键', async () => {
+      const env = createMockEnv();
+
+      await env.SECRETS_KV.put('backup_index_state_v1', JSON.stringify({ version: 1 }));
+      await env.SECRETS_KV.put(
+        'backup_2026-04-16_00-00-00-000-a.json',
+        JSON.stringify({
+          timestamp: '2026-04-16T00:00:00.000Z',
+          version: '1.0',
+          count: 1,
+          secrets: [{ id: '1', name: 'Older', secret: 'JBSWY3DPEHPK3PXP' }]
+        }),
+        {
+          metadata: {
+            created: '2026-04-16T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2
+          }
+        }
+      );
+      await env.SECRETS_KV.put(
+        'backup_2026-04-16_00-00-00-001-b.json',
+        JSON.stringify({
+          timestamp: '2026-04-16T00:00:00.001Z',
+          version: '1.0',
+          count: 1,
+          secrets: [{ id: '2', name: 'Newer', secret: 'MFRGGZDFMZTWQ2LK' }]
+        }),
+        {
+          metadata: {
+            created: '2026-04-16T00:00:00.001Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2
+          }
+        }
+      );
+
+      const response = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', { limit: '10' }),
+        env
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.backups.map((backup) => backup.key)).toEqual([
+        'backup_2026-04-16_00-00-00-001-b.json',
+        'backup_2026-04-16_00-00-00-000-a.json'
+      ]);
+      expect(data.backups.some((backup) => backup.key === 'backup_index_state_v1')).toBe(false);
+    });
+
+    it('应该在翻页期间有新备份写入时避免重复上一页结果', async () => {
+      const env = createMockEnv();
+      const seedKeys = [
+        'backup_2026-04-14_00-00-00-000-a.json',
+        'backup_2026-04-15_00-00-00-000-b.json',
+        'backup_2026-04-16_00-00-00-000-c.json',
+        'backup_2026-04-17_00-00-00-000-d.json'
+      ];
+
+      for (const [index, backupKey] of seedKeys.entries()) {
+        await env.SECRETS_KV.put(
+          backupKey,
+          JSON.stringify({
+            timestamp: `2026-04-${String(14 + index).padStart(2, '0')}T00:00:00.000Z`,
+            version: '1.0',
+            count: 1,
+            secrets: [{ id: String(index + 1), name: `Test${index + 1}`, secret: 'JBSWY3DPEHPK3PXP' }]
+          }),
+          {
+            metadata: {
+              created: `2026-04-${String(14 + index).padStart(2, '0')}T00:00:00.000Z`,
+              count: 1,
+              encrypted: false,
+              format: 'json',
+              version: 2
+            }
+          }
+        );
+      }
+
+      const firstPageResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', { limit: '2' }),
+        env
+      );
+      const firstPageData = await firstPageResponse.json();
+
+      await env.SECRETS_KV.put(
+        'backup_2026-04-18_00-00-00-000-new.json',
+        JSON.stringify({
+          timestamp: '2026-04-18T00:00:00.000Z',
+          version: '1.0',
+          count: 1,
+          secrets: [{ id: '5', name: 'Newest', secret: 'MFRGGZDFMZTWQ2LK' }]
+        }),
+        {
+          metadata: {
+            created: '2026-04-18T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2
+          }
+        }
+      );
+
+      const secondPageResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', {
+          limit: '2',
+          cursor: firstPageData.pagination.cursor
+        }),
+        env
+      );
+      const secondPageData = await secondPageResponse.json();
+
+      expect(firstPageResponse.status).toBe(200);
+      expect(secondPageResponse.status).toBe(200);
+      expect(firstPageData.backups.map((backup) => backup.key)).toEqual([
+        'backup_2026-04-17_00-00-00-000-d.json',
+        'backup_2026-04-16_00-00-00-000-c.json'
+      ]);
+      expect(secondPageData.backups.map((backup) => backup.key)).toEqual([
+        'backup_2026-04-15_00-00-00-000-b.json',
+        'backup_2026-04-14_00-00-00-000-a.json'
+      ]);
+      expect(secondPageData.backups.some((backup) => backup.key === 'backup_2026-04-16_00-00-00-000-c.json')).toBe(false);
+    });
+
+    it('应在完成首次索引回填后按页直接读取索引而不是再次全量扫描备份键', async () => {
+      const env = createMockEnv();
+      const backupKeys = [
+        'backup_2026-04-14_00-00-00-000-a.json',
+        'backup_2026-04-15_00-00-00-000-b.json',
+        'backup_2026-04-16_00-00-00-000-c.json',
+        'backup_2026-04-17_00-00-00-000-d.json'
+      ];
+
+      for (const [index, backupKey] of backupKeys.entries()) {
+        await env.SECRETS_KV.put(
+          backupKey,
+          JSON.stringify({
+            timestamp: `2026-04-${String(14 + index).padStart(2, '0')}T00:00:00.000Z`,
+            version: '1.0',
+            count: 1,
+            secrets: [{ id: String(index + 1), name: `Test${index + 1}`, secret: 'JBSWY3DPEHPK3PXP' }]
+          }),
+          {
+            metadata: {
+              created: `2026-04-${String(14 + index).padStart(2, '0')}T00:00:00.000Z`,
+              count: 1,
+              encrypted: false,
+              format: 'json',
+              version: 2
+            }
+          }
+        );
+      }
+
+      const ctx = { waitUntil: vi.fn() };
+
+      const firstPageResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', { limit: '2' }),
+        env,
+        ctx
+      );
+      const firstPageData = await firstPageResponse.json();
+
+      expect(firstPageResponse.status).toBe(200);
+      expect(firstPageData.backups.map((backup) => backup.key)).toEqual([
+        'backup_2026-04-17_00-00-00-000-d.json',
+        'backup_2026-04-16_00-00-00-000-c.json'
+      ]);
+      expect(firstPageData.pagination.cursor).toBe('backup_2026-04-16_00-00-00-000-c.json');
+      expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+      expect(ctx.waitUntil.mock.calls[0][0]).toBeInstanceOf(Promise);
+    });
+
+    it('reads later pages from backup indexes when a current index already exists', async () => {
+      const env = createMockEnv();
+      const backupKeys = [
+        'backup_2026-04-14_00-00-00-000-a.json',
+        'backup_2026-04-15_00-00-00-000-b.json',
+        'backup_2026-04-16_00-00-00-000-c.json',
+        'backup_2026-04-17_00-00-00-000-d.json'
+      ];
+
+      for (const [index, backupKey] of backupKeys.entries()) {
+        const metadata = {
+          created: `2026-04-${String(14 + index).padStart(2, '0')}T00:00:00.000Z`,
+          count: 1,
+          encrypted: false,
+          format: 'json',
+          version: 2,
+          skippedInvalidCount: 0
+        };
+
+        await env.SECRETS_KV.put(
+          backupKey,
+          JSON.stringify({
+            timestamp: metadata.created,
+            version: '1.0',
+            count: 1,
+            secrets: [{ id: String(index + 1), name: `Test${index + 1}`, secret: 'JBSWY3DPEHPK3PXP' }]
+          }),
+          { metadata }
+        );
+        await env.SECRETS_KV.put(createBackupIndexKey(backupKey, metadata), '', {
+          metadata: buildBackupIndexMetadata(backupKey, metadata)
+        });
+      }
+
+      await env.SECRETS_KV.put('backup_index_state_v1', JSON.stringify({ version: 2, count: backupKeys.length }));
+
+      const originalList = env.SECRETS_KV.list.bind(env.SECRETS_KV);
+      const listSpy = vi.fn((options = {}) => originalList(options));
+      env.SECRETS_KV.list = listSpy;
+
+      const firstPageResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', { limit: '2' }),
+        env
+      );
+      const firstPageData = await firstPageResponse.json();
+
+      expect(firstPageResponse.status).toBe(200);
+      expect(firstPageData.backups.map((backup) => backup.key)).toEqual([
+        'backup_2026-04-17_00-00-00-000-d.json',
+        'backup_2026-04-16_00-00-00-000-c.json'
+      ]);
+      expect(firstPageData.pagination.cursor).toBe('idx:2');
+
+      listSpy.mockClear();
+
+      const secondPageResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', {
+          limit: '2',
+          cursor: firstPageData.pagination.cursor
+        }),
+        env
+      );
+      const secondPageData = await secondPageResponse.json();
+
+      expect(secondPageResponse.status).toBe(200);
+      expect(secondPageData.backups.map((backup) => backup.key)).toEqual([
+        'backup_2026-04-15_00-00-00-000-b.json',
+        'backup_2026-04-14_00-00-00-000-a.json'
+      ]);
+      expect(listSpy.mock.calls.some(([options]) => options && options.prefix === 'backup_')).toBe(false);
+      expect(listSpy.mock.calls.some(([options]) => options && options.prefix === 'backupidx_')).toBe(true);
+    });
+
+    it('falls back from an opaque indexed cursor without repeating the first page when the indexed page is incomplete', async () => {
+      const env = createMockEnv();
+      const backupEntries = [
+        {
+          key: 'backup_2026-04-14_00-00-00-000-a.json',
+          metadata: {
+            created: '2026-04-14T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        },
+        {
+          key: 'backup_2026-04-15_00-00-00-000-b.json',
+          metadata: {
+            created: '2026-04-15T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        },
+        {
+          key: 'backup_2026-04-16_00-00-00-000-c.json',
+          metadata: {
+            created: '2026-04-16T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        },
+        {
+          key: 'backup_2026-04-17_00-00-00-000-d.json',
+          metadata: {
+            created: '2026-04-17T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        }
+      ];
+
+      for (const entry of backupEntries) {
+        await env.SECRETS_KV.put(
+          entry.key,
+          JSON.stringify({
+            timestamp: entry.metadata.created,
+            version: '1.0',
+            count: 1,
+            secrets: [{ id: entry.key, name: entry.key, secret: 'JBSWY3DPEHPK3PXP' }]
+          }),
+          { metadata: entry.metadata }
+        );
+        await env.SECRETS_KV.put(createBackupIndexKey(entry.key, entry.metadata), '', {
+          metadata: buildBackupIndexMetadata(entry.key, entry.metadata)
+        });
+      }
+
+      await env.SECRETS_KV.put('backup_index_state_v1', JSON.stringify({ version: 2, count: backupEntries.length }));
+
+      const originalList = env.SECRETS_KV.list.bind(env.SECRETS_KV);
+      const opaqueCursor = 'opaque-page-2';
+      const indexPages = [
+        buildBackupIndexMetadata(backupEntries[3].key, backupEntries[3].metadata),
+        buildBackupIndexMetadata(backupEntries[2].key, backupEntries[2].metadata),
+        buildBackupIndexMetadata(backupEntries[1].key, backupEntries[1].metadata),
+        buildBackupIndexMetadata(backupEntries[0].key, backupEntries[0].metadata)
+      ].map((metadata) => ({
+        name: createBackupIndexKey(metadata.backupKey, metadata),
+        metadata
+      }));
+
+      env.SECRETS_KV.list = vi.fn(async (options = {}) => {
+        if (options.prefix === 'backupidx_') {
+          if (!options.cursor) {
+            return {
+              keys: indexPages.slice(0, 2),
+              list_complete: false,
+              cursor: opaqueCursor
+            };
+          }
+
+          if (options.cursor === opaqueCursor) {
+            return {
+              keys: indexPages.slice(2, 3),
+              list_complete: false,
+              cursor: 'opaque-page-3'
+            };
+          }
+        }
+
+        return originalList(options);
+      });
+
+      const firstPageResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', { limit: '2' }),
+        env
+      );
+      const firstPageData = await firstPageResponse.json();
+
+      expect(firstPageResponse.status).toBe(200);
+      expect(firstPageData.backups.map((backup) => backup.key)).toEqual([
+        backupEntries[3].key,
+        backupEntries[2].key
+      ]);
+      expect(firstPageData.pagination.cursor).toBe(`idx:2:${opaqueCursor}|${backupEntries[2].key}`);
+
+      const ctx = { waitUntil: vi.fn() };
+      const secondPageResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', {
+          limit: '2',
+          cursor: firstPageData.pagination.cursor
+        }),
+        env,
+        ctx
+      );
+      const secondPageData = await secondPageResponse.json();
+
+      expect(secondPageResponse.status).toBe(200);
+      expect(secondPageData.backups.map((backup) => backup.key)).toEqual([
+        backupEntries[1].key,
+        backupEntries[0].key
+      ]);
+      expect(secondPageData.pagination.cursor).toBeNull();
+      expect(env.SECRETS_KV.list.mock.calls.some(([options]) => options && options.prefix === 'backup_')).toBe(true);
+      expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+      expect(ctx.waitUntil.mock.calls[0][0]).toBeInstanceOf(Promise);
+    });
+
+    it('does not fall back from an opaque indexed cursor when the later page is complete for the remaining count', async () => {
+      const env = createMockEnv();
+      const backupEntries = [
+        {
+          key: 'backup_2026-04-14_00-00-00-000-a.json',
+          metadata: {
+            created: '2026-04-14T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        },
+        {
+          key: 'backup_2026-04-15_00-00-00-000-b.json',
+          metadata: {
+            created: '2026-04-15T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        },
+        {
+          key: 'backup_2026-04-16_00-00-00-000-c.json',
+          metadata: {
+            created: '2026-04-16T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        }
+      ];
+
+      for (const entry of backupEntries) {
+        await env.SECRETS_KV.put(
+          entry.key,
+          JSON.stringify({
+            timestamp: entry.metadata.created,
+            version: '1.0',
+            count: 1,
+            secrets: [{ id: entry.key, name: entry.key, secret: 'JBSWY3DPEHPK3PXP' }]
+          }),
+          { metadata: entry.metadata }
+        );
+        await env.SECRETS_KV.put(createBackupIndexKey(entry.key, entry.metadata), '', {
+          metadata: buildBackupIndexMetadata(entry.key, entry.metadata)
+        });
+      }
+
+      await env.SECRETS_KV.put('backup_index_state_v1', JSON.stringify({ version: 2, count: backupEntries.length }));
+
+      const originalList = env.SECRETS_KV.list.bind(env.SECRETS_KV);
+      const opaqueCursor = 'opaque-page-2';
+      const indexPages = [
+        buildBackupIndexMetadata(backupEntries[2].key, backupEntries[2].metadata),
+        buildBackupIndexMetadata(backupEntries[1].key, backupEntries[1].metadata),
+        buildBackupIndexMetadata(backupEntries[0].key, backupEntries[0].metadata)
+      ].map((metadata) => ({
+        name: createBackupIndexKey(metadata.backupKey, metadata),
+        metadata
+      }));
+
+      env.SECRETS_KV.list = vi.fn(async (options = {}) => {
+        if (options.prefix === 'backupidx_') {
+          if (!options.cursor) {
+            return {
+              keys: indexPages.slice(0, 2),
+              list_complete: false,
+              cursor: opaqueCursor
+            };
+          }
+
+          if (options.cursor === opaqueCursor) {
+            return {
+              keys: indexPages.slice(2, 3),
+              list_complete: true,
+              cursor: undefined
+            };
+          }
+        }
+
+        return originalList(options);
+      });
+
+      const firstPageResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', { limit: '2', details: 'false' }),
+        env
+      );
+      const firstPageData = await firstPageResponse.json();
+
+      expect(firstPageResponse.status).toBe(200);
+      expect(firstPageData.backups.map((backup) => backup.key)).toEqual([
+        backupEntries[2].key,
+        backupEntries[1].key
+      ]);
+      expect(firstPageData.pagination.cursor).toBe(`idx:2:${opaqueCursor}|${backupEntries[1].key}`);
+
+      const ctx = { waitUntil: vi.fn() };
+      const secondPageResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', {
+          limit: '2',
+          details: 'false',
+          cursor: firstPageData.pagination.cursor
+        }),
+        env,
+        ctx
+      );
+      const secondPageData = await secondPageResponse.json();
+
+      expect(secondPageResponse.status).toBe(200);
+      expect(secondPageData.backups.map((backup) => backup.key)).toEqual([
+        backupEntries[0].key
+      ]);
+      expect(secondPageData.pagination.cursor).toBeNull();
+      expect(env.SECRETS_KV.list.mock.calls.some(([options]) => options && options.prefix === 'backup_')).toBe(false);
+      expect(ctx.waitUntil).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the legacy raw backup cursor without repeating the first page', async () => {
+      const env = createMockEnv();
+      const backupEntries = [
+        {
+          key: 'backup_2026-04-14_00-00-00-000-a.json',
+          metadata: {
+            created: '2026-04-14T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        },
+        {
+          key: 'backup_2026-04-15_00-00-00-000-b.json',
+          metadata: {
+            created: '2026-04-15T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        },
+        {
+          key: 'backup_2026-04-16_00-00-00-000-c.json',
+          metadata: {
+            created: '2026-04-16T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        },
+        {
+          key: 'backup_2026-04-17_00-00-00-000-d.json',
+          metadata: {
+            created: '2026-04-17T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        }
+      ];
+
+      for (const entry of backupEntries) {
+        await env.SECRETS_KV.put(
+          entry.key,
+          JSON.stringify({
+            timestamp: entry.metadata.created,
+            version: '1.0',
+            count: 1,
+            secrets: [{ id: entry.key, name: entry.key, secret: 'JBSWY3DPEHPK3PXP' }]
+          }),
+          { metadata: entry.metadata }
+        );
+        await env.SECRETS_KV.put(createBackupIndexKey(entry.key, entry.metadata), '', {
+          metadata: buildBackupIndexMetadata(entry.key, entry.metadata)
+        });
+      }
+
+      await env.SECRETS_KV.put('backup_index_state_v1', JSON.stringify({ version: 2, count: backupEntries.length }));
+
+      const originalList = env.SECRETS_KV.list.bind(env.SECRETS_KV);
+      const legacyCursor = 'legacy-backup-page-2';
+      env.SECRETS_KV.list = vi.fn(async (options = {}) => {
+        if (options.prefix === 'backup_' && options.cursor === legacyCursor) {
+          return {
+            keys: [backupEntries[0], backupEntries[1]].map((entry) => ({
+              name: entry.key,
+              metadata: entry.metadata
+            })),
+            list_complete: true,
+            cursor: undefined
+          };
+        }
+
+        return originalList(options);
+      });
+
+      const response = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', {
+          limit: '2',
+          cursor: legacyCursor
+        }),
+        env
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.backups.map((backup) => backup.key)).toEqual([
+        backupEntries[1].key,
+        backupEntries[0].key
+      ]);
+      expect(data.pagination.cursor).toBeNull();
+      expect(env.SECRETS_KV.list.mock.calls.some(([options]) => options && options.prefix === 'backupidx_')).toBe(false);
+    });
+
+    it('converts opaque legacy backup cursors into backup-key anchors for subsequent pages', async () => {
+      const env = createMockEnv();
+      const backupEntries = [
+        'backup_2026-04-12_00-00-00-000-a.json',
+        'backup_2026-04-13_00-00-00-000-b.json',
+        'backup_2026-04-14_00-00-00-000-c.json',
+        'backup_2026-04-15_00-00-00-000-d.json',
+        'backup_2026-04-16_00-00-00-000-e.json',
+        'backup_2026-04-17_00-00-00-000-f.json'
+      ].map((key, index) => ({
+        key,
+        metadata: {
+          created: `2026-04-${String(12 + index).padStart(2, '0')}T00:00:00.000Z`,
+          count: 1,
+          encrypted: false,
+          format: 'json',
+          version: 2,
+          skippedInvalidCount: 0
+        }
+      }));
+
+      for (const entry of backupEntries) {
+        await env.SECRETS_KV.put(
+          entry.key,
+          JSON.stringify({
+            timestamp: entry.metadata.created,
+            version: '1.0',
+            count: 1,
+            secrets: [{ id: entry.key, name: entry.key, secret: 'JBSWY3DPEHPK3PXP' }]
+          }),
+          { metadata: entry.metadata }
+        );
+        await env.SECRETS_KV.put(createBackupIndexKey(entry.key, entry.metadata), '', {
+          metadata: buildBackupIndexMetadata(entry.key, entry.metadata)
+        });
+      }
+
+      await env.SECRETS_KV.put('backup_index_state_v1', JSON.stringify({ version: 2, count: backupEntries.length }));
+
+      const originalList = env.SECRETS_KV.list.bind(env.SECRETS_KV);
+      const legacyCursor = 'legacy-backup-page-2';
+      env.SECRETS_KV.list = vi.fn(async (options = {}) => {
+        if (options.prefix === 'backup_' && options.cursor === legacyCursor) {
+          return {
+            keys: [backupEntries[2], backupEntries[3]].map((entry) => ({
+              name: entry.key,
+              metadata: entry.metadata
+            })),
+            list_complete: false,
+            cursor: 'legacy-backup-page-3'
+          };
+        }
+
+        return originalList(options);
+      });
+
+      const firstPageResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', {
+          limit: '2',
+          cursor: legacyCursor
+        }),
+        env
+      );
+      const firstPageData = await firstPageResponse.json();
+
+      expect(firstPageResponse.status).toBe(200);
+      expect(firstPageData.backups.map((backup) => backup.key)).toEqual([
+        backupEntries[3].key,
+        backupEntries[2].key
+      ]);
+      expect(firstPageData.pagination.cursor).toBe(backupEntries[2].key);
+
+      const secondPageResponse = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', {
+          limit: '2',
+          cursor: firstPageData.pagination.cursor
+        }),
+        env
+      );
+      const secondPageData = await secondPageResponse.json();
+
+      expect(secondPageResponse.status).toBe(200);
+      expect(secondPageData.backups.map((backup) => backup.key)).toEqual([
+        backupEntries[1].key,
+        backupEntries[0].key
+      ]);
+      expect(secondPageData.pagination.cursor).toBeNull();
+    });
+
+    it('reads the first indexed page without rescanning all backup keys when the index count is current', async () => {
+      const env = createMockEnv();
+      const backupKeys = [
+        'backup_2026-04-14_00-00-00-000-a.json',
+        'backup_2026-04-15_00-00-00-000-b.json',
+        'backup_2026-04-16_00-00-00-000-c.json',
+        'backup_2026-04-17_00-00-00-000-d.json'
+      ];
+
+      for (const [index, backupKey] of backupKeys.entries()) {
+        const metadata = {
+          created: `2026-04-${String(14 + index).padStart(2, '0')}T00:00:00.000Z`,
+          count: 1,
+          encrypted: false,
+          format: 'json',
+          version: 2,
+          skippedInvalidCount: 0
+        };
+
+        await env.SECRETS_KV.put(
+          backupKey,
+          JSON.stringify({
+            timestamp: metadata.created,
+            version: '1.0',
+            count: 1,
+            secrets: [{ id: String(index + 1), name: `Test${index + 1}`, secret: 'JBSWY3DPEHPK3PXP' }]
+          }),
+          { metadata }
+        );
+        await env.SECRETS_KV.put(createBackupIndexKey(backupKey, metadata), '', {
+          metadata: buildBackupIndexMetadata(backupKey, metadata)
+        });
+      }
+
+      await env.SECRETS_KV.put('backup_index_state_v1', JSON.stringify({ version: 2, count: backupKeys.length }));
+
+      const originalList = env.SECRETS_KV.list.bind(env.SECRETS_KV);
+      const listSpy = vi.fn((options = {}) => originalList(options));
+      env.SECRETS_KV.list = listSpy;
+
+      const response = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', { limit: '2' }),
+        env
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.backups.map((backup) => backup.key)).toEqual([
+        'backup_2026-04-17_00-00-00-000-d.json',
+        'backup_2026-04-16_00-00-00-000-c.json'
+      ]);
+      expect(listSpy.mock.calls.some(([options]) => options && options.prefix === 'backup_')).toBe(false);
+      expect(listSpy.mock.calls.filter(([options]) => options && options.prefix === 'backupidx_')).toHaveLength(1);
+    });
+
     it('应该支持简单模式（不获取详情）', async () => {
+      const env = createMockEnv();
+
+      await saveSecretsToKV(env, [
+        { id: '1', name: 'Test', secret: 'JBSWY3DPEHPK3PXP' }
+      ], 'test');
+      const req = createMockRequest();
+      await handleBackupSecrets(req, env);
+
+      const request = createMockRequest({}, 'GET', 'https://example.com/api/backup', { details: 'false' });
+      const response = await handleGetBackups(request, env);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.backups.length).toBeGreaterThan(0);
+
+      // 绠€鍗曟ā寮忎笉搴旇鍖呭惈 count 鍜?encrypted
+      const backup = data.backups[0];
+      expect(backup.key).toBeDefined();
+      expect(backup.created).toBeDefined();
+      expect(backup.count).toBeUndefined();
+      expect(backup.encrypted).toBeUndefined();
+    });
+
+    it('falls back to scanning backup keys when the index state is current but index entries are missing', async () => {
+      const env = createMockEnv();
+      const backupKey = 'backup_2026-04-17_00-00-00-000-d.json';
+      const metadata = {
+        created: '2026-04-17T00:00:00.000Z',
+        count: 1,
+        encrypted: false,
+        format: 'json',
+        version: 2,
+        skippedInvalidCount: 0
+      };
+
+      await env.SECRETS_KV.put(
+        backupKey,
+        JSON.stringify({
+          timestamp: metadata.created,
+          version: '1.0',
+          count: 1,
+          secrets: [{ id: '1', name: 'Test1', secret: 'JBSWY3DPEHPK3PXP' }]
+        }),
+        { metadata }
+      );
+      await env.SECRETS_KV.put('backup_index_state_v1', JSON.stringify({ version: 2, count: 1 }));
+
+      const originalList = env.SECRETS_KV.list.bind(env.SECRETS_KV);
+      const listSpy = vi.fn((options = {}) => originalList(options));
+      env.SECRETS_KV.list = listSpy;
+
+      const ctx = { waitUntil: vi.fn() };
+      const response = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup'),
+        env,
+        ctx
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.backups).toHaveLength(1);
+      expect(data.backups[0]).toMatchObject({
+        key: backupKey,
+        format: 'json',
+        count: 1,
+        partial: false,
+        skippedInvalidCount: 0
+      });
+      expect(listSpy.mock.calls.some(([options]) => options && options.prefix === 'backupidx_')).toBe(true);
+      expect(listSpy.mock.calls.some(([options]) => options && options.prefix === 'backup_')).toBe(true);
+      expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+      expect(ctx.waitUntil.mock.calls[0][0]).toBeInstanceOf(Promise);
+    });
+
+    it('falls back to scanning real backup keys when indexed entries point to deleted backups', async () => {
+      const env = createMockEnv();
+      const backupEntries = [
+        {
+          key: 'backup_2026-04-17_00-00-00-000-d.json',
+          metadata: {
+            created: '2026-04-17T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          },
+          secretName: 'Newest'
+        },
+        {
+          key: 'backup_2026-04-16_00-00-00-000-c.json',
+          metadata: {
+            created: '2026-04-16T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          },
+          secretName: 'Still real'
+        }
+      ];
+      const staleBackupKey = 'backup_2026-04-15_00-00-00-000-b.json';
+
+      for (const entry of backupEntries) {
+        await env.SECRETS_KV.put(
+          entry.key,
+          JSON.stringify({
+            timestamp: entry.metadata.created,
+            version: '1.0',
+            count: 1,
+            secrets: [{ id: entry.key, name: entry.secretName, secret: 'JBSWY3DPEHPK3PXP' }]
+          }),
+          { metadata: entry.metadata }
+        );
+      }
+
+      await env.SECRETS_KV.put(
+        createBackupIndexKey(backupEntries[0].key, backupEntries[0].metadata),
+        '',
+        {
+          metadata: buildBackupIndexMetadata(backupEntries[0].key, backupEntries[0].metadata)
+        }
+      );
+      await env.SECRETS_KV.put(
+        createBackupIndexKey(staleBackupKey, {
+          created: '2026-04-15T00:00:00.000Z',
+          count: 1,
+          encrypted: false,
+          format: 'json',
+          version: 2,
+          skippedInvalidCount: 0
+        }),
+        '',
+        {
+          metadata: buildBackupIndexMetadata(staleBackupKey, {
+            created: '2026-04-15T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          })
+        }
+      );
+      await env.SECRETS_KV.put('backup_index_state_v1', JSON.stringify({ version: 2, count: 2 }));
+
+      const ctx = { waitUntil: vi.fn() };
+      const response = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', { details: 'false' }),
+        env,
+        ctx
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.backups.map((backup) => backup.key)).toEqual(backupEntries.map((entry) => entry.key));
+      expect(data.backups.some((backup) => backup.key === staleBackupKey)).toBe(false);
+      expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+      expect(ctx.waitUntil.mock.calls[0][0]).toBeInstanceOf(Promise);
+    });
+
+    it('falls back to real backup keys when a stale indexed entry appears beyond the first three results', async () => {
+      const env = createMockEnv();
+      const realBackupEntries = [
+        {
+          key: 'backup_2026-04-18_00-00-00-000-e.json',
+          metadata: {
+            created: '2026-04-18T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        },
+        {
+          key: 'backup_2026-04-17_00-00-00-000-d.json',
+          metadata: {
+            created: '2026-04-17T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        },
+        {
+          key: 'backup_2026-04-16_00-00-00-000-c.json',
+          metadata: {
+            created: '2026-04-16T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        },
+        {
+          key: 'backup_2026-04-14_00-00-00-000-a.json',
+          metadata: {
+            created: '2026-04-14T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        }
+      ];
+      const staleBackupKey = 'backup_2026-04-15_00-00-00-000-b.json';
+      const staleMetadata = {
+        created: '2026-04-15T00:00:00.000Z',
+        count: 1,
+        encrypted: false,
+        format: 'json',
+        version: 2,
+        skippedInvalidCount: 0
+      };
+
+      for (const entry of realBackupEntries) {
+        await env.SECRETS_KV.put(
+          entry.key,
+          JSON.stringify({
+            timestamp: entry.metadata.created,
+            version: '1.0',
+            count: 1,
+            secrets: [{ id: entry.key, name: entry.key, secret: 'JBSWY3DPEHPK3PXP' }]
+          }),
+          { metadata: entry.metadata }
+        );
+      }
+
+      for (const entry of [...realBackupEntries.slice(0, 3), { key: staleBackupKey, metadata: staleMetadata }, realBackupEntries[3]]) {
+        await env.SECRETS_KV.put(createBackupIndexKey(entry.key, entry.metadata), '', {
+          metadata: buildBackupIndexMetadata(entry.key, entry.metadata)
+        });
+      }
+      await env.SECRETS_KV.put('backup_index_state_v1', JSON.stringify({ version: 2, count: 5 }));
+
+      const originalList = env.SECRETS_KV.list.bind(env.SECRETS_KV);
+      const listSpy = vi.fn((options = {}) => originalList(options));
+      env.SECRETS_KV.list = listSpy;
+
+      const ctx = { waitUntil: vi.fn() };
+      const response = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', { limit: '5' }),
+        env,
+        ctx
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.backups.map((backup) => backup.key)).toEqual(realBackupEntries.map((entry) => entry.key));
+      expect(data.backups.some((backup) => backup.key === staleBackupKey)).toBe(false);
+      expect(listSpy.mock.calls.some(([options]) => options && options.prefix === 'backupidx_')).toBe(true);
+      expect(listSpy.mock.calls.some(([options]) => options && options.prefix === 'backup_')).toBe(true);
+      expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+      expect(ctx.waitUntil.mock.calls[0][0]).toBeInstanceOf(Promise);
+    });
+
+    it('falls back to scanning backup keys when only part of the current index exists', async () => {
+      const env = createMockEnv();
+      const backupEntries = [
+        {
+          key: 'backup_2026-04-17_00-00-00-000-d.json',
+          metadata: {
+            created: '2026-04-17T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        },
+        {
+          key: 'backup_2026-04-16_00-00-00-000-c.json',
+          metadata: {
+            created: '2026-04-16T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2,
+            skippedInvalidCount: 0
+          }
+        }
+      ];
+
+      for (const entry of backupEntries) {
+        await env.SECRETS_KV.put(
+          entry.key,
+          JSON.stringify({
+            timestamp: entry.metadata.created,
+            version: '1.0',
+            count: 1,
+            secrets: [{ id: entry.key, name: entry.key, secret: 'JBSWY3DPEHPK3PXP' }]
+          }),
+          { metadata: entry.metadata }
+        );
+      }
+
+      await env.SECRETS_KV.put(
+        createBackupIndexKey(backupEntries[0].key, backupEntries[0].metadata),
+        '',
+        { metadata: buildBackupIndexMetadata(backupEntries[0].key, backupEntries[0].metadata) }
+      );
+      await env.SECRETS_KV.put('backup_index_state_v1', JSON.stringify({ version: 2, count: backupEntries.length }));
+
+      const originalList = env.SECRETS_KV.list.bind(env.SECRETS_KV);
+      const listSpy = vi.fn((options = {}) => originalList(options));
+      env.SECRETS_KV.list = listSpy;
+
+      const ctx = { waitUntil: vi.fn() };
+      const response = await handleGetBackups(
+        createMockRequest({}, 'GET', 'https://example.com/api/backup', { limit: '10' }),
+        env,
+        ctx
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.backups.map((backup) => backup.key)).toEqual([
+        'backup_2026-04-17_00-00-00-000-d.json',
+        'backup_2026-04-16_00-00-00-000-c.json'
+      ]);
+      expect(data.pagination.cursor).toBeNull();
+      expect(listSpy.mock.calls.some(([options]) => options && options.prefix === 'backupidx_')).toBe(true);
+      expect(listSpy.mock.calls.some(([options]) => options && options.prefix === 'backup_')).toBe(true);
+      expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+      expect(ctx.waitUntil.mock.calls[0][0]).toBeInstanceOf(Promise);
+    });
+
+    it('deduplicates concurrent backup index rebuilds', async () => {
+      const env = createMockEnv();
+      const backupEntries = [
+        {
+          key: 'backup_2026-04-17_00-00-00-000-d.json',
+          metadata: {
+            created: '2026-04-17T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2
+          }
+        },
+        {
+          key: 'backup_2026-04-16_00-00-00-000-c.json',
+          metadata: {
+            created: '2026-04-16T00:00:00.000Z',
+            count: 1,
+            encrypted: false,
+            format: 'json',
+            version: 2
+          }
+        }
+      ];
+
+      for (const entry of backupEntries) {
+        await env.SECRETS_KV.put(
+          entry.key,
+          JSON.stringify({
+            timestamp: entry.metadata.created,
+            version: '1.0',
+            count: 1,
+            secrets: [{ id: entry.key, name: entry.key, secret: 'JBSWY3DPEHPK3PXP' }]
+          }),
+          { metadata: entry.metadata }
+        );
+      }
+
+      const originalList = env.SECRETS_KV.list.bind(env.SECRETS_KV);
+      let releaseIndexList;
+      let firstIndexListPending = true;
+      env.SECRETS_KV.list = vi.fn(async (options = {}) => {
+        if (firstIndexListPending && options.prefix === 'backupidx_') {
+          firstIndexListPending = false;
+          await new Promise((resolve) => {
+            releaseIndexList = resolve;
+          });
+        }
+
+        return originalList(options);
+      });
+
+      const firstRun = ensureBackupIndexes(env, { force: true });
+      const secondRun = ensureBackupIndexes(env, { force: true });
+
+      await waitForCondition(() => env.SECRETS_KV.list.mock.calls.length > 0);
+      expect(env.SECRETS_KV.list.mock.calls.filter(([options]) => options.prefix === 'backupidx_')).toHaveLength(1);
+
+      releaseIndexList();
+      await Promise.all([firstRun, secondRun]);
+
+      expect(env.SECRETS_KV.list.mock.calls.filter(([options]) => options.prefix === 'backupidx_')).toHaveLength(1);
+      expect(env.SECRETS_KV.list.mock.calls.filter(([options]) => options.prefix === 'backup_')).toHaveLength(1);
+    });
+
+    it('keeps the backup index count accurate when multiple writes commit concurrently', async () => {
+      const env = createMockEnv();
+      await env.SECRETS_KV.put('backup_index_state_v1', JSON.stringify({ version: 2, count: 0 }));
+
+      const originalGet = env.SECRETS_KV.get.bind(env.SECRETS_KV);
+      const originalPut = env.SECRETS_KV.put.bind(env.SECRETS_KV);
+
+      env.SECRETS_KV.get = vi.fn(async (key, type = 'text') => {
+        if (key === 'backup_index_state_v1') {
+          await waitForTick();
+        }
+        return originalGet(key, type);
+      });
+
+      env.SECRETS_KV.put = vi.fn(async (key, value, options = {}) => {
+        if (key === 'backup_index_state_v1') {
+          await waitForTick();
+        }
+        return originalPut(key, value, options);
+      });
+
+      await Promise.all([
+        putBackupRecord(env, 'backup_2026-04-17_00-00-00-000-a.json', '{"count":1}', {
+          created: '2026-04-17T00:00:00.000Z',
+          count: 1,
+          format: 'json',
+          encrypted: false,
+          skippedInvalidCount: 0
+        }),
+        putBackupRecord(env, 'backup_2026-04-17_00-00-00-001-b.json', '{"count":1}', {
+          created: '2026-04-17T00:00:00.001Z',
+          count: 1,
+          format: 'json',
+          encrypted: false,
+          skippedInvalidCount: 0
+        })
+      ]);
+
+      const indexState = JSON.parse(await originalGet('backup_index_state_v1', 'text'));
+      expect(indexState.count).toBe(2);
+    });
+
+    it('keeps details=false responses lean after index fallback checks', async () => {
       const env = createMockEnv();
 
       await saveSecretsToKV(env, [
@@ -584,6 +2178,94 @@ describe('Backup API Module', () => {
       expect(data.data.count).toBeDefined();
     });
 
+    it('应该正确恢复 txt 备份中包含冒号的服务名称', async () => {
+      const env = createMockEnv();
+      const backupEntry = await createBackupEntry(
+        [
+          {
+            id: '1',
+            name: 'Foo:Bar',
+            account: 'alice',
+            secret: 'JBSWY3DPEHPK3PXP',
+            type: 'TOTP'
+          }
+        ],
+        env,
+        {
+          format: 'txt',
+          reason: 'test',
+          strict: true
+        }
+      );
+      await env.SECRETS_KV.put(backupEntry.backupKey, backupEntry.backupContent, {
+        metadata: backupEntry.metadata
+      });
+
+      const previewResp = await handleRestoreBackup(createMockRequest({
+        backupKey: backupEntry.backupKey,
+        preview: true
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const previewData = await previewResp.json();
+
+      expect(previewResp.status).toBe(200);
+      expect(previewData.data.format).toBe('txt');
+      expect(previewData.data.secrets).toHaveLength(1);
+      expect(previewData.data.secrets[0].name).toBe('Foo:Bar');
+      expect(previewData.data.secrets[0].account).toBe('alice');
+    });
+
+    it('应该正确恢复 csv 备份中的多行字段而不清空现有数据', async () => {
+      const env = createMockEnv();
+      const backupEntry = await createBackupEntry(
+        [
+          {
+            id: '1',
+            name: 'Foo',
+            account: 'alice\nops',
+            secret: 'JBSWY3DPEHPK3PXP',
+            type: 'TOTP'
+          }
+        ],
+        env,
+        {
+          format: 'csv',
+          reason: 'test',
+          strict: true
+        }
+      );
+      await env.SECRETS_KV.put(backupEntry.backupKey, backupEntry.backupContent, {
+        metadata: backupEntry.metadata
+      });
+
+      const previewResp = await handleRestoreBackup(createMockRequest({
+        backupKey: backupEntry.backupKey,
+        preview: true
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const previewData = await previewResp.json();
+
+      expect(previewResp.status).toBe(200);
+      expect(previewData.data.format).toBe('csv');
+      expect(previewData.data.secrets).toHaveLength(1);
+      expect(previewData.data.secrets[0].account).toBe('alice\nops');
+
+      await saveSecretsToKV(env, [
+        { id: '2', name: 'Different', account: 'user@example.com', secret: 'MFRGGZDFMZTWQ2LK', type: 'TOTP' }
+      ], 'test');
+
+      const restoreResp = await handleRestoreBackup(createMockRequest({
+        backupKey: backupEntry.backupKey,
+        preview: false
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const restoreData = await restoreResp.json();
+      const restoredSecrets = await getAllSecrets(env);
+
+      expect(restoreResp.status).toBe(200);
+      expect(restoreData.count).toBe(1);
+      expect(restoredSecrets).toHaveLength(1);
+      expect(restoredSecrets[0].name).toBe('Foo');
+      expect(restoredSecrets[0].account).toBe('alice\nops');
+    });
+
     it('应该支持GET方式恢复', async () => {
       const env = createMockEnv();
 
@@ -718,6 +2400,193 @@ describe('Backup API Module', () => {
       expect(response.status).toBe(400);
       expect(data.error).toContain('无法恢复');
       expect(data.message).toContain('未配置 ENCRYPTION_KEY');
+    });
+
+    it('应该拒绝恢复空备份以避免覆盖当前数据', async () => {
+      const env = createMockEnv();
+      const backupKey = 'backup_2026-04-15_00-00-00-000-empty.json';
+
+      await env.SECRETS_KV.put(
+        backupKey,
+        JSON.stringify({
+          timestamp: '2026-04-15T00:00:00.000Z',
+          version: '1.0',
+          count: 0,
+          secrets: []
+        }),
+        {
+          metadata: {
+            created: '2026-04-15T00:00:00.000Z',
+            format: 'json',
+            count: 0,
+            encrypted: false,
+            version: 2
+          }
+        }
+      );
+
+      const response = await handleRestoreBackup(createMockRequest({
+        backupKey,
+        preview: false
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toContain('备份内容为空');
+    });
+
+    it('应该拒绝预览和恢复包含无效 TXT 条目的备份', async () => {
+      const env = createMockEnv();
+      const backupKey = 'backup_2026-04-15_00-00-00-000-invalid.txt';
+
+      await saveSecretsToKV(env, [
+        { id: 'current', name: 'Current', secret: 'MFRGGZDFMZTWQ2LK', type: 'TOTP' }
+      ], 'test');
+
+      await env.SECRETS_KV.put(
+        backupKey,
+        'otpauth://totp/GitHub:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=GitHub\nnot-a-valid-backup-line',
+        {
+          metadata: {
+            created: '2026-04-15T00:00:00.000Z',
+            format: 'txt',
+            count: 2,
+            encrypted: false,
+            version: 2
+          }
+        }
+      );
+
+      const previewResp = await handleRestoreBackup(createMockRequest({
+        backupKey,
+        preview: true
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const previewData = await previewResp.json();
+
+      expect(previewResp.status).toBe(400);
+      expect(previewData.error).toContain('解析失败');
+
+      const restoreResp = await handleRestoreBackup(createMockRequest({
+        backupKey,
+        preview: false
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const restoreData = await restoreResp.json();
+      const secretsAfterFailure = await getAllSecrets(env);
+
+      expect(restoreResp.status).toBe(400);
+      expect(restoreData.error).toContain('解析失败');
+      expect(secretsAfterFailure).toHaveLength(1);
+      expect(secretsAfterFailure[0].name).toBe('Current');
+    });
+
+    it('应该在预览中标记不完整备份并阻止恢复', async () => {
+      const env = createMockEnv();
+      const backupKey = 'backup_2026-04-15_00-00-00-000-partial.json';
+
+      await env.SECRETS_KV.put(
+        backupKey,
+        JSON.stringify({
+          timestamp: '2026-04-15T00:00:00.000Z',
+          version: '1.0',
+          count: 1,
+          secrets: [
+            {
+              id: '1',
+              name: 'GitHub',
+              account: 'user@example.com',
+              secret: 'JBSWY3DPEHPK3PXP',
+              type: 'TOTP'
+            }
+          ]
+        }),
+        {
+          metadata: {
+            created: '2026-04-15T00:00:00.000Z',
+            format: 'json',
+            count: 1,
+            encrypted: false,
+            version: 2,
+            skippedInvalidCount: 1
+          }
+        }
+      );
+
+      const previewResp = await handleRestoreBackup(createMockRequest({
+        backupKey,
+        preview: true
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const previewData = await previewResp.json();
+
+      expect(previewResp.status).toBe(200);
+      expect(previewData.data.partial).toBe(true);
+      expect(previewData.data.skippedInvalidCount).toBe(1);
+      expect(previewData.data.warnings[0]).toContain('已跳过 1 条无效密钥');
+
+      const restoreResp = await handleRestoreBackup(createMockRequest({
+        backupKey,
+        preview: false
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const restoreData = await restoreResp.json();
+
+      expect(restoreResp.status).toBe(400);
+      expect(restoreData.error).toContain('备份不完整');
+    });
+
+    it('should keep partial HTML backups blocked even when the embedded JSON is removed', async () => {
+      const env = createMockEnv();
+      const entry = await createBackupEntry([
+        {
+          id: '1',
+          name: 'GitHub',
+          account: 'user@example.com',
+          secret: 'JBSWY3DPEHPK3PXP',
+          type: 'TOTP'
+        },
+        {
+          id: '2',
+          name: 'Broken',
+          account: 'broken@example.com',
+          secret: '   ',
+          type: 'TOTP'
+        }
+      ], {}, {
+        format: 'html',
+        reason: 'scheduled',
+        strict: false
+      });
+
+      const damagedHtml = String(entry.backupContent)
+        .replace(/<script id="__2fa_backup_data__"[\s\S]*?<\/script>/i, '')
+        .replace(/<meta[^>]*name="2fa-backup-meta"[^>]*>/i, '')
+        .replace(/\sdata-skipped-invalid-count="\d+"/gi, '')
+        .replace(/<p class="partial-warning">[\s\S]*?<\/p>/i, '')
+        .replace('</tbody>', '<tr><td>Broken</td><td></td><td></td></tr></tbody>');
+      const metadataWithoutPartial = { ...entry.metadata };
+      delete metadataWithoutPartial.skippedInvalidCount;
+
+      await env.SECRETS_KV.put(entry.backupKey, damagedHtml, {
+        metadata: metadataWithoutPartial
+      });
+
+      const previewResp = await handleRestoreBackup(createMockRequest({
+        backupKey: entry.backupKey,
+        preview: true
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const previewData = await previewResp.json();
+
+      expect(previewResp.status).toBe(200);
+      expect(previewData.data.format).toBe('html');
+      expect(previewData.data.partial).toBe(true);
+      expect(previewData.data.skippedInvalidCount).toBe(1);
+
+      const restoreResp = await handleRestoreBackup(createMockRequest({
+        backupKey: entry.backupKey,
+        preview: false
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const restoreData = await restoreResp.json();
+
+      expect(restoreResp.status).toBe(400);
+      expect(restoreData.error).toContain('备份不完整');
     });
   });
 
@@ -968,6 +2837,98 @@ describe('Backup API Module', () => {
       expect(data.message).toContain('未配置 ENCRYPTION_KEY');
     });
 
+    it('应该拒绝导出创建阶段已跳过无效密钥的不完整备份', async () => {
+      const env = createMockEnv();
+      const backupKey = 'backup_2026-04-15_00-00-00-000-partial.json';
+
+      await env.SECRETS_KV.put(
+        backupKey,
+        JSON.stringify({
+          timestamp: '2026-04-15T00:00:00.000Z',
+          version: '1.0',
+          count: 1,
+          secrets: [
+            {
+              id: '1',
+              name: 'GitHub',
+              account: 'user@example.com',
+              secret: 'JBSWY3DPEHPK3PXP',
+              type: 'TOTP'
+            }
+          ]
+        }),
+        {
+          metadata: {
+            created: '2026-04-15T00:00:00.000Z',
+            format: 'json',
+            count: 1,
+            encrypted: false,
+            version: 2,
+            skippedInvalidCount: 1
+          }
+        }
+      );
+
+      const exportResp = await handleExportBackup(
+        createMockRequest({}, 'GET', `https://example.com/api/backup/export/${backupKey}`, { format: 'json' }),
+        env,
+        backupKey
+      );
+      const exportData = await exportResp.json();
+
+      expect(exportResp.status).toBe(400);
+      expect(exportData.error).toContain('备份不完整');
+      expect(exportData.message).toContain('已跳过 1 条无效密钥');
+    });
+
+    it('should reject exporting partial HTML backups when only the portable metadata survives', async () => {
+      const env = createMockEnv();
+      const entry = await createBackupEntry([
+        {
+          id: '1',
+          name: 'GitHub',
+          account: 'user@example.com',
+          secret: 'JBSWY3DPEHPK3PXP',
+          type: 'TOTP'
+        },
+        {
+          id: '2',
+          name: 'Broken',
+          account: 'broken@example.com',
+          secret: '   ',
+          type: 'TOTP'
+        }
+      ], {}, {
+        format: 'html',
+        reason: 'scheduled',
+        strict: false
+      });
+
+      const damagedHtml = String(entry.backupContent)
+        .replace(/<script id="__2fa_backup_data__"[\s\S]*?<\/script>/i, '')
+        .replace(/<meta[^>]*name="2fa-backup-meta"[^>]*>/i, '')
+        .replace(/\sdata-skipped-invalid-count="\d+"/gi, '')
+        .replace(/<p class="partial-warning">[\s\S]*?<\/p>/i, '')
+        .replace('</tbody>', '<tr><td>Broken</td><td></td><td></td></tr></tbody>');
+      const metadataWithoutPartial = { ...entry.metadata };
+      delete metadataWithoutPartial.skippedInvalidCount;
+
+      await env.SECRETS_KV.put(entry.backupKey, damagedHtml, {
+        metadata: metadataWithoutPartial
+      });
+
+      const exportResp = await handleExportBackup(
+        createMockRequest({}, 'GET', `https://example.com/api/backup/export/${entry.backupKey}`, { format: 'json' }),
+        env,
+        entry.backupKey
+      );
+      const exportData = await exportResp.json();
+
+      expect(exportResp.status).toBe(400);
+      expect(exportData.error).toContain('备份不完整');
+      expect(exportData.message).toContain('已跳过 1 条无效密钥');
+    });
+
     it('应该按服务名称排序导出结果', async () => {
       const env = createMockEnv();
 
@@ -1048,7 +3009,7 @@ describe('Backup API Module', () => {
       expect(restoreData.count).toBe(2);
 
       // 6. 导出备份为多种格式
-      const formats = ['txt', 'json', 'csv'];
+      const formats = ['txt', 'json', 'csv', 'html'];
       for (const format of formats) {
         const exportReq = createMockRequest({}, 'GET',
           `https://example.com/api/backup/export/${backupData.backupKey}`, { format });
@@ -1164,5 +3125,379 @@ describe('Backup API Module', () => {
       const data = await response.json();
       expect(data.error).toContain('解析失败');
     });
+  });
+});
+
+describe('Backup auto-backup resilience', () => {
+  it('keeps event-driven backups running when invalid secrets are present', async () => {
+    const env = createMockEnv();
+
+    await saveSecretsToKV(env, [
+      {
+        id: '1',
+        name: 'GitHub',
+        account: 'user@example.com',
+        secret: 'JBSWY3DPEHPK3PXP',
+        type: 'TOTP'
+      },
+      {
+        id: '2',
+        name: 'Broken entry',
+        account: 'broken@example.com',
+        secret: '   ',
+        type: 'TOTP'
+      }
+    ], 'test');
+
+    const backupKeys = Array.from(env.SECRETS_KV.store.keys()).filter((key) => key.startsWith('backup_'));
+    expect(backupKeys).toHaveLength(1);
+
+    const backupKey = backupKeys[0];
+    const metadata = env.SECRETS_KV.metadata.get(backupKey);
+    expect(metadata.skippedInvalidCount).toBe(1);
+
+    const previewResp = await handleRestoreBackup(createMockRequest({
+      backupKey,
+      preview: true
+    }, 'POST', 'https://example.com/api/backup/restore'), env);
+    const previewData = await previewResp.json();
+
+    expect(previewResp.status).toBe(200);
+    expect(previewData.data.count).toBe(1);
+    expect(previewData.data.secrets[0].name).toBe('GitHub');
+    expect(await env.SECRETS_KV.get('last_backup_hash')).toBeNull();
+
+    await worker.scheduled({ cron: '0 0 * * *' }, env, { waitUntil: vi.fn() });
+
+    const backupKeysAfterScheduled = Array.from(env.SECRETS_KV.store.keys()).filter(
+      (key) => key.startsWith('backup_') && key !== 'backup_index_state_v1'
+    );
+    expect(backupKeysAfterScheduled).toHaveLength(2);
+    expect(await env.SECRETS_KV.get('last_backup_hash')).toBeNull();
+  });
+
+  it('waits for immediate backups even when a request context is available', async () => {
+    const env = createMockEnv();
+    const originalPut = env.SECRETS_KV.put.bind(env.SECRETS_KV);
+    let releaseBackupWrite;
+    let backupWriteStarted = false;
+
+    env.SECRETS_KV.put = vi.fn(async (key, value, options = {}) => {
+      if (String(key).startsWith('backup_') && !String(key).startsWith('backupidx_')) {
+        backupWriteStarted = true;
+        await new Promise((resolve) => {
+          releaseBackupWrite = resolve;
+        });
+      }
+
+      return originalPut(key, value, options);
+    });
+
+    const ctx = { waitUntil: vi.fn() };
+    let resolved = false;
+    const savePromise = saveSecretsToKV(env, [
+      {
+        id: '1',
+        name: 'Immediate',
+        account: 'user@example.com',
+        secret: 'JBSWY3DPEHPK3PXP',
+        type: 'TOTP'
+      }
+    ], 'backup-restored', { immediate: true }, ctx).then(() => {
+      resolved = true;
+    });
+
+    await waitForCondition(() => backupWriteStarted === true);
+
+    expect(backupWriteStarted).toBe(true);
+    expect(resolved).toBe(false);
+    expect(ctx.waitUntil).not.toHaveBeenCalled();
+
+    releaseBackupWrite();
+    await savePromise;
+
+    const backupKeys = Array.from(env.SECRETS_KV.store.keys()).filter((key) => key.startsWith('backup_'));
+    expect(backupKeys).toHaveLength(1);
+  });
+
+  it('preserves queued immediate backups when a newer deferred backup arrives before the current write finishes', async () => {
+    const env = createMockEnv();
+    const originalPut = env.SECRETS_KV.put.bind(env.SECRETS_KV);
+    let releaseFirstBackupWrite;
+    let backupWriteCount = 0;
+
+    env.SECRETS_KV.put = vi.fn(async (key, value, options = {}) => {
+      if (String(key).startsWith('backup_') && !String(key).startsWith('backupidx_')) {
+        backupWriteCount += 1;
+        if (backupWriteCount === 1) {
+          await new Promise((resolve) => {
+            releaseFirstBackupWrite = resolve;
+          });
+        }
+      }
+
+      return originalPut(key, value, options);
+    });
+
+    const firstCtx = { waitUntil: vi.fn() };
+    const restoreCtx = { waitUntil: vi.fn() };
+    const laterCtx = { waitUntil: vi.fn() };
+
+    await saveSecretsToKV(env, [
+      {
+        id: '1',
+        name: 'Initial snapshot',
+        account: 'initial@example.com',
+        secret: 'JBSWY3DPEHPK3PXP',
+        type: 'TOTP'
+      }
+    ], 'secret-added', {}, firstCtx);
+
+    await waitForCondition(() => typeof releaseFirstBackupWrite === 'function');
+
+    const restorePromise = saveSecretsToKV(env, [
+      {
+        id: '2',
+        name: 'Restored snapshot',
+        account: 'restored@example.com',
+        secret: 'NB2W45DFOIZA====',
+        type: 'TOTP'
+      }
+    ], 'backup-restored', { immediate: true }, restoreCtx);
+
+    await waitForTick();
+
+    await saveSecretsToKV(env, [
+      {
+        id: '3',
+        name: 'Later deferred snapshot',
+        account: 'later@example.com',
+        secret: 'ONSWG4TFOQ======',
+        type: 'TOTP'
+      }
+    ], 'secret-added', {}, laterCtx);
+
+    expect(restoreCtx.waitUntil).not.toHaveBeenCalled();
+    expect(firstCtx.waitUntil).toHaveBeenCalledTimes(1);
+    expect(laterCtx.waitUntil).toHaveBeenCalledTimes(1);
+
+    releaseFirstBackupWrite();
+    await Promise.all([
+      firstCtx.waitUntil.mock.calls[0][0],
+      restorePromise,
+      laterCtx.waitUntil.mock.calls[0][0]
+    ]);
+
+    const backupKeys = Array.from(env.SECRETS_KV.store.keys())
+      .filter((key) => key.startsWith('backup_'))
+      .sort();
+
+    expect(backupKeys).toHaveLength(3);
+
+    const previewedBackupNames = [];
+    for (const backupKey of backupKeys) {
+      const previewResponse = await handleRestoreBackup(createMockRequest({
+        backupKey,
+        preview: true
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const previewData = await previewResponse.json();
+      previewedBackupNames.push(previewData.data.secrets[0].name);
+    }
+
+    expect(previewedBackupNames).toHaveLength(3);
+    expect(previewedBackupNames).toEqual(expect.arrayContaining([
+      'Initial snapshot',
+      'Restored snapshot',
+      'Later deferred snapshot'
+    ]));
+  });
+
+  it('does not update the backup hash before a deferred backup succeeds', async () => {
+    const env = createMockEnv();
+    const originalPut = env.SECRETS_KV.put.bind(env.SECRETS_KV);
+    let releaseBackupWrite;
+
+    env.SECRETS_KV.put = vi.fn(async (key, value, options = {}) => {
+      if (String(key).startsWith('backup_') && !String(key).startsWith('backupidx_')) {
+        await new Promise((resolve) => {
+          releaseBackupWrite = resolve;
+        });
+      }
+
+      return originalPut(key, value, options);
+    });
+
+    const ctx = { waitUntil: vi.fn() };
+    await saveSecretsToKV(env, [
+      {
+        id: '1',
+        name: 'Deferred',
+        account: 'user@example.com',
+        secret: 'JBSWY3DPEHPK3PXP',
+        type: 'TOTP'
+      }
+    ], 'secret-added', {}, ctx);
+
+    expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+    expect(await env.SECRETS_KV.get('last_backup_hash')).toBeNull();
+
+    await waitForCondition(() => typeof releaseBackupWrite === 'function');
+    releaseBackupWrite();
+    await ctx.waitUntil.mock.calls[0][0];
+
+    expect(await env.SECRETS_KV.get('last_backup_hash')).toBeTruthy();
+  });
+
+  it('does not treat a committed partial deferred backup as satisfying the pending backup hash', async () => {
+    const env = createMockEnv();
+    const ctx = { waitUntil: vi.fn() };
+
+    await saveSecretsToKV(env, [
+      {
+        id: '1',
+        name: 'Valid deferred secret',
+        account: 'user@example.com',
+        secret: 'JBSWY3DPEHPK3PXP',
+        type: 'TOTP'
+      },
+      {
+        id: '2',
+        name: 'Broken deferred secret',
+        account: 'broken@example.com',
+        secret: '   ',
+        type: 'TOTP'
+      }
+    ], 'secret-added', {}, ctx);
+
+    expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+    await ctx.waitUntil.mock.calls[0][0];
+
+    const listBackupKeys = () => Array.from(env.SECRETS_KV.store.keys()).filter(
+      (key) => key.startsWith('backup_') && key !== 'backup_index_state_v1'
+    );
+
+    expect(listBackupKeys()).toHaveLength(1);
+    expect(await env.SECRETS_KV.get('last_backup_hash')).toBeNull();
+    expect(await env.SECRETS_KV.get('pending_backup_hash')).toBeTruthy();
+
+    await worker.scheduled({ cron: '0 0 * * *' }, env, { waitUntil: vi.fn() });
+
+    expect(listBackupKeys()).toHaveLength(2);
+    expect(await env.SECRETS_KV.get('last_backup_hash')).toBeNull();
+  });
+
+  it('creates a scheduled backup when a matching deferred backup is still pending but no backup has been committed yet', async () => {
+    const env = createMockEnv();
+    const originalPut = env.SECRETS_KV.put.bind(env.SECRETS_KV);
+    let releaseBackupWrite;
+    let backupWriteCount = 0;
+
+    env.SECRETS_KV.put = vi.fn(async (key, value, options = {}) => {
+      if (String(key).startsWith('backup_') && !String(key).startsWith('backupidx_')) {
+        backupWriteCount += 1;
+        if (backupWriteCount === 1) {
+          await new Promise((resolve) => {
+            releaseBackupWrite = resolve;
+          });
+        }
+      }
+
+      return originalPut(key, value, options);
+    });
+
+    const eventCtx = { waitUntil: vi.fn() };
+    await saveSecretsToKV(env, [
+      {
+        id: '1',
+        name: 'Pending event backup',
+        account: 'user@example.com',
+        secret: 'JBSWY3DPEHPK3PXP',
+        type: 'TOTP'
+      }
+    ], 'secret-added', {}, eventCtx);
+
+    expect(eventCtx.waitUntil).toHaveBeenCalledTimes(1);
+    expect(await env.SECRETS_KV.get('last_backup_hash')).toBeNull();
+    await waitForCondition(() => typeof releaseBackupWrite === 'function');
+
+    const cronCtx = { waitUntil: vi.fn() };
+    await worker.scheduled({ cron: '0 0 * * *' }, env, cronCtx);
+
+    expect(cronCtx.waitUntil).toHaveBeenCalled();
+    expect(Array.from(env.SECRETS_KV.store.keys()).filter((key) => key.startsWith('backup_'))).toHaveLength(1);
+    expect(await env.SECRETS_KV.get('last_backup_hash')).toBeTruthy();
+
+    releaseBackupWrite();
+    await eventCtx.waitUntil.mock.calls[0][0];
+
+    expect(Array.from(env.SECRETS_KV.store.keys()).filter((key) => key.startsWith('backup_'))).toHaveLength(2);
+    expect(await env.SECRETS_KV.get('last_backup_hash')).toBeTruthy();
+  });
+
+  it('keeps the previous backup hash when a deferred backup fails', async () => {
+    const env = createMockEnv();
+    const originalPut = env.SECRETS_KV.put.bind(env.SECRETS_KV);
+
+    env.SECRETS_KV.put = vi.fn(async (key, value, options = {}) => {
+      if (String(key).startsWith('backup_') && !String(key).startsWith('backupidx_')) {
+        throw new Error('backup write failed');
+      }
+
+      return originalPut(key, value, options);
+    });
+
+    const ctx = { waitUntil: vi.fn() };
+    await saveSecretsToKV(env, [
+      {
+        id: '1',
+        name: 'Failed backup',
+        account: 'user@example.com',
+        secret: 'JBSWY3DPEHPK3PXP',
+        type: 'TOTP'
+      }
+    ], 'secret-added', {}, ctx);
+
+    expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+    await ctx.waitUntil.mock.calls[0][0];
+    expect(await env.SECRETS_KV.get('last_backup_hash')).toBeNull();
+  });
+});
+
+describe('Backup HTML export regression', () => {
+  it('exports HTML backups through the export API', async () => {
+    const env = createMockEnv();
+
+    await saveSecretsToKV(env, [
+      {
+        id: '1',
+        name: 'GitHub',
+        account: 'user@example.com',
+        secret: 'JBSWY3DPEHPK3PXP',
+        type: 'TOTP'
+      }
+    ], 'test');
+
+    const backupReq = createMockRequest();
+    const backupResp = await handleBackupSecrets(backupReq, env);
+    const backupData = await backupResp.json();
+
+    const exportReq = createMockRequest(
+      {},
+      'GET',
+      `https://example.com/api/backup/export/${backupData.backupKey}`,
+      { format: 'html' }
+    );
+
+    const response = await handleExportBackup(exportReq, env, backupData.backupKey);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toContain('text/html');
+
+    const content = await response.text();
+    expect(content).toContain('<!DOCTYPE html>');
+    expect(content).toContain('GitHub');
+    expect(content).toContain('二维码');
+    expect(content).toContain('<img src="data:image/svg+xml;base64,');
+    expect(content).toContain('__2fa_backup_data__');
   });
 });

@@ -10,7 +10,38 @@
 export function getExportCode() {
 	return `    // ========== 导出模块 ==========
 
+    function getSavedDefaultExportFormat() {
+      return getCachedDefaultExportFormat();
+    }
+
+    function getDefaultExportFormatLabel(format) {
+      const labels = {
+        txt: 'TXT',
+        json: 'JSON',
+        csv: 'CSV',
+        html: 'HTML'
+      };
+      return labels[format] || format.toUpperCase();
+    }
+
+    function updateDefaultExportButton(format = getSavedDefaultExportFormat()) {
+      const defaultBtn = document.getElementById('exportUseDefaultBtn');
+      if (!defaultBtn) {
+        return;
+      }
+
+      defaultBtn.textContent = '按默认格式导出 (' + getDefaultExportFormatLabel(format) + ')';
+      defaultBtn.disabled = false;
+    }
+
     // 导出所有密钥 - 显示格式选择
+    async function syncDefaultExportButton() {
+      updateDefaultExportButton();
+      const format = await getServerDefaultExportFormat({ forceRefresh: true });
+      updateDefaultExportButton(format);
+      return format;
+    }
+
     function exportAllSecrets() {
       if (secrets.length === 0) {
         showCenterToast('❌', '没有密钥可以导出');
@@ -26,12 +57,18 @@ export function getExportCode() {
       showModal('exportFormatModal', () => {
         const exportCount = document.getElementById('exportCount');
         exportCount.textContent = secrets.length;
+        syncDefaultExportButton();
       });
     }
 
     // 隐藏导出格式选择模态框
     function hideExportFormatModal() {
       hideModal('exportFormatModal');
+    }
+
+    async function exportUsingDefaultFormat() {
+      const format = await getServerDefaultExportFormat({ forceRefresh: true });
+      selectExportFormat(format);
     }
 
     // ==================== 二级格式选择配置 ====================
@@ -272,16 +309,16 @@ export function getExportCode() {
 
       switch(format) {
         case 'txt':
-          exportAsOTPAuth(secretsData, opts);
+          await exportStandardFormatViaApi(secretsData, format, opts);
           break;
         case 'json':
-          exportAsJSON(secretsData, opts);
+          await exportStandardFormatViaApi(secretsData, format, opts);
           break;
         case 'csv':
-          exportAsCSV(secretsData, opts);
+          await exportStandardFormatViaApi(secretsData, format, opts);
           break;
         case 'html':
-          await exportAsHTML(secretsData, opts);
+          await exportStandardFormatViaApi(secretsData, format, opts);
           break;
         case 'google':
           // Google Authenticator 导出使用专门的模态框
@@ -348,30 +385,158 @@ export function getExportCode() {
     }
 
     // 导出为 OTPAuth 文本格式
+    async function exportStandardFormatLocally(sortedSecrets, format, options = {}) {
+      switch (format) {
+        case 'txt':
+          await exportAsOTPAuth(sortedSecrets, {
+            ...options,
+            formatName: 'otpauth'
+          });
+          return;
+        case 'json':
+          await exportAsJSON(sortedSecrets, options);
+          return;
+        case 'csv':
+          await exportAsCSV(sortedSecrets, options);
+          return;
+        case 'html':
+          await exportAsHTML(sortedSecrets, options);
+          return;
+        default:
+          throw new Error('Unsupported export format');
+      }
+    }
+
+    function shouldFallbackToLocalStandardExport(responseStatus, errorData) {
+      return responseStatus === 413 || Boolean(errorData && errorData.offline === true);
+    }
+
+    async function exportStandardFormatViaApi(sortedSecrets, format, options = {}) {
+      const fallbackToLocalExport = async (reasonMessage) => {
+        console.warn('Export API unavailable, falling back to local export:', reasonMessage);
+        showCenterToast('⚠️', reasonMessage);
+        await exportStandardFormatLocally(sortedSecrets, format, options);
+      };
+
+      try {
+        showCenterToast('INFO', 'Preparing export file...');
+
+        const response = await authenticatedFetch('/api/secrets/export', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            format: format,
+            filenamePrefix: options.filenamePrefix || '2FA-secrets',
+            metadata: options.metadata || {},
+            secrets: sortedSecrets
+          })
+        });
+
+        if (response.status === 202) {
+          let errorMessage = 'Export requires an online connection';
+          try {
+            const queuedData = await response.clone().json();
+            if (queuedData && queuedData.offline) {
+              errorMessage = queuedData.message || queuedData.detail || errorMessage;
+            }
+          } catch {
+            // ignore non-JSON queued responses
+          }
+          throw new Error(errorMessage);
+        }
+
+        if (response.status !== 200) {
+          let errorMessage = 'Export failed';
+          let errorData = null;
+
+          try {
+            errorData = await response.json();
+            errorMessage = errorData.message || errorData.error || errorMessage;
+          } catch {
+            // ignore non-JSON error responses
+          }
+
+          if (shouldFallbackToLocalStandardExport(response.status, errorData)) {
+            const fallbackMessage = response.status === 413
+              ? '导出内容较大，已切换为本地兼容导出'
+              : '当前离线，已切换为本地兼容导出';
+            await fallbackToLocalExport(fallbackMessage);
+            return;
+          }
+
+          throw new Error(errorMessage);
+        }
+
+        const contentDisposition = response.headers.get('Content-Disposition');
+        if (!contentDisposition) {
+          throw new Error('Export failed: server did not return a downloadable file');
+        }
+
+        let filename = (options.filenamePrefix || '2FA-secrets') + '-' + format + '-' + getDateString();
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+          if (filenameMatch) {
+            filename = filenameMatch[1];
+          }
+        }
+
+        const blob = await response.blob();
+        const saved = await downloadFile(blob, filename, blob.type || response.headers.get('Content-Type') || 'application/octet-stream');
+        if (saved) {
+          const formatNames = {
+            txt: 'OTPAuth TXT',
+            json: 'JSON',
+            csv: 'CSV',
+            html: 'HTML'
+          };
+          showExportSuccess(sortedSecrets.length, formatNames[format] || format.toUpperCase());
+        }
+      } catch (error) {
+        const errorMessage = error && error.message ? error.message : 'Export failed';
+        const isNetworkFailure = error && (error.name === 'TypeError' || /Failed to fetch|NetworkError/i.test(errorMessage));
+
+        if (isNetworkFailure) {
+          await fallbackToLocalExport('当前无法连接在线导出服务，已切换为本地兼容导出');
+          return;
+        }
+
+        console.error('Export failed:', error);
+        showCenterToast('ERR', 'Export failed: ' + errorMessage);
+      }
+    }
+
+    function buildLocalOTPAuthUrl(secret) {
+      const serviceName = String(secret.name || 'Unknown').trim() || 'Unknown';
+      const accountName = secret.account ? String(secret.account).trim() : '';
+      const type = String(secret.type || 'TOTP').toUpperCase() === 'HOTP' ? 'HOTP' : 'TOTP';
+      const label = accountName
+        ? encodeURIComponent(serviceName) + ':' + encodeURIComponent(accountName)
+        : encodeURIComponent(serviceName);
+      const params = new URLSearchParams({
+        secret: String(secret.secret || '').replace(/[\\s\\-+]/g, '').toUpperCase(),
+        digits: String(secret.digits || 6),
+        algorithm: String(secret.algorithm || 'SHA1').toUpperCase()
+      });
+
+      if (serviceName) {
+        params.set('issuer', serviceName);
+      }
+
+      if (type === 'HOTP') {
+        params.set('counter', String(secret.counter || 0));
+        return 'otpauth://hotp/' + label + '?' + params.toString();
+      }
+
+      params.set('period', String(secret.period || 30));
+      return 'otpauth://totp/' + label + '?' + params.toString();
+    }
+
     async function exportAsOTPAuth(sortedSecrets, options = {}) {
       const filenamePrefix = options.filenamePrefix || '2FA-secrets';
       const formatName = options.formatName || 'otpauth';  // 格式标识，默认 'otpauth'
-      const otpauthUrls = sortedSecrets.map(secret => {
-        const serviceName = secret.name.trim();
-        const accountName = secret.account ? secret.account.trim() : '';
-
-        let label;
-        if (accountName) {
-          label = encodeURIComponent(serviceName) + ':' + encodeURIComponent(accountName);
-        } else {
-          label = encodeURIComponent(serviceName);
-        }
-
-        const params = new URLSearchParams({
-          secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
-          digits: (secret.digits || 6).toString(),
-          period: (secret.period || 30).toString(),
-          algorithm: secret.algorithm || 'SHA1',
-          issuer: serviceName
-        });
-
-        return 'otpauth://totp/' + label + '?' + params.toString();
-      });
+      const otpauthUrls = sortedSecrets.map(secret => buildLocalOTPAuthUrl(secret));
 
       const content = otpauthUrls.join('\\n');
       const saved = await downloadFile(content, filenamePrefix + '-' + formatName + '-' + getDateString() + '.txt', 'text/plain;charset=utf-8');
@@ -450,177 +615,6 @@ export function getExportCode() {
       }
     }
 
-    // 导出为 HTML 格式（包含二维码）- 优化版：并发生成二维码
-    async function exportAsHTML(sortedSecrets, options = {}) {
-      const filenamePrefix = options.filenamePrefix || '2FA-secrets';
-      const metadata = options.metadata || {};
-
-      try {
-        // 等待二维码库加载
-        await waitForQRCodeLibrary();
-
-        // 步骤1: 准备所有数据和otpauth URLs
-        showCenterToast('📋', '正在准备数据...');
-
-        const secretsData = sortedSecrets.map(secret => {
-          const serviceName = secret.name.trim();
-          const accountName = secret.account ? secret.account.trim() : '';
-
-          // 生成 otpauth URL
-          let label;
-          if (accountName) {
-            label = encodeURIComponent(serviceName) + ':' + encodeURIComponent(accountName);
-          } else {
-            label = encodeURIComponent(serviceName);
-          }
-
-          const params = new URLSearchParams({
-            secret: secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase(),
-            digits: (secret.digits || 6).toString(),
-            period: (secret.period || 30).toString(),
-            algorithm: secret.algorithm || 'SHA1',
-            issuer: serviceName
-          });
-
-          const otpauthUrl = 'otpauth://totp/' + label + '?' + params.toString();
-
-          return {
-            serviceName,
-            accountName,
-            secret,
-            otpauthUrl
-          };
-        });
-
-        // 步骤2: 并发生成二维码（分批处理避免浏览器崩溃）
-        const BATCH_SIZE = 10; // 每批处理10个
-        const qrDataUrls = [];
-        const totalCount = secretsData.length;
-
-        for (let i = 0; i < secretsData.length; i += BATCH_SIZE) {
-          const batch = secretsData.slice(i, i + BATCH_SIZE);
-          const currentBatch = Math.floor(i / BATCH_SIZE) + 1;
-          const totalBatches = Math.ceil(totalCount / BATCH_SIZE);
-
-          showCenterToast('⏳', '正在生成二维码... (' + (i + batch.length) + '/' + totalCount + ')');
-
-          // 并发生成当前批次的二维码
-          const batchQrUrls = await Promise.all(
-            batch.map(data => generateQRCodeDataURL(data.otpauthUrl))
-          );
-
-          qrDataUrls.push(...batchQrUrls);
-        }
-
-        // 步骤3: 构建HTML
-        showCenterToast('🔨', '正在生成HTML文件...');
-
-        const htmlParts = [];
-
-        // HTML头部 - 参考Aegis简洁风格 + 现代化设计
-        htmlParts.push('<!DOCTYPE html>\\n' +
-          '<html lang="zh-CN">\\n' +
-          '<head>\\n' +
-          '  <meta charset="UTF-8">\\n' +
-          '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\\n' +
-          '  <meta name="robots" content="noindex, nofollow">\\n' +
-          '  <meta name="googlebot" content="noindex, nofollow">\\n' +
-          '  <title>2FA 密钥导出 - ' + getDateString() + '</title>\\n' +
-          '  <style>\\n' +
-          '    * { margin: 0; padding: 0; box-sizing: border-box; }\\n' +
-          '    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; background: #f5f6fa; padding: 20px; }\\n' +
-          '    .container { max-width: 95%; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 30px; }\\n' +
-          '    h1 { color: #2d3748; margin-bottom: 8px; font-size: 26px; font-weight: 700; }\\n' +
-          '    .meta { color: #718096; font-size: 14px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e2e8f0; }\\n' +
-          '    table { width: 100%; border-collapse: collapse; margin-top: 10px; }\\n' +
-          '    thead th { background: #4a5568; color: white; padding: 12px 10px; text-align: left; font-weight: 600; font-size: 13px; }\\n' +
-          '    tbody tr { border-bottom: 1px solid #e2e8f0; }\\n' +
-          '    tbody tr:hover { background: #f7fafc; }\\n' +
-          '    tbody tr:nth-child(even) { background: #fafafa; }\\n' +
-          '    tbody tr:nth-child(even):hover { background: #f0f4f8; }\\n' +
-          '    td { padding: 12px 10px; font-size: 13px; color: #2d3748; vertical-align: middle; }\\n' +
-          '    .service { font-weight: 600; color: #2b6cb0; }\\n' +
-          '    .account { color: #4a5568; }\\n' +
-          '    .secret { font-family: \\'Courier New\\', Consolas, monospace; font-size: 12px; word-break: break-all; color: #2d3748; }\\n' +
-          '    .qr-cell { text-align: center; padding: 8px; }\\n' +
-          '    .qr-cell img { width: 100px; height: 100px; border: 1px solid #cbd5e0; border-radius: 4px; }\\n' +
-          '    .param { font-family: \\'Courier New\\', monospace; font-size: 12px; }\\n' +
-          '    .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #e2e8f0; text-align: center; color: #a0aec0; font-size: 12px; }\\n' +
-          '    @media print {\\n' +
-          '      body { background: white; padding: 0; }\\n' +
-          '      .container { box-shadow: none; max-width: 100%; }\\n' +
-          '      thead th { background: #2d3748 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }\\n' +
-          '      tbody tr:nth-child(even) { background: #f7f7f7 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }\\n' +
-          '      table { page-break-inside: auto; }\\n' +
-          '      tr { page-break-inside: avoid; page-break-after: auto; }\\n' +
-          '      .qr-cell img { width: 80px; height: 80px; }\\n' +
-          '    }\\n' +
-          '    @media screen and (max-width: 768px) {\\n' +
-          '      .container { padding: 15px; }\\n' +
-          '      th, td { padding: 8px 5px; font-size: 12px; }\\n' +
-          '      .qr-cell img { width: 80px; height: 80px; }\\n' +
-          '    }\\n' +
-          '  </style>\\n' +
-          '</head>\\n' +
-          '<body>\\n' +
-          '  <div class="container">\\n' +
-          '    <h1>🔐 2FA 密钥备份</h1>\\n' +
-          '    <div class="meta">\\n' +
-          '      📅 导出时间: ' + new Date().toLocaleString('zh-CN', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'}) + ' | ' +
-          '      📊 密钥数量: ' + sortedSecrets.length + ' 个\\n' +
-          '    </div>\\n' +
-          '    <table>\\n' +
-          '      <thead>\\n' +
-          '        <tr>\\n' +
-          '          <th style="width: 15%;">服务名称</th>\\n' +
-          '          <th style="width: 18%;">账户名称</th>\\n' +
-          '          <th style="width: 30%;">密钥</th>\\n' +
-          '          <th style="width: 8%;">类型</th>\\n' +
-          '          <th style="width: 7%;">位数</th>\\n' +
-          '          <th style="width: 7%;">周期</th>\\n' +
-          '          <th style="width: 7%;">算法</th>\\n' +
-          '          <th style="width: 8%;">二维码</th>\\n' +
-          '        </tr>\\n' +
-          '      </thead>\\n' +
-          '      <tbody>\\n');
-
-        // 为每个密钥生成表格行（使用已生成的二维码）
-        secretsData.forEach((data, index) => {
-          htmlParts.push('        <tr>\\n' +
-            '          <td class="service">' + escapeHTML(data.serviceName) + '</td>\\n' +
-            '          <td class="account">' + escapeHTML(data.accountName || '-') + '</td>\\n' +
-            '          <td class="secret">' + escapeHTML(data.secret.secret.replace(/[\\s\\-+]/g, '').toUpperCase()) + '</td>\\n' +
-            '          <td class="param">' + escapeHTML(data.secret.type || 'TOTP') + '</td>\\n' +
-            '          <td class="param">' + (data.secret.digits || 6) + '</td>\\n' +
-            '          <td class="param">' + (data.secret.period || 30) + '</td>\\n' +
-            '          <td class="param">' + escapeHTML(data.secret.algorithm || 'SHA1') + '</td>\\n' +
-            '          <td class="qr-cell"><img src="' + qrDataUrls[index] + '" alt="QR"></td>\\n' +
-            '        </tr>\\n');
-        });
-
-        // HTML尾部
-        htmlParts.push('      </tbody>\\n' +
-          '    </table>\\n' +
-          '    <div class="footer">\\n' +
-          '      Generated by <a href="https://github.com/wuzf" target="_blank" style="color: #4a90d9; text-decoration: none;">wuzf</a> | ' +
-          '      <a href="https://github.com/wuzf/2fa" target="_blank" style="color: #4a90d9; text-decoration: none;">2FA</a> | ' +
-          new Date().toISOString() + '\\n' +
-          '    </div>\\n' +
-          '  </div>\\n' +
-          '</body>\\n' +
-          '</html>');
-
-        const htmlContent = htmlParts.join('');
-        const saved = await downloadFile(htmlContent, filenamePrefix + '-backup-' + getDateString() + '.html', 'text/html;charset=utf-8');
-        if (saved) {
-          showExportSuccess(sortedSecrets.length, 'HTML 网页');
-        }
-      } catch (error) {
-        console.error('HTML导出失败:', error);
-        showCenterToast('❌', 'HTML导出失败：' + error.message);
-      }
-    }
-
     // ==================== 第三方验证器格式导出 ====================
 
     /**
@@ -628,6 +622,238 @@ export function getExportCode() {
      * @param {Array} sortedSecrets - 排序后的密钥数组
      * @param {Object} options - 导出选项
      */
+    async function exportAsHTML(sortedSecrets, options = {}) {
+      const filenamePrefix = options.filenamePrefix || '2FA-secrets';
+      const exportDate = new Date();
+      const exportTimestamp = exportDate.toISOString();
+      const MAX_EMBEDDED_QR_SECRETS = 250;
+      const shouldEmbedQRCodes = sortedSecrets.length <= MAX_EMBEDDED_QR_SECRETS;
+
+      try {
+        showCenterToast('📋', '正在准备数据...');
+
+        const invalidSecrets = [];
+        const secretsData = sortedSecrets.map((secret, index) => {
+          const normalizedSecret = String(secret.secret || '').replace(/[\\s\\-+]/g, '').toUpperCase();
+          if (!normalizedSecret || !validateBase32(normalizedSecret)) {
+            invalidSecrets.push({
+              index: index + 1,
+              name: String(secret.name || '').trim()
+            });
+            return null;
+          }
+
+          const serviceName = String(secret.name || 'Unknown').trim() || 'Unknown';
+          const accountName = secret.account ? String(secret.account).trim() : '';
+          const type = String(secret.type || 'TOTP').toUpperCase() === 'HOTP' ? 'HOTP' : 'TOTP';
+          const normalizedEntry = {
+            ...secret,
+            secret: normalizedSecret,
+            type,
+            digits: secret.digits || 6,
+            period: secret.period || 30,
+            algorithm: String(secret.algorithm || 'SHA1').toUpperCase(),
+            counter: secret.counter || 0
+          };
+          const label = accountName
+            ? encodeURIComponent(serviceName) + ':' + encodeURIComponent(accountName)
+            : encodeURIComponent(serviceName);
+
+          const params = new URLSearchParams({
+            secret: normalizedSecret,
+            digits: String(normalizedEntry.digits),
+            algorithm: normalizedEntry.algorithm,
+            issuer: serviceName
+          });
+
+          let otpauthUrl;
+          if (type === 'HOTP') {
+            params.set('counter', String(secret.counter || 0));
+            otpauthUrl = 'otpauth://hotp/' + label + '?' + params.toString();
+          } else {
+            params.set('period', String(secret.period || 30));
+            otpauthUrl = 'otpauth://totp/' + label + '?' + params.toString();
+          }
+
+          return {
+            serviceName,
+            accountName,
+            secret: normalizedEntry,
+            type,
+            otpauthUrl
+          };
+        }).filter(Boolean);
+        const skippedInvalidCount = invalidSecrets.length;
+
+        if (skippedInvalidCount > 0) {
+          const preview = invalidSecrets
+            .slice(0, 3)
+            .map(item => '第' + item.index + '条' + (item.name ? '（' + item.name + '）' : '') + '缺少有效密钥')
+            .join('；');
+          const remainingCount = skippedInvalidCount - Math.min(skippedInvalidCount, 3);
+          throw new Error(
+            '当前存在无效密钥，已阻止导出 HTML 备份：' +
+              preview +
+              (remainingCount > 0 ? '；另有' + remainingCount + '条' : '')
+          );
+        }
+
+        const embeddedPayload = escapeHTML(JSON.stringify({
+          version: '1.0',
+          format: 'html',
+          timestamp: exportTimestamp,
+          reason: options.source || 'export',
+          count: secretsData.length,
+          skippedInvalidCount: 0,
+          secrets: secretsData.map(data => ({
+            name: data.secret.name || 'Unknown',
+            account: data.secret.account || '',
+            secret: data.secret.secret,
+            type: data.secret.type,
+            digits: data.secret.digits,
+            period: data.secret.period,
+            algorithm: data.secret.algorithm,
+            counter: data.secret.counter || 0
+          }))
+        }, null, 2));
+
+        const qrDescription = shouldEmbedQRCodes
+          ? '每行二维码可直接扫码导入支持 OTPAuth 的验证器。'
+          : '当前导出共有 ' + sortedSecrets.length + ' 条密钥，超过 ' + MAX_EMBEDDED_QR_SECRETS + ' 条二维码内嵌上限，已保留完整可恢复数据和密钥表格，但未嵌入二维码。';
+        const formatLabel = shouldEmbedQRCodes ? 'HTML（含二维码）' : 'HTML（未嵌入二维码）';
+        const qrPlaceholder = '数量过多，未嵌入';
+        const qrDataUrls = [];
+
+        if (shouldEmbedQRCodes) {
+          await waitForQRCodeLibrary();
+
+          const BATCH_SIZE = 10;
+          const totalCount = secretsData.length;
+
+          for (let i = 0; i < secretsData.length; i += BATCH_SIZE) {
+            const batch = secretsData.slice(i, i + BATCH_SIZE);
+            showCenterToast('⏳', '正在生成二维码... (' + (i + batch.length) + '/' + totalCount + ')');
+
+            const batchQrUrls = await Promise.all(
+              batch.map(data => generateQRCodeDataURL(data.otpauthUrl))
+            );
+
+            qrDataUrls.push(...batchQrUrls);
+          }
+        } else {
+          showCenterToast('ℹ️', '密钥数量较多，HTML 将保留表格与可恢复数据，不嵌入二维码');
+        }
+
+        showCenterToast('🔨', '正在生成HTML文件...');
+
+        const rowsHtml = secretsData.map((data, index) => {
+          const qrCellHtml = shouldEmbedQRCodes
+            ? '<img src="' + qrDataUrls[index] + '" alt="QR for ' + escapeHTML(data.serviceName) + '">'
+            : '<span class="qr-placeholder">' + qrPlaceholder + '</span>';
+
+          return '        <tr>\\n' +
+            '          <td class="service">' + escapeHTML(data.serviceName) + '</td>\\n' +
+            '          <td class="account">' + escapeHTML(data.accountName || '') + '</td>\\n' +
+            '          <td><code>' + escapeHTML((data.secret.secret || '').replace(/[\\s\\-+]/g, '').toUpperCase()) + '</code></td>\\n' +
+            '          <td class="param">' + escapeHTML(data.type) + '</td>\\n' +
+            '          <td class="param">' + (data.secret.digits || 6) + '</td>\\n' +
+            '          <td class="param">' + (data.secret.period || 30) + '</td>\\n' +
+            '          <td class="param">' + escapeHTML((data.secret.algorithm || 'SHA1').toUpperCase()) + '</td>\\n' +
+            '          <td class="param">' + (data.secret.counter || 0) + '</td>\\n' +
+            '          <td class="qr-cell">' + qrCellHtml + '</td>\\n' +
+            '        </tr>\\n';
+        }).join('');
+
+        const htmlContent = '<!DOCTYPE html>\\n' +
+          '<html lang="zh-CN">\\n' +
+          '<head>\\n' +
+          '  <meta charset="UTF-8">\\n' +
+          '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\\n' +
+          '  <meta name="robots" content="noindex, nofollow">\\n' +
+          '  <meta name="googlebot" content="noindex, nofollow">\\n' +
+          '  <meta name="2fa-backup-meta" content="skippedInvalidCount=0">\\n' +
+          '  <title>2FA 密钥导出 - ' + getDateString() + '</title>\\n' +
+          '  <style>\\n' +
+          '    * { margin: 0; padding: 0; box-sizing: border-box; }\\n' +
+          '    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; background: #f5f6fa; padding: 20px; color: #1f2937; }\\n' +
+          '    .container { max-width: 96%; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 2px 16px rgba(15, 23, 42, 0.08); padding: 28px; }\\n' +
+          '    h1 { color: #0f172a; margin-bottom: 8px; font-size: 28px; font-weight: 700; }\\n' +
+          '    .meta { color: #475569; font-size: 14px; margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid #e2e8f0; }\\n' +
+          '    .meta p { margin: 6px 0; }\\n' +
+          '    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; }\\n' +
+          '    thead th { background: #e2e8f0; color: #0f172a; padding: 12px 10px; text-align: left; font-weight: 600; font-size: 13px; border: 1px solid #cbd5e1; }\\n' +
+          '    td { padding: 12px 10px; font-size: 13px; color: #1f2937; vertical-align: top; border: 1px solid #cbd5e1; }\\n' +
+          '    tbody tr:nth-child(even) { background: #f8fafc; }\\n' +
+          '    .service { font-weight: 600; color: #1d4ed8; }\\n' +
+          '    .account { color: #475569; }\\n' +
+          '    code { font-family: "Courier New", Consolas, monospace; font-size: 12px; word-break: break-all; }\\n' +
+          '    .param { font-family: "Courier New", Consolas, monospace; font-size: 12px; }\\n' +
+          '    .qr-cell { text-align: center; min-width: 120px; }\\n' +
+          '    .qr-cell img { width: 96px; height: 96px; display: block; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 6px; }\\n' +
+          '    .qr-placeholder { color: #64748b; font-size: 12px; }\\n' +
+          '    .footer { margin-top: 28px; padding-top: 16px; border-top: 1px solid #e2e8f0; text-align: center; color: #94a3b8; font-size: 12px; }\\n' +
+          '    @media print {\\n' +
+          '      body { background: white; padding: 0; }\\n' +
+          '      .container { box-shadow: none; max-width: 100%; padding: 0; }\\n' +
+          '      table { page-break-inside: auto; }\\n' +
+          '      tr { page-break-inside: avoid; page-break-after: auto; }\\n' +
+          '      .qr-cell img { width: 80px; height: 80px; }\\n' +
+          '    }\\n' +
+          '    @media screen and (max-width: 768px) {\\n' +
+          '      body { padding: 12px; }\\n' +
+          '      .container { padding: 16px; }\\n' +
+          '      th, td { padding: 8px 6px; font-size: 12px; }\\n' +
+          '      .qr-cell img { width: 72px; height: 72px; }\\n' +
+          '    }\\n' +
+          '  </style>\\n' +
+          '</head>\\n' +
+          '<body data-skipped-invalid-count="0">\\n' +
+          '  <div class="container">\\n' +
+          '    <h1>🔐 2FA 密钥备份</h1>\\n' +
+          '    <div class="meta">\\n' +
+          '      <p>📅 导出时间: ' + exportDate.toLocaleString('zh-CN', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'}) + '</p>\\n' +
+          '      <p>📊 密钥数量: ' + sortedSecrets.length + ' 个</p>\\n' +
+          '      <p>🧾 格式: ' + escapeHTML(formatLabel) + '</p>\\n' +
+          '      <p>' + escapeHTML(qrDescription) + '</p>\\n' +
+          '    </div>\\n' +
+          '    <table data-skipped-invalid-count="0">\\n' +
+          '      <thead>\\n' +
+          '        <tr>\\n' +
+          '          <th>服务名称</th>\\n' +
+          '          <th>账户名称</th>\\n' +
+          '          <th>密钥</th>\\n' +
+          '          <th>类型</th>\\n' +
+          '          <th>位数</th>\\n' +
+          '          <th>周期</th>\\n' +
+          '          <th>算法</th>\\n' +
+          '          <th>计数器</th>\\n' +
+          '          <th>二维码</th>\\n' +
+          '        </tr>\\n' +
+          '      </thead>\\n' +
+          '      <tbody>\\n' +
+                 rowsHtml +
+          '      </tbody>\\n' +
+          '    </table>\\n' +
+          '    <div class="footer">\\n' +
+          '      Generated by <a href="https://github.com/wuzf" target="_blank" style="color: #2563eb; text-decoration: none;">wuzf</a> | ' +
+          '      <a href="https://github.com/wuzf/2fa" target="_blank" style="color: #2563eb; text-decoration: none;">2FA</a> | ' +
+                 exportTimestamp + '\\n' +
+          '    </div>\\n' +
+          '    <script id="__2fa_backup_data__" type="application/json">' + embeddedPayload + '</script>\\n' +
+          '  </div>\\n' +
+          '</body>\\n' +
+          '</html>';
+
+        const saved = await downloadFile(htmlContent, filenamePrefix + '-backup-' + getDateString() + '.html', 'text/html;charset=utf-8');
+        if (saved) {
+          showExportSuccess(sortedSecrets.length, 'HTML 网页');
+        }
+      } catch (error) {
+        console.error('HTML导出失败:', error);
+        showCenterToast('❌', 'HTML导出失败: ' + error.message);
+      }
+    }
+
     async function exportAsAegis(sortedSecrets, options = {}) {
       const filenamePrefix = options.filenamePrefix || '2FA-secrets';
 

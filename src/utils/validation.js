@@ -253,8 +253,8 @@ export const restoreBackupSchema = new Schema({
 		type: 'string',
 		message: '备份键不能为空',
 		validator: (v) => {
-			if (!/^backup_\d{4}-\d{2}-\d{2}(?:_[\w-]+)?\.json$/.test(v)) {
-				return '备份文件名格式不正确，应为 backup_YYYY-MM-DD_HH-MM-SS-mmm-xxxx.json';
+			if (!/^backup_\d{4}-\d{2}-\d{2}(?:_[\w-]+)?\.(?:json|txt|csv|html)$/.test(v)) {
+				return '备份文件名格式不正确，应为 backup_YYYY-MM-DD_HH-MM-SS-mmm-xxxx.(json|txt|csv|html)';
 			}
 			return true;
 		},
@@ -357,6 +357,56 @@ export const s3ConfigSchema = new Schema({
 			return p ? p + '/' : '';
 		},
 	},
+});
+
+/**
+ * OAuth 网盘配置验证规则
+ */
+export const cloudDriveConfigSchema = new Schema({
+	id: { required: false, type: 'string' },
+	name: {
+		required: true,
+		type: 'string',
+		message: '目标名称不能为空',
+		transform: (v) => v.trim(),
+		validator: (v) => {
+			if (v.trim().length > 30) {
+				return `目标名称过长，最多支持30个字符（当前：${v.trim().length}）`;
+			}
+			return true;
+		},
+	},
+	folderPath: {
+		required: false,
+		type: 'string',
+		default: '/2FA-Backups',
+		transform: (v) => {
+			const normalized = (v || '/2FA-Backups').trim().replace(/\/+/g, '/').replace(/\/+$/, '');
+			return normalized.startsWith('/') ? normalized || '/' : '/' + normalized;
+		},
+		validator: (v) => {
+			const normalized = (v || '/2FA-Backups').trim().replace(/\/+/g, '/').replace(/\/+$/, '');
+			const finalPath = normalized.startsWith('/') ? normalized || '/' : '/' + normalized;
+
+			if (finalPath.length > 200) {
+				return '备份目录过长，最多支持 200 个字符';
+			}
+
+			const segments = finalPath.split('/').filter(Boolean);
+			if (segments.some((segment) => segment === '.' || segment === '..')) {
+				return '备份目录不能包含 "." 或 ".."';
+			}
+
+			return true;
+		},
+	},
+});
+
+/**
+ * 仅包含目标 ID 的验证规则
+ */
+export const destinationIdSchema = new Schema({
+	id: { required: true, type: 'string', message: '目标 ID 不能为空' },
 });
 
 /**
@@ -546,11 +596,6 @@ export function createSecretObject(
 		algorithm: algorithm.toUpperCase(),
 		counter: normalizedType === 'HOTP' ? parseInt(counter) : undefined,
 	};
-
-	// 如果是新建密钥，添加创建时间
-	if (!existingId) {
-		secretObject.createdAt = new Date().toISOString();
-	}
 
 	return secretObject;
 }

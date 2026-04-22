@@ -880,13 +880,20 @@ Strong!Password123
 
 ## 环境配置
 
-### 环境变量（Secrets）
+### 环境变量（Variables / Secrets）
 
-| 变量名           | 必需 | 说明                              | 生成方法                                                                      |
-| ---------------- | ---- | --------------------------------- | ----------------------------------------------------------------------------- |
-| `ENCRYPTION_KEY` | 推荐 | AES-GCM 256位加密密钥             | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
-| `LOG_LEVEL`      | ❌   | 日志级别（DEBUG/INFO/WARN/ERROR） | 默认 `INFO`                                                                   |
-| `SENTRY_DSN`     | ❌   | Sentry 错误追踪 DSN               | 从 Sentry 获取                                                                |
+| 变量名                       | 必需 | 说明                                             | 生成方法 / 来源                                                               |
+| ---------------------------- | ---- | ------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `ENCRYPTION_KEY`             | 推荐 | AES-GCM 256位加密密钥                            | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
+| `ONEDRIVE_CLIENT_ID`         | 按需 | OneDrive OAuth 客户端 ID                         | Microsoft Entra 应用注册                                                      |
+| `ONEDRIVE_CLIENT_SECRET`     | 按需 | OneDrive OAuth 客户端密钥                        | Microsoft Entra 应用注册                                                      |
+| `GOOGLE_DRIVE_CLIENT_ID`     | 按需 | Google Drive OAuth 客户端 ID                     | Google Cloud Console                                                          |
+| `GOOGLE_DRIVE_CLIENT_SECRET` | 按需 | Google Drive OAuth 客户端密钥                    | Google Cloud Console                                                          |
+| `OAUTH_REDIRECT_BASE_URL`    | 按需 | OAuth 回调基准地址；使用自定义域名时推荐显式配置 | 例如 `https://2fa.example.com`                                                |
+| `LOG_LEVEL`                  | ❌   | 日志级别（DEBUG/INFO/WARN/ERROR）                | 默认 `INFO`                                                                   |
+| `SENTRY_DSN`                 | ❌   | Sentry 错误追踪 DSN                              | 从 Sentry 获取                                                                |
+
+如果你准备启用 OneDrive / Google Drive 远程备份，配置完上表中的 OAuth 变量后，再按 [网盘备份配置指南](CLOUD_DRIVE_SETUP.md) 完成平台回调地址和授权步骤。
 
 ⚠️ **认证说明**：
 
@@ -909,7 +916,7 @@ crons = ["0 16 * * *"]  # 每天北京时间凌晨0点（UTC 16:00）
 
 **备份机制**：
 
-- ✅ **事件驱动**: 数据变化后 5 分钟自动备份
+- ✅ **事件驱动**: 数据变化后立即触发自动备份；有请求上下文时会转入后台执行
 - ✅ **定时检查**: 每天凌晨检查数据变化
 - ✅ **智能备份**: 使用 SHA-256 哈希检测变化
 - ✅ **自动清理**: 保留最新 100 个备份
@@ -1429,6 +1436,7 @@ npx wrangler secret delete SENTRY_DSN
 
 - [架构文档](ARCHITECTURE.md) - 了解系统设计
 - [API 参考](API_REFERENCE.md) - API 端点文档
+- [网盘备份配置指南](CLOUD_DRIVE_SETUP.md) - OneDrive / Google Drive OAuth 配置步骤
 - [功能文档](features/) - 各功能详解
 - [PWA 指南](PWA_GUIDE.md) - PWA 安装和配置
 

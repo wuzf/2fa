@@ -4,11 +4,11 @@
 
 **[English](README_EN.md)**
 
-![Version](https://img.shields.io/badge/version-1.3.0-blue)
+![Version](https://img.shields.io/badge/version-1.4.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
-**主要特性：** TOTP/HOTP 验证码自动生成 · 二维码扫描/图片识别/粘贴截图/拖拽图片添加密钥 · AES-GCM 256 位加密存储 · 从 Google Authenticator、Aegis、2FAS、Bitwarden 等应用批量导入 · 多格式导出（TXT/JSON/CSV/HTML/Google 迁移二维码） · 自动备份与还原 · WebDAV/S3 远程备份同步 · 设置面板（密码修改/备份配置） · 深色/浅色主题 · 响应式设计适配手机/平板/桌面
+**主要特性：** TOTP/HOTP 验证码自动生成 · 二维码扫描/图片识别/粘贴截图/拖拽图片添加密钥 · AES-GCM 256 位加密存储 · 从 Google Authenticator、Aegis、2FAS、Bitwarden 等应用批量导入 · 多格式导出（TXT/JSON/CSV/HTML/Google 迁移二维码） · 自动备份与还原 · WebDAV/S3/OneDrive/Google Drive 远程备份同步 · 设置面板（密码修改/同步设置） · 深色/浅色主题 · 响应式设计适配手机/平板/桌面
 
 ## 📸 截图预览
 
@@ -49,7 +49,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 >
 > 如果你无法确保保存原值，**宁可暂时不设置，也不要设置后丢失**：
 >
-> - 设置后：密钥列表、自动备份、WebDAV/S3 凭据都会加密存储
+> - 设置后：密钥列表、自动备份、WebDAV/S3/OneDrive/Google Drive 凭据都会加密存储
 > - 丢失后：Cloudflare 不会再次显示原值，已有加密数据和加密备份将无法读取或恢复
 > - 当前程序行为：检测到已有加密数据但缺少 `ENCRYPTION_KEY` 时，会直接锁定读取和修改，避免误覆盖旧数据
 
@@ -123,10 +123,12 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ### 批量导出
 
 点击悬浮按钮 → **📤 批量导出**，支持 TXT、JSON、CSV、HTML 格式，以及生成 **Google Authenticator 迁移二维码**（可直接扫码导入）。
+标准 TXT / JSON / CSV / HTML 导出在在线时优先使用统一后端格式；离线或请求体过大时会自动回退到本地兼容导出，继续保证 PWA 可用性。
 
 ### 备份与还原
 
 系统自动备份（数据变化后自动触发 + 每天定时检查），保留最近 100 个备份（可在设置中调整）。
+新创建的备份文件格式会跟随 **设置 → 默认导出格式**；远程自动备份也会使用相同的扩展名（`txt` / `json` / `csv` / `html`）。
 
 点击悬浮按钮 → **🔄 还原配置** 查看备份列表、预览内容、还原或导出。
 
@@ -136,8 +138,12 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 - **WebDAV** — 支持标准 WebDAV 协议的网盘或自建服务（⚠️ 不支持经 Cloudflare 代理的服务如坚果云，会触发 520 回环错误）
 - **S3 兼容存储** — 支持 AWS S3、Cloudflare R2、MinIO、阿里云 OSS 等 S3 兼容服务
+- **OneDrive** — 通过 Microsoft OAuth 授权后，将备份写入 OneDrive 应用专用目录下的子路径
+- **Google Drive** — 通过 Google OAuth 授权后，将备份写入 Google Drive 指定目录
 
-在 **设置 → 备份配置** 中添加和管理远程备份目标。
+在 **设置 → 同步设置** 中添加和管理远程备份目标。
+
+详细配置步骤见：[网盘备份配置指南](docs/CLOUD_DRIVE_SETUP.md)
 
 ### 设置
 
@@ -145,8 +151,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 - **修改密码** — 更改管理密码
 - **登录有效期** — 自定义 JWT 过期时间
+- **默认导出格式** — 控制导出按钮默认格式，也用于新建备份文件和远程自动备份的文件扩展名
 - **备份保留数量** — 调整自动备份保留份数
-- **远程备份** — 配置 WebDAV/S3 备份目标
+- **远程备份** — 配置 WebDAV/S3/OneDrive/Google Drive 备份目标
 
 ### 安装为手机应用（PWA）
 
@@ -158,7 +165,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ## 🔒 安全
 
 - **密码**：PBKDF2-SHA256（100,000 次迭代）加盐哈希，JWT 存储在 HttpOnly + Secure + SameSite=Strict Cookie 中
-- **数据加密**：配置 `ENCRYPTION_KEY` 后所有密钥、备份以及 WebDAV/S3 凭据使用 AES-GCM 256 位加密；请务必保存原始密钥，丢失后无法解密已有数据
+- **数据加密**：配置 `ENCRYPTION_KEY` 后所有密钥、备份以及 WebDAV/S3/OneDrive/Google Drive 凭据使用 AES-GCM 256 位加密；请务必保存原始密钥，丢失后无法解密已有数据
 - **传输**：全程 HTTPS，TLS 1.2+
 - **隐私**：OTP 在客户端生成，不收集使用数据，完全开源
 - **登录有效期**：默认 30 天，可在设置中自定义，活跃使用自动续期（剩余 < 7 天时自动延长）
@@ -177,13 +184,14 @@ https://your-worker.workers.dev/otp/YOUR_SECRET_KEY?type=hotp&counter=5
 
 ## 📚 更多文档
 
-| 文档                              | 说明                            |
-| --------------------------------- | ------------------------------- |
-| [部署指南](docs/DEPLOYMENT.md)    | 手动部署、KV 配置、Secrets 管理 |
-| [API 参考](docs/API_REFERENCE.md) | 完整 API 端点文档               |
-| [架构设计](docs/ARCHITECTURE.md)  | 系统架构与技术实现              |
-| [开发指南](docs/DEVELOPMENT.md)   | 本地开发、测试、代码规范        |
-| [PWA 指南](docs/PWA_GUIDE.md)     | PWA 安装与离线功能              |
+| 文档                                          | 说明                                               |
+| --------------------------------------------- | -------------------------------------------------- |
+| [部署指南](docs/DEPLOYMENT.md)                | 手动部署、KV 配置、Secrets 管理                    |
+| [网盘备份配置指南](docs/CLOUD_DRIVE_SETUP.md) | OneDrive / Google Drive 中文配置步骤与简化设计建议 |
+| [API 参考](docs/API_REFERENCE.md)             | 完整 API 端点文档                                  |
+| [架构设计](docs/ARCHITECTURE.md)              | 系统架构与技术实现                                 |
+| [开发指南](docs/DEVELOPMENT.md)               | 本地开发、测试、代码规范                           |
+| [PWA 指南](docs/PWA_GUIDE.md)                 | PWA 安装与离线功能                                 |
 
 ## 🤝 参与贡献
 

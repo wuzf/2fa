@@ -13,6 +13,7 @@
 import { AwsClient } from 'aws4fetch';
 import { encryptData, decryptData, isEncrypted } from './encryption.js';
 import { getLogger } from './logger.js';
+import { getBackupContentType } from './backup-format.js';
 
 // ==================== 多目标配置管理 ====================
 
@@ -254,7 +255,7 @@ async function _pushToSingleS3(backupKey, backupContent, config, env) {
 				method: 'PUT',
 				signal: controller.signal,
 				headers: {
-					'Content-Type': 'application/json',
+					'Content-Type': getBackupContentType(backupKey, { encrypted: backupContent.startsWith('v1:') }),
 				},
 				body: backupContent,
 			});

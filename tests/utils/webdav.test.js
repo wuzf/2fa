@@ -314,6 +314,33 @@ describe('WebDAV Utils Module (Multi-Destination)', () => {
 			}
 		});
 
+		it('应根据备份格式和加密状态设置上传 MIME', async () => {
+			await saveWebDAVSingleConfig(env, {
+				name: 'NAS1',
+				url: 'https://dav.example.com',
+				username: 'u',
+				password: 'p',
+				path: '/backup',
+			});
+
+			const originalFetch = globalThis.fetch;
+			globalThis.fetch = vi.fn().mockResolvedValue({
+				ok: true,
+				status: 201,
+				statusText: 'Created',
+			});
+
+			try {
+				await pushToAllWebDAV('backup_test.csv', 'service,secret', env);
+				await pushToAllWebDAV('backup_test.html', 'v1:encrypted-backup', env);
+
+				expect(globalThis.fetch.mock.calls[0][1].headers['Content-Type']).toBe('text/csv;charset=utf-8');
+				expect(globalThis.fetch.mock.calls[1][1].headers['Content-Type']).toBe('application/octet-stream');
+			} finally {
+				globalThis.fetch = originalFetch;
+			}
+		});
+
 		it('单目标推送失败时应记录错误状态', async () => {
 			const addResult = await saveWebDAVSingleConfig(env, {
 				name: 'NAS1',

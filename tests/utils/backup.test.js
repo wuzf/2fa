@@ -12,6 +12,7 @@ import {
   executeImmediateBackup,
   sanitizeMaxBackups
 } from '../../src/utils/backup.js';
+import { generateBackupKey } from '../../src/utils/backup-format.js';
 
 // ==================== Mock 模块 ====================
 
@@ -49,6 +50,16 @@ vi.mock('../../src/utils/webdav.js', () => ({
   pushToAllWebDAV: vi.fn(async () => ({ success: true }))
 }));
 
+// Mock OneDrive
+vi.mock('../../src/utils/onedrive.js', () => ({
+  pushToAllOneDrive: vi.fn(async () => ({ success: true }))
+}));
+
+// Mock Google Drive
+vi.mock('../../src/utils/gdrive.js', () => ({
+  pushToAllGoogleDrive: vi.fn(async () => ({ success: true }))
+}));
+
 // ==================== Mock 工具 ====================
 
 /**
@@ -70,10 +81,17 @@ function createMockEnv({ withEncryption = true } = {}) {
  * 创建测试密钥数据
  */
 function createTestSecrets(count = 3) {
+  const validSecrets = [
+    'JBSWY3DPEHPK3PXP',
+    'NB2W45DFOIZA====',
+    'ONSWG4TFOQ======',
+    'MFRGGZDFMZTWQ2LK',
+    'KRSXG5DSNFXGOIDB'
+  ];
   return Array.from({ length: count }, (_, i) => ({
     id: `secret-${i + 1}`,
     name: `Test ${i + 1}`,
-    secret: `JBSWY3DPEHPK3PXP${i}`
+    secret: validSecrets[i % validSecrets.length]
   }));
 }
 
@@ -82,6 +100,38 @@ function createTestSecrets(count = 3) {
  */
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function flushAsyncWork() {
+  await Promise.resolve();
+  await vi.advanceTimersByTimeAsync(0);
+}
+
+async function waitForCondition(predicate, attempts = 20) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (predicate()) {
+      return;
+    }
+    await flushAsyncWork();
+  }
+
+  throw new Error('Condition was not met in time');
+}
+
+function countBackupPutCalls(kv) {
+  return kv.put.mock.calls.filter(
+    ([key]) => String(key).startsWith('backup_') && String(key) !== 'backup_index_state_v1'
+  ).length;
+}
+
+function countBackupDeleteCalls(kv) {
+  return kv.delete.mock.calls.filter(
+    ([key]) => String(key).startsWith('backup_') && String(key) !== 'backup_index_state_v1'
+  ).length;
+}
+
+function countBackupIndexDeleteCalls(kv) {
+  return kv.delete.mock.calls.filter(([key]) => String(key).startsWith('backupidx_')).length;
 }
 
 // ==================== 测试套件 ====================
@@ -171,6 +221,95 @@ describe('Backup System', () => {
       expect(manager.pendingSecrets).toEqual(secrets);
     });
 
+    it('立即备份在已有备份进行中时应该等待补偿备份完成', async () => {
+      const env = createMockEnv();
+      const manager = new BackupManager(env);
+      const firstSecrets = createTestSecrets(1);
+      const queuedSecrets = createTestSecrets(2);
+      const originalPut = env.SECRETS_KV.put;
+      let releaseFirstBackupWrite;
+      let firstBackupBlocked = true;
+
+      env.SECRETS_KV.put = vi.fn(async (key, value) => {
+        if (firstBackupBlocked && String(key).startsWith('backup_') && !String(key).startsWith('backupidx_')) {
+          firstBackupBlocked = false;
+          await new Promise((resolve) => {
+            releaseFirstBackupWrite = resolve;
+          });
+        }
+
+        return originalPut(key, value);
+      });
+
+      const firstBackupPromise = manager.executeBackup(firstSecrets, 'first');
+      await flushAsyncWork();
+
+      let immediateResolved = false;
+      const immediatePromise = manager.triggerBackup(queuedSecrets, { reason: 'restore', immediate: true }).then((result) => {
+        immediateResolved = true;
+        return result;
+      });
+
+      await flushAsyncWork();
+      expect(immediateResolved).toBe(false);
+      expect(manager.pendingSecrets).toEqual(queuedSecrets);
+
+      expect(typeof releaseFirstBackupWrite).toBe('function');
+      releaseFirstBackupWrite();
+      await firstBackupPromise;
+
+      const queuedResult = await immediatePromise;
+      expect(immediateResolved).toBe(true);
+      expect(queuedResult.success).toBe(true);
+      expect(manager.pendingSecrets).toBeNull();
+    });
+
+    it('新的立即备份应该淘汰更早的延迟快照并优先执行', async () => {
+      const env = createMockEnv();
+      const manager = new BackupManager(env);
+      const deferredSecrets = createTestSecrets(1);
+      const immediateSecrets = createTestSecrets(2);
+
+      manager.backupInProgress = true;
+
+      const deferredPromise = manager._queuePendingBackup(deferredSecrets, {
+        reason: 'secret-added',
+        waitForCompletion: true
+      });
+      const immediatePromise = manager._queuePendingBackup(immediateSecrets, {
+        reason: 'backup-restored',
+        immediate: true
+      });
+
+      await expect(deferredPromise).resolves.toMatchObject({
+        queued: true,
+        superseded: true,
+        reason: 'secret-added',
+        supersededBy: 'backup-restored'
+      });
+
+      await flushAsyncWork();
+      expect(env.SECRETS_KV.delete).toHaveBeenCalledWith('pending_backup_hash');
+      expect(manager.pendingBackups).toHaveLength(1);
+      expect(manager.pendingBackups[0]).toMatchObject({
+        reason: 'backup-restored',
+        exact: true,
+        secrets: immediateSecrets
+      });
+      expect(manager.pendingSecrets).toEqual(immediateSecrets);
+      expect(manager.pendingReason).toBe('backup-restored');
+
+      const nextPendingBackup = manager._dequeuePendingBackup();
+      expect(nextPendingBackup).toMatchObject({
+        reason: 'backup-restored',
+        exact: true,
+        secrets: immediateSecrets
+      });
+
+      manager._resolveCompletionHandles(nextPendingBackup.completionHandles, { success: true });
+      await expect(immediatePromise).resolves.toMatchObject({ success: true });
+    });
+
     it('暂存数据应该在备份完成后执行', async () => {
       const env = createMockEnv();
       const manager = new BackupManager(env);
@@ -217,13 +356,13 @@ describe('Backup System', () => {
       // First backup's waitUntil call count before compensating
       await firstPromise;
       const callsAfterFirst = ctx.waitUntil.mock.calls.length;
-      expect(callsAfterFirst).toBeGreaterThanOrEqual(1);
+      expect(callsAfterFirst).toBeGreaterThanOrEqual(4);
 
-      // Wait for async compensating backup to finish
-      await vi.advanceTimersByTimeAsync(0);
+      // Wait for the compensating backup to schedule all remote pushes
+      await waitForCondition(() => ctx.waitUntil.mock.calls.length >= 8);
 
-      // Compensating backup should have called waitUntil again
-      expect(ctx.waitUntil.mock.calls.length).toBeGreaterThan(callsAfterFirst);
+      // Both the original and compensating backups should schedule all remote pushes
+      expect(ctx.waitUntil.mock.calls.length).toBeGreaterThanOrEqual(8);
       // Each waitUntil call receives a Promise
       ctx.waitUntil.mock.calls.forEach(([arg]) => {
         expect(arg).toBeInstanceOf(Promise);
@@ -246,7 +385,7 @@ describe('Backup System', () => {
         encrypted: true,
         duration: expect.any(Number)
       });
-      expect(env.SECRETS_KV.put).toHaveBeenCalledTimes(1);
+      expect(countBackupPutCalls(env.SECRETS_KV)).toBe(1);
       expect(manager.logger.info).toHaveBeenCalledWith(
         expect.stringContaining('备份完成'),
         expect.any(Object)
@@ -287,6 +426,61 @@ describe('Backup System', () => {
       expect(result).toBeNull();
     });
 
+    it('应忽略备份索引状态键，不把它当作真实备份清理', async () => {
+      const env = createMockEnv();
+      const manager = new BackupManager(env);
+
+      env.SECRETS_KV.get.mockImplementation(async (key) => {
+        if (key === 'settings') return JSON.stringify({ maxBackups: 1 });
+        return null;
+      });
+      env.SECRETS_KV.list.mockResolvedValueOnce({
+        keys: [
+          { name: 'backup_index_state_v1' },
+          { name: 'backup_2024-01-01_12-00-00.json' },
+          { name: 'backup_2024-01-02_12-00-00.json' }
+        ]
+      });
+
+      await manager._cleanupOldBackupsAsync();
+
+      expect(env.SECRETS_KV.delete).toHaveBeenCalledWith('backup_2024-01-01_12-00-00.json');
+      expect(env.SECRETS_KV.delete).not.toHaveBeenCalledWith('backup_index_state_v1');
+      expect(countBackupDeleteCalls(env.SECRETS_KV)).toBe(1);
+    });
+
+    it('检测到无效密钥条目时应拒绝生成备份', async () => {
+      const env = createMockEnv();
+      const manager = new BackupManager(env);
+      const secrets = [
+        ...createTestSecrets(1),
+        {
+          id: 'broken-secret',
+          name: 'Broken entry',
+          secret: '   '
+        }
+      ];
+
+      await expect(manager.executeBackup(secrets, 'manual')).rejects.toThrow('备份包含无效密钥');
+      expect(env.SECRETS_KV.put).not.toHaveBeenCalled();
+    });
+
+    it('检测到非法 Base32 密钥时应拒绝生成手动备份', async () => {
+      const env = createMockEnv();
+      const manager = new BackupManager(env);
+      const secrets = [
+        ...createTestSecrets(1),
+        {
+          id: 'broken-secret',
+          name: 'Broken entry',
+          secret: '***'
+        }
+      ];
+
+      await expect(manager.executeBackup(secrets, 'manual')).rejects.toThrow('备份包含无效密钥');
+      expect(env.SECRETS_KV.put).not.toHaveBeenCalled();
+    });
+
     it('应该设置 backupInProgress 标志', async () => {
       const env = createMockEnv();
       const manager = new BackupManager(env);
@@ -325,11 +519,12 @@ describe('Backup System', () => {
 
       expect(encryptData).toHaveBeenCalledWith(
         expect.objectContaining({
+          type: 'formatted-backup',
+          format: 'json',
           timestamp: expect.any(String),
-          version: '1.0',
           count: 2,
           reason: 'manual',
-          secrets: secrets
+          content: expect.any(String)
         }),
         env
       );
@@ -529,16 +724,16 @@ describe('Backup System', () => {
       expect(result2.success).toBe(true);
 
       // Both executed immediately (no debounce)
-      expect(env.SECRETS_KV.put).toHaveBeenCalledTimes(2);
+      expect(countBackupPutCalls(env.SECRETS_KV)).toBe(2);
     });
   });
 
-  describe('_generateBackupKey - 备份文件名生成', () => {
+  describe('generateBackupKey - 备份文件名生成', () => {
     it('应该生成正确格式的备份文件名', () => {
       const env = createMockEnv();
       const manager = new BackupManager(env);
 
-      const key = manager._generateBackupKey();
+      const key = generateBackupKey('json', { includeUtcMarker: true });
 
       // 格式: backup_YYYY-MM-DD_HH-MM-SS-mmm-UTC-xxxx.json（含毫秒和UTC标记）
       expect(key).toMatch(/^backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}-UTC-[a-z0-9]{4}\.json$/);
@@ -549,7 +744,7 @@ describe('Backup System', () => {
       const manager = new BackupManager(env);
 
       const now = new Date();
-      const key = manager._generateBackupKey();
+      const key = generateBackupKey('json', { includeUtcMarker: true, now });
 
       const dateStr = now.toISOString().split('T')[0];
       expect(key).toContain(dateStr);
@@ -559,12 +754,12 @@ describe('Backup System', () => {
       const env = createMockEnv();
       const manager = new BackupManager(env);
 
-      const key1 = manager._generateBackupKey();
+      const key1 = generateBackupKey('json', { includeUtcMarker: true });
 
       // 等待1秒
       vi.advanceTimersByTime(1000);
 
-      const key2 = manager._generateBackupKey();
+      const key2 = generateBackupKey('json', { includeUtcMarker: true });
 
       expect(key1).not.toBe(key2);
     });
@@ -603,7 +798,8 @@ describe('Backup System', () => {
       await manager._cleanupOldBackupsAsync();
 
       // 应该删除50个旧备份
-      expect(env.SECRETS_KV.delete).toHaveBeenCalledTimes(50);
+      expect(countBackupDeleteCalls(env.SECRETS_KV)).toBe(50);
+      expect(countBackupIndexDeleteCalls(env.SECRETS_KV)).toBe(50);
       expect(manager.logger.info).toHaveBeenCalledWith(
         expect.stringContaining('旧备份清理完成'),
         expect.any(Object)
@@ -653,7 +849,7 @@ describe('Backup System', () => {
       await manager._cleanupOldBackupsAsync();
 
       // 保留最新2个，删除3个
-      expect(env.SECRETS_KV.delete).toHaveBeenCalledTimes(3);
+      expect(countBackupDeleteCalls(env.SECRETS_KV)).toBe(3);
     });
 
     it('maxBackups 设为 0 时不应清理', async () => {
@@ -765,11 +961,42 @@ describe('Backup System', () => {
       await manager._cleanupOldBackupsAsync();
 
       // 应该尝试删除所有5个
-      expect(env.SECRETS_KV.delete).toHaveBeenCalledTimes(5);
+      expect(countBackupDeleteCalls(env.SECRETS_KV)).toBe(5);
       expect(manager.logger.warn).toHaveBeenCalledWith(
         expect.stringContaining('删除备份失败'),
         expect.any(Object),
         expect.any(Error)
+      );
+    });
+
+    it('更新备份索引状态失败时不应中断整批清理', async () => {
+      const env = createMockEnv();
+      const manager = new BackupManager(env);
+
+      const mockKeys = Array.from({ length: 105 }, (_, i) => ({
+        name: `backup_2024-01-01_${String(i).padStart(2, '0')}-00-00.json`
+      }));
+
+      env.SECRETS_KV.get.mockImplementation(async (key) => {
+        if (key === 'settings') return JSON.stringify({ maxBackups: 100 });
+        if (key === 'backup_index_state_v1') return JSON.stringify({ version: 2, count: mockKeys.length });
+        return null;
+      });
+      env.SECRETS_KV.list.mockResolvedValueOnce({ keys: mockKeys });
+      env.SECRETS_KV.put.mockImplementation(async (key) => {
+        if (key === 'backup_index_state_v1') {
+          throw new Error('state write failed');
+        }
+      });
+
+      await manager._cleanupOldBackupsAsync();
+
+      expect(countBackupDeleteCalls(env.SECRETS_KV)).toBe(5);
+      expect(countBackupIndexDeleteCalls(env.SECRETS_KV)).toBe(5);
+      expect(env.SECRETS_KV.delete).toHaveBeenCalledWith('backup_index_state_v1');
+      expect(manager.logger.info).toHaveBeenCalledWith(
+        expect.stringContaining('旧备份清理完成'),
+        expect.any(Object)
       );
     });
   });
@@ -906,7 +1133,7 @@ describe('Backup System', () => {
       expect(result3.success).toBe(true);
 
       // 4. 验证 KV 写入 3 次
-      expect(env.SECRETS_KV.put).toHaveBeenCalledTimes(3);
+      expect(countBackupPutCalls(env.SECRETS_KV)).toBe(3);
     });
 
     it('加密和明文备份对比', async () => {
@@ -939,7 +1166,7 @@ describe('Backup System', () => {
       expect(result2.success).toBe(true);
 
       // 3. 验证 KV 存储了两次
-      expect(env.SECRETS_KV.put).toHaveBeenCalledTimes(2);
+      expect(countBackupPutCalls(env.SECRETS_KV)).toBe(2);
     });
   });
 
@@ -1055,11 +1282,98 @@ describe('Backup System', () => {
 
       const start = performance.now();
       for (let i = 0; i < 1000; i++) {
-        manager._generateBackupKey();
+        generateBackupKey('json', { includeUtcMarker: true });
       }
       const end = performance.now();
 
       expect(end - start).toBeLessThan(100); // 1000次 < 100ms
     });
+  });
+
+  describe('cleanup pagination', () => {
+    it('should paginate through backup cleanup when more than 1000 backups exist', async () => {
+      const env = createMockEnv();
+      const manager = new BackupManager(env);
+      const mockKeys = Array.from({ length: 1500 }, (_, i) => ({
+        name: `backup_2024-01-01_${String(i).padStart(4, '0')}-00-00.json`
+      }));
+
+      env.SECRETS_KV.list.mockImplementation(async (options = {}) => {
+        const limit = options.limit || 1000;
+        const cursor = options.cursor ? Number(options.cursor) : 0;
+        const pageKeys = mockKeys.slice(cursor, cursor + limit);
+
+        return {
+          keys: pageKeys,
+          list_complete: cursor + limit >= mockKeys.length,
+          cursor: cursor + limit < mockKeys.length ? String(cursor + limit) : undefined
+        };
+      });
+
+      await manager._cleanupOldBackupsAsync();
+
+      expect(countBackupDeleteCalls(env.SECRETS_KV)).toBe(1400);
+      expect(countBackupIndexDeleteCalls(env.SECRETS_KV)).toBe(1400);
+      expect(env.SECRETS_KV.list).toHaveBeenCalledTimes(2);
+    });
+  });
+});
+
+describe('Backup System resilience', () => {
+  it('keeps non-manual backups running when some secrets are invalid', async () => {
+    const env = createMockEnv();
+    const manager = new BackupManager(env);
+    const secrets = [
+      ...createTestSecrets(1),
+      {
+        id: 'broken-secret',
+        name: 'Broken entry',
+        secret: '   '
+      }
+    ];
+
+    const result = await manager.executeBackup(secrets, 'secret-updated');
+
+    expect(result).toMatchObject({
+      success: true,
+      secretCount: 1,
+      skippedInvalidCount: 1
+    });
+    expect(countBackupPutCalls(env.SECRETS_KV)).toBe(1);
+    expect(manager.logger.warn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        reason: 'secret-updated',
+        skippedInvalidCount: 1
+      })
+    );
+  });
+});
+
+describe('Backup format settings', () => {
+  it('uses the configured default export format when creating backups', async () => {
+    const { encryptData } = await import('../../src/utils/encryption.js');
+    const env = createMockEnv();
+    const manager = new BackupManager(env);
+    const secrets = createTestSecrets(2);
+
+    env.SECRETS_KV.get.mockImplementation(async (key) => {
+      if (key === 'settings') {
+        return JSON.stringify({ defaultExportFormat: 'csv' });
+      }
+      return null;
+    });
+
+    const result = await manager.executeBackup(secrets, 'secret-updated');
+
+    expect(result.format).toBe('csv');
+    expect(result.backupKey.endsWith('.csv')).toBe(true);
+    expect(encryptData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: 'csv',
+        reason: 'secret-updated'
+      }),
+      env
+    );
   });
 });

@@ -24,6 +24,7 @@ export { handleBackupSecrets, handleGetBackups } from './backup.js';
 
 // 恢复和导出处理器
 export { handleExportBackup, handleRestoreBackup } from './restore.js';
+export { handleExportSecrets } from './export.js';
 
 // OTP 生成处理器
 export { handleGenerateOTP } from './otp.js';

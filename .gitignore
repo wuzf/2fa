@@ -174,3 +174,4 @@ dist
 # Local AI tooling artifacts
 CLAUDE.md
 .claude/
+*.stackdump

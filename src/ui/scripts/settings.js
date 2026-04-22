@@ -13,6 +13,9 @@ export function getSettingsCode() {
 
     // 当前激活的设置标签
     let activeSettingsTab = 'security';
+    let preferencesLoadRequestId = 0;
+    let defaultExportFormatChangeVersion = 0;
+    let defaultExportFormatSaveRequestId = 0;
 
     /**
      * 切换设置标签
@@ -89,6 +92,50 @@ export function getSettingsCode() {
           s3StatusEl.className = 'sync-status not-configured';
         }
       }
+
+      // 加载 OneDrive 状态
+      try {
+        const oneDriveResp = await authenticatedFetch('/api/onedrive/config');
+        const oneDriveData = await oneDriveResp.json();
+        const oneDriveStatusEl = document.getElementById('settingsOneDriveStatus');
+        if (oneDriveStatusEl) {
+          if (oneDriveData.count > 0) {
+            oneDriveStatusEl.textContent = '已配置' + oneDriveData.count + ' 个目标';
+            oneDriveStatusEl.className = 'sync-status configured';
+          } else {
+            oneDriveStatusEl.textContent = '未配置';
+            oneDriveStatusEl.className = 'sync-status not-configured';
+          }
+        }
+      } catch {
+        const oneDriveStatusEl = document.getElementById('settingsOneDriveStatus');
+        if (oneDriveStatusEl) {
+          oneDriveStatusEl.textContent = '加载失败';
+          oneDriveStatusEl.className = 'sync-status not-configured';
+        }
+      }
+
+      // 加载 Google Drive 状态
+      try {
+        const googleDriveResp = await authenticatedFetch('/api/gdrive/config');
+        const googleDriveData = await googleDriveResp.json();
+        const googleDriveStatusEl = document.getElementById('settingsGoogleDriveStatus');
+        if (googleDriveStatusEl) {
+          if (googleDriveData.count > 0) {
+            googleDriveStatusEl.textContent = '已配置' + googleDriveData.count + ' 个目标';
+            googleDriveStatusEl.className = 'sync-status configured';
+          } else {
+            googleDriveStatusEl.textContent = '未配置';
+            googleDriveStatusEl.className = 'sync-status not-configured';
+          }
+        }
+      } catch {
+        const googleDriveStatusEl = document.getElementById('settingsGoogleDriveStatus');
+        if (googleDriveStatusEl) {
+          googleDriveStatusEl.textContent = '加载失败';
+          googleDriveStatusEl.className = 'sync-status not-configured';
+        }
+      }
     }
 
     /**
@@ -109,6 +156,26 @@ export function getSettingsCode() {
       hideSettingsModal();
       setTimeout(() => {
         showS3Modal(() => showSettingsModal());
+      }, 350);
+    }
+
+    /**
+     * 从设置弹窗打开 OneDrive 配置
+     */
+    function openOneDriveFromSettings() {
+      hideSettingsModal();
+      setTimeout(() => {
+        showOneDriveModal(() => showSettingsModal());
+      }, 350);
+    }
+
+    /**
+     * 从设置弹窗打开 Google Drive 配置
+     */
+    function openGoogleDriveFromSettings() {
+      hideSettingsModal();
+      setTimeout(() => {
+        showGoogleDriveModal(() => showSettingsModal());
       }, 350);
     }
 
@@ -192,24 +259,34 @@ export function getSettingsCode() {
      */
     async function loadPreferences() {
       // 主题模式
+      const requestId = ++preferencesLoadRequestId;
+      const formatVersionAtStart = defaultExportFormatChangeVersion;
+
       const currentTheme = localStorage.getItem('theme') || 'auto';
       const themeRadios = document.querySelectorAll('input[name="settingsTheme"]');
       themeRadios.forEach(radio => {
         radio.checked = radio.value === currentTheme;
       });
 
-      // 默认导出格式
-      const defaultFormat = localStorage.getItem('defaultExportFormat') || 'json';
       const formatSelect = document.getElementById('settingsDefaultExportFormat');
+      const localDefaultFormat = localStorage.getItem('defaultExportFormat') || 'json';
       if (formatSelect) {
-        formatSelect.value = defaultFormat;
+        formatSelect.value = localDefaultFormat;
       }
 
-      // 登录有效期和备份保留数量（从服务器读取）
+      // 导出偏好格式、登录有效期和备份保留数量（从服务器读取）
       try {
         const resp = await authenticatedFetch('/api/settings');
         if (resp.ok) {
           const data = await resp.json();
+          if (requestId !== preferencesLoadRequestId) {
+            return;
+          }
+
+          if (formatSelect && data.defaultExportFormat && defaultExportFormatChangeVersion === formatVersionAtStart) {
+            formatSelect.value = data.defaultExportFormat;
+            localStorage.setItem('defaultExportFormat', data.defaultExportFormat);
+          }
           const jwtInput = document.getElementById('settingsJwtExpiryDays');
           if (jwtInput && data.jwtExpiryDays) {
             jwtInput.value = data.jwtExpiryDays;
@@ -234,13 +311,39 @@ export function getSettingsCode() {
     }
 
     /**
-     * 保存默认导出格式
+     * 保存导出偏好格式
      */
-    function saveDefaultExportFormat() {
+    async function saveDefaultExportFormat() {
       const formatSelect = document.getElementById('settingsDefaultExportFormat');
-      if (formatSelect) {
-        localStorage.setItem('defaultExportFormat', formatSelect.value);
-        showCenterToast('✅', '导出格式已保存');
+      if (!formatSelect) return;
+      const selectedFormat = formatSelect.value;
+      const requestId = ++defaultExportFormatSaveRequestId;
+      defaultExportFormatChangeVersion += 1;
+
+      try {
+        const resp = await authenticatedFetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ defaultExportFormat: selectedFormat }),
+        });
+        const data = await resp.json();
+        if (requestId !== defaultExportFormatSaveRequestId) {
+          return;
+        }
+
+        if (resp.ok && data.success) {
+          const savedFormat = (data.settings && data.settings.defaultExportFormat) || selectedFormat;
+          formatSelect.value = savedFormat;
+          localStorage.setItem('defaultExportFormat', savedFormat);
+          showCenterToast('✅', '偏好格式已保存，批量导出和备份导出会优先使用该格式');
+        } else {
+          showCenterToast('❌', data.message || '保存偏好格式失败');
+        }
+      } catch {
+        if (requestId !== defaultExportFormatSaveRequestId) {
+          return;
+        }
+        showCenterToast('❌', '网络错误，请稍后重试');
       }
     }
 

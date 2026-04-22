@@ -276,13 +276,13 @@ export function getJSONParserCode() {
       return parseStandardJsonEntries(
         jsonData.secrets || [],
         secret => ({
-          issuer: secret.name || '',
-          account: secret.account || '',
+          issuer: secret.name || secret.issuer || secret.issuerExt || '',
+          account: secret.account || secret.label || '',
           secret: secret.secret || '',
-          type: secret.type || 'TOTP',
+          type: secret.type || secret.tokenType || 'TOTP',
           digits: secret.digits || 6,
-          period: secret.period || 30,
-          algorithm: secret.algorithm || 'SHA1',
+          period: secret.period || secret.timeStep || 30,
+          algorithm: secret.algorithm || secret.algo || 'SHA1',
           counter: secret.counter || 0
         }),
         '本应用 JSON'

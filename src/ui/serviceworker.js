@@ -8,12 +8,14 @@
  * @returns {Response} Service Worker JavaScript 响应
  */
 export function createServiceWorker(env = {}) {
+	const embeddedBuildVersion = typeof globalThis.__BUILD_SW_VERSION__ === 'string' ? globalThis.__BUILD_SW_VERSION__ : '';
 	// 🚀 自动版本管理：从环境变量读取版本号
 	// 支持多种版本策略：
 	// 1. env.SW_VERSION - 构建时注入的版本号（推荐）
 	// 2. env.BUILD_TIMESTAMP - 构建时间戳
-	// 3. 'v1' - 默认版本（后备）
-	const version = env.SW_VERSION || env.BUILD_TIMESTAMP || 'v1';
+	// 3. __BUILD_SW_VERSION__ - 单文件 release 构建时内嵌的版本号
+	// 4. 'v1' - 默认版本（后备）
+	const version = env.SW_VERSION || env.BUILD_TIMESTAMP || embeddedBuildVersion || 'v1';
 
 	// 生成缓存名称
 	const CACHE_NAME = `2fa-cache-${version}`;
@@ -350,6 +352,22 @@ self.addEventListener('fetch', event => {
               operationType = 'UPDATE';
             } else if (method === 'DELETE' && url.pathname.startsWith('/api/secrets/')) {
               operationType = 'DELETE';
+            }
+
+            if (operationType === 'UNKNOWN') {
+              return new Response(
+                JSON.stringify({
+                  error: '离线不可用',
+                  detail: '当前请求需要在线完成，无法加入离线同步队列',
+                  offline: true,
+                  queued: false
+                }),
+                {
+                  status: 503,
+                  statusText: 'Service Unavailable',
+                  headers: { 'Content-Type': 'application/json' }
+                }
+              );
             }
 
             // 保存到 IndexedDB

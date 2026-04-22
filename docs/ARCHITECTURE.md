@@ -163,7 +163,7 @@ src/
     │
     ├── backup.js                  # 💾 智能备份系统
     │                              # - 事件驱动备份
-    │                              # - 防抖机制
+    │                              # - 并发合并 / 后台执行
     │                              # - 自动清理
     │
     ├── constants.js               # 📋 常量定义
@@ -194,7 +194,7 @@ src/
     │                              # - Sentry 集成
     │
     ├── rateLimit.js               # 🛡️ 请求限流
-    │                              # - 固定窗口计数器算法
+    │                              # - 滑动窗口算法
     │                              # - 可配置策略
     │                              # - 基于 KV 存储
     │
@@ -271,6 +271,7 @@ export default {
 | `/api/secrets/{id}`        | PUT    | `handleUpdateSecret()`    | ✅   |
 | `/api/secrets/{id}`        | DELETE | `handleDeleteSecret()`    | ✅   |
 | `/api/secrets/batch`       | POST   | `handleBatchAddSecrets()` | ✅   |
+| `/api/secrets/export`      | POST   | `handleExportSecrets()`   | ✅   |
 | `/api/backup`              | GET    | `handleGetBackups()`      | ✅   |
 | `/api/backup`              | POST   | `handleBackupSecrets()`   | ✅   |
 | `/api/backup/restore`      | POST   | `handleRestoreBackup()`   | ✅   |
@@ -347,14 +348,16 @@ export async function handleAddSecret(request, env) {
  * 3. 使用 HMAC-SHA1 计算哈希值
  * 4. 动态截断生成 6 位数字 OTP
  */
-export async function generateTOTP(secret, options = {}) {
+export async function generateOTP(secret, loadTime, options = {}) {
 	const {
-		timeStep = 30, // 时间步长（秒）
+		period = 30, // 时间步长（秒）
 		digits = 6, // OTP 长度
 		algorithm = 'SHA1', // 哈希算法
+		type = 'TOTP',
 	} = options;
 
-	const counter = Math.floor(Date.now() / 1000 / timeStep);
+	const timeForCalculation = loadTime || Math.floor(Date.now() / 1000);
+	const counter = type === 'HOTP' ? options.counter || 0 : Math.floor(timeForCalculation / period);
 	return await generateHOTP(secret, counter, { digits, algorithm });
 }
 ```
@@ -556,7 +559,7 @@ export async function decryptSecrets(data, env) {
 ```
 用户操作 → 数据变更 → 触发备份
     ↓
-防抖检查 (5分钟内只备份一次)
+如有请求上下文则转入 waitUntil 后台执行
     ↓
 执行备份 → 加密 → 存储到 KV
     ↓
@@ -579,84 +582,44 @@ Cron 触发 (每天)
 class BackupManager {
 	constructor(env) {
 		this.env = env;
-		this.lastBackupTime = 0;
-		this.pendingBackup = null;
+		this.logger = getLogger(env);
 		this.backupInProgress = false;
+		this.pendingBackups = [];
 	}
 
 	/**
-	 * 触发备份（带防抖）
+	 * 触发备份（支持并发合并）
 	 */
 	async triggerBackup(secrets, options = {}) {
-		const { immediate = false, reason = 'event-driven' } = options;
+		const { immediate = false, reason = 'event-driven', ctx } = options;
 
-		// 如果正在备份，跳过
 		if (this.backupInProgress) {
-			return null;
+			this.pendingBackups.push({ secrets, reason, ctx, immediate });
+			return { queued: true };
 		}
 
-		// 防抖检查（除非是立即备份）
-		if (!immediate && !this.shouldBackup()) {
-			// 取消之前的待处理备份
-			if (this.pendingBackup) {
-				clearTimeout(this.pendingBackup);
-			}
-
-			// 设置延迟备份
-			const remainingTime = DEBOUNCE_INTERVAL - (Date.now() - this.lastBackupTime);
-			this.pendingBackup = setTimeout(() => {
-				this.executeBackup(secrets, reason);
-			}, remainingTime);
-
-			return { scheduled: true, delay: remainingTime };
-		}
-
-		// 立即执行备份
-		return await this.executeBackup(secrets, reason);
+		return this.executeBackup(secrets, reason, ctx, { immediate });
 	}
 
 	/**
 	 * 执行备份
 	 */
-	async executeBackup(secrets, reason) {
+	async executeBackup(secrets, reason, ctx) {
 		this.backupInProgress = true;
-		const startTime = Date.now();
 
 		try {
-			// 1. 生成备份ID
-			const backupId = `backup_${Date.now()}`;
-
-			// 2. 加密备份数据
-			const backupData = {
-				id: backupId,
-				timestamp: new Date().toISOString(),
-				count: secrets.length,
+			const backupEntry = await createBackupEntry(secrets, this.env, {
+				format: await resolveConfiguredBackupFormat(this.env, this.logger),
 				reason,
-				data: secrets,
-			};
-
-			const encrypted = await encryptData(backupData, this.env);
-
-			// 3. 保存到 KV
-			await this.env.SECRETS_KV.put(backupId, encrypted);
-
-			// 4. 更新备份列表
-			await this._updateBackupsList(backupId);
-
-			// 5. 清理旧备份
-			await this._cleanupOldBackupsAsync();
-
-			// 6. 记录性能指标
-			const duration = Date.now() - startTime;
-			this.logger.info('✅ 备份成功', {
-				backupId,
-				reason,
-				count: secrets.length,
-				duration: `${duration}ms`,
 			});
 
-			this.lastBackupTime = Date.now();
-			return { success: true, backupId, duration };
+			await putBackupRecord(this.env, backupEntry.backupKey, backupEntry.backupContent, backupEntry.metadata);
+			ctx?.waitUntil?.(pushToAllWebDAV(backupEntry.backupKey, backupEntry.backupContent, this.env));
+			ctx?.waitUntil?.(pushToAllS3(backupEntry.backupKey, backupEntry.backupContent, this.env));
+			ctx?.waitUntil?.(pushToAllOneDrive(backupEntry.backupKey, backupEntry.backupContent, this.env));
+			ctx?.waitUntil?.(pushToAllGoogleDrive(backupEntry.backupKey, backupEntry.backupContent, this.env));
+			await this._cleanupOldBackupsAsync();
+			return { success: true, backupKey: backupEntry.backupKey, format: backupEntry.format };
 		} catch (error) {
 			this.logger.error('❌ 备份失败', { reason }, error);
 			throw error;
@@ -850,17 +813,15 @@ class ErrorMonitor {
 
 **职责**: 防止 API 滥用和 DDoS 攻击
 
-**算法**: 固定窗口计数器 (Fixed Window Counter)
+**算法**: 滑动窗口 (Sliding Window)
 
 ```
 时间轴: ───────────────────────────→
-         │    窗口 1     │    窗口 2     │
-      t=0s           t=60s          t=120s
-         └─────────────┘─────────────┘
-           计数器重置      计数器重置
+         [最近 60 秒滑动窗口]
+                ↑ 当前请求
 
-窗口内计数: count ≤ maxAttempts
-窗口过期: resetAt 时间到达时，创建新窗口
+窗口内计数: 只统计最近 windowSeconds 内的请求
+窗口推进: 每次请求到来时重新计算
 ```
 
 **核心实现**:
@@ -943,9 +904,9 @@ export const RATE_LIMIT_PRESETS = {
 		windowSeconds: 60,
 	},
 
-	// 批量操作：每 5 分钟 5 次
+	// 批量操作：每 5 分钟 20 次
 	bulk: {
-		maxAttempts: 5,
+		maxAttempts: 20,
 		windowSeconds: 300,
 	},
 
@@ -1036,11 +997,8 @@ graph TD
     A[数据变更操作] --> B[保存到 KV]
     B --> C[触发备份]
     C --> D{正在备份?}
-    D -->|是| E[跳过]
-    D -->|否| F{防抖检查}
-    F -->|< 5分钟| G[取消旧备份]
-    G --> H[设置延迟备份]
-    F -->|≥ 5分钟| I[立即执行备份]
+    D -->|是| E[合并到待处理备份队列]
+    D -->|否| I[立即执行备份]
     I --> J[加密备份数据]
     J --> K[生成备份ID]
     K --> L[保存到 KV]

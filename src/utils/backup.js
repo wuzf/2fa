@@ -17,11 +17,16 @@
  * - 备份按时间戳排序，最早的备份优先被删除
  */
 
-import { encryptData } from './encryption.js';
 import { getLogger } from './logger.js';
 import { getMonitoring } from './monitoring.js';
 import { pushToAllWebDAV } from './webdav.js';
 import { pushToAllS3 } from './s3.js';
+import { pushToAllOneDrive } from './onedrive.js';
+import { pushToAllGoogleDrive } from './gdrive.js';
+import { deleteBackupRecord, listAllBackupKeys, putBackupRecord } from './backup-index.js';
+import { createBackupEntry } from './backup-format.js';
+import { clearPendingDataHash, saveDataHash } from './data-hash.js';
+import { DEFAULT_EXPORT_FORMAT, getDefaultExportFormat } from './settings.js';
 
 /**
  * 备份配置
@@ -40,6 +45,18 @@ const BACKUP_CONFIG = {
 	// 是否启用定时备份
 	SCHEDULED_BACKUP_ENABLED: true,
 };
+
+export async function resolveConfiguredBackupFormat(env, logger) {
+	return getDefaultExportFormat(env, {
+		fallbackOnError: true,
+		onError: (error) => {
+			logger?.warn?.('读取默认备份格式失败，已回退为 JSON', {
+				errorMessage: error.message,
+				fallbackFormat: DEFAULT_EXPORT_FORMAT,
+			});
+		},
+	});
+}
 
 /**
  * 校验 maxBackups 值，非法值回退默认 100
@@ -61,16 +78,18 @@ class BackupManager {
 		this.env = env;
 		this.logger = getLogger(env);
 		this.backupInProgress = false;
+		this.pendingBackups = [];
 		this.pendingSecrets = null; // 并发期间暂存最新的密钥快照
 		this.pendingReason = null;
 		this.pendingCtx = null;
+		this.pendingCompletion = null;
 	}
 
 	/**
 	 * 触发备份（事件驱动，每次数据变更立即执行）
 	 */
 	async triggerBackup(secrets, options = {}) {
-		const { immediate = false, reason = 'event-driven', ctx } = options;
+		const { immediate = false, reason = 'event-driven', ctx, waitForCompletion = false } = options;
 
 		this.logger.info('🔔 收到备份触发请求', {
 			reason,
@@ -86,11 +105,13 @@ class BackupManager {
 
 		// 检查是否正在备份：暂存最新快照，待当前备份完成后自动执行
 		if (this.backupInProgress) {
-			this.pendingSecrets = secrets;
-			this.pendingReason = reason;
-			this.pendingCtx = ctx;
 			this.logger.debug('⏳ 备份已在进行中，已暂存最新数据等待执行');
-			return { queued: true };
+			return this._queuePendingBackup(secrets, {
+				reason,
+				ctx,
+				immediate,
+				waitForCompletion,
+			});
 		}
 
 		// 立即执行备份
@@ -115,33 +136,29 @@ class BackupManager {
 				secretCount: secrets.length,
 			});
 
-			// 创建备份数据
-			const backupData = {
-				timestamp: new Date().toISOString(),
-				version: '1.0',
-				count: secrets.length,
-				reason, // 备份原因（event-driven, scheduled, manual）
-				secrets: secrets,
-			};
+			const backupFormat = await resolveConfiguredBackupFormat(this.env, this.logger);
+			const backupEntry = await createBackupEntry(secrets, this.env, {
+				format: backupFormat,
+				reason,
+				includeUtcMarker: true,
+				strict: reason === 'manual',
+			});
+			const { backupKey, backupContent, encrypted: isEncrypted, count: storedCount, metadata } = backupEntry;
 
-			// 生成备份文件名
-			const backupKey = this._generateBackupKey();
-
-			// 加密备份数据（如果配置了密钥）
-			let backupContent;
-			let isEncrypted = false;
-
-			if (this.env.ENCRYPTION_KEY) {
-				backupContent = await encryptData(backupData, this.env);
-				isEncrypted = true;
+			if (isEncrypted) {
 				this.logger.debug('🔒 备份数据已加密');
 			} else {
-				backupContent = JSON.stringify(backupData, null, 2);
 				this.logger.warn('⚠️ 备份数据以明文保存（未配置 ENCRYPTION_KEY）');
+			}
+			if (backupEntry.skippedInvalidCount > 0) {
+				this.logger.warn('⚠️ 备份已跳过无效密钥', {
+					reason,
+					skippedInvalidCount: backupEntry.skippedInvalidCount,
+				});
 			}
 
 			// 存储备份
-			await this.env.SECRETS_KV.put(backupKey, backupContent);
+			await putBackupRecord(this.env, backupKey, backupContent, metadata);
 
 			// WebDAV 自动推送（通过 ctx.waitUntil 托管，确保 Worker 响应后推送仍能完成）
 			const webdavPromise = pushToAllWebDAV(backupKey, backupContent, this.env).catch((err) => {
@@ -159,13 +176,33 @@ class BackupManager {
 				ctx.waitUntil(s3Promise);
 			}
 
+			const oneDrivePromise = pushToAllOneDrive(backupKey, backupContent, this.env).catch((err) => {
+				this.logger.warn('OneDrive 推送异常（不影响备份）', {}, err);
+			});
+			if (ctx) {
+				ctx.waitUntil(oneDrivePromise);
+			}
+
+			const googleDrivePromise = pushToAllGoogleDrive(backupKey, backupContent, this.env).catch((err) => {
+				this.logger.warn('Google Drive 推送异常（不影响备份）', {}, err);
+			});
+			if (ctx) {
+				ctx.waitUntil(googleDrivePromise);
+			}
+
+			await saveDataHash(this.env, secrets, {
+				reason,
+				skippedInvalidCount: backupEntry.skippedInvalidCount,
+			});
+
 			const duration = Date.now() - startTime;
 
 			this.logger.info('✅ 备份完成', {
 				backupKey,
 				reason,
-				secretCount: secrets.length,
+				secretCount: storedCount,
 				encrypted: isEncrypted,
+				format: backupEntry.format,
 				duration,
 			});
 
@@ -176,7 +213,7 @@ class BackupManager {
 					monitoring.getPerformanceMonitor().recordMetric('backup_duration', duration, 'ms', {
 						reason,
 						encrypted: isEncrypted,
-						count: secrets.length,
+						count: storedCount,
 					});
 				}
 			} catch (metricsError) {
@@ -192,8 +229,10 @@ class BackupManager {
 			return {
 				success: true,
 				backupKey,
-				secretCount: secrets.length,
+				secretCount: storedCount,
 				encrypted: isEncrypted,
+				format: backupEntry.format,
+				skippedInvalidCount: backupEntry.skippedInvalidCount,
 				duration,
 			};
 		} catch (error) {
@@ -214,32 +253,144 @@ class BackupManager {
 		} finally {
 			this.backupInProgress = false;
 
-			// 如果并发期间有新数据暂存，立即执行一次补偿备份
-			if (this.pendingSecrets) {
-				const secrets = this.pendingSecrets;
-				const pendingReason = this.pendingReason || 'event-driven';
-				const pendingCtx = this.pendingCtx;
-				this.pendingSecrets = null;
-				this.pendingReason = null;
-				this.pendingCtx = null;
-				this.logger.info('🔁 执行暂存的补偿备份', { reason: pendingReason });
-				this.executeBackup(secrets, pendingReason, pendingCtx).catch((err) => {
-					this.logger.error('补偿备份失败', { reason: pendingReason }, err);
+			const nextPendingBackup = this._dequeuePendingBackup();
+			if (nextPendingBackup) {
+				this.logger.info('🔁 执行暂存的补偿备份', {
+					reason: nextPendingBackup.reason,
+					immediate: nextPendingBackup.exact === true,
 				});
+				this.executeBackup(nextPendingBackup.secrets, nextPendingBackup.reason, nextPendingBackup.ctx)
+					.then((result) => {
+						this._resolveCompletionHandles(nextPendingBackup.completionHandles, result);
+					})
+					.catch((err) => {
+						this._rejectCompletionHandles(nextPendingBackup.completionHandles, err);
+						this.logger.error('补偿备份失败', { reason: nextPendingBackup.reason }, err);
+					});
 			}
 		}
 	}
 
-	/**
-	 * 生成备份文件名（使用 UTC 保证排序一致性）
-	 * @private
-	 */
-	_generateBackupKey() {
-		const now = new Date();
-		const dateStr = now.toISOString().split('T')[0];
-		const timeStr = now.toISOString().split('T')[1].replace(/:/g, '-').replace('.', '-').replace('Z', '');
-		const rand = Math.random().toString(36).slice(2, 6);
-		return `backup_${dateStr}_${timeStr}-UTC-${rand}.json`;
+	_queuePendingBackup(secrets, options = {}) {
+		const completionHandle = options.immediate === true || options.waitForCompletion === true ? this._createCompletionHandle() : null;
+		const queuedBackup = {
+			secrets,
+			reason: options.reason || 'event-driven',
+			ctx: options.ctx || null,
+			exact: options.immediate === true,
+			completionHandles: completionHandle ? [completionHandle] : [],
+		};
+		const lastPendingBackup = this.pendingBackups[this.pendingBackups.length - 1];
+
+		if (lastPendingBackup && lastPendingBackup.exact !== true && queuedBackup.exact !== true) {
+			this.pendingBackups[this.pendingBackups.length - 1] = {
+				...lastPendingBackup,
+				secrets: queuedBackup.secrets,
+				reason: queuedBackup.reason,
+				ctx: queuedBackup.ctx || lastPendingBackup.ctx || null,
+				completionHandles: [...lastPendingBackup.completionHandles, ...queuedBackup.completionHandles],
+			};
+		} else if (queuedBackup.exact === true) {
+			const supersededDeferredBackup =
+				this.pendingBackups.length > 0 && this.pendingBackups[this.pendingBackups.length - 1].exact !== true
+					? this.pendingBackups.pop()
+					: null;
+
+			if (!queuedBackup.ctx && supersededDeferredBackup?.ctx) {
+				queuedBackup.ctx = supersededDeferredBackup.ctx;
+			}
+			if (supersededDeferredBackup) {
+				this._supersedeDeferredPendingBackup(supersededDeferredBackup, queuedBackup.reason);
+			}
+
+			this.pendingBackups.push(queuedBackup);
+		} else {
+			if (!queuedBackup.ctx && lastPendingBackup?.ctx) {
+				queuedBackup.ctx = lastPendingBackup.ctx;
+			}
+			this.pendingBackups.push(queuedBackup);
+		}
+
+		this._syncPendingState();
+		return completionHandle ? completionHandle.promise : { queued: true };
+	}
+
+	_createCompletionHandle() {
+		let resolve;
+		let reject;
+		const promise = new Promise((resolvePromise, rejectPromise) => {
+			resolve = resolvePromise;
+			reject = rejectPromise;
+		});
+
+		return {
+			promise,
+			resolve,
+			reject,
+		};
+	}
+
+	_dequeuePendingBackup() {
+		if (this.pendingBackups.length > 0) {
+			const nextPendingBackup = this.pendingBackups.shift();
+			this._syncPendingState();
+			return nextPendingBackup;
+		}
+
+		if (!this.pendingSecrets) {
+			return null;
+		}
+
+		const legacyPendingBackup = {
+			secrets: this.pendingSecrets,
+			reason: this.pendingReason || 'event-driven',
+			ctx: this.pendingCtx || null,
+			exact: false,
+			completionHandles: this.pendingCompletion ? [this.pendingCompletion] : [],
+		};
+
+		this.pendingSecrets = null;
+		this.pendingReason = null;
+		this.pendingCtx = null;
+		this.pendingCompletion = null;
+		return legacyPendingBackup;
+	}
+
+	_resolveCompletionHandles(completionHandles = [], result) {
+		completionHandles.forEach((completionHandle) => completionHandle?.resolve?.(result));
+	}
+
+	_rejectCompletionHandles(completionHandles = [], error) {
+		completionHandles.forEach((completionHandle) => completionHandle?.reject?.(error));
+	}
+
+	_supersedeDeferredPendingBackup(pendingBackup, exactReason) {
+		if (!pendingBackup) {
+			return;
+		}
+
+		if (pendingBackup.completionHandles?.length > 0) {
+			this._resolveCompletionHandles(pendingBackup.completionHandles, {
+				queued: true,
+				superseded: true,
+				reason: pendingBackup.reason,
+				supersededBy: exactReason,
+			});
+		}
+
+		void clearPendingDataHash(this.env, { silent: true });
+		this.logger.debug('已丢弃过期的暂存事件备份，优先保留立即备份', {
+			supersededReason: pendingBackup.reason,
+			exactReason,
+		});
+	}
+
+	_syncPendingState() {
+		const lastPendingBackup = this.pendingBackups[this.pendingBackups.length - 1] || null;
+		this.pendingSecrets = lastPendingBackup?.secrets || null;
+		this.pendingReason = lastPendingBackup?.reason || null;
+		this.pendingCtx = lastPendingBackup?.ctx || null;
+		this.pendingCompletion = lastPendingBackup?.completionHandles?.[0] || null;
 	}
 
 	/**
@@ -281,8 +432,7 @@ class BackupManager {
 		}
 
 		try {
-			const list = await this.env.SECRETS_KV.list();
-			const backupKeys = list.keys.filter((key) => key.name.startsWith('backup_'));
+			const backupKeys = (await listAllBackupKeys(this.env)).sort((a, b) => b.name.localeCompare(a.name));
 
 			this.logger.debug('🔍 检查备份文件', { count: backupKeys.length });
 
@@ -308,9 +458,15 @@ class BackupManager {
 
 			// 批量删除（避免阻塞太久）
 			const deletePromises = keysToDelete.map((key) =>
-				this.env.SECRETS_KV.delete(key.name).catch((err) => {
-					this.logger.warn(`删除备份失败: ${key.name}`, {}, err);
-				}),
+				deleteBackupRecord(this.env, key.name, key.metadata)
+					.then((result) => {
+						if (!result?.success) {
+							this.logger.warn(`删除备份失败: ${key.name}`, {}, result?.error);
+						}
+					})
+					.catch((err) => {
+						this.logger.warn(`删除备份失败: ${key.name}`, {}, err);
+					}),
 			);
 
 			await Promise.all(deletePromises);
