@@ -159,10 +159,12 @@ export async function handleRequest(request, env, ctx) {
 
 			try {
 				const moduleCode = getModuleCode(moduleName);
+				// dev 环境（wrangler dev 走 localhost/127.0.0.1）禁用缓存,避免改代码时浏览器返回旧模块
+				const isDev = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || env?.ENVIRONMENT === 'development';
 				return new Response(moduleCode, {
 					headers: {
 						'Content-Type': 'application/javascript; charset=utf-8',
-						'Cache-Control': 'public, max-age=3600', // 缓存1小时
+						'Cache-Control': isDev ? 'no-cache, no-store, must-revalidate' : 'public, max-age=3600',
 						'Access-Control-Allow-Origin': '*',
 					},
 				});

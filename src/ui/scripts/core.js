@@ -104,6 +104,11 @@ export function getCoreCode() {
         // 恢复用户的排序选择
         restoreSortPreference();
 
+        // 排序 popover 外部点击 / Escape 关闭
+        if (typeof initSortDropdownOutsideClose === 'function') {
+          initSortDropdownOutsideClose();
+        }
+
         // 页面加载后立即刷新所有OTP，确保时间同步
         setTimeout(() => {
           if (secrets && secrets.length > 0) {

@@ -67,47 +67,6 @@ export function getUICode() {
       }
     }
 
-    // 主题切换功能（支持三种模式：light、dark、auto）
-    function toggleTheme() {
-      const currentTheme = localStorage.getItem('theme') || 'auto';
-
-      // 三种模式循环切换：light → dark → auto → light
-      let nextTheme;
-      if (currentTheme === 'light') {
-        nextTheme = 'dark';
-      } else if (currentTheme === 'dark') {
-        nextTheme = 'auto';
-      } else {
-        nextTheme = 'light';
-      }
-
-      localStorage.setItem('theme', nextTheme);
-      applyTheme(nextTheme, true); // 带过渡动画
-    }
-
-    // 更新主题图标
-    function updateThemeIcon(theme) {
-      const themeIcon = document.getElementById('theme-icon');
-      if (!themeIcon) return;
-
-      // 主题配置（集中管理）
-      const THEME_CONFIG = {
-        light: { icon: '☀️', title: '当前：浅色模式（点击切换）', label: '切换主题：当前浅色模式' },
-        dark: { icon: '🌙', title: '当前：深色模式（点击切换）', label: '切换主题：当前深色模式' },
-        auto: { icon: '🌓', title: '当前：跟随系统（点击切换）', label: '切换主题：当前跟随系统' }
-      };
-
-      const config = THEME_CONFIG[theme] || THEME_CONFIG.auto;
-      themeIcon.textContent = config.icon;
-
-      // 更新按钮的 title 和 aria-label
-      const themeButton = themeIcon.closest('button');
-      if (themeButton) {
-        themeButton.title = config.title;
-        themeButton.setAttribute('aria-label', config.label);
-      }
-    }
-
     // 应用主题（支持过渡动画）
     function applyTheme(theme, withTransition = false) {
       const root = document.documentElement;
@@ -132,19 +91,11 @@ export function getUICode() {
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         root.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
       }
-
-      // 更新图标
-      updateThemeIcon(theme);
     }
 
     function initTheme() {
-      const savedTheme = localStorage.getItem('theme') || 'auto';
-
-      // 主题已在 head 内联脚本中应用，这里只需同步图标状态
-      updateThemeIcon(savedTheme);
-
-      // 监听系统主题变化（仅在 auto 模式下生效）
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+      // 主题已在 head 内联脚本中应用，这里仅监听系统主题变化
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
         const currentTheme = localStorage.getItem('theme') || 'auto';
         if (currentTheme === 'auto') {
           applyTheme('auto');

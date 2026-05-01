@@ -108,65 +108,70 @@ export function getPWACode() {
 
     /**
      * 监听PWA安装提示事件
+     * 仅保存事件，实际触发通过系统设置 › 偏好中的按钮
      */
-    let deferredPrompt;
+    let deferredPrompt = null;
     window.addEventListener('beforeinstallprompt', (e) => {
       console.log('💡 PWA 安装提示事件触发');
-      // 阻止默认的小型提示
       e.preventDefault();
-      // 保存事件供后续使用
       deferredPrompt = e;
-      // 显示自定义的安装按钮
-      showInstallPrompt();
+      updateSettingsPwaInstallButton();
     });
 
     /**
-     * 显示安装提示按钮
+     * 同步 系统设置 › 偏好 的 PWA 安装按钮状态
+     * - PWA 模式下：隐藏整节
+     * - 已捕获 beforeinstallprompt：启用按钮
+     * - 未捕获：禁用并用 title 提示
      */
-    function showInstallPrompt() {
-      // 检查是否已经在 PWA 模式或已经显示过
-      if (isPWAMode() || document.getElementById('pwa-install-btn-float')) {
+    function updateSettingsPwaInstallButton() {
+      const section = document.getElementById('settingsPwaSection');
+      const btn = document.getElementById('settingsPwaInstallBtn');
+      if (!section || !btn) return;
+
+      if (isPWAMode()) {
+        section.style.display = 'none';
         return;
       }
 
-      // 创建安装按钮
-      const btn = document.createElement('button');
-      btn.id = 'pwa-install-btn-float';
-      btn.className = 'pwa-install-btn-float';
-      btn.title = '安装到桌面';
-      btn.setAttribute('aria-label', '安装应用到桌面');
-      btn.innerHTML = '<span class="pwa-install-icon">📱</span>';
-      document.body.appendChild(btn);
+      section.style.display = '';
+      btn.textContent = '📱 安装到桌面';
 
-      // 添加显示动画
-      setTimeout(() => btn.classList.add('show'), 100);
+      if (deferredPrompt) {
+        btn.disabled = false;
+        btn.title = '点击安装到桌面';
+      } else {
+        btn.disabled = true;
+        btn.title = '暂不可用（浏览器未触发安装提示）';
+      }
+    }
 
-      // 点击按钮触发安装
-      btn.addEventListener('click', async () => {
-        if (!deferredPrompt) {
-          console.warn('安装提示不可用');
-          return;
-        }
+    /**
+     * 从 系统设置 触发 PWA 安装
+     */
+    async function triggerPwaInstallFromSettings() {
+      const btn = document.getElementById('settingsPwaInstallBtn');
+      if (!deferredPrompt) return;
 
-        // 显示安装提示
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ 安装中…';
+      }
+
+      try {
         deferredPrompt.prompt();
-
-        // 等待用户响应
         const { outcome } = await deferredPrompt.userChoice;
         console.log(\`用户选择: \${outcome}\`);
 
         if (outcome === 'accepted') {
-          console.log('✅ 用户接受了安装提示');
-          // 移除按钮
-          btn.classList.remove('show');
-          setTimeout(() => btn.remove(), 300);
+          showCenterToast('✅', '已发起安装');
         } else {
-          console.log('❌ 用户拒绝了安装提示');
+          showCenterToast('❌', '已取消安装');
         }
-
-        // 清除 deferredPrompt
+      } finally {
         deferredPrompt = null;
-      });
+        updateSettingsPwaInstallButton();
+      }
     }
 
     /**
@@ -175,15 +180,7 @@ export function getPWACode() {
     window.addEventListener('appinstalled', () => {
       console.log('✅ PWA 应用已成功安装');
       deferredPrompt = null;
-
-      // 移除安装按钮（如果还在）
-      const btn = document.getElementById('pwa-install-btn-float');
-      if (btn) {
-        btn.classList.remove('show');
-        setTimeout(() => btn.remove(), 300);
-      }
-
-      // 显示感谢消息
+      updateSettingsPwaInstallButton();
       showCenterToast('✅', '应用已安装到桌面');
     });
 

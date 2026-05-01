@@ -241,16 +241,6 @@ export function getVariables() {
       --float-btn-text: #ffffff;
       --float-btn-shadow: 0 8px 32px rgba(52, 152, 219, 0.3);
 
-      /* 主题切换按钮 */
-      --theme-toggle-bg: #f8f9fa;
-      --theme-toggle-hover: #e9ecef;
-      --theme-toggle-border: #dee2e6;
-
-      /* 返回顶部按钮 */
-      --back-to-top-bg: #f8f9fa;
-      --back-to-top-hover: #e9ecef;
-      --back-to-top-border: #dee2e6;
-      --back-to-top-text: #2c3e50;
     }
 
     /* ========== 深色模式变量覆盖 ========== */
@@ -415,16 +405,6 @@ export function getVariables() {
       --float-btn-hover: #2c5282;
       --float-btn-shadow: 0 8px 32px rgba(49, 130, 206, 0.4);
 
-      /* 主题切换按钮 */
-      --theme-toggle-bg: #2d3748;
-      --theme-toggle-hover: #374151;
-      --theme-toggle-border: #4a5568;
-
-      /* 返回顶部按钮 */
-      --back-to-top-bg: #2d3748;
-      --back-to-top-hover: #374151;
-      --back-to-top-border: #4a5568;
-      --back-to-top-text: #e2e8f0;
     }
 
     /* ========== 媒体查询回退（JavaScript 禁用时） ========== */

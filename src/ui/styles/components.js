@@ -109,6 +109,17 @@ export function getComponentStyles() {
       background: var(--bg-hover);
     }
 
+    /* P1.6 手机端保证 ≥44px 触控面积（iOS HIG） */
+    @media (max-width: 768px) {
+      .card-menu {
+        min-width: 44px;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
+
     .menu-dots {
       font-size: 20px;
       color: var(--text-secondary);
@@ -566,71 +577,6 @@ export function getComponentStyles() {
       color: var(--footer-link-hover);
     }
 
-    /* ========== PWA 安装提示按钮 ========== */
-    .pwa-install-btn-float {
-      position: fixed;
-      bottom: 24px; /* 初始位置与主题按钮相同 */
-      right: 24px;
-      width: 48px;
-      height: 48px;
-      background: var(--theme-toggle-bg);
-      border: 2px solid var(--theme-toggle-border);
-      border-radius: 50%;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      user-select: none;
-      box-shadow: var(--shadow-md);
-      z-index: 1000;
-      opacity: 0;
-      visibility: hidden;
-      -webkit-tap-highlight-color: transparent;
-      -webkit-touch-callout: none;
-      -webkit-user-select: none;
-      -moz-user-select: none;
-      -ms-user-select: none;
-      outline: none;
-      padding: 0;
-      font-family: inherit;
-    }
-
-    .pwa-install-btn-float:focus-visible {
-      outline: 2px solid var(--border-focus);
-      outline-offset: 2px;
-    }
-
-    .pwa-install-btn-float.show {
-      opacity: 1;
-      visibility: visible;
-      bottom: 72px; /* 默认在主题按钮上方48px（返回顶部不显示时）*/
-    }
-
-    .pwa-install-btn-float:hover {
-      box-shadow: var(--shadow-lg);
-      background: var(--theme-toggle-hover);
-    }
-
-    .pwa-install-btn-float:active {
-      transform: translateY(0) scale(0.98);
-    }
-
-    .pwa-install-icon {
-      font-size: 20px;
-      line-height: 1;
-      transition: transform 0.3s ease;
-    }
-
-    .pwa-install-btn-float:hover .pwa-install-icon {
-      transform: scale(1.1);
-    }
-
-    /* 当返回顶部按钮显示时，安装按钮上移 */
-    .back-to-top.show ~ .pwa-install-btn-float.show {
-      bottom: 120px !important; /* 缩小间距到48px */
-    }
-
     /* ========== 离线状态横幅 ========== */
     .offline-banner {
       position: fixed;
@@ -672,30 +618,10 @@ export function getComponentStyles() {
       opacity: 0.95;
     }
 
-    /* ========== PWA 元素响应式设计 ========== */
+    /* ========== 离线横幅响应式 ========== */
 
     /* 移动设备 */
     @media (max-width: 480px) {
-      .pwa-install-btn-float {
-        width: 40px;
-        height: 40px;
-        bottom: 16px;
-        right: 16px;
-      }
-
-      .pwa-install-btn-float.show {
-        bottom: 64px; /* 在主题按钮上方 */
-      }
-
-      .pwa-install-icon {
-        font-size: 18px;
-      }
-
-      /* 当返回顶部按钮显示时，安装按钮上移 */
-      .back-to-top.show ~ .pwa-install-btn-float.show {
-        bottom: 112px !important;
-      }
-
       .offline-banner {
         padding: 10px 16px;
       }
@@ -715,26 +641,6 @@ export function getComponentStyles() {
 
     /* 超小屏幕 */
     @media (max-width: 360px) {
-      .pwa-install-btn-float {
-        width: 36px;
-        height: 36px;
-        bottom: 12px;
-        right: 12px;
-      }
-
-      .pwa-install-btn-float.show {
-        bottom: 56px; /* 在主题按钮上方 */
-      }
-
-      .pwa-install-icon {
-        font-size: 16px;
-      }
-
-      /* 当返回顶部按钮显示时，安装按钮上移 */
-      .back-to-top.show ~ .pwa-install-btn-float.show {
-        bottom: 100px !important;
-      }
-
       .offline-banner {
         padding: 8px 12px;
       }
@@ -756,35 +662,6 @@ export function getComponentStyles() {
     @media (min-width: 1440px) {
       .action-menu-float {
         right: 32px;
-      }
-
-      .theme-toggle-float {
-        right: 32px;
-        bottom: 24px; /* 默认在最底部（返回顶部不显示时）*/
-      }
-
-      /* 当返回顶部按钮显示时，主题按钮上移 */
-      .back-to-top.show ~ .theme-toggle-float {
-        bottom: 80px !important; /* 缩小间距到56px */
-      }
-
-      .back-to-top {
-        right: 32px;
-        bottom: 24px; /* 最底部 */
-      }
-
-      .pwa-install-btn-float {
-        right: 32px;
-        bottom: 24px;
-      }
-
-      .pwa-install-btn-float.show {
-        bottom: 80px; /* 默认在主题按钮上方56px（返回顶部不显示时）*/
-      }
-
-      /* 当返回顶部按钮显示时，安装按钮上移 */
-      .back-to-top.show ~ .pwa-install-btn-float.show {
-        bottom: 136px !important; /* 缩小间距到56px */
       }
     }
 

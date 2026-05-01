@@ -165,6 +165,14 @@ export function getModalStyles() {
       justify-content: center;
     }
 
+    /* P1.6 手机端 close 按钮触控面积提升到 44px */
+    @media (max-width: 768px) {
+      .close-btn {
+        width: 44px;
+        height: 44px;
+      }
+    }
+
     .close-btn:hover {
       color: var(--danger-dark);
       background: var(--danger-light);
@@ -1541,6 +1549,20 @@ export function getModalStyles() {
       }
     }
 
+    /* P1.5 导出格式网格：平板 3 列 / 481-767 手机大屏 2 列（481-767 的 2 列与 ≤480 同规则重复但不冲突） */
+    @media (min-width: 768px) and (max-width: 1279px) {
+      .format-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    @media (max-width: 767px) {
+      .format-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+    }
+
     /* ==================== 导入模态框 - 紧凑优化布局 ==================== */
     .import-modal-compact {
       max-width: var(--fab-modal-max-width, 600px);
@@ -2336,6 +2358,49 @@ export function getModalStyles() {
       color: var(--error-color, #f44336);
     }
 
+    /* ========== P1.1 手机端 Bottom Sheet ========== */
+    /* Modal 从屏幕底部滑入，贴底全宽展示（排除 confirm-dialog 等小对话框） */
+    @media (max-width: 640px) {
+      .modal:not(.confirm-dialog-modal) {
+        align-items: flex-end;
+        padding: 0;
+      }
+
+      .modal:not(.confirm-dialog-modal) .modal-content {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 16px 16px 0 0;
+        max-height: 90vh;
+        margin: 0;
+        /* 覆盖桌面的 scale 动画，改为 slideUp */
+        transform: translateY(100%);
+        opacity: 0;
+        transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.25s ease;
+      }
+
+      .modal:not(.confirm-dialog-modal).show .modal-content {
+        transform: translateY(0);
+        opacity: 1;
+      }
+
+      /* 贴边 header / actions：长表单中始终可见 */
+      .modal:not(.confirm-dialog-modal):not(#qrScanModal) .modal-content > .modal-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: var(--modal-bg);
+      }
+
+      .modal:not(.confirm-dialog-modal):not(#qrScanModal) .modal-content form > .form-actions,
+      .modal:not(.confirm-dialog-modal):not(#qrScanModal) .modal-content > .form-actions,
+      .modal:not(.confirm-dialog-modal):not(#qrScanModal) .modal-content .import-form-actions {
+        position: sticky;
+        bottom: 0;
+        background: var(--modal-bg);
+        z-index: 10;
+      }
+    }
+
     /* 设置模态框移动端适配 */
     @media (max-width: 600px) {
       .settings-layout {
@@ -2357,8 +2422,10 @@ export function getModalStyles() {
 
       .settings-tab {
         flex: 1;
+        flex-direction: row;
         justify-content: center;
-        padding: 10px 8px;
+        gap: 6px;
+        padding: 12px 8px;
         border-left: none;
         border-bottom: 3px solid transparent;
         font-size: 13px;
@@ -2370,12 +2437,14 @@ export function getModalStyles() {
         border-bottom-color: var(--accent-color, #2196F3);
       }
 
+      /* P1.4 手机端 Tab 保留图标+文字同行（旧版仅显示图标太抽象） */
       .settings-tab-text {
-        display: none;
+        display: inline;
+        white-space: nowrap;
       }
 
       .settings-tab-icon {
-        font-size: 20px;
+        font-size: 16px;
       }
 
       .settings-content {
@@ -2387,6 +2456,16 @@ export function getModalStyles() {
       .settings-modal-content {
         max-width: 100%;
         max-height: 90vh;
+      }
+    }
+
+    /* 超窄屏（<360px）Tab 回退为仅图标，避免横向滚动 */
+    @media (max-width: 359px) {
+      .settings-tab-text {
+        display: none;
+      }
+      .settings-tab-icon {
+        font-size: 20px;
       }
     }
   `;

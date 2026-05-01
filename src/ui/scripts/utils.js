@@ -536,54 +536,5 @@ export function getUtilsCode() {
       });
     }
 
-    // ==================== 滚动和回到顶部 ====================
-
-    /**
-     * 回到顶部函数
-     */
-    function scrollToTop() {
-      window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-      });
-    }
-
-    /**
-     * 监听滚动事件，显示/隐藏回到顶部按钮，并调整主题切换按钮位置
-     */
-    let scrollThrottle = null;
-    window.addEventListener('scroll', function() {
-      if (scrollThrottle) return;
-
-      scrollThrottle = setTimeout(() => {
-        const backToTopBtn = document.getElementById('backToTop');
-        const themeToggleBtn = document.querySelector('.theme-toggle-float');
-        if (!backToTopBtn || !themeToggleBtn) return;
-
-        // 滚动超过300px时显示按钮
-        if (window.pageYOffset > 300) {
-          backToTopBtn.classList.add('show');
-          backToTopBtn.style.display = 'flex';
-          // 回到顶部按钮显示时，主题切换按钮在上方
-          // 使用媒体查询检测移动端
-          const isMobile = window.innerWidth <= 480;
-          themeToggleBtn.style.bottom = isMobile ? '68px' : '88px';
-        } else {
-          backToTopBtn.classList.remove('show');
-          // 等待动画完成后再隐藏
-          setTimeout(() => {
-            if (!backToTopBtn.classList.contains('show')) {
-              backToTopBtn.style.display = 'none';
-              // 回到顶部按钮隐藏时，主题切换按钮移到下方
-              const isMobile = window.innerWidth <= 480;
-              themeToggleBtn.style.bottom = isMobile ? '16px' : '24px';
-            }
-          }, 300);
-        }
-
-        scrollThrottle = null;
-      }, 100);
-    });
-
     `;
 }

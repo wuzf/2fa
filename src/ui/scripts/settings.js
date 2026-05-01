@@ -42,6 +42,9 @@ export function getSettingsCode() {
       // 偏好设置标签页打开时加载当前值
       if (tabName === 'preferences') {
         loadPreferences();
+        if (typeof updateSettingsPwaInstallButton === 'function') {
+          updateSettingsPwaInstallButton();
+        }
       }
     }
 
