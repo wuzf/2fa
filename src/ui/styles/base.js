@@ -297,11 +297,11 @@ export function getBaseStyles() {
       }
     }
 
-    /* 独立的操作菜单容器 - 固定在右下角 */
+    /* 独立的操作菜单容器 - 固定在右下角，兼容 iOS safe area */
     .action-menu-float {
       position: fixed;
-      bottom: 24px;
-      right: 24px;
+      bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+      right: calc(24px + env(safe-area-inset-right, 0px));
       z-index: 1001;
     }
 
@@ -517,8 +517,8 @@ export function getBaseStyles() {
       }
 
       .action-menu-float {
-        bottom: 16px;
-        right: 16px;
+        bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+        right: calc(16px + env(safe-area-inset-right, 0px));
       }
 
       .main-action-button {
@@ -583,8 +583,8 @@ export function getBaseStyles() {
       }
 
       .action-menu-float {
-        bottom: 12px;
-        right: 12px;
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        right: calc(12px + env(safe-area-inset-right, 0px));
       }
 
       .main-action-button {

@@ -661,7 +661,7 @@ export function getComponentStyles() {
     /* 超宽屏幕 */
     @media (min-width: 1440px) {
       .action-menu-float {
-        right: 32px;
+        right: calc(32px + env(safe-area-inset-right, 0px));
       }
     }
 

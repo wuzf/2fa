@@ -159,12 +159,15 @@ export async function handleRequest(request, env, ctx) {
 
 			try {
 				const moduleCode = getModuleCode(moduleName);
-				// dev 环境（wrangler dev 走 localhost/127.0.0.1）禁用缓存,避免改代码时浏览器返回旧模块
-				const isDev = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || env?.ENVIRONMENT === 'development';
+				// 生产启用长缓存（wrangler.toml 顶层 [vars] 默认 ENVIRONMENT=production）。
+				// 本地 hostname 兜底：即便用户跳过 `--env development` 直接跑 `wrangler dev`，
+				// localhost 场景也不应拿到长缓存，防止改代码时模块仍命中旧版本
+				const isLocalHost = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '0.0.0.0';
+				const isProd = !isLocalHost && env?.ENVIRONMENT === 'production';
 				return new Response(moduleCode, {
 					headers: {
 						'Content-Type': 'application/javascript; charset=utf-8',
-						'Cache-Control': isDev ? 'no-cache, no-store, must-revalidate' : 'public, max-age=3600',
+						'Cache-Control': isProd ? 'public, max-age=3600' : 'no-cache, no-store, must-revalidate',
 						'Access-Control-Allow-Origin': '*',
 					},
 				});
