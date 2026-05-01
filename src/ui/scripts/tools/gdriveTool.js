@@ -278,7 +278,14 @@ export function getGoogleDriveToolCode() {
     }
 
     async function deleteGoogleDriveDest(id, name) {
-      if (!confirm('确定要删除 Google Drive 目标“' + name + '”吗？删除后该目标将不再接收备份推送。')) {
+      const confirmed = await showConfirmDialog({
+        title: '删除 Google Drive 目标',
+        message: '确定要删除 Google Drive 目标"' + name + '"吗？\\n删除后该目标将不再接收备份推送。',
+        confirmText: '删除',
+        cancelText: '取消',
+        danger: true
+      });
+      if (!confirmed) {
         return;
       }
 

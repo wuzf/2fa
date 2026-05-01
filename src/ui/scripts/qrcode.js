@@ -194,6 +194,7 @@ export function getQRCodeCode() {
     // 隐藏二维码扫描器
     function hideQRScanner() {
       const modal = document.getElementById('qrScanModal');
+      if (!modal || !modal.classList.contains('show')) return;
       modal.classList.remove('show');
       setTimeout(() => modal.style.display = 'none', 300);
       stopQRScanner();

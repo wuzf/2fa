@@ -538,7 +538,14 @@ export function getCoreCode() {
       const secret = secrets.find(s => s.id === id);
       if (!secret) return;
 
-      if (!confirm('确定要删除 "' + secret.name + '" 吗？')) {
+      const confirmed = await showConfirmDialog({
+        title: '删除密钥',
+        message: '确定要删除 "' + secret.name + '" 吗？\\n该操作无法撤销。',
+        confirmText: '删除',
+        cancelText: '取消',
+        danger: true
+      });
+      if (!confirmed) {
         return;
       }
 

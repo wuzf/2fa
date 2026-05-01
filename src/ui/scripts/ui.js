@@ -155,6 +155,7 @@ export function getUICode() {
     // 模态框管理
     function hideQRModal() {
       const modal = document.getElementById('qrModal');
+      if (!modal || !modal.classList.contains('show')) return;
       modal.classList.remove('show');
       setTimeout(() => modal.style.display = 'none', 300);
       enableBodyScroll();
@@ -173,6 +174,7 @@ export function getUICode() {
     // 隐藏添加/编辑密钥模态框
     function hideSecretModal() {
       const modal = document.getElementById('secretModal');
+      if (!modal || !modal.classList.contains('show')) return;
       modal.classList.remove('show');
       setTimeout(() => modal.style.display = 'none', 300);
       enableBodyScroll();

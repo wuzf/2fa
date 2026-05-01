@@ -404,7 +404,14 @@ export function getBackupCode() {
         return;
       }
 
-      const confirmed = confirm('确定要还原备份 "' + selectedBackup.key.replace('backup_', '').replace(/\\.(json|txt|csv|html)$/i, '') + '" 吗？\\n\\n⚠️ 此操作将覆盖当前所有密钥，且无法撤销！');
+      const backupLabel = selectedBackup.key.replace('backup_', '').replace(/\\.(json|txt|csv|html)$/i, '');
+      const confirmed = await showConfirmDialog({
+        title: '还原备份',
+        message: '确定要还原备份 "' + backupLabel + '" 吗？\\n此操作将覆盖当前所有密钥，且无法撤销。',
+        confirmText: '还原',
+        cancelText: '取消',
+        danger: true
+      });
 
       if (!confirmed) {
         return;

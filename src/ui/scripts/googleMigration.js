@@ -525,8 +525,9 @@ export function getGoogleMigrationCode() {
       };
       const migrationURL = generateGoogleMigrationURL(currentBatch, batchInfo);
 
-      // 创建或更新模态框
+      // 创建或更新模态框（翻页时复用同一个 modal，避免重复锁定 body scroll）
       let modal = document.getElementById('exportQRCodeModal');
+      const wasAlreadyOpen = !!modal && (modal.classList.contains('show') || modal.style.display === 'flex');
       if (!modal) {
         modal = document.createElement('div');
         modal.id = 'exportQRCodeModal';
@@ -572,7 +573,10 @@ export function getGoogleMigrationCode() {
       window.exportQRCodeBatchId = batchId;
 
       setTimeout(function() { modal.classList.add('show'); }, 10);
-      disableBodyScroll();
+      // 仅首次打开时锁 body scroll；翻页复用同一 modal 不再重复加锁
+      if (!wasAlreadyOpen) {
+        disableBodyScroll();
+      }
 
       // 生成二维码
       try {

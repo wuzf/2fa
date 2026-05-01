@@ -416,6 +416,129 @@ export function getModalStyles() {
       background: var(--btn-secondary-hover);
     }
 
+    .btn-danger {
+      background: #dc2626;
+      color: #ffffff;
+    }
+
+    .btn-danger:hover {
+      background: #b91c1c;
+    }
+
+    /* ========== 扫码 Modal 溢出修复 ========== */
+    /* 让底部的“选择图片/粘贴截图/连续扫描”在 modal 滚动时始终可见 */
+    #qrScanModal .modal-content {
+      position: relative;
+      max-height: 90vh;
+    }
+
+    #qrScanModal .scanner-section {
+      padding-bottom: 0;
+    }
+
+    #qrScanModal .scanner-container {
+      margin-bottom: 12px;
+    }
+
+    #qrScanModal .scanner-bottom-actions {
+      position: sticky;
+      bottom: 0;
+      background: var(--modal-bg);
+      border-top: 1px solid var(--border-primary);
+      padding: 12px 4px;
+      margin: 0;
+      z-index: 2;
+    }
+
+    #qrScanModal .scanner-hint {
+      position: sticky;
+      bottom: 60px;
+      background: var(--modal-bg);
+      z-index: 1;
+      margin-bottom: 0;
+      padding: 4px 0;
+    }
+
+    /* 矮屏（常见笔记本 900×600 窗口化）缩小摄像头预览避免滚动 */
+    @media (max-height: 820px) {
+      #qrScanModal .video-wrapper {
+        width: 280px !important;
+        height: 280px !important;
+      }
+    }
+
+    @media (max-height: 680px) {
+      #qrScanModal .video-wrapper {
+        width: 220px !important;
+        height: 220px !important;
+      }
+      #qrScanModal .scanner-container {
+        margin-bottom: 8px;
+      }
+    }
+
+    /* 自定义确认对话框 */
+    .confirm-dialog-modal {
+      z-index: 100010;
+    }
+
+    .confirm-dialog-content {
+      padding: 24px;
+      max-width: 420px;
+    }
+
+    .confirm-dialog-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .confirm-dialog-icon {
+      font-size: 24px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .confirm-dialog-title {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .confirm-dialog-message {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+      word-break: break-word;
+    }
+
+    .confirm-dialog-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .confirm-dialog-actions .btn {
+      min-width: 96px;
+      padding: 10px 20px;
+      font-size: 14px;
+    }
+
+    @media (max-width: 480px) {
+      .confirm-dialog-content {
+        padding: 20px;
+      }
+      .confirm-dialog-actions {
+        flex-direction: column-reverse;
+      }
+      .confirm-dialog-actions .btn {
+        width: 100%;
+      }
+    }
+
     /* 登录模态框 */
     .login-modal {
       z-index: 100001;
