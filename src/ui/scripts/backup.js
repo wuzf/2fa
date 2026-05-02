@@ -1,3 +1,5 @@
+import { LIMITS } from '../../utils/constants.js';
+
 /**
  * 备份模块
  * 包含所有备份/恢复功能，用于管理密钥备份
@@ -54,15 +56,77 @@ export function getBackupCode() {
     let backupListLoading = false;
     let backupPreviewRequestToken = 0;
     const BACKUP_LIST_PAGE_SIZE = 50;
+    const BACKUP_UPLOAD_MAX_BYTES = ${LIMITS.MAX_EXPORT_SIZE};
+    const BACKUP_UPLOAD_FILE_REGEX = /^backup_\\d{4}-\\d{2}-\\d{2}(?:_[\\w-]+)?\\.(?:json|txt|csv|html)$/i;
     let backupExportFormat = 'txt'; // 备份导出格式
 
     function isActiveBackupPreviewRequest(backup, requestToken) {
       return requestToken === backupPreviewRequestToken && selectedBackup && selectedBackup.key === backup.key;
     }
 
+    function formatBackupUploadSize(bytes) {
+      if (!Number.isFinite(bytes) || bytes <= 0) {
+        return '0 B';
+      }
+      if (bytes >= 1024 * 1024) {
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+      }
+      if (bytes >= 1024) {
+        return Math.ceil(bytes / 1024) + ' KB';
+      }
+      return bytes + ' B';
+    }
+
+    function getBackupFormatFromFileName(fileName) {
+      const match = String(fileName || '').match(/\\.(json|txt|csv|html)$/i);
+      return match ? match[1].toLowerCase() : 'json';
+    }
+
+    function setRestoreUploadStatus(message, isError) {
+      const status = document.getElementById('restoreUploadStatus');
+      if (!status) {
+        return;
+      }
+      status.style.display = message ? 'block' : 'none';
+      status.textContent = message || '';
+      status.style.color = isError ? '#dc2626' : 'var(--text-secondary)';
+    }
+
+    function resetRestoreUploadInput() {
+      const fileInput = document.getElementById('restoreBackupFileInput');
+      if (fileInput) {
+        fileInput.value = '';
+      }
+      setRestoreUploadStatus('', false);
+    }
+
+    function readRestoreBackupFile(file) {
+      if (file && typeof file.text === 'function') {
+        return file.text();
+      }
+
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('读取文件失败'));
+        reader.readAsText(file);
+      });
+    }
+
+    function showRestorePreviewMessage(message, className) {
+      const previewElement = document.getElementById('restorePreview');
+      const previewContent = document.getElementById('backupPreviewContent');
+      if (!previewElement || !previewContent) {
+        return;
+      }
+      previewElement.style.display = 'block';
+      previewContent.innerHTML = '<div class="' + (className || 'loading-backup') + '">' + escapeHTML(message) + '</div>';
+    }
+
     function resetBackupSelection() {
       backupPreviewRequestToken += 1;
       selectedBackup = null;
+      resetRestoreUploadInput();
 
       const confirmRestoreBtn = document.getElementById('confirmRestoreBtn');
       if (confirmRestoreBtn) {
@@ -248,7 +312,84 @@ export function getBackupCode() {
 
       const backup = backupList[parseInt(selectedIndex)];
       if (backup) {
+        resetRestoreUploadInput();
         selectBackup(backup, parseInt(selectedIndex));
+      }
+    }
+
+    async function handleRestoreBackupFile(event) {
+      const file = event && event.target && event.target.files ? event.target.files[0] : null;
+      if (!file) {
+        return;
+      }
+
+      const fileName = file.name || '';
+      const requestToken = ++backupPreviewRequestToken;
+      const backupSelectElement = document.getElementById('backupSelect');
+      const confirmRestoreBtn = document.getElementById('confirmRestoreBtn');
+      const exportBackupBtn = document.getElementById('exportBackupBtn');
+
+      selectedBackup = null;
+      if (backupSelectElement) {
+        backupSelectElement.value = '';
+      }
+      if (confirmRestoreBtn) {
+        confirmRestoreBtn.disabled = true;
+        confirmRestoreBtn.title = '正在读取上传的备份文件';
+      }
+      if (exportBackupBtn) {
+        exportBackupBtn.disabled = true;
+        exportBackupBtn.title = '上传的备份文件无需再次导出';
+      }
+
+      if (!BACKUP_UPLOAD_FILE_REGEX.test(fileName)) {
+        setRestoreUploadStatus('备份文件名格式不正确，请选择 backup_*.(json|txt|csv|html) 文件。', true);
+        showRestorePreviewMessage('无法读取上传文件：备份文件名格式不正确', 'no-backups');
+        return;
+      }
+
+      if (file.size > BACKUP_UPLOAD_MAX_BYTES) {
+        const maxLabel = formatBackupUploadSize(BACKUP_UPLOAD_MAX_BYTES);
+        setRestoreUploadStatus('备份文件过大，最大支持 ' + maxLabel + '。', true);
+        showRestorePreviewMessage('无法读取上传文件：文件大小超过 ' + maxLabel, 'no-backups');
+        return;
+      }
+
+      setRestoreUploadStatus('正在读取上传文件：' + fileName + '（' + formatBackupUploadSize(file.size) + '）', false);
+      showRestorePreviewMessage('正在读取上传的备份文件...', 'loading-backup');
+
+      try {
+        const content = await readRestoreBackupFile(file);
+        if (requestToken !== backupPreviewRequestToken) {
+          return;
+        }
+        if (!content) {
+          throw new Error('备份文件内容为空');
+        }
+
+        const uploadedBackup = {
+          key: fileName,
+          created: new Date().toISOString(),
+          count: 0,
+          format: getBackupFormatFromFileName(fileName),
+          uploaded: true,
+          content
+        };
+        selectedBackup = uploadedBackup;
+        setRestoreUploadStatus('已选择上传文件：' + fileName + '（' + formatBackupUploadSize(file.size) + '）', false);
+        await showBackupPreview(uploadedBackup, requestToken);
+      } catch (error) {
+        if (requestToken !== backupPreviewRequestToken) {
+          return;
+        }
+        console.error('读取上传备份文件失败:', error);
+        selectedBackup = null;
+        if (confirmRestoreBtn) {
+          confirmRestoreBtn.disabled = true;
+          confirmRestoreBtn.title = '上传文件读取失败，无法恢复';
+        }
+        setRestoreUploadStatus('读取上传备份文件失败：' + error.message, true);
+        showRestorePreviewMessage('读取上传备份文件失败: ' + error.message, 'no-backups');
       }
     }
 
@@ -281,12 +422,16 @@ export function getBackupCode() {
       previewContent.innerHTML = '<div class="loading-backup">正在加载备份内容...</div>';
 
       try {
+        const isUploadedBackup = backup && backup.uploaded === true;
+        const requestBody = isUploadedBackup
+          ? { backupFileName: backup.key, backupContent: backup.content, preview: true }
+          : { backupKey: backup.key, preview: true };
         const response = await authenticatedFetch('/api/backup/restore', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ backupKey: backup.key, preview: true })
+          body: JSON.stringify(requestBody)
         });
 
         if (!isActiveBackupPreviewRequest(backup, requestToken)) {
@@ -308,6 +453,7 @@ export function getBackupCode() {
         const data = responseData.data || responseData; // 兼容不同的响应格式
 
         const formatLabel = getBackupExportFormatLabel(getBackupStoredFormat({ format: data.format || backup.format }));
+        const sourceLabel = isUploadedBackup ? '上传文件' : 'KV 备份';
         const encryptedLabel = data.encrypted ? '已加密' : '明文';
         const skippedInvalidCount = Number(data.skippedInvalidCount || 0);
         const isPartialBackup = data.partial === true || skippedInvalidCount > 0;
@@ -332,6 +478,10 @@ export function getBackupCode() {
               '<div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">存储状态</div>' +
               '<div style="font-weight: 600; color: var(--text-primary);">' + encryptedLabel + '</div>' +
             '</div>' +
+            '<div style="padding: 10px 12px; border-radius: 8px; background: var(--bg-secondary);">' +
+              '<div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">恢复来源</div>' +
+              '<div style="font-weight: 600; color: var(--text-primary);">' + escapeHTML(sourceLabel) + '</div>' +
+            '</div>' +
           '</div>';
         const previewWarning = isPartialBackup
           ? '<div style="margin-bottom: 14px; padding: 12px 14px; border-radius: 8px; border: 1px solid #f59e0b; background: #fff7ed; color: #9a3412;">' +
@@ -349,8 +499,8 @@ export function getBackupCode() {
           confirmRestoreBtn.title = isPartialBackup ? warningMessage : (isEmptyBackup ? emptyBackupMessage : '');
         }
         if (exportBackupBtn) {
-          exportBackupBtn.disabled = isPartialBackup;
-          exportBackupBtn.title = isPartialBackup ? warningMessage : '';
+          exportBackupBtn.disabled = isUploadedBackup || isPartialBackup;
+          exportBackupBtn.title = isUploadedBackup ? '上传的备份文件无需再次导出' : (isPartialBackup ? warningMessage : '');
         }
 
         if (hasSecrets) {
@@ -423,17 +573,20 @@ export function getBackupCode() {
       confirmBtn.disabled = true;
 
       try {
+        const requestBody = selectedBackup.uploaded === true
+          ? { backupFileName: selectedBackup.key, backupContent: selectedBackup.content }
+          : { backupKey: selectedBackup.key };
         const response = await authenticatedFetch('/api/backup/restore', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ backupKey: selectedBackup.key })
+          body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
           const errorData = await response.json();
-          throw new Error(errorData.error || '还原失败');
+          throw new Error(errorData.message || errorData.error || '还原失败');
         }
 
         const result = await response.json();
@@ -458,6 +611,10 @@ export function getBackupCode() {
     function exportSelectedBackup() {
       if (!selectedBackup) {
         showCenterToast('❌', '请先选择一个备份文件');
+        return;
+      }
+      if (selectedBackup.uploaded === true) {
+        showCenterToast('ℹ️', '上传的备份文件无需再次导出');
         return;
       }
 

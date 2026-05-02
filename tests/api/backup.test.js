@@ -18,6 +18,7 @@ import { getAllSecrets, saveSecretsToKV } from '../../src/api/secrets/shared.js'
 import { encryptSecrets } from '../../src/utils/encryption.js';
 import { createBackupEntry } from '../../src/utils/backup-format.js';
 import { buildBackupIndexMetadata, createBackupIndexKey, ensureBackupIndexes, putBackupRecord } from '../../src/utils/backup-index.js';
+import { LIMITS } from '../../src/utils/constants.js';
 
 // ==================== Mock 模块 ====================
 
@@ -2400,6 +2401,161 @@ describe('Backup API Module', () => {
       expect(response.status).toBe(400);
       expect(data.error).toContain('无法恢复');
       expect(data.message).toContain('未配置 ENCRYPTION_KEY');
+    });
+
+    it('should preview and restore an uploaded encrypted backup file', async () => {
+      const env = createMockEnv();
+      const originalSecrets = [
+        {
+          id: '1',
+          name: 'Uploaded Encrypted',
+          account: 'upload@example.com',
+          secret: 'JBSWY3DPEHPK3PXP',
+          type: 'TOTP',
+          digits: 6,
+          period: 30,
+          algorithm: 'SHA1'
+        }
+      ];
+      const backupEntry = await createBackupEntry(originalSecrets, env, {
+        backupKey: 'backup_2026-04-17_00-00-00-000-upload.json',
+        timestamp: '2026-04-17T00:00:00.000Z',
+        format: 'json',
+        reason: 'manual',
+        strict: true
+      });
+
+      expect(backupEntry.backupContent).toMatch(/^v1:/);
+
+      const previewResp = await handleRestoreBackup(createMockRequest({
+        backupFileName: backupEntry.backupKey,
+        backupContent: backupEntry.backupContent,
+        preview: true
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const previewData = await previewResp.json();
+
+      expect(previewResp.status).toBe(200);
+      expect(previewData.data.encrypted).toBe(true);
+      expect(previewData.data.source).toBe('upload');
+      expect(previewData.data.secrets[0].name).toBe('Uploaded Encrypted');
+
+      await saveSecretsToKV(env, [
+        { id: '2', name: 'Different', secret: 'MFRGGZDFMZTWQ2LK' }
+      ], 'test');
+
+      const restoreResp = await handleRestoreBackup(createMockRequest({
+        backupFileName: backupEntry.backupKey,
+        backupContent: backupEntry.backupContent,
+        preview: false
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const restoreData = await restoreResp.json();
+      const restoredSecrets = await getAllSecrets(env);
+
+      expect(restoreResp.status).toBe(200);
+      expect(restoreData.success).toBe(true);
+      expect(restoreData.source).toBe('upload');
+      expect(restoredSecrets).toHaveLength(1);
+      expect(restoredSecrets[0].name).toBe('Uploaded Encrypted');
+      expect(restoredSecrets[0].secret).toBe('JBSWY3DPEHPK3PXP');
+    });
+
+    it('should reject an uploaded encrypted backup when ENCRYPTION_KEY is missing', async () => {
+      const env = createMockEnv();
+      const backupEntry = await createBackupEntry([
+        { id: '1', name: 'Uploaded Missing Key', secret: 'JBSWY3DPEHPK3PXP' }
+      ], env, {
+        backupKey: 'backup_2026-04-17_00-00-00-001-upload.json',
+        timestamp: '2026-04-17T00:00:00.000Z',
+        format: 'json'
+      });
+
+      delete env.ENCRYPTION_KEY;
+
+      const response = await handleRestoreBackup(createMockRequest({
+        backupFileName: backupEntry.backupKey,
+        backupContent: backupEntry.backupContent,
+        preview: false
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toContain('无法恢复');
+      expect(data.message).toContain('ENCRYPTION_KEY');
+    });
+
+    it('should restore an uploaded plaintext backup file', async () => {
+      const env = createMockEnv();
+      delete env.ENCRYPTION_KEY;
+      const backupEntry = await createBackupEntry([
+        { id: '1', name: 'Uploaded Plain', account: 'plain@example.com', secret: 'JBSWY3DPEHPK3PXP' }
+      ], env, {
+        backupKey: 'backup_2026-04-17_00-00-00-002-upload.txt',
+        timestamp: '2026-04-17T00:00:00.000Z',
+        format: 'txt'
+      });
+
+      expect(backupEntry.backupContent).not.toMatch(/^v1:/);
+
+      const response = await handleRestoreBackup(createMockRequest({
+        backupFileName: backupEntry.backupKey,
+        backupContent: backupEntry.backupContent
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const data = await response.json();
+      const restoredSecrets = await getAllSecrets(env);
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.sourceEncrypted).toBe(false);
+      expect(data.source).toBe('upload');
+      expect(restoredSecrets).toHaveLength(1);
+      expect(restoredSecrets[0].name).toBe('Uploaded Plain');
+    });
+
+    it('should reject an uploaded backup request over the restore size limit', async () => {
+      const env = createMockEnv();
+      const request = {
+        method: 'POST',
+        url: 'https://example.com/api/backup/restore',
+        headers: new Headers({
+          'Content-Type': 'application/json',
+          'Content-Length': String(100 * 1024 * 1024)
+        }),
+        text: async () => JSON.stringify({
+          backupFileName: 'backup_2026-04-17_00-00-00-003-upload.json',
+          backupContent: '{}'
+        })
+      };
+
+      const response = await handleRestoreBackup(request, env);
+      const data = await response.json();
+
+      expect(response.status).toBe(413);
+      expect(data.error).toContain('恢复请求过大');
+    });
+
+    it('should not reject an uploaded file at the file size limit because of JSON wrapper overhead', async () => {
+      const env = createMockEnv();
+      const response = await handleRestoreBackup(createMockRequest({
+        backupFileName: 'backup_2026-04-17_00-00-00-004-upload.json',
+        backupContent: '"'.repeat(LIMITS.MAX_EXPORT_SIZE),
+        preview: true
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+
+      expect(response.status).not.toBe(413);
+      expect(response.status).toBe(400);
+    });
+
+    it('should reject an uploaded backup file whose content exceeds the restore file size limit', async () => {
+      const env = createMockEnv();
+      const response = await handleRestoreBackup(createMockRequest({
+        backupFileName: 'backup_2026-04-17_00-00-00-005-upload.json',
+        backupContent: 'a'.repeat(LIMITS.MAX_EXPORT_SIZE + 1),
+        preview: true
+      }, 'POST', 'https://example.com/api/backup/restore'), env);
+      const data = await response.json();
+
+      expect(response.status).toBe(413);
+      expect(data.error).toContain('备份文件过大');
     });
 
     it('应该拒绝恢复空备份以避免覆盖当前数据', async () => {

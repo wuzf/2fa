@@ -463,7 +463,10 @@ function getHTMLBody() {
           <div class="backup-actions">
             <button type="button" class="btn btn-outline" onclick="loadBackupList()" style="padding: 8px 16px; font-size: 12px;">🔄 刷新</button>
             <button type="button" class="btn btn-outline" onclick="exportSelectedBackup()" id="exportBackupBtn" disabled style="padding: 8px 16px; font-size: 12px;">📥 导出备份</button>
+            <input type="file" id="restoreBackupFileInput" accept=".txt,.csv,.json,.html" style="display: none;" onchange="handleRestoreBackupFile(event)">
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('restoreBackupFileInput').click()" style="padding: 8px 16px; font-size: 12px;">📤 上传备份文件</button>
           </div>
+          <div id="restoreUploadStatus" style="display: none; margin-top: 8px; font-size: 12px; color: var(--text-secondary);"></div>
           <div class="backup-pagination" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px;">
             <span id="backupListStatus" style="font-size: 12px; color: var(--text-secondary);"></span>
             <button type="button" class="btn btn-outline" id="backupLoadMoreBtn" onclick="loadMoreBackupList()" style="display: none; padding: 8px 16px; font-size: 12px;">加载更多</button>

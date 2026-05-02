@@ -130,7 +130,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 系统自动备份（数据变化后自动触发 + 每天定时检查），保留最近 100 个备份（可在设置中调整）。
 新创建的备份文件格式会跟随 **设置 → 默认导出格式**；远程自动备份也会使用相同的扩展名（`txt` / `json` / `csv` / `html`）。
 
-点击悬浮按钮 → **🔄 还原配置** 查看备份列表、预览内容、还原或导出。
+点击悬浮按钮 → **🔄 还原配置** 查看备份列表、预览内容、还原或导出；也可以上传从 WebDAV/S3/OneDrive/Google Drive 下载的 `backup_*.(txt|json|csv|html)` 文件进行预览和恢复。
 
 #### 远程备份
 
@@ -142,6 +142,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 - **Google Drive** — 通过 Google OAuth 授权后，将备份写入 Google Drive 指定目录
 
 在 **设置 → 同步设置** 中添加和管理远程备份目标。
+
+远程备份保存的是应用生成的同一份备份内容。若创建备份时已配置 `ENCRYPTION_KEY`，远程文件内容也是加密密文；恢复时需在 Worker 中保留同一个 `ENCRYPTION_KEY`。
 
 详细配置步骤见：[网盘备份配置指南](docs/CLOUD_DRIVE_SETUP.md)
 

@@ -890,6 +890,8 @@ Content-Disposition: attachment; filename="2FA-backup-2026-04-17.txt"
 
 **请求体**:
 
+KV 备份恢复:
+
 ```json
 {
 	"backupKey": "backup_2026-04-17_06-05-18-599-us85.txt",
@@ -897,7 +899,21 @@ Content-Disposition: attachment; filename="2FA-backup-2026-04-17.txt"
 }
 ```
 
-- `backupKey`: 备份文件名
+- `backupKey`: KV 中的备份文件名
+- `preview`: `true` 时仅返回预览，不执行恢复
+
+上传备份文件恢复（适用于从 WebDAV/S3/OneDrive/Google Drive 下载的远程备份）:
+
+```json
+{
+	"backupFileName": "backup_2026-04-17_06-05-18-599-us85.txt",
+	"backupContent": "v1:base64iv:base64ciphertext",
+	"preview": true
+}
+```
+
+- `backupFileName`: 上传文件名，必须为 `backup_*.(txt|json|csv|html)`
+- `backupContent`: 上传文件原始文本内容，可为明文备份或 `v1:` 加密备份
 - `preview`: `true` 时仅返回预览，不执行恢复
 
 **成功响应** (200 OK):
@@ -910,7 +926,8 @@ Content-Disposition: attachment; filename="2FA-backup-2026-04-17.txt"
 	"count": 15,
 	"timestamp": "2026-04-17T06:05:18.599Z",
 	"sourceEncrypted": true,
-	"format": "txt"
+	"format": "txt",
+	"source": "kv"
 }
 ```
 
@@ -926,6 +943,7 @@ Content-Disposition: attachment; filename="2FA-backup-2026-04-17.txt"
 		"timestamp": "2026-04-17T06:05:18.599Z",
 		"encrypted": true,
 		"format": "txt",
+		"source": "kv",
 		"partial": false,
 		"skippedInvalidCount": 0,
 		"warnings": [],

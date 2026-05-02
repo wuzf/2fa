@@ -59,4 +59,10 @@ describe('backup module code generation', () => {
 		expect(code).toContain('function isActiveBackupPreviewRequest(backup, requestToken)');
 		expect(code).toContain('if (!isActiveBackupPreviewRequest(backup, requestToken)) {');
 	});
+
+  it('ignores stale uploaded-file read failures when the user switches backups quickly', () => {
+    const code = getBackupCode();
+
+    expect(code).toMatch(/catch \(error\) \{\s+if \(requestToken !== backupPreviewRequestToken\) \{\s+return;\s+\}/);
+  });
 });
