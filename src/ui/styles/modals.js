@@ -1864,6 +1864,69 @@ export function getModalStyles() {
       border-radius: 3px;
     }
 
+    .import-progress-panel {
+      background: var(--bg-secondary);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      margin: 12px 0 16px;
+      border: 1px solid var(--border-primary);
+    }
+
+    .import-progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .import-progress-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .import-progress-percent {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--btn-primary-bg);
+    }
+
+    .import-progress-bar {
+      width: 100%;
+      height: 10px;
+      background: var(--progress-bg);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    .import-progress-fill {
+      height: 100%;
+      background: var(--progress-fill);
+      border-radius: inherit;
+      transition: width 0.25s ease;
+    }
+
+    .import-progress-meta,
+    .import-progress-stats {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 12px;
+    }
+
+    .import-progress-meta {
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .import-progress-stats {
+      color: var(--text-tertiary);
+    }
+
     /* 导入响应式 - 手机端 */
     @media (max-width: 480px) {
       .import-modal-compact {

@@ -408,6 +408,25 @@ function getHTMLBody() {
         <div id="importPreviewList" class="import-preview-list"></div>
       </div>
 
+      <div id="importProgress" class="import-progress-panel" style="display: none;">
+        <div class="import-progress-header">
+          <span class="import-progress-title" id="importProgressTitle">导入进度</span>
+          <span class="import-progress-percent" id="importProgressPercent">0%</span>
+        </div>
+        <div class="import-progress-bar">
+          <div id="importProgressFill" class="import-progress-fill" style="width: 0%;"></div>
+        </div>
+        <div class="import-progress-meta">
+          <span id="importProgressStatus">准备开始...</span>
+          <span id="importProgressDetail">0 / 0</span>
+        </div>
+        <div class="import-progress-stats">
+          <span id="importProgressChunk">分片 0 / 0</span>
+          <span id="importProgressSuccess">成功 0</span>
+          <span id="importProgressFail">失败 0</span>
+        </div>
+      </div>
+
       <!-- 操作按钮 -->
       <div class="form-actions import-form-actions">
         <button type="button" class="btn btn-secondary" onclick="hideImportModal()">取消</button>

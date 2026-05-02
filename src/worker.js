@@ -369,6 +369,10 @@ export default {
 		const logger = getLogger(env);
 		const timer = new PerformanceTimer('ScheduledBackup', logger);
 
+		// 早于任何 KV 读取捕获时间戳：此时刻之前 stage 的 pending hash 必然对应"不晚于我们即将备份的数据"，
+		// 传给 saveDataHash 以便清理分片导入等场景下残留的 pending。
+		const backupStartedAt = Date.now();
+
 		try {
 			logger.info('定时备份任务开始', {
 				scheduledTime: new Date().toISOString(),
@@ -496,6 +500,7 @@ export default {
 			await saveDataHash(env, secrets, {
 				reason: 'scheduled',
 				skippedInvalidCount: backupEntry.skippedInvalidCount,
+				backupStartedAt,
 			});
 			timer.checkpoint('哈希已更新');
 

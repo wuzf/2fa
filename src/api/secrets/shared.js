@@ -17,8 +17,8 @@ import { clearPendingDataHash, stageDataHash } from '../../utils/data-hash.js';
  */
 export async function saveSecretsToKV(env, secrets, reason = 'update', options = {}, ctx) {
 	const logger = getLogger(env);
-	const { immediate = false } = options;
-	const shouldStageDataHash = Boolean(ctx?.waitUntil) && immediate !== true;
+	const { immediate = false, skipBackup = false } = options;
+	const shouldStageDataHash = Boolean(ctx?.waitUntil) && immediate !== true && skipBackup !== true;
 
 	try {
 		const encryptedData = await encryptSecrets(secrets, env);
@@ -28,6 +28,29 @@ export async function saveSecretsToKV(env, secrets, reason = 'update', options =
 			logger.info('✅ 密钥已加密保存', { count: secrets.length });
 		} else {
 			logger.warn('⚠️ 密钥以明文保存（未配置 ENCRYPTION_KEY）', { count: secrets.length });
+		}
+
+		if (skipBackup === true) {
+			// 事件驱动备份被跳过（分片导入的中间片）：仍然 stage 当前数据哈希，
+			// 这样即使后续分片丢失或客户端伪造元数据，定时 cron 也能通过哈希比对兜底
+			const stagedHash = await stageDataHash(env, secrets);
+			if (stagedHash === null) {
+				// pending hash 未写入：失去 cron 跳过冗余备份的兜底信号，且若末片永远不到，
+				// 中间片数据可能得不到即时备份。回退为触发一次即时备份，确保本片已落盘备份。
+				logger.warn('stage pending data hash 失败，回退触发即时备份以兜底中间片', { reason });
+				try {
+					await triggerBackup(secrets, env, {
+						reason: `${reason}-stage-failed-fallback`,
+						immediate: true,
+						ctx,
+					});
+				} catch (err) {
+					logger.warn('回退即时备份失败（不影响主流程）', { reason }, err);
+				}
+				return;
+			}
+			logger.debug('跳过即时备份，已 stage pending hash 供 cron 兜底', { reason, immediate });
+			return;
 		}
 
 		try {

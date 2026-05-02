@@ -14,16 +14,20 @@ class MockKV {
 
   async get(key, type = 'text') {
     const value = this.store.get(key);
-    if (value === undefined) return null;
+    if (value === undefined) {
+      return null;
+    }
     if (type === 'json') {
       // 如果已经是对象，直接返回；否则解析 JSON
-      if (typeof value === 'object') return value;
+      if (typeof value === 'object') {
+        return value;
+      }
       return JSON.parse(value);
     }
     return value;
   }
 
-  async put(key, value, options = {}) {
+  async put(key, value, _options = {}) {
     // 存储时保持原始类型（支持对象存储）
     this.store.set(key, value);
   }
@@ -108,6 +112,125 @@ describe('Batch Import API Module', () => {
       expect(data.results[0].success).toBe(true);
       expect(data.results[0].secret).toBeDefined();
       expect(data.results[0].secret.id).toBeDefined();
+    });
+
+    it('should accept deferred backup flag for chunked imports', async () => {
+      const env = createMockEnv();
+
+      const request = createMockRequest({
+        secrets: [
+          {
+            name: 'Chunked Service',
+            account: 'chunk@example.com',
+            secret: 'JBSWY3DPEHPK3PXP',
+            type: 'TOTP'
+          }
+        ],
+        immediateBackup: false
+      });
+
+      const response = await handleBatchAddSecrets(request, env);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.successCount).toBe(1);
+      expect(data.failCount).toBe(0);
+    });
+
+    it('should not skip backup when deferred flag is sent without chunk metadata', async () => {
+      const env = createMockEnv();
+      const ctx = { waitUntil: vi.fn() };
+
+      const request = createMockRequest({
+        secrets: [
+          {
+            name: 'Single Batch',
+            account: 'single@example.com',
+            secret: 'JBSWY3DPEHPK3PXP',
+            type: 'TOTP'
+          }
+        ],
+        immediateBackup: false
+      });
+
+      const response = await handleBatchAddSecrets(request, env, ctx);
+      const data = await response.json();
+      const backupKeys = await env.SECRETS_KV.list({ prefix: 'backup_' });
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(backupKeys.keys.length).toBeGreaterThan(0);
+    });
+
+    it('should skip backup scheduling for deferred chunk saves even when ctx.waitUntil exists', async () => {
+      const env = createMockEnv();
+      const waitUntil = vi.fn();
+      const ctx = { waitUntil };
+      const secrets = Array.from({ length: 100 }, (_, i) => ({
+        name: 'Deferred Chunk',
+        account: `deferred-${i}@example.com`,
+        secret: 'JBSWY3DPEHPK3PXP',
+        type: 'TOTP'
+      }));
+
+      const request = createMockRequest({
+        secrets,
+        immediateBackup: false,
+        chunkIndex: 1,
+        chunkCount: 2
+      });
+
+      const response = await handleBatchAddSecrets(request, env, ctx);
+      const data = await response.json();
+      const backupKeys = await env.SECRETS_KV.list({ prefix: 'backup_' });
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(backupKeys.keys.length).toBe(0);
+    });
+
+    // 防御伪造 chunk 元数据的单请求：即便客户端伪造 chunkIndex/chunkCount 跳过事件驱动备份，
+    // 服务端仍需 stage pending data hash 以便 cron 通过哈希比对兜底触发备份。
+    it('should stage pending data hash when client forges chunk metadata to defer backup', async () => {
+      const env = createMockEnv();
+      const ctx = { waitUntil: vi.fn() };
+      const secrets = Array.from({ length: 100 }, (_, i) => ({
+        name: 'Forged Chunk',
+        account: `forged-${i}@example.com`,
+        secret: 'JBSWY3DPEHPK3PXP',
+        type: 'TOTP'
+      }));
+
+      const request = createMockRequest({
+        secrets,
+        immediateBackup: false,
+        chunkIndex: 1,
+        chunkCount: 2
+      });
+
+      const response = await handleBatchAddSecrets(request, env, ctx);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+
+      // 事件驱动备份确实被跳过（这是优化的预期行为）
+      const backupKeys = await env.SECRETS_KV.list({ prefix: 'backup_' });
+      expect(backupKeys.keys.length).toBe(0);
+
+      // 但密钥数据已落盘
+      const storedSecrets = await env.SECRETS_KV.get('secrets', 'text');
+      expect(storedSecrets).toBeTruthy();
+
+      // 关键：pending_backup_hash 必须被 stage，这样 cron 在 currentHash !== lastHash
+      // 或 pendingHashHasCommittedBackup === false 时仍能补偿备份
+      const pendingHashRaw = await env.SECRETS_KV.get('pending_backup_hash', 'text');
+      expect(pendingHashRaw).toBeTruthy();
+      const pendingHash = JSON.parse(pendingHashRaw);
+      expect(typeof pendingHash.hash).toBe('string');
+      expect(pendingHash.hash.length).toBeGreaterThan(0);
+      expect(typeof pendingHash.updatedAt).toBe('string');
     });
 
     it('应该处理部分成功的批量导入', async () => {

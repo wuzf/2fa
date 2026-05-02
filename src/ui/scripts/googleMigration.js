@@ -8,6 +8,8 @@
  * - Protobuf 编解码
  */
 
+import { LIMITS } from '../../utils/constants.js';
+
 /**
  * 获取 Google 迁移相关代码
  * @returns {string} JavaScript 代码
@@ -619,6 +621,13 @@ export function getGoogleMigrationCode() {
      * 显示 Google 迁移导入预览
      */
     function showGoogleMigrationPreview(parsedSecrets) {
+      // 幂等：若上一次 closeMigrationPreview 的 300ms 延迟移除还没触发，
+      // 先立即移除旧 modal，避免新旧两个同 id modal 在 DOM 中短暂共存
+      const existingModal = document.getElementById('migrationPreviewModal');
+      if (existingModal) {
+        existingModal.remove();
+      }
+
       // 创建预览模态框
       const modal = document.createElement('div');
       modal.id = 'migrationPreviewModal';
@@ -668,13 +677,19 @@ export function getGoogleMigrationCode() {
     /**
      * 关闭迁移预览模态框
      */
-    function closeMigrationPreview() {
+    function closeMigrationPreview(preservePendingSecrets) {
       const modal = document.getElementById('migrationPreviewModal');
       if (modal) {
         modal.classList.remove('show');
         setTimeout(function() { modal.remove(); }, 300);
       }
-      window.pendingMigrationSecrets = null;
+      if (!preservePendingSecrets) {
+        // 续传未触发 / 用户主动取消时，连带清掉累计的失败明细，避免下一次导入串入旧状态
+        window.pendingMigrationSecrets = null;
+        window.pendingMigrationPriorSuccessCount = 0;
+        window.pendingMigrationPriorFailCount = 0;
+        window.pendingMigrationPriorFailures = [];
+      }
       enableBodyScroll();
     }
 
@@ -737,6 +752,176 @@ export function getGoogleMigrationCode() {
     /**
      * 确认导入 Google 迁移的密钥
      */
+    // 由构建期从 LIMITS.BULK_IMPORT_CHUNK_SIZE 注入，与后端 batch.js/validation.js 保持一致
+    const GOOGLE_MIGRATION_IMPORT_CHUNK_SIZE = ${LIMITS.BULK_IMPORT_CHUNK_SIZE};
+
+    function splitGoogleMigrationImportItems(items, chunkSize) {
+      const chunks = [];
+      for (let i = 0; i < items.length; i += chunkSize) {
+        chunks.push(items.slice(i, i + chunkSize));
+      }
+      return chunks;
+    }
+
+    async function readGoogleMigrationImportErrorMessage(response) {
+      try {
+        const error = await response.clone().json();
+        return error.message || error.error || ('HTTP ' + response.status);
+      } catch (jsonError) {
+        try {
+          const text = await response.text();
+          return text || ('HTTP ' + response.status);
+        } catch (textError) {
+          return 'HTTP ' + response.status;
+        }
+      }
+    }
+
+    function createGoogleMigrationImportError(message, meta) {
+      const error = new Error(message);
+      Object.assign(error, meta);
+      return error;
+    }
+
+    async function importGoogleMigrationSecretsIndividually(items, startIndex) {
+      let successCount = 0;
+      let failCount = 0;
+      const results = [];
+
+      for (let index = 0; index < items.length; index++) {
+        const item = items[index];
+        const globalIndex = startIndex + index;
+
+        try {
+          const response = await authenticatedFetch('/api/secrets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(item)
+          });
+
+          if (response.ok) {
+            successCount++;
+            results.push({
+              index: globalIndex,
+              success: true,
+              secret: {
+                name: item.name
+              }
+            });
+          } else {
+            failCount++;
+            const errorMessage = await readGoogleMigrationImportErrorMessage(response);
+            results.push({
+              index: globalIndex,
+              success: false,
+              error: errorMessage
+            });
+          }
+        } catch (error) {
+          failCount++;
+          const errorMessage = error && error.message ? error.message : '未知错误';
+          results.push({
+            index: globalIndex,
+            success: false,
+            error: errorMessage
+          });
+        }
+      }
+
+      return { successCount, failCount, results };
+    }
+
+    async function importGoogleMigrationSecretsInChunks(items) {
+      let successCount = 0;
+      let failCount = 0;
+      const results = [];
+      const chunks = splitGoogleMigrationImportItems(items, GOOGLE_MIGRATION_IMPORT_CHUNK_SIZE);
+
+      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+        const chunk = chunks[chunkIndex];
+        const startIndex = chunkIndex * GOOGLE_MIGRATION_IMPORT_CHUNK_SIZE;
+
+        try {
+          const response = await authenticatedFetch('/api/secrets/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              secrets: chunk,
+              immediateBackup: chunkIndex === chunks.length - 1,
+              chunkIndex: chunkIndex + 1,
+              chunkCount: chunks.length
+            })
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            const chunkSuccessCount = typeof result.successCount === 'number' ? result.successCount : chunk.length;
+            const chunkFailCount = typeof result.failCount === 'number' ? result.failCount : 0;
+
+            successCount += chunkSuccessCount;
+            failCount += chunkFailCount;
+
+            if (Array.isArray(result.results)) {
+              result.results.forEach(function(itemResult, index) {
+                results.push(Object.assign({}, itemResult, {
+                  index: typeof itemResult.index === 'number' ? itemResult.index + startIndex : startIndex + index
+                }));
+              });
+            }
+
+            continue;
+          }
+
+          if (response.status === 429) {
+            throw createGoogleMigrationImportError('\u6279\u91cf\u5bfc\u5165\u88ab\u9650\u6d41\uff0c\u5df2\u505c\u6b62\u540e\u7eed\u63d0\u4ea4\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002', {
+              partialSuccessCount: successCount,
+              partialFailCount: failCount,
+              processedItems: successCount + failCount,
+              results: results.slice(),
+              chunkIndex: chunkIndex + 1,
+              chunkCount: chunks.length
+            });
+          }
+          if (response.status >= 500) {
+            throw createGoogleMigrationImportError('\u7b2c ' + (chunkIndex + 1) + ' / ' + chunks.length + ' \u6279\u5bfc\u5165\u54cd\u5e94\u5f02\u5e38\uff0c\u5f53\u524d\u6279\u6b21\u7ed3\u679c\u53ef\u80fd\u672a\u77e5\uff0c\u8bf7\u5237\u65b0\u540e\u6838\u5bf9\u5df2\u5bfc\u5165\u6570\u636e\u3002', {
+              partialSuccessCount: successCount,
+              partialFailCount: failCount,
+              processedItems: successCount + failCount,
+              results: results.slice(),
+              chunkIndex: chunkIndex + 1,
+              chunkCount: chunks.length
+            });
+          }
+          throw createGoogleMigrationImportError('\u7b2c ' + (chunkIndex + 1) + ' / ' + chunks.length + ' \u6279\u5bfc\u5165\u5931\u8d25\uff1a' + (await readGoogleMigrationImportErrorMessage(response)) + '\uff0c\u5df2\u505c\u6b62\u540e\u7eed\u63d0\u4ea4\u3002', {
+            partialSuccessCount: successCount,
+            partialFailCount: failCount,
+            processedItems: successCount + failCount,
+            results: results.slice(),
+            chunkIndex: chunkIndex + 1,
+            chunkCount: chunks.length
+          });
+
+        } catch (error) {
+          throw createGoogleMigrationImportError(
+            error instanceof Error
+              ? error.message
+              : '\u7b2c ' + (chunkIndex + 1) + ' / ' + chunks.length + ' \u6279\u8bf7\u6c42\u5931\u8d25\uff0c\u5f53\u524d\u6279\u6b21\u7ed3\u679c\u53ef\u80fd\u672a\u77e5\uff0c\u8bf7\u5237\u65b0\u540e\u6838\u5bf9\u5df2\u5bfc\u5165\u6570\u636e\u3002',
+            {
+              partialSuccessCount: successCount,
+              partialFailCount: failCount,
+              processedItems: successCount + failCount,
+              results: results.slice(),
+              chunkIndex: chunkIndex + 1,
+              chunkCount: chunks.length,
+              cause: error
+            }
+          );
+        }
+      }
+
+      return { successCount, failCount, results };
+    }
+
     async function confirmGoogleMigration() {
       const pendingSecrets = window.pendingMigrationSecrets;
       if (!pendingSecrets || pendingSecrets.length === 0) {
@@ -745,7 +930,6 @@ export function getGoogleMigrationCode() {
         return;
       }
 
-      // 获取选中的密钥
       const selectedSecrets = pendingSecrets.filter(function(s, i) {
         const checkbox = document.getElementById('migrate-' + i);
         return checkbox && checkbox.checked;
@@ -756,26 +940,20 @@ export function getGoogleMigrationCode() {
         return;
       }
 
-      // 关闭预览
-      closeMigrationPreview();
-
-      // 显示导入进度
+      window.pendingMigrationSecrets = selectedSecrets.slice();
+      closeMigrationPreview(true);
       showCenterToast('⏳', '正在导入 ' + selectedSecrets.length + ' 个密钥...');
 
-      // 准备批量导入的数据
       const secretsToImport = selectedSecrets.map(function(secret) {
-        // 解析 name 字段，可能包含 issuer:account 格式
         let serviceName = secret.issuer || '';
         let accountName = secret.name || '';
 
-        // 如果 name 包含冒号，可能是 issuer:account 格式
         if (!serviceName && accountName.includes(':')) {
           const parts = accountName.split(':');
           serviceName = parts[0];
           accountName = parts.slice(1).join(':');
         }
 
-        // 如果还是没有服务名，使用账户名或默认值
         if (!serviceName) {
           serviceName = accountName || '导入的密钥';
         }
@@ -791,45 +969,97 @@ export function getGoogleMigrationCode() {
         };
       });
 
+      // 本轮进入时从 prior 状态继承（续传时非零），完成/部分失败时再写回。
+      // 关键不变量：accumulate results across retries，让最终 showImportResultModal 汇总整批（含早先分片里被服务端拒绝的条目）
+      const priorSuccessCountAtStart = typeof window.pendingMigrationPriorSuccessCount === 'number' ? window.pendingMigrationPriorSuccessCount : 0;
+      const priorFailCountAtStart = typeof window.pendingMigrationPriorFailCount === 'number' ? window.pendingMigrationPriorFailCount : 0;
+      const priorFailuresAtStart = Array.isArray(window.pendingMigrationPriorFailures) ? window.pendingMigrationPriorFailures.slice() : [];
+
+      function buildFailureLine(originalSecret, errMsg) {
+        const name = originalSecret ? (originalSecret.issuer || originalSecret.name || '未知') : '未知';
+        return '• ' + name + ': ' + (errMsg || '未知错误');
+      }
+
       try {
-        // 使用批量导入 API，一次性导入所有密钥
-        const response = await authenticatedFetch('/api/secrets/batch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ secrets: secretsToImport })
-        });
+        const importResult = await importGoogleMigrationSecretsInChunks(secretsToImport);
+        const successCount = importResult.successCount;
+        const failCount = importResult.failCount;
+        const results = importResult.results;
 
-        if (response.ok) {
-          const result = await response.json();
-          const successCount = result.successCount || 0;
-          const failCount = result.failCount || 0;
-          const results = result.results || [];
+        await loadSecrets();
 
-          // 刷新列表
-          await loadSecrets();
+        const thisRunFailures = (results || [])
+          .filter(function(r) { return r && r.success === false; })
+          .map(function(r) { return buildFailureLine(selectedSecrets[r.index], r.error); });
 
-          // 显示结果
-          if (failCount === 0) {
-            showCenterToast('✅', '成功导入 ' + successCount + ' 个密钥');
-          } else {
-            // 收集失败的密钥信息
-            const failedItems = results.filter(function(r) { return !r.success; });
-            const failedDetails = failedItems.map(function(r) {
-              const originalSecret = selectedSecrets[r.index];
-              const name = originalSecret ? (originalSecret.issuer || originalSecret.name || '未知') : '未知';
-              return '• ' + name + ': ' + r.error;
-            }).join('\\n');
+        const aggregateSuccess = priorSuccessCountAtStart + successCount;
+        const aggregateFail = priorFailCountAtStart + failCount;
+        const aggregateFailureLines = priorFailuresAtStart.concat(thisRunFailures);
 
-            // 显示详细的失败信息
-            showImportResultModal(successCount, failCount, failedDetails);
-          }
+        // 成功完成整批，清空续传状态
+        window.pendingMigrationSecrets = null;
+        window.pendingMigrationPriorSuccessCount = 0;
+        window.pendingMigrationPriorFailCount = 0;
+        window.pendingMigrationPriorFailures = [];
+
+        if (aggregateFail === 0) {
+          showCenterToast('✅', '成功导入 ' + aggregateSuccess + ' 个密钥');
         } else {
-          const error = await response.json();
-          showCenterToast('❌', '导入失败: ' + (error.message || error.error || '未知错误'));
+          showImportResultModal(aggregateSuccess, aggregateFail, aggregateFailureLines.join('\\n'));
         }
       } catch (error) {
-        console.error('批量导入出错:', error);
-        showCenterToast('❌', '导入失败: ' + error.message);
+        console.error('Google 迁移批量导入出错:', error);
+        const partialSuccessCount = typeof error?.partialSuccessCount === 'number' ? error.partialSuccessCount : 0;
+        const partialFailCount = typeof error?.partialFailCount === 'number' ? error.partialFailCount : 0;
+        const processedItems = Math.min(
+          typeof error?.processedItems === 'number' ? error.processedItems : partialSuccessCount + partialFailCount,
+          selectedSecrets.length
+        );
+        const remainingSecrets = selectedSecrets.slice(processedItems);
+
+        // 本轮已完成分片里的失败项（服务端返回的 per-item error）并入 prior 累计
+        const thisRunFailures = Array.isArray(error?.results)
+          ? error.results
+              .filter(function(r) { return r && r.success === false; })
+              .map(function(r) { return buildFailureLine(selectedSecrets[r.index], r.error); })
+          : [];
+        const aggregateSuccess = priorSuccessCountAtStart + partialSuccessCount;
+        const aggregateFail = priorFailCountAtStart + partialFailCount;
+        const aggregateFailureLines = priorFailuresAtStart.concat(thisRunFailures);
+
+        await loadSecrets();
+
+        if (remainingSecrets.length > 0) {
+          // 续传：把累计状态持久化，下一轮 confirmGoogleMigration 会读回来
+          window.pendingMigrationSecrets = remainingSecrets;
+          window.pendingMigrationPriorSuccessCount = aggregateSuccess;
+          window.pendingMigrationPriorFailCount = aggregateFail;
+          window.pendingMigrationPriorFailures = aggregateFailureLines;
+
+          if (aggregateSuccess > 0) {
+            showCenterToast('⚠️', '累计成功 ' + aggregateSuccess + ' 条，剩余 ' + remainingSecrets.length + ' 条待继续：' + error.message);
+          } else {
+            showCenterToast('❌', '导入中断，剩余 ' + remainingSecrets.length + ' 条未处理：' + error.message);
+          }
+          showGoogleMigrationPreview(remainingSecrets);
+        } else if (aggregateSuccess > 0 || aggregateFail > 0) {
+          // 没有剩余可续传、但本轮或之前已有实际处理结果：汇总展示，清空续传状态
+          window.pendingMigrationSecrets = null;
+          window.pendingMigrationPriorSuccessCount = 0;
+          window.pendingMigrationPriorFailCount = 0;
+          window.pendingMigrationPriorFailures = [];
+
+          if (aggregateFail === 0) {
+            showCenterToast('⚠️', '已成功导入 ' + aggregateSuccess + ' 条，后续已停止：' + error.message);
+          } else {
+            showImportResultModal(aggregateSuccess, aggregateFail, aggregateFailureLines.join('\\n'));
+          }
+        } else {
+          // 首轮未产生任何结果就失败：重新打开预览，让用户整批重试
+          // （showGoogleMigrationPreview 会把 selectedSecrets 写回 window.pendingMigrationSecrets）
+          showCenterToast('❌', '导入失败: ' + error.message);
+          showGoogleMigrationPreview(selectedSecrets);
+        }
       }
     }
 `;
