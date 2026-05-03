@@ -2,7 +2,7 @@
 
 A two-factor authentication key management system built on Cloudflare Workers. Free to deploy, globally accelerated, with PWA offline support.
 
-![Version](https://img.shields.io/badge/version-1.4.0-blue)
+![Version](https://img.shields.io/badge/version-1.5.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
@@ -156,6 +156,7 @@ Click the floating button → **⚙️ Settings**:
 - **Default Export Format** — Controls the default export choice and the extension used for newly created backups and remote auto-backups
 - **Backup Retention Count** — Adjust auto backup retention count
 - **Remote Backup** — Configure WebDAV/S3/OneDrive/Google Drive backup targets
+- **Sign Out** — One-click clear of the current session cookie and local cache; still works locally when the server is unreachable
 
 ### Install as Mobile App (PWA)
 

@@ -4,7 +4,7 @@
 
 **[English](README_EN.md)**
 
-![Version](https://img.shields.io/badge/version-1.4.0-blue)
+![Version](https://img.shields.io/badge/version-1.5.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
@@ -156,6 +156,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 - **默认导出格式** — 控制导出按钮默认格式，也用于新建备份文件和远程自动备份的文件扩展名
 - **备份保留数量** — 调整自动备份保留份数
 - **远程备份** — 配置 WebDAV/S3/OneDrive/Google Drive 备份目标
+- **退出登录** — 一键清除当前会话 Cookie 与本地缓存，离线/服务端故障时仍能本地登出
 
 ### 安装为手机应用（PWA）
 

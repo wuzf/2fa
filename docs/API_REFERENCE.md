@@ -36,6 +36,7 @@ Cookie: auth_token=<JWT_TOKEN>
 - `GET /sw.js` - Service Worker
 - `GET /icon-*.png` - PWA 图标
 - `POST /api/login` - 登录
+- `POST /api/logout` - 退出登录
 - `GET /otp` - OTP 使用说明
 - `GET /otp/{secret}` - OTP 生成
 - `GET /api/favicon/{domain}` - Favicon 代理
@@ -153,6 +154,7 @@ Set-Cookie: auth_token=<NEW_JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-A
 | `/api/gdrive/oauth/start`                   | POST   | ✅   | 10/min  | 启动 Google Drive OAuth      |
 | `/api/gdrive/oauth/callback`                | GET    | ❌   | -       | Google Drive OAuth 回调      |
 | [/api/login](#获取认证-token)               | POST   | ❌   | 5/min   | 用户登录                     |
+| [/api/logout](#退出登录)                    | POST   | ❌   | 10/min  | 退出登录（清除 Cookie）      |
 | [/api/refresh-token](#token-刷新)           | POST   | ✅   | -       | 刷新 Token                   |
 | [/otp/{secret}](#otp-生成)                  | GET    | ❌   | 100/min | 公开 OTP 生成                |
 
@@ -1393,6 +1395,49 @@ Set-Cookie: auth_token=<JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-Age=2
 
 见 [Token 刷新](#token-刷新)
 
+### 退出登录
+
+清除当前会话的 HttpOnly 认证 Cookie。该端点无需认证（即使 Cookie 已失效仍可调用），但内置 CSRF 防护与限流。
+
+**端点**: `POST /api/logout`
+
+**鉴权**: 不需要 `auth_token` Cookie，但要求请求来自同源页面
+
+**必需请求头**:
+
+| 头部                       | 值                                   | 用途                                      |
+| -------------------------- | ------------------------------------ | ----------------------------------------- |
+| `X-Requested-With`         | `XMLHttpRequest`                     | CSRF 防护：跨站表单无法添加自定义头       |
+| `Origin`（若存在）         | 同当前 Worker 主机                   | 与 `getAllowedOrigin` 计算结果一致        |
+| `Sec-Fetch-Site`（若存在） | `same-origin` / `same-site` / `none` | 现代浏览器自动附带；`cross-site` 会被拒绝 |
+
+**请求体**: 无
+
+**成功响应** (200 OK):
+
+```json
+{
+	"success": true,
+	"message": "已退出登录"
+}
+```
+
+响应同时附带：
+
+```http
+Set-Cookie: auth_token=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; HttpOnly; SameSite=Strict; Secure
+Cache-Control: no-store
+```
+
+**失败响应**:
+
+| 状态码 | 触发条件                                                                      | 错误标题     |
+| ------ | ----------------------------------------------------------------------------- | ------------ |
+| 403    | 缺少 `X-Requested-With` / `Origin` 与本站不一致 / `Sec-Fetch-Site=cross-site` | 请求被拒绝   |
+| 429    | 1 分钟内对同一 IP 调用超过 10 次（`sensitive` 预设）                          | 请求过于频繁 |
+
+**前端使用要点**: 即使后端返回非 200，前端仍应清理本地状态（密钥列表、OTP 定时器、`localStorage` 缓存）并跳转登录页。HttpOnly Cookie 最终会随 `SameSite=Strict` 失效或浏览器关闭而消失。
+
 ---
 
 ## 错误代码
@@ -1497,6 +1542,7 @@ Set-Cookie: auth_token=<JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-Age=2
 | 端点类别                             | 限流规则 | 窗口时间 | 预设名称    |
 | ------------------------------------ | -------- | -------- | ----------- |
 | **登录** (`/api/login`)              | 5 次     | 1 分钟   | `login`     |
+| **退出登录** (`/api/logout`)         | 10 次    | 1 分钟   | `sensitive` |
 | **标准 API** (`/api/secrets` CRUD)   | 30 次    | 1 分钟   | `api`       |
 | **敏感操作** (删除、导出)            | 10 次    | 1 分钟   | `sensitive` |
 | **批量操作** (`/api/secrets/batch`)  | 20 次    | 5 分钟   | `bulk`      |
