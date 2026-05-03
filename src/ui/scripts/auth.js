@@ -226,6 +226,83 @@ export function getAuthCode() {
       }, 1500);
     }
 
+    // 退出登录
+    async function logout() {
+      let serverSuccess = false;
+      let serverErrorMessage = '';
+
+      // 1. 尝试通知服务端清除 Cookie；记录结果但不因失败中止
+      try {
+        const response = await fetch('/api/logout', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+
+        if (response.ok) {
+          serverSuccess = true;
+        } else {
+          // 透传服务端错误信息（包括 403 CSRF 拒绝、429 限流等）
+          const data = await response.json().catch(() => ({}));
+          serverErrorMessage = data.message || ('服务器返回 ' + response.status);
+          console.warn('退出登录服务端响应异常:', response.status, serverErrorMessage);
+        }
+      } catch (error) {
+        // 网络错误不阻塞本地登出；HttpOnly Cookie 由浏览器最终随过期清除
+        console.error('退出登录网络错误:', error);
+        serverErrorMessage = error.message || '网络错误';
+      }
+
+      // 2. 无论服务端是否确认，都清理本地状态，确保用户视觉上已登出
+      try {
+        localStorage.removeItem('2fa-secrets-cache');
+      } catch (e) {
+        console.warn('清除缓存失败:', e);
+      }
+
+      try {
+        Object.keys(otpIntervals || {}).forEach(secretId => {
+          clearInterval(otpIntervals[secretId]);
+          delete otpIntervals[secretId];
+        });
+      } catch (e) {
+        console.warn('清除验证码定时器失败:', e);
+      }
+
+      secrets = [];
+      filteredSecrets = [];
+      currentSearchQuery = '';
+
+      const secretsList = document.getElementById('secretsList');
+      if (secretsList) {
+        secretsList.innerHTML = '';
+        secretsList.style.display = 'none';
+      }
+
+      if (typeof hideSettingsModal === 'function') {
+        hideSettingsModal();
+      }
+
+      // 3. 反馈给用户
+      if (serverSuccess) {
+        showCenterToast('👋', '已退出登录');
+      } else {
+        showCenterToast('⚠️', '已清除本地登录状态：' + serverErrorMessage);
+      }
+
+      setTimeout(() => {
+        showLoginModal();
+      }, 500);
+
+      return serverSuccess;
+    }
+
+    if (typeof window !== 'undefined') {
+      window.logout = logout;
+    }
+
     // 为 fetch 请求添加认证（使用 Cookie）并支持自动续期
     async function authenticatedFetch(url, options = {}) {
       // 🍪 使用 HttpOnly Cookie 进行认证，浏览器自动携带

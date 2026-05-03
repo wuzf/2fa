@@ -16,6 +16,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   verifyAuth,
   handleLogin,
+  handleLogout,
   handleRefreshToken,
   checkIfSetupRequired,
   handleFirstTimeSetup,
@@ -588,11 +589,64 @@ describe('Auth.js Integration Tests', () => {
     });
   });
 
+  describe('退出登录流程集成', () => {
+    it('同源退出请求应该清除认证 Cookie', async () => {
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/logout',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Sec-Fetch-Site': 'same-origin'
+        }
+      });
+      const env = createMockEnv();
+
+      const response = await handleLogout(request, env);
+      const data = await getResponseJson(response);
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(response.headers.get('Set-Cookie')).toContain('auth_token=');
+      expect(response.headers.get('Set-Cookie')).toContain('Max-Age=0');
+    });
+
+    it('缺少同源 AJAX 标记的退出请求应该被拒绝', async () => {
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/logout'
+      });
+      const env = createMockEnv();
+
+      const response = await handleLogout(request, env);
+
+      expect(response.status).toBe(403);
+      expect(response.headers.get('Set-Cookie')).toBeNull();
+    });
+
+    it('未配置 KV 时仍应允许退出登录（限流降级为放行）', async () => {
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/logout',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Sec-Fetch-Site': 'same-origin'
+        }
+      });
+
+      // env 未传 / SECRETS_KV 未绑定时，限流应跳过而不是抛错
+      const response = await handleLogout(request, {});
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Set-Cookie')).toContain('Max-Age=0');
+    });
+  });
+
   describe('路由认证集成 (requiresAuth)', () => {
     it('应该正确识别公开路由', () => {
       const publicRoutes = [
         '/',
         '/api/login',
+        '/api/logout',
         '/api/refresh-token',
         '/api/setup',
         '/setup',

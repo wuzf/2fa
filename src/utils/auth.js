@@ -5,7 +5,7 @@
 
 import { createErrorResponse } from './response.js';
 import { checkRateLimit, createRateLimitResponse, getClientIdentifier, RATE_LIMIT_PRESETS } from './rateLimit.js';
-import { getSecurityHeaders } from './security.js';
+import { getAllowedOrigin, getSecurityHeaders } from './security.js';
 import { getLogger } from './logger.js';
 import {
 	ValidationError,
@@ -340,6 +340,48 @@ function createSetCookieHeader(token, maxAge) {
 	];
 
 	return cookieAttributes.join('; ');
+}
+
+/**
+ * 创建清除认证 Cookie 的 Set-Cookie header 值
+ * @returns {string} Set-Cookie header 值
+ */
+function createClearCookieHeader() {
+	const cookieAttributes = [
+		`${COOKIE_NAME}=`,
+		'Max-Age=0',
+		'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+		'Path=/',
+		'HttpOnly',
+		'SameSite=Strict',
+		'Secure',
+	];
+
+	return cookieAttributes.join('; ');
+}
+
+/**
+ * 判断退出登录请求是否来自同源页面。
+ * 前端 fetch 会携带 X-Requested-With；跨站表单无法添加该头。
+ * @param {Request} request - HTTP 请求对象
+ * @returns {boolean} 是否允许处理退出登录
+ */
+function isLogoutRequestAllowed(request) {
+	if (request.headers.get('X-Requested-With') !== 'XMLHttpRequest') {
+		return false;
+	}
+
+	const origin = request.headers.get('Origin');
+	if (origin && getAllowedOrigin(request) !== origin) {
+		return false;
+	}
+
+	const fetchSite = request.headers.get('Sec-Fetch-Site');
+	if (fetchSite && !['same-origin', 'same-site', 'none'].includes(fetchSite)) {
+		return false;
+	}
+
+	return true;
 }
 
 /**
@@ -856,6 +898,45 @@ export async function handleRefreshToken(request, env) {
 }
 
 /**
+ * 处理退出登录请求
+ * @param {Request} request - HTTP 请求对象
+ * @param {Object} env - 环境变量对象（用于限流）
+ * @returns {Response} 清除认证 Cookie 的响应
+ */
+export async function handleLogout(request, env) {
+	if (!isLogoutRequestAllowed(request)) {
+		return createErrorResponse('请求被拒绝', '退出登录请求必须来自同源页面', 403, request);
+	}
+
+	// 🛡️ Rate Limiting: 防止滥用登出端点制造日志噪音/CSRF 探测
+	// 使用 sensitive 预设（10 次/分钟）—— 正常用户登出频率远低于此
+	if (env && env.SECRETS_KV) {
+		const clientIP = getClientIdentifier(request, 'ip');
+		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+
+		if (!rateLimitInfo.allowed) {
+			return createRateLimitResponse(rateLimitInfo, request);
+		}
+	}
+
+	return new Response(
+		JSON.stringify({
+			success: true,
+			message: '已退出登录',
+		}),
+		{
+			status: 200,
+			headers: {
+				...getSecurityHeaders(request),
+				'Content-Type': 'application/json',
+				'Cache-Control': 'no-store',
+				'Set-Cookie': createClearCookieHeader(),
+			},
+		},
+	);
+}
+
+/**
  * 检查路径是否需要认证
  * @param {string} pathname - 请求路径
  * @returns {boolean} 是否需要认证
@@ -865,6 +946,7 @@ export function requiresAuth(pathname) {
 	const publicPaths = [
 		'/', // 主页（会显示登录界面）
 		'/api/login', // 登录接口
+		'/api/logout', // 退出登录接口
 		'/api/refresh-token', // Token 刷新接口（已在内部验证）
 		'/api/setup', // 首次设置接口
 		'/setup', // 设置页面

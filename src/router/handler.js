@@ -59,6 +59,7 @@ import {
 	requiresAuth,
 	createUnauthorizedResponse,
 	handleLogin,
+	handleLogout,
 	handleRefreshToken,
 	checkIfSetupRequired,
 	handleFirstTimeSetup,
@@ -180,6 +181,11 @@ export async function handleRequest(request, env, ctx) {
 		// 登录路由
 		if (pathname === '/api/login' && method === 'POST') {
 			return await handleLogin(request, env);
+		}
+
+		// 退出登录路由
+		if (pathname === '/api/logout' && method === 'POST') {
+			return await handleLogout(request, env);
 		}
 
 		// Token 刷新路由

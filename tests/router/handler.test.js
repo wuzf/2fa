@@ -90,13 +90,14 @@ vi.mock('../../src/utils/auth.js', () => ({
   verifyAuthWithDetails: vi.fn(async (request, env) => ({ valid: true, token: 'test-token' })),
   requiresAuth: vi.fn((pathname) => {
     // Public routes
-    const publicPaths = ['/', '/api/login', '/api/refresh-token', '/api/setup', '/setup', '/manifest.json', '/sw.js', '/icon-192.png', '/icon-512.png', '/api/onedrive/oauth/callback', '/api/gdrive/oauth/callback'];
+    const publicPaths = ['/', '/api/login', '/api/logout', '/api/refresh-token', '/api/setup', '/setup', '/manifest.json', '/sw.js', '/icon-192.png', '/icon-512.png', '/api/onedrive/oauth/callback', '/api/gdrive/oauth/callback'];
     if (publicPaths.includes(pathname)) return false;
     if (pathname.startsWith('/otp')) return false;
     return true;
   }),
   createUnauthorizedResponse: vi.fn((message, request) => new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })),
   handleLogin: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, token: 'test-token' }), { status: 200 })),
+  handleLogout: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Set-Cookie': 'auth_token=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict; Secure' } })),
   handleRefreshToken: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, token: 'new-token' }), { status: 200 })),
   checkIfSetupRequired: vi.fn(async (env) => false),
   handleFirstTimeSetup: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 }))
@@ -420,6 +421,22 @@ describe('Router Handler', () => {
 
       expect(handleRefreshToken).toHaveBeenCalledWith(request, env);
       expect(response.status).toBe(200);
+    });
+
+    it('应该处理退出登录请求', async () => {
+      const { handleLogout } = await import('../../src/utils/auth.js');
+
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/logout'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleLogout).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Set-Cookie')).toContain('Max-Age=0');
     });
   });
 

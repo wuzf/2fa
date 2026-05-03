@@ -189,7 +189,7 @@ export function getCorsPreflightHeaders(request) {
 	return {
 		'Access-Control-Allow-Origin': allowedOrigin,
 		'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-		'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+		'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
 		'Access-Control-Allow-Credentials': 'true', // 允许 Cookie
 		'Access-Control-Max-Age': '86400', // 预检缓存 24 小时
 		Vary: 'Origin',
