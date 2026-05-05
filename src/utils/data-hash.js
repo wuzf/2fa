@@ -165,7 +165,14 @@ export async function saveDataHash(env, secrets, options = {}) {
 		const hash = await generateDataHash(secrets, env);
 		const pendingHashEntry = await getPendingDataHash(env);
 		await env.SECRETS_KV.put(LAST_BACKUP_HASH_KEY, hash);
-		if (!pendingHashEntry?.hash || pendingHashEntry.hash === hash) {
+		// 本次备份的数据快照不晚于 backupStartedAt；更早 stage 的 pending hash 必然已被本次备份覆盖
+		// （例如分片导入里前几片 stage 的中间态），清理后可避免 KV 里长期残留陈旧 pending。
+		// 未提供 backupStartedAt 时退回原有"仅哈希一致时清理"的保守策略。
+		const pendingUpdatedAtMs = pendingHashEntry?.updatedAt ? Date.parse(pendingHashEntry.updatedAt) : Number.NaN;
+		const backupStartedAtMs = Number.isFinite(options.backupStartedAt) ? options.backupStartedAt : Number.NaN;
+		const pendingSupersededByBackup =
+			Number.isFinite(pendingUpdatedAtMs) && Number.isFinite(backupStartedAtMs) && pendingUpdatedAtMs < backupStartedAtMs;
+		if (!pendingHashEntry?.hash || pendingHashEntry.hash === hash || pendingSupersededByBackup) {
 			await clearPendingDataHash(env, { silent: true });
 		} else {
 			logger.debug('保留更新后的待完成数据哈希', {

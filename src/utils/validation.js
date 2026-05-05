@@ -4,6 +4,7 @@
  */
 
 import { createErrorResponse } from './response.js';
+import { LIMITS } from './constants.js';
 
 // ==================== 验证中间件系统 ====================
 
@@ -236,11 +237,26 @@ export const batchImportSchema = new Schema({
 			if (v.length === 0) {
 				return '密钥数组不能为空';
 			}
-			if (v.length > 100) {
-				return `批量导入数量过多（${v.length}个），单次最多支持100个`;
+			if (v.length > LIMITS.BULK_IMPORT_CHUNK_SIZE) {
+				return `批量导入数量过多（${v.length}个），单次最多支持${LIMITS.BULK_IMPORT_CHUNK_SIZE}个`;
 			}
 			return true;
 		},
+	},
+	immediateBackup: {
+		required: false,
+		type: 'boolean',
+		default: true,
+	},
+	chunkIndex: {
+		required: false,
+		type: 'number',
+		validator: (v) => (Number.isInteger(v) && v >= 1) || 'chunkIndex 必须是大于等于 1 的整数',
+	},
+	chunkCount: {
+		required: false,
+		type: 'number',
+		validator: (v) => (Number.isInteger(v) && v >= 1) || 'chunkCount 必须是大于等于 1 的整数',
 	},
 });
 

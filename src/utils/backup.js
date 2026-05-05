@@ -193,6 +193,7 @@ class BackupManager {
 			await saveDataHash(this.env, secrets, {
 				reason,
 				skippedInvalidCount: backupEntry.skippedInvalidCount,
+				backupStartedAt: startTime,
 			});
 
 			const duration = Date.now() - startTime;

@@ -42,6 +42,10 @@ export function getUtilsCode() {
         console.error('模态框不存在:', modalId);
         return;
       }
+      // 幂等守卫：未显示的 modal 不做任何事，避免 body 锁计数被错误减少
+      if (!modal.classList.contains('show')) {
+        return;
+      }
       modal.classList.remove('show');
       setTimeout(() => {
         modal.style.display = 'none';
@@ -52,24 +56,196 @@ export function getUtilsCode() {
       enableBodyScroll();
     }
 
+    // ==================== 自定义确认对话框 ====================
+
+    /**
+     * 自定义确认对话框（替换原生 confirm）。
+     * @param {Object} options
+     * @param {string} options.title - 标题
+     * @param {string} options.message - 描述，支持 \\n 换行
+     * @param {string} [options.confirmText='确认'] - 确认按钮文字
+     * @param {string} [options.cancelText='取消'] - 取消按钮文字
+     * @param {boolean} [options.danger=false] - 危险操作时确认按钮显示为红色
+     * @returns {Promise<boolean>} 用户点击确认返回 true，取消/关闭返回 false
+     */
+    /**
+     * 并发保护：确认框共用同一个 DOM 节点，必须禁止同时被多个调用打开，
+     * 否则会重复绑定监听、一次点击触发多个 resolve，调用侧(删除/还原)可能重复提交请求。
+     */
+    let __confirmDialogBusy = false;
+
+    function showConfirmDialog(options) {
+      const opts = options || {};
+      const title = opts.title || '确认操作';
+      const message = opts.message || '';
+      const confirmText = opts.confirmText || '确认';
+      const cancelText = opts.cancelText || '取消';
+      const danger = opts.danger === true;
+
+      // 若已有确认框在等待用户操作，直接以 "取消" 语义返回，避免监听器叠加
+      if (__confirmDialogBusy) {
+        return Promise.resolve(false);
+      }
+      __confirmDialogBusy = true;
+
+      return new Promise((resolve) => {
+        // 懒创建 DOM，后续复用同一节点
+        let modal = document.getElementById('confirmDialogModal');
+        if (!modal) {
+          modal = document.createElement('div');
+          modal.id = 'confirmDialogModal';
+          modal.className = 'modal fab-modal-sm confirm-dialog-modal';
+          modal.setAttribute('role', 'dialog');
+          modal.setAttribute('aria-modal', 'true');
+          modal.setAttribute('aria-labelledby', 'confirmDialogTitle');
+          modal.setAttribute('aria-describedby', 'confirmDialogMessage');
+          modal.setAttribute('tabindex', '-1');
+          modal.innerHTML =
+            '<div class="modal-content confirm-dialog-content">' +
+            '  <div class="confirm-dialog-header">' +
+            '    <div class="confirm-dialog-icon" id="confirmDialogIcon" aria-hidden="true"></div>' +
+            '    <h3 class="confirm-dialog-title" id="confirmDialogTitle"></h3>' +
+            '  </div>' +
+            '  <div class="confirm-dialog-message" id="confirmDialogMessage"></div>' +
+            '  <div class="confirm-dialog-actions">' +
+            '    <button type="button" class="btn btn-secondary confirm-dialog-cancel" id="confirmDialogCancel"></button>' +
+            '    <button type="button" class="btn btn-primary confirm-dialog-confirm" id="confirmDialogConfirm"></button>' +
+            '  </div>' +
+            '</div>';
+          document.body.appendChild(modal);
+        }
+
+        const titleEl = modal.querySelector('#confirmDialogTitle');
+        const messageEl = modal.querySelector('#confirmDialogMessage');
+        const iconEl = modal.querySelector('#confirmDialogIcon');
+        const cancelBtn = modal.querySelector('#confirmDialogCancel');
+        const confirmBtn = modal.querySelector('#confirmDialogConfirm');
+
+        titleEl.textContent = title;
+        // 支持多行：将 \\n 渲染为换行
+        messageEl.innerHTML = '';
+        String(message).split('\\n').forEach((line, idx) => {
+          if (idx > 0) messageEl.appendChild(document.createElement('br'));
+          messageEl.appendChild(document.createTextNode(line));
+        });
+        iconEl.textContent = danger ? '⚠️' : '❓';
+        cancelBtn.textContent = cancelText;
+        confirmBtn.textContent = confirmText;
+        confirmBtn.classList.toggle('btn-danger', danger);
+        modal.setAttribute('aria-labelledby', 'confirmDialogTitle');
+        modal.setAttribute('aria-describedby', 'confirmDialogMessage');
+
+        // 焦点策略：危险操作停在取消避免误触；非危险默认确认
+        const focusTarget = danger ? cancelBtn : confirmBtn;
+        // 保存打开前的焦点，关闭后恢复
+        const previouslyFocused =
+          document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+        let settled = false;
+        function cleanup(result) {
+          if (settled) return;
+          settled = true;
+          modal.classList.remove('show');
+          document.removeEventListener('keydown', onKey);
+          cancelBtn.removeEventListener('click', onCancel);
+          confirmBtn.removeEventListener('click', onConfirm);
+          modal.removeEventListener('click', onOverlay);
+          setTimeout(() => {
+            modal.style.display = 'none';
+            enableBodyScroll();
+            // 恢复打开前的焦点（若目标仍在 DOM 内）
+            if (previouslyFocused && document.contains(previouslyFocused)) {
+              try { previouslyFocused.focus(); } catch (_) { /* noop */ }
+            }
+            __confirmDialogBusy = false;
+            resolve(result);
+          }, 200);
+        }
+        function onCancel() { cleanup(false); }
+        function onConfirm() { cleanup(true); }
+        function onOverlay(e) { if (e.target === modal) cleanup(false); }
+        function onKey(e) {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            cleanup(false);
+            return;
+          }
+          if (e.key === 'Enter' && !danger) {
+            const tag = (e.target && e.target.tagName) || '';
+            // Enter 在文本域/按钮内的默认行为优先
+            if (tag !== 'BUTTON') {
+              e.preventDefault();
+              cleanup(true);
+              return;
+            }
+          }
+          // 焦点陷阱：Tab 在确认/取消两个按钮之间循环
+          if (e.key === 'Tab') {
+            const focusable = [cancelBtn, confirmBtn];
+            const idx = focusable.indexOf(document.activeElement);
+            if (idx === -1) {
+              e.preventDefault();
+              focusTarget.focus();
+              return;
+            }
+            const next = e.shiftKey
+              ? (idx === 0 ? focusable.length - 1 : idx - 1)
+              : (idx === focusable.length - 1 ? 0 : idx + 1);
+            e.preventDefault();
+            focusable[next].focus();
+          }
+        }
+
+        cancelBtn.addEventListener('click', onCancel);
+        confirmBtn.addEventListener('click', onConfirm);
+        modal.addEventListener('click', onOverlay);
+        document.addEventListener('keydown', onKey);
+
+        disableBodyScroll();
+        modal.style.display = 'flex';
+        setTimeout(() => {
+          modal.classList.add('show');
+          try { focusTarget.focus(); } catch (_) { /* noop */ }
+        }, 10);
+      });
+    }
+
     // ==================== 滚动控制函数 ====================
 
     /**
+     * 模态框栈计数：支持多层弹窗叠加时只在最外层关闭时解锁 body 滚动。
+     * 避免嵌套场景（如在 restoreModal 上打开 confirmDialog）提前解锁父级背景。
+     */
+    let __modalLockCount = 0;
+
+    /**
      * 禁用页面滚动（显示模态框时使用）
+     * 内部使用引用计数，可重入调用。
      */
     function disableBodyScroll() {
-      document.body.style.overflow = 'hidden';
-      document.body.style.position = 'fixed';
-      document.body.style.width = '100%';
+      if (__modalLockCount === 0) {
+        document.body.style.overflow = 'hidden';
+        document.body.style.position = 'fixed';
+        document.body.style.width = '100%';
+      }
+      __modalLockCount++;
     }
 
     /**
      * 启用页面滚动（隐藏模态框时使用）
+     * 内部使用引用计数，仅当所有叠加的模态都关闭后才真正解锁。
      */
     function enableBodyScroll() {
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
+      if (__modalLockCount <= 0) {
+        __modalLockCount = 0;
+        return;
+      }
+      __modalLockCount--;
+      if (__modalLockCount === 0) {
+        document.body.style.overflow = '';
+        document.body.style.position = '';
+        document.body.style.width = '';
+      }
     }
 
     // ==================== 数据处理函数 ====================
@@ -359,55 +535,6 @@ export function getUtilsCode() {
         }, 100);
       });
     }
-
-    // ==================== 滚动和回到顶部 ====================
-
-    /**
-     * 回到顶部函数
-     */
-    function scrollToTop() {
-      window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-      });
-    }
-
-    /**
-     * 监听滚动事件，显示/隐藏回到顶部按钮，并调整主题切换按钮位置
-     */
-    let scrollThrottle = null;
-    window.addEventListener('scroll', function() {
-      if (scrollThrottle) return;
-
-      scrollThrottle = setTimeout(() => {
-        const backToTopBtn = document.getElementById('backToTop');
-        const themeToggleBtn = document.querySelector('.theme-toggle-float');
-        if (!backToTopBtn || !themeToggleBtn) return;
-
-        // 滚动超过300px时显示按钮
-        if (window.pageYOffset > 300) {
-          backToTopBtn.classList.add('show');
-          backToTopBtn.style.display = 'flex';
-          // 回到顶部按钮显示时，主题切换按钮在上方
-          // 使用媒体查询检测移动端
-          const isMobile = window.innerWidth <= 480;
-          themeToggleBtn.style.bottom = isMobile ? '68px' : '88px';
-        } else {
-          backToTopBtn.classList.remove('show');
-          // 等待动画完成后再隐藏
-          setTimeout(() => {
-            if (!backToTopBtn.classList.contains('show')) {
-              backToTopBtn.style.display = 'none';
-              // 回到顶部按钮隐藏时，主题切换按钮移到下方
-              const isMobile = window.innerWidth <= 480;
-              themeToggleBtn.style.bottom = isMobile ? '16px' : '24px';
-            }
-          }, 300);
-        }
-
-        scrollThrottle = null;
-      }, 100);
-    });
 
     `;
 }

@@ -1,6 +1,6 @@
 {
   "name": "2fa",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "module",
   "private": true,
   "description": "2FA - OTP Generator using Cloudflare Workers",
@@ -10,8 +10,8 @@
     "deploy:package": "node scripts/deploy.js --package",
     "deploy:dev": "node scripts/deploy.js --env development",
     "deploy:direct": "wrangler deploy",
-    "dev": "wrangler dev",
-    "start": "wrangler dev",
+    "dev": "wrangler dev --env development",
+    "start": "wrangler dev --env development",
     "build": "node scripts/build-release.js",
     "build:minify": "node scripts/build-release.js --minify",
     "test": "vitest",

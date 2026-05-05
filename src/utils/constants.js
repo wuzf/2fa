@@ -42,6 +42,10 @@ export const LIMITS = {
 	MAX_ACCOUNT_LENGTH: 100, // Maximum length for account name
 	MAX_ISSUER_LENGTH: 100, // Maximum length for issuer
 
+	// 批量导入分片：前端切片、后端单请求上限、"中间片才跳过备份"三处共用同一个值。
+	// 修改时需同步前端 import/core.js 与 googleMigration.js 的注入，以及 validation/batch 的校验。
+	BULK_IMPORT_CHUNK_SIZE: 100,
+
 	// OTP configuration
 	OTP_PERIOD_DEFAULT: 30, // Default TOTP period in seconds
 	OTP_DIGITS_DEFAULT: 6, // Default number of OTP digits

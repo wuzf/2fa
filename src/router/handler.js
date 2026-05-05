@@ -59,6 +59,7 @@ import {
 	requiresAuth,
 	createUnauthorizedResponse,
 	handleLogin,
+	handleLogout,
 	handleRefreshToken,
 	checkIfSetupRequired,
 	handleFirstTimeSetup,
@@ -159,10 +160,15 @@ export async function handleRequest(request, env, ctx) {
 
 			try {
 				const moduleCode = getModuleCode(moduleName);
+				// 生产启用长缓存（wrangler.toml 顶层 [vars] 默认 ENVIRONMENT=production）。
+				// 本地 hostname 兜底：即便用户跳过 `--env development` 直接跑 `wrangler dev`，
+				// localhost 场景也不应拿到长缓存，防止改代码时模块仍命中旧版本
+				const isLocalHost = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '0.0.0.0';
+				const isProd = !isLocalHost && env?.ENVIRONMENT === 'production';
 				return new Response(moduleCode, {
 					headers: {
 						'Content-Type': 'application/javascript; charset=utf-8',
-						'Cache-Control': 'public, max-age=3600', // 缓存1小时
+						'Cache-Control': isProd ? 'public, max-age=3600' : 'no-cache, no-store, must-revalidate',
 						'Access-Control-Allow-Origin': '*',
 					},
 				});
@@ -175,6 +181,11 @@ export async function handleRequest(request, env, ctx) {
 		// 登录路由
 		if (pathname === '/api/login' && method === 'POST') {
 			return await handleLogin(request, env);
+		}
+
+		// 退出登录路由
+		if (pathname === '/api/logout' && method === 'POST') {
+			return await handleLogout(request, env);
 		}
 
 		// Token 刷新路由

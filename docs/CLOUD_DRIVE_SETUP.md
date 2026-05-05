@@ -709,6 +709,8 @@ https://2fa.example.com
 8. 手动触发一次备份，查看网盘里是否出现 `backup_*.(txt|json|csv|html)` 文件
    文件扩展名取决于「设置 → 默认导出格式」
 
+如果 Cloudflare KV 中的备份丢失，但远程存储里仍有 `backup_*` 文件，可以先从 WebDAV/S3/OneDrive/Google Drive 下载该文件，再到站内 **还原配置 → 上传备份文件** 进行预览和恢复。加密备份必须使用创建时同一个 `ENCRYPTION_KEY`，否则无法解密。
+
 ---
 
 ## 七、后续如何使用

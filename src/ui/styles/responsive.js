@@ -1247,6 +1247,13 @@ export function getResponsiveStyles() {
       width: auto !important;
     }
 
+    /* P1.6 手机端 btn-compact 至少 44px 高，保证触控 */
+    @media (max-width: 768px) {
+      .btn-compact {
+        min-height: 44px !important;
+      }
+    }
+
     .scanner-hint {
       text-align: center;
       font-size: 11px;

@@ -331,7 +331,7 @@ describe('Security Utils', () => {
 
       expect(headers['Access-Control-Allow-Origin']).toBe('https://example.com');
       expect(headers['Access-Control-Allow-Methods']).toBe('GET, POST, PUT, DELETE, OPTIONS');
-      expect(headers['Access-Control-Allow-Headers']).toBe('Content-Type, Authorization');
+      expect(headers['Access-Control-Allow-Headers']).toBe('Content-Type, Authorization, X-Requested-With');
       expect(headers['Access-Control-Allow-Credentials']).toBe('true');
       expect(headers['Access-Control-Max-Age']).toBe('86400');
       expect(headers['Vary']).toBe('Origin');

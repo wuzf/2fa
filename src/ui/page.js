@@ -139,7 +139,25 @@ function getHTMLBody() {
             <button class="search-clear" id="searchClear" onclick="clearSearch()" style="display: none;">✕</button>
       </div>
           <div class="sort-controls">
-            <select id="sortSelect" class="sort-select" onchange="applySorting()">
+            <details class="sort-dropdown" id="sortDropdown">
+              <summary class="sort-trigger" aria-label="排序" aria-haspopup="menu" title="排序">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 6h18"></path>
+                  <path d="M6 12h12"></path>
+                  <path d="M10 18h4"></path>
+                </svg>
+                <span class="sort-trigger-label">排序</span>
+              </summary>
+              <div class="sort-menu" role="menu">
+                <button type="button" role="menuitemradio" aria-checked="true" class="sort-option active" data-sort="oldest-first" onclick="selectSort('oldest-first')">最早添加</button>
+                <button type="button" role="menuitemradio" aria-checked="false" class="sort-option" data-sort="newest-first" onclick="selectSort('newest-first')">最晚添加</button>
+                <button type="button" role="menuitemradio" aria-checked="false" class="sort-option" data-sort="name-asc" onclick="selectSort('name-asc')">服务名称 A-Z</button>
+                <button type="button" role="menuitemradio" aria-checked="false" class="sort-option" data-sort="name-desc" onclick="selectSort('name-desc')">服务名称 Z-A</button>
+                <button type="button" role="menuitemradio" aria-checked="false" class="sort-option" data-sort="account-asc" onclick="selectSort('account-asc')">账户名称 A-Z</button>
+                <button type="button" role="menuitemradio" aria-checked="false" class="sort-option" data-sort="account-desc" onclick="selectSort('account-desc')">账户名称 Z-A</button>
+              </div>
+            </details>
+            <select id="sortSelect" class="sort-select-hidden" onchange="applySorting()" aria-hidden="true" tabindex="-1">
               <option value="oldest-first">最早添加</option>
               <option value="newest-first">最晚添加</option>
               <option value="name-asc">服务名称 A-Z</option>
@@ -390,6 +408,25 @@ function getHTMLBody() {
         <div id="importPreviewList" class="import-preview-list"></div>
       </div>
 
+      <div id="importProgress" class="import-progress-panel" style="display: none;">
+        <div class="import-progress-header">
+          <span class="import-progress-title" id="importProgressTitle">导入进度</span>
+          <span class="import-progress-percent" id="importProgressPercent">0%</span>
+        </div>
+        <div class="import-progress-bar">
+          <div id="importProgressFill" class="import-progress-fill" style="width: 0%;"></div>
+        </div>
+        <div class="import-progress-meta">
+          <span id="importProgressStatus">准备开始...</span>
+          <span id="importProgressDetail">0 / 0</span>
+        </div>
+        <div class="import-progress-stats">
+          <span id="importProgressChunk">分片 0 / 0</span>
+          <span id="importProgressSuccess">成功 0</span>
+          <span id="importProgressFail">失败 0</span>
+        </div>
+      </div>
+
       <!-- 操作按钮 -->
       <div class="form-actions import-form-actions">
         <button type="button" class="btn btn-secondary" onclick="hideImportModal()">取消</button>
@@ -426,7 +463,10 @@ function getHTMLBody() {
           <div class="backup-actions">
             <button type="button" class="btn btn-outline" onclick="loadBackupList()" style="padding: 8px 16px; font-size: 12px;">🔄 刷新</button>
             <button type="button" class="btn btn-outline" onclick="exportSelectedBackup()" id="exportBackupBtn" disabled style="padding: 8px 16px; font-size: 12px;">📥 导出备份</button>
+            <input type="file" id="restoreBackupFileInput" accept=".txt,.csv,.json,.html" style="display: none;" onchange="handleRestoreBackupFile(event)">
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('restoreBackupFileInput').click()" style="padding: 8px 16px; font-size: 12px;">📤 上传备份文件</button>
           </div>
+          <div id="restoreUploadStatus" style="display: none; margin-top: 8px; font-size: 12px; color: var(--text-secondary);"></div>
           <div class="backup-pagination" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px;">
             <span id="backupListStatus" style="font-size: 12px; color: var(--text-secondary);"></span>
             <button type="button" class="btn btn-outline" id="backupLoadMoreBtn" onclick="loadMoreBackupList()" style="display: none; padding: 8px 16px; font-size: 12px;">加载更多</button>
@@ -1154,6 +1194,12 @@ function getHTMLBody() {
               </div>
               <p id="settingsMaxBackupsResult" class="settings-result" style="display:none;"></p>
             </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section" id="settingsPwaSection">
+              <h3 class="settings-section-title">安装到桌面</h3>
+              <p class="settings-desc">以应用形式将 2FA Manager 添加到主屏幕或桌面，支持离线访问。</p>
+              <button class="btn btn-primary btn-sm" id="settingsPwaInstallBtn" onclick="triggerPwaInstallFromSettings()" title="暂不可用（浏览器未触发安装提示）" disabled>📱 安装到桌面</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1627,16 +1673,6 @@ function getHTMLBody() {
       </div>
     </div>
   </div>
-
-  <!-- 回到顶部按钮 -->
-  <button class="back-to-top" id="backToTop" onclick="scrollToTop()" title="回到顶部" aria-label="回到顶部" type="button" style="display: none;">
-    <span class="back-to-top-icon" aria-hidden="true">↑</span>
-  </button>
-
-  <!-- 主题切换按钮 -->
-  <button class="theme-toggle-float" onclick="toggleTheme()" title="当前：跟随系统（点击切换）" aria-label="切换主题" type="button">
-    <span class="theme-icon" id="theme-icon" aria-hidden="true">🌓</span>
-  </button>
 
 `;
 }

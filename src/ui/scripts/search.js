@@ -23,11 +23,49 @@ export function getSearchCode() {
           if (sortSelect) {
             sortSelect.value = savedSort;
           }
+          markActiveSortOption(savedSort);
           console.log('✅ 已恢复排序设置:', savedSort);
         }
       } catch (e) {
         console.warn('⚠️  恢复排序设置失败:', e);
       }
+    }
+
+    // 同步 popover 中的 active 高亮
+    function markActiveSortOption(value) {
+      document.querySelectorAll('.sort-option').forEach(o => {
+        const match = o.dataset.sort === value;
+        o.classList.toggle('active', match);
+        o.setAttribute('aria-checked', match ? 'true' : 'false');
+      });
+    }
+
+    // popover 选择事件：写入隐藏 select、关闭 popover、触发排序
+    function selectSort(value) {
+      const sortSelect = document.getElementById('sortSelect');
+      if (sortSelect) sortSelect.value = value;
+      markActiveSortOption(value);
+      const dropdown = document.getElementById('sortDropdown');
+      if (dropdown) dropdown.removeAttribute('open');
+      applySorting();
+    }
+
+    // 点击 popover 外或按 Escape 关闭
+    function initSortDropdownOutsideClose() {
+      document.addEventListener('click', (e) => {
+        const dropdown = document.getElementById('sortDropdown');
+        if (!dropdown || !dropdown.hasAttribute('open')) return;
+        if (!dropdown.contains(e.target)) {
+          dropdown.removeAttribute('open');
+        }
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const dropdown = document.getElementById('sortDropdown');
+        if (dropdown && dropdown.hasAttribute('open')) {
+          dropdown.removeAttribute('open');
+        }
+      });
     }
 
     // 保存排序选择到 localStorage

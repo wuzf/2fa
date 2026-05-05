@@ -29,9 +29,14 @@ crons = ["0 16 * * *"]
 # 注意：版本号由部署脚本注入，此处的值仅用于本地开发
 [vars]
 SW_VERSION = "v1"
+ENVIRONMENT = "production"
 [env.development]
 name = "2fa-dev"
 
 # 绑定项不可继承，开发环境也需要显式声明。
 [[env.development.kv_namespaces]]
 binding = "SECRETS_KV"
+
+[env.development.vars]
+ENVIRONMENT = "development"
+SW_VERSION = "v1"
