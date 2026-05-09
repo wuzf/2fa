@@ -149,6 +149,11 @@ export async function handleRequest(request, env, ctx) {
 			return createDefaultIcon(size);
 		}
 
+		// 浏览器自动请求 /favicon.ico —— 复用 192 默认图标避免 404
+		if (pathname === '/favicon.ico') {
+			return createDefaultIcon(32);
+		}
+
 		// 懒加载模块路由（需要认证）
 		if (pathname.startsWith('/modules/')) {
 			const moduleName = pathname.substring(9).replace('.js', ''); // 去掉 '/modules/' 和 '.js'
@@ -221,7 +226,13 @@ export async function handleRequest(request, env, ctx) {
 
 		// 处理 /otp/{secret}（生成OTP）
 		if (pathname.startsWith('/otp/')) {
-			const secret = pathname.substring(5); // 去掉 '/otp/'
+			// 解码以正确处理 URL 编码的字符（如 Base32 padding '=' → '%3D'）
+			let secret;
+			try {
+				secret = decodeURIComponent(pathname.substring(5));
+			} catch {
+				secret = pathname.substring(5); // 解码失败则用原值，由后续 validateBase32 报错
+			}
 			return await handleGenerateOTP(secret, request);
 		}
 

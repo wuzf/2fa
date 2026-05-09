@@ -45,7 +45,7 @@ function getHTMLStart() {
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>2FA - 密钥管理器</title>
 
   <!-- PWA Manifest -->
