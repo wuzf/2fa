@@ -9,6 +9,7 @@ import {
 	getOneDriveStatus,
 	pushToAllOneDrive,
 	saveOneDriveSingleConfig,
+	testOneDriveConnectionById,
 } from '../../src/utils/onedrive.js';
 
 class MockKV {
@@ -227,6 +228,59 @@ describe('OneDrive Utils', () => {
 
 		const status = await getOneDriveStatus(env, created.id);
 		expect(status.lastError.error).toContain('未授权');
+	});
+
+	it('should clear stale OneDrive lastError on successful connection test without recording lastSuccess', async () => {
+		const created = await saveOneDriveSingleConfig(env, {
+			name: 'Primary OneDrive',
+			folderPath: '/2FA-Backups',
+			authorized: true,
+			enabled: true,
+			refreshToken: 'refresh-token',
+			accessToken: 'valid-access-token',
+			accessTokenExpiresAt: new Date(Date.now() + 3600_000).toISOString(),
+		});
+		await env.SECRETS_KV.put(
+			`onedrive_status_${created.id}`,
+			JSON.stringify({
+				lastError: {
+					backupKey: 'backup_failed.json',
+					error: 'stale error',
+					timestamp: '2026-03-01T00:00:00.000Z',
+				},
+			}),
+		);
+
+		globalThis.fetch = vi.fn(async (url, options = {}) => {
+			const stringUrl = String(url);
+
+			if (stringUrl.endsWith('/me/drive/special/approot')) {
+				return new Response(JSON.stringify({ id: 'app-root-id' }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
+
+			if (stringUrl.includes('/me/drive/items/app-root-id/children?')) {
+				return new Response(JSON.stringify({ value: [{ id: 'folder-id-1', name: '2FA-Backups', folder: {} }] }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
+
+			if (stringUrl.includes('/me/drive/items/folder-id-1:/.2fa-onedrive-test.json:/content') && options.method === 'PUT') {
+				return new Response('', { status: 201 });
+			}
+
+			throw new Error(`Unexpected fetch: ${stringUrl}`);
+		});
+
+		const result = await testOneDriveConnectionById(env, created.id);
+
+		expect(result.success).toBe(true);
+		const status = await getOneDriveStatus(env, created.id);
+		expect(status.lastError).toBeNull();
+		expect(status.lastSuccess).toBeUndefined();
 	});
 
 	it('should preserve existing OneDrive refresh token during reauthorization when provider omits it', async () => {

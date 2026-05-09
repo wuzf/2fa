@@ -9,6 +9,7 @@ import {
 	getGoogleDriveStatus,
 	pushToAllGoogleDrive,
 	saveGoogleDriveSingleConfig,
+	testGoogleDriveConnectionById,
 } from '../../src/utils/gdrive.js';
 
 class MockKV {
@@ -303,6 +304,67 @@ describe('Google Drive Utils', () => {
 
 		const status = await getGoogleDriveStatus(env, created.id);
 		expect(status.lastError.error).toContain('未授权');
+	});
+
+	it('should clear stale Google Drive lastError on successful connection test without recording lastSuccess', async () => {
+		const created = await saveGoogleDriveSingleConfig(env, {
+			name: 'Primary Google Drive',
+			folderPath: '/2FA-Backups',
+			authorized: true,
+			enabled: true,
+			refreshToken: 'refresh-token',
+			accessToken: 'valid-access-token',
+			accessTokenExpiresAt: new Date(Date.now() + 3600_000).toISOString(),
+		});
+		await env.SECRETS_KV.put(
+			`gdrive_status_${created.id}`,
+			JSON.stringify({
+				lastError: {
+					backupKey: 'backup_failed.json',
+					error: 'stale error',
+					timestamp: '2026-03-01T00:00:00.000Z',
+				},
+			}),
+		);
+
+		globalThis.fetch = vi.fn(async (url, options = {}) => {
+			const stringUrl = String(url);
+
+			if (stringUrl.startsWith('https://www.googleapis.com/drive/v3/files?')) {
+				const urlObj = new URL(stringUrl);
+				const q = urlObj.searchParams.get('q') || '';
+
+				if (q.includes("mimeType = 'application/vnd.google-apps.folder'")) {
+					return new Response(JSON.stringify({ files: [{ id: 'folder-id-1', name: '2FA-Backups' }] }), {
+						status: 200,
+						headers: { 'Content-Type': 'application/json' },
+					});
+				}
+
+				if (q.includes('.2fa-google-drive-test.json')) {
+					return new Response(JSON.stringify({ files: [] }), {
+						status: 200,
+						headers: { 'Content-Type': 'application/json' },
+					});
+				}
+			}
+
+			if (stringUrl.startsWith('https://www.googleapis.com/upload/drive/v3/files?') && options.method === 'POST') {
+				return new Response(JSON.stringify({ id: 'test-file-id' }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
+
+			throw new Error(`Unexpected fetch: ${stringUrl}`);
+		});
+
+		const result = await testGoogleDriveConnectionById(env, created.id);
+
+		expect(result.success).toBe(true);
+		const status = await getGoogleDriveStatus(env, created.id);
+		expect(status.lastError).toBeNull();
+		expect(status.lastSuccess).toBeUndefined();
 	});
 
 	it('should preserve existing Google Drive refresh token during reauthorization when provider omits it', async () => {

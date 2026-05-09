@@ -311,6 +311,8 @@ async function uploadOneDriveFile(fileName, fileContent, config, env, options = 
 				},
 				lastError: null,
 			});
+		} else {
+			await recordOneDriveStatus(env, config.id, { lastError: null });
 		}
 
 		return {

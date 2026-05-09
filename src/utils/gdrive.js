@@ -357,6 +357,8 @@ async function uploadGoogleDriveFile(fileName, fileContent, config, env, options
 				},
 				lastError: null,
 			});
+		} else {
+			await recordGoogleDriveStatus(env, config.id, { lastError: null });
 		}
 
 		return {
