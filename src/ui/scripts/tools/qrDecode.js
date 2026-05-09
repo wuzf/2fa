@@ -291,7 +291,7 @@ export function getQRDecodeToolCode() {
         const reader = new FileReader();
         reader.onload = function(e) {
           const img = new Image();
-          img.onload = function() {
+          img.onload = async function() {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
 
@@ -301,6 +301,9 @@ export function getQRDecodeToolCode() {
 
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
+            if (typeof jsQR === 'undefined') {
+              try { await ensureJsQR(); } catch (_) {}
+            }
             if (typeof jsQR !== 'undefined') {
               const code = jsQR(imageData.data, imageData.width, imageData.height);
 
@@ -403,7 +406,7 @@ export function getQRDecodeToolCode() {
       const reader = new FileReader();
       reader.onload = function(e) {
         const img = new Image();
-        img.onload = function() {
+        img.onload = async function() {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
 
@@ -421,6 +424,9 @@ export function getQRDecodeToolCode() {
 
           const imageData = ctx.getImageData(0, 0, width, height);
 
+          if (typeof jsQR === 'undefined') {
+            try { await ensureJsQR(); } catch (_) {}
+          }
           if (typeof jsQR === 'undefined') {
             showCenterToast('❌', '二维码解析库未加载');
             return;

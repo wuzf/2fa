@@ -10,6 +10,39 @@
 export function getUtilsCode() {
 	return `    // ========== 工具函数模块 ==========
 
+    // ==================== 第三方脚本按需加载 ====================
+    // jsQR (~130KB) 和 qrcode-generator (~20KB) 改为按需加载，
+    // 仅在用户点开扫码/生成二维码相关功能时才下载，避免阻塞首屏。
+    const __scriptLoadCache = new Map();
+    function loadScriptOnce(url) {
+      if (__scriptLoadCache.has(url)) return __scriptLoadCache.get(url);
+      const promise = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = url;
+        s.async = true;
+        s.crossOrigin = 'anonymous';
+        s.onload = () => resolve();
+        s.onerror = () => {
+          __scriptLoadCache.delete(url); // 失败后允许下次重试
+          reject(new Error('脚本加载失败: ' + url));
+        };
+        document.head.appendChild(s);
+      });
+      __scriptLoadCache.set(url, promise);
+      return promise;
+    }
+    async function ensureJsQR() {
+      if (typeof jsQR !== 'undefined') return;
+      await loadScriptOnce('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
+    }
+    async function ensureQRCodeGen() {
+      if (typeof qrcode !== 'undefined') return;
+      await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js');
+    }
+    // 暴露到 window 供懒加载模块（lazy modules）共享
+    window.ensureJsQR = ensureJsQR;
+    window.ensureQRCodeGen = ensureQRCodeGen;
+
     // ==================== 模态框通用函数 ====================
 
     /**
@@ -465,7 +498,14 @@ export function getUtilsCode() {
       const { width = 200, height = 200 } = options;
 
       try {
-        // 检查qrcode库是否已加载
+        // 按需加载 qrcode-generator
+        if (typeof qrcode === 'undefined') {
+          try {
+            await ensureQRCodeGen();
+          } catch (loadErr) {
+            throw new Error('QR码生成库加载失败');
+          }
+        }
         if (typeof qrcode === 'undefined') {
           throw new Error('QR码生成库未加载');
         }
@@ -517,23 +557,29 @@ export function getUtilsCode() {
 
     /**
      * 等待QR码库加载完成
+     * 懒加载改造后：先触发 ensureQRCodeGen() 真正下载脚本，再 resolve；
+     * 已加载或下载成功立即返回，下载失败/超时统一抛错。
      * @param {number} maxWaitTime - 最大等待时间（毫秒）
      * @returns {Promise<boolean>} 库加载成功返回true
      */
-    function waitForQRCodeLibrary(maxWaitTime = 5000) {
-      return new Promise((resolve, reject) => {
-        const startTime = Date.now();
-        const checkInterval = setInterval(() => {
-          if (typeof qrcode !== 'undefined') {
-            clearInterval(checkInterval);
-            console.log('✅ QR码生成库已加载');
-            resolve(true);
-          } else if (Date.now() - startTime > maxWaitTime) {
-            clearInterval(checkInterval);
-            reject(new Error('QR码库加载超时'));
-          }
-        }, 100);
-      });
+    async function waitForQRCodeLibrary(maxWaitTime = 5000) {
+      if (typeof qrcode !== 'undefined') return true;
+      try {
+        // 主路径：直接触发懒加载（受 maxWaitTime 限制）
+        await Promise.race([
+          ensureQRCodeGen(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('QR码库加载超时')), maxWaitTime)),
+        ]);
+      } catch (err) {
+        // 兜底：可能脚本由其他途径正在加载，再轮询一次
+        const start = Date.now();
+        while (typeof qrcode === 'undefined' && Date.now() - start < 500) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        if (typeof qrcode === 'undefined') throw err;
+      }
+      console.log('✅ QR码生成库已加载');
+      return true;
     }
 
     `;

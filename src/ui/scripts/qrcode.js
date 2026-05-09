@@ -171,6 +171,10 @@ export function getQRCodeCode() {
 
     // 显示二维码扫描器
     function showQRScanner() {
+      // 后台预加载 jsQR；用户在 UI 上等待相机权限/选图过程时即可下载完成
+      if (typeof ensureJsQR === 'function') {
+        ensureJsQR().catch(() => {/* 失败时下游 typeof jsQR 检查会兜底提示 */});
+      }
       const modal = document.getElementById('qrScanModal');
       modal.style.display = 'flex';
       setTimeout(() => modal.classList.add('show'), 10);
@@ -680,7 +684,7 @@ export function getQRCodeCode() {
         const reader = new FileReader();
         reader.onload = function(e) {
           const img = new Image();
-          img.onload = function() {
+          img.onload = async function() {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
 
@@ -690,6 +694,9 @@ export function getQRCodeCode() {
 
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
+            if (typeof jsQR === 'undefined') {
+              try { await ensureJsQR(); } catch (_) {}
+            }
             if (typeof jsQR !== 'undefined') {
               const code = jsQR(imageData.data, imageData.width, imageData.height);
 
@@ -754,11 +761,14 @@ export function getQRCodeCode() {
           // 创建图片元素
           const img = new Image();
 
-          img.onload = function() {
+          img.onload = async function() {
             console.log('图片加载成功，尺寸:', img.width + 'x' + img.height);
 
             try {
-              // 检查jsQR库是否可用
+              // 按需加载 jsQR
+              if (typeof jsQR === 'undefined') {
+                try { await ensureJsQR(); } catch (_) {}
+              }
               if (typeof jsQR === 'undefined') {
                 throw new Error('二维码解析库未加载，请刷新页面重试');
               }
@@ -905,7 +915,7 @@ export function getQRCodeCode() {
       const reader = new FileReader();
       reader.onload = function(e) {
         const img = new Image();
-        img.onload = function() {
+        img.onload = async function() {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
 
@@ -923,6 +933,9 @@ export function getQRCodeCode() {
 
           const imageData = ctx.getImageData(0, 0, width, height);
 
+          if (typeof jsQR === 'undefined') {
+            try { await ensureJsQR(); } catch (_) {}
+          }
           if (typeof jsQR === 'undefined') {
             showCenterToast('❌', '二维码解析库未加载');
             return;

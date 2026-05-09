@@ -1557,6 +1557,7 @@ function getHTMLBody() {
         请输入密码以管理密钥<br>
         <small class="login-modal-hint">或点击"取消"使用 OTP 生成功能</small>
       </p>
+      <form id="loginForm" onsubmit="event.preventDefault(); handleLoginSubmit(); return false;" autocomplete="on">
       <div class="form-group">
         <label for="loginToken">密码</label>
         <div class="login-password-wrapper">
@@ -1599,14 +1600,15 @@ function getHTMLBody() {
         </div>
       </div>
       <div class="button-group login-modal-actions">
-        <button onclick="window.location.href='/otp'" class="btn btn-secondary login-modal-cancel-btn">
+        <button type="button" onclick="window.location.href='/otp'" class="btn btn-secondary login-modal-cancel-btn">
           取消
         </button>
-        <button onclick="handleLoginSubmit()" class="btn btn-primary login-modal-submit-btn">
+        <button type="submit" class="btn btn-primary login-modal-submit-btn">
           登录
         </button>
       </div>
       <div id="loginError" class="login-modal-error"></div>
+      </form>
     </div>
   </div>
 
@@ -1683,13 +1685,9 @@ function getHTMLBody() {
  */
 function getHTMLScripts(lazyLoad = true) {
 	const scriptContent = getInlineScripts(lazyLoad);
-	// 🔄 使用 CDN 作为主要来源（Service Worker 会自动缓存）
-	// jsQR 用于二维码扫描，qrcode-generator 用于二维码生成
-	return (
-		'<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js" crossorigin="anonymous"></script>\n<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" crossorigin="anonymous"></script>\n<script>\n' +
-		scriptContent +
-		'\n</script>'
-	);
+	// jsQR / qrcode-generator 改为按需加载（见 utils.js 中的 ensureJsQR / ensureQRCodeGen），
+	// 避免 ~150KB CDN 库阻塞首屏渲染。Service Worker 会在首次请求时按需缓存这两个 URL。
+	return '<script>\n' + scriptContent + '\n</script>';
 }
 
 /**

@@ -26,11 +26,15 @@ export function getToolsCode() {
 
     // 入口函数
     function showQRScanAndDecode() {
+      // 预加载 jsQR（解析二维码图片需要）
+      if (typeof ensureJsQR === 'function') ensureJsQR().catch(() => {});
       hideToolsModal();
       showQRDecodeModal();
     }
 
     function showQRGenerateTool() {
+      // 预加载 qrcode-generator（生成二维码需要）
+      if (typeof ensureQRCodeGen === 'function') ensureQRCodeGen().catch(() => {});
       hideToolsModal();
       showQRGenerateModal();
     }

@@ -116,12 +116,7 @@ export function getAuthCode() {
 
       setTimeout(() => tokenInput.focus(), 100);
 
-      // 回车键提交
-      tokenInput.onkeypress = function(e) {
-        if (e.key === 'Enter') {
-          handleLoginSubmit();
-        }
-      };
+      // 回车键提交由 <form> 原生 submit 事件处理（loginForm 的 onsubmit）
     }
 
     // 隐藏登录模态框
