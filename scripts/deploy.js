@@ -31,7 +31,8 @@ const versionStrategy = args.includes('--git') ? '--git' :
     '';
 
 const envIndex = args.indexOf('--env');
-const envArg = envIndex !== -1 && args[envIndex + 1] ? `--env ${args[envIndex + 1]}` : '';
+const envName = envIndex !== -1 && args[envIndex + 1] ? args[envIndex + 1] : null;
+const envArg = envName ? `--env ${envName}` : '';
 
 console.log('');
 console.log('🚀 ========================================');
@@ -56,9 +57,10 @@ try {
 
   // Step 2.5: 自动检测并绑定已有 KV namespace，防止重复创建
   console.log('🔍 Step 2.5: 检测已有 KV namespace...');
-  const existingKv = findExistingKvId(extractWorkerName(modifiedConfig));
+  const workerName = extractWorkerName(modifiedConfig, envName);
+  const existingKv = findExistingKvId(workerName, envName);
   if (existingKv) {
-    modifiedConfig = injectKvNamespaceId(modifiedConfig, existingKv.id);
+    modifiedConfig = injectKvNamespaceId(modifiedConfig, existingKv.id, envName);
     console.log(`   ✅ 复用已有 KV: ${existingKv.title} (${existingKv.id})`);
   } else {
     console.log('   ℹ️ 未检测到已有 KV，将由 Wrangler 自动创建');
@@ -112,27 +114,64 @@ function generateVersion(versionStrategyArg) {
   return execSync(versionCmd, { encoding: 'utf-8' }).trim().split('\n')[0];
 }
 
-function findExistingKvId(workerName) {
+function findExistingKvId(workerName, envName = null) {
+  if (!workerName) return null;
+
+  let namespaces;
   try {
     const output = execSync('npx wrangler kv namespace list', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    const namespaces = JSON.parse(output);
-    if (!namespaces.length) return null;
-
-    // 按优先级匹配，覆盖 wrangler auto-provision、Dashboard 创建、老版本等命名格式
-    const match =
-      namespaces.find(ns => ns.title === `${workerName}-SECRETS_KV`) ||
-      namespaces.find(ns => ns.title === `${workerName}-secrets-kv`) ||
-      namespaces.find(ns => ns.title === 'SECRETS_KV') ||
-      namespaces.find(ns => ns.title === workerName) ||
-      namespaces.find(ns => ns.title.includes('SECRETS_KV')) ||
-      namespaces.find(ns => ns.title.includes('secrets-kv')) ||
-      (namespaces.length === 1 ? namespaces[0] : null);
-
-    return match ? { id: match.id, title: match.title } : null;
+    namespaces = JSON.parse(output);
   } catch {
     return null;
   }
+  if (!namespaces.length) return null;
+
+  // 短名映射：开发环境常缩写为 dev / prod
+  const ENV_ALIASES = { development: 'dev', production: 'prod' };
+  const envAlias = envName ? (ENV_ALIASES[envName] || envName) : null;
+
+  // 推断 base 名（去除可能的 env 后缀）：worker "2fa-dev" + envAlias "dev" → base "2fa"
+  const stripSuffix = (name, suffix) =>
+    suffix && name.endsWith(`-${suffix}`) ? name.slice(0, -(suffix.length + 1)) : name;
+  const baseName = envAlias ? stripSuffix(workerName, envAlias) : workerName;
+
+  // 候选 title 列表，越靠前越优先
+  const candidates = [];
+  if (envName) {
+    candidates.push(
+      `${workerName}-secrets-kv`,                // 2fa-dev-secrets-kv
+      `${workerName}-SECRETS_KV`,
+      `${baseName}-secrets-kv-${envAlias}`,      // 2fa-secrets-kv-dev  ← 当前命名
+      `${baseName}-secrets-kv-${envName}`,       // 2fa-secrets-kv-development
+      `${envAlias}-${baseName}-SECRETS_KV`,
+      `${envName}-${baseName}-SECRETS_KV`,
+      `${envName}-SECRETS_KV`,                   // development-SECRETS_KV（旧命名）
+    );
+  } else {
+    candidates.push(
+      `${workerName}-secrets-kv`,                // 2fa-secrets-kv  ← 当前命名
+      `${workerName}-SECRETS_KV`,
+      'SECRETS_KV',
+      workerName,
+    );
+  }
+
+  for (const title of candidates) {
+    const match = namespaces.find(ns => ns.title === title);
+    if (match) return { id: match.id, title: match.title };
+  }
+
+  // env 部署只走精确匹配，避免误把生产 KV 命中给 dev
+  if (envName) return null;
+
+  // 顶层部署的 fuzzy 兜底（保持原有兼容性）
+  const fuzzy =
+    namespaces.find(ns => ns.title.includes('SECRETS_KV')) ||
+    namespaces.find(ns => ns.title.includes('secrets-kv')) ||
+    (namespaces.length === 1 ? namespaces[0] : null);
+
+  return fuzzy ? { id: fuzzy.id, title: fuzzy.title } : null;
 }
