@@ -154,6 +154,8 @@ export function getUICode() {
 
     // 折叠式菜单控制函数
     function toggleActionMenu() {
+      // 刚刚结束拖拽时忽略本次点击，避免拖完立刻弹菜单
+      if (fabDragJustHappened) return;
       const mainBtn = document.getElementById('mainActionBtn');
       const submenu = document.getElementById('actionSubmenu');
       const overlay = document.getElementById('menuOverlay');
@@ -176,8 +178,13 @@ export function getUICode() {
       submenu.classList.add('show');
       overlay.classList.add('show');
 
+      // 根据 FAB 当前位置调整子菜单展开方向，避免溢出视口
+      updateSubmenuDirection();
+
       // 防止点击事件冒泡
-      event.stopPropagation();
+      if (typeof event !== 'undefined' && event && typeof event.stopPropagation === 'function') {
+        event.stopPropagation();
+      }
     }
 
     function closeActionMenu() {
@@ -245,5 +252,195 @@ export function getUICode() {
         closeActionMenu();
       }
     });
+
+    // ========== FAB 拖拽：右下角"+"按钮可拖动并记住位置 ==========
+    const FAB_POSITION_STORAGE_KEY = '2fa-fab-position';
+    let fabDragJustHappened = false;
+
+    function loadFABPosition() {
+      try {
+        const raw = localStorage.getItem(FAB_POSITION_STORAGE_KEY);
+        if (!raw) return null;
+        const pos = JSON.parse(raw);
+        if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) return pos;
+      } catch (e) {}
+      return null;
+    }
+
+    function saveFABPosition(x, y) {
+      try {
+        localStorage.setItem(FAB_POSITION_STORAGE_KEY, JSON.stringify({ x: x, y: y }));
+      } catch (e) {}
+    }
+
+    function clampFABPosition(x, y, w, h) {
+      const margin = 8;
+      const vw = window.innerWidth || document.documentElement.clientWidth;
+      const vh = window.innerHeight || document.documentElement.clientHeight;
+      const maxX = Math.max(margin, vw - w - margin);
+      const maxY = Math.max(margin, vh - h - margin);
+      return {
+        x: Math.min(Math.max(x, margin), maxX),
+        y: Math.min(Math.max(y, margin), maxY)
+      };
+    }
+
+    function applyFABPosition(x, y) {
+      const fab = document.querySelector('.action-menu-float');
+      if (!fab) return null;
+      const w = fab.offsetWidth || 48;
+      const h = fab.offsetHeight || 48;
+      const c = clampFABPosition(x, y, w, h);
+      fab.style.left = c.x + 'px';
+      fab.style.top = c.y + 'px';
+      fab.style.right = 'auto';
+      fab.style.bottom = 'auto';
+      return c;
+    }
+
+    // 根据 FAB 位置自适应子菜单展开方向（上/下、左/右）
+    function updateSubmenuDirection() {
+      const fab = document.querySelector('.action-menu-float');
+      const submenu = document.getElementById('actionSubmenu');
+      if (!fab || !submenu) return;
+      const fabRect = fab.getBoundingClientRect();
+      const submenuW = submenu.offsetWidth || 180;
+      const submenuH = submenu.offsetHeight || 350;
+      const gap = 12;
+
+      // 垂直方向：上方空间足够时向上展开（保持默认行为），否则向下
+      if (fabRect.top >= submenuH + gap) {
+        submenu.style.top = 'auto';
+        submenu.style.bottom = (fabRect.height + gap) + 'px';
+      } else {
+        submenu.style.bottom = 'auto';
+        submenu.style.top = (fabRect.height + gap) + 'px';
+      }
+
+      // 水平方向：默认右对齐；FAB 偏左导致溢出时改为左对齐
+      if (fabRect.right >= submenuW + 4) {
+        submenu.style.right = '0';
+        submenu.style.left = 'auto';
+      } else {
+        submenu.style.right = 'auto';
+        submenu.style.left = '0';
+      }
+    }
+
+    function initFABDrag() {
+      const fab = document.querySelector('.action-menu-float');
+      const btn = document.getElementById('mainActionBtn');
+      if (!fab || !btn) return;
+
+      // 还原上次保存的位置
+      const saved = loadFABPosition();
+      if (saved) {
+        const restored = applyFABPosition(saved.x, saved.y);
+        if (restored && (restored.x !== saved.x || restored.y !== saved.y)) {
+          saveFABPosition(restored.x, restored.y);
+        }
+      }
+
+      let dragging = false;
+      let moved = false;
+      let startPx = 0;
+      let startPy = 0;
+      let startFx = 0;
+      let startFy = 0;
+      const DRAG_THRESHOLD = 5;
+      let dragClickSuppressTimer = null;
+
+      function getPoint(e) {
+        if (e.touches && e.touches[0]) return e.touches[0];
+        if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0];
+        return e;
+      }
+
+      function onDown(e) {
+        if (e.button !== undefined && e.button !== 0) return;
+        const p = getPoint(e);
+        const rect = fab.getBoundingClientRect();
+        dragging = true;
+        moved = false;
+        startPx = p.clientX;
+        startPy = p.clientY;
+        startFx = rect.left;
+        startFy = rect.top;
+        fab.classList.add('dragging');
+      }
+
+      function onMove(e) {
+        if (!dragging) return;
+        const p = getPoint(e);
+        const dx = p.clientX - startPx;
+        const dy = p.clientY - startPy;
+        if (!moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+        if (!moved) {
+          moved = true;
+          // 一旦判定为拖动，关闭已展开的菜单
+          const submenu = document.getElementById('actionSubmenu');
+          if (submenu && submenu.classList.contains('show')) {
+            closeActionMenu();
+          }
+        }
+        if (e.cancelable) e.preventDefault();
+        applyFABPosition(startFx + dx, startFy + dy);
+      }
+
+      function onUp(e) {
+        if (!dragging) return;
+        dragging = false;
+        fab.classList.remove('dragging');
+        if (moved) {
+          const rect = fab.getBoundingClientRect();
+          saveFABPosition(rect.left, rect.top);
+          // 触摸结束时阻止浏览器合成 click，避免拖完立刻弹菜单
+          if (e && e.cancelable && e.type && e.type.indexOf('touch') === 0) {
+            e.preventDefault();
+          }
+          // 对鼠标场景：通过下方 capture-phase click 守卫拦截即将到来的 click
+          fabDragJustHappened = true;
+          // 500ms 兜底超时，避免标志位被卡住
+          if (dragClickSuppressTimer) clearTimeout(dragClickSuppressTimer);
+          dragClickSuppressTimer = setTimeout(function() {
+            fabDragJustHappened = false;
+            dragClickSuppressTimer = null;
+          }, 500);
+        }
+      }
+
+      btn.addEventListener('mousedown', onDown);
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+
+      btn.addEventListener('touchstart', onDown, { passive: true });
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend', onUp);
+      document.addEventListener('touchcancel', onUp);
+
+      // capture-phase 拦截拖拽结束后第一个 click，保证不会误触菜单
+      document.addEventListener('click', function(e) {
+        if (!fabDragJustHappened || !fab.contains(e.target)) {
+          return;
+        }
+        fabDragJustHappened = false;
+        if (dragClickSuppressTimer) {
+          clearTimeout(dragClickSuppressTimer);
+          dragClickSuppressTimer = null;
+        }
+        e.stopPropagation();
+        e.preventDefault();
+      }, true);
+
+      // 窗口尺寸变化时重新约束位置，并把约束后的坐标写回 storage，
+      // 保证下次进入显示的位置与上次可见状态一致
+      window.addEventListener('resize', function() {
+        if (fab.style.left || fab.style.top) {
+          const rect = fab.getBoundingClientRect();
+          const next = applyFABPosition(rect.left, rect.top);
+          if (next) saveFABPosition(next.x, next.y);
+        }
+      });
+    }
 `;
 }

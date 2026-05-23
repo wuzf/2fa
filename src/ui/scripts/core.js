@@ -100,13 +100,18 @@ export function getCoreCode() {
           // Cookie 过期由浏览器自动管理，无需定时检查
         }
         initTheme();
-        
+
         // 恢复用户的排序选择
         restoreSortPreference();
 
         // 排序 popover 外部点击 / Escape 关闭
         if (typeof initSortDropdownOutsideClose === 'function') {
           initSortDropdownOutsideClose();
+        }
+
+        // 初始化 FAB 拖拽并还原上次保存的位置
+        if (typeof initFABDrag === 'function') {
+          initFABDrag();
         }
 
         // 页面加载后立即刷新所有OTP，确保时间同步

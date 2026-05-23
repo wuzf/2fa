@@ -305,6 +305,12 @@ export function getBaseStyles() {
       z-index: 1001;
     }
 
+    /* 拖拽中：禁用过渡，避免位置跟手时出现回弹 */
+    .action-menu-float.dragging,
+    .action-menu-float.dragging .main-action-button {
+      transition: none !important;
+    }
+
     .main-action-button {
       background: #8e44ad;
       color: white;
@@ -313,7 +319,7 @@ export function getBaseStyles() {
       height: 48px;
       border-radius: 50%;
       font-size: 20px;
-      cursor: pointer;
+      cursor: grab;
       transition: all 0.3s ease;
       display: flex;
       align-items: center;
@@ -326,6 +332,11 @@ export function getBaseStyles() {
       -ms-user-select: none;
       user-select: none;
       outline: none;
+      touch-action: none;
+    }
+
+    .action-menu-float.dragging .main-action-button {
+      cursor: grabbing;
     }
 
     .main-action-button:hover {
