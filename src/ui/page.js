@@ -97,6 +97,31 @@ function getHTMLStart() {
         document.documentElement.setAttribute('data-theme', 'light');
       }
     })();
+  </script>
+
+  <!-- FAB 位置预注入 - Must run before paint to prevent FAB position flash -->
+  <script>
+    (function() {
+      try {
+        const raw = localStorage.getItem('2fa-fab-position');
+        if (!raw) return;
+        const pos = JSON.parse(raw);
+        if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return;
+        const vw = window.innerWidth || document.documentElement.clientWidth;
+        const vh = window.innerHeight || document.documentElement.clientHeight;
+        // 与 CSS 媒体查询保持一致：≤480px 时 FAB 为 40x40，其余 48x48
+        const size = vw <= 480 ? 40 : 48;
+        const margin = 8;
+        const maxX = Math.max(margin, vw - size - margin);
+        const maxY = Math.max(margin, vh - size - margin);
+        const x = Math.min(Math.max(pos.x, margin), maxX);
+        const y = Math.min(Math.max(pos.y, margin), maxY);
+        const style = document.createElement('style');
+        style.id = 'fab-init-position';
+        style.textContent = '.action-menu-float{left:' + x + 'px !important;top:' + y + 'px !important;right:auto !important;bottom:auto !important;}';
+        document.head.appendChild(style);
+      } catch (e) {}
+    })();
   </script>`;
 }
 

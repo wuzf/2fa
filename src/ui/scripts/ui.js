@@ -332,6 +332,12 @@ export function getUICode() {
       const btn = document.getElementById('mainActionBtn');
       if (!fab || !btn) return;
 
+      // 移除预注入的 FOUC 防闪 style（用了 !important，会胜过下方的 inline style）
+      const initStyle = document.getElementById('fab-init-position');
+      if (initStyle && initStyle.parentNode) {
+        initStyle.parentNode.removeChild(initStyle);
+      }
+
       // 还原上次保存的位置
       const saved = loadFABPosition();
       if (saved) {
