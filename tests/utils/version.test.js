@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, it, expect } from 'vitest';
 
 import { APP_VERSION, compareVersions } from '../../src/utils/version.js';
@@ -11,6 +13,16 @@ describe('version utils', () => {
 
 		it('should be a valid semver string', () => {
 			expect(APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+		});
+	});
+
+	// 版本号所有写入位置的一致性校验（发版用 npm run release:*，修复不一致用 npm run release:sync）
+	describe('version consistency', () => {
+		it.each(['README.md', 'README_EN.md'])('%s badge should match package.json version', (file) => {
+			const content = readFileSync(new URL(`../../${file}`, import.meta.url), 'utf-8');
+			const match = content.match(/badge\/version-(\d+\.\d+\.\d+)-blue/);
+			expect(match, `${file} 应包含版本徽章`).not.toBeNull();
+			expect(match[1], `${file} 徽章版本应与 package.json 一致`).toBe(pkg.version);
 		});
 	});
 

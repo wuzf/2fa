@@ -13,6 +13,7 @@ import {
   PerformanceTimer,
   createRequestLogger
 } from '../../src/utils/logger.js';
+import { APP_VERSION } from '../../src/utils/version.js';
 
 // ==================== 测试辅助工具 ====================
 
@@ -95,7 +96,7 @@ describe('Logger System', () => {
       expect(logger.minLevel).toBe(LogLevel.INFO);
       expect(logger.environment).toBe('development');
       expect(logger.serviceName).toBe('2fa');
-      expect(logger.version).toBe('1.5.0');
+      expect(logger.version).toBe(APP_VERSION);
       expect(logger.enableConsole).toBe(true);
       expect(logger.enableRemote).toBe(false);
       expect(logger.remoteEndpoint).toBeNull();
@@ -107,7 +108,7 @@ describe('Logger System', () => {
         minLevel: LogLevel.WARN, // 使用非0值避免 0 || default 的问题
         environment: 'production',
         serviceName: 'test-service',
-        version: '1.5.0',
+        version: '9.9.9',
         enableConsole: false,
         enableRemote: true,
         remoteEndpoint: 'https://logs.example.com',
@@ -117,7 +118,7 @@ describe('Logger System', () => {
       expect(logger.minLevel).toBe(LogLevel.WARN);
       expect(logger.environment).toBe('production');
       expect(logger.serviceName).toBe('test-service');
-      expect(logger.version).toBe('1.5.0');
+      expect(logger.version).toBe('9.9.9');
       expect(logger.enableConsole).toBe(false);
       expect(logger.enableRemote).toBe(true);
       expect(logger.remoteEndpoint).toBe('https://logs.example.com');
@@ -141,7 +142,7 @@ describe('Logger System', () => {
       expect(logEntry).toMatchObject({
         level: 'INFO',
         service: '2fa',
-        version: '1.5.0',
+        version: APP_VERSION,
         environment: 'development',
         message: 'Test message'
       });

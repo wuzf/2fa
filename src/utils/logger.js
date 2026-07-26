@@ -6,6 +6,8 @@
  * 支持上下文信息、用户标识、性能指标
  */
 
+import { APP_VERSION } from './version.js';
+
 /**
  * 日志级别枚举
  */
@@ -47,7 +49,7 @@ class Logger {
 		this.minLevel = options.minLevel || LogLevel.INFO;
 		this.environment = options.environment || 'development';
 		this.serviceName = options.serviceName || '2fa';
-		this.version = options.version || '1.5.0';
+		this.version = options.version || APP_VERSION;
 		this.enableConsole = options.enableConsole !== false;
 		this.enableRemote = options.enableRemote || false;
 		this.remoteEndpoint = options.remoteEndpoint || null;
@@ -287,7 +289,7 @@ export function getLogger(env = null) {
 			minLevel,
 			environment: env?.ENVIRONMENT || 'development',
 			serviceName: '2fa',
-			version: '1.5.0',
+			version: APP_VERSION,
 			enableConsole: true,
 			enableRemote: env?.LOG_REMOTE_ENDPOINT ? true : false,
 			remoteEndpoint: env?.LOG_REMOTE_ENDPOINT || null,

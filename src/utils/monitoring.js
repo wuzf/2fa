@@ -6,6 +6,7 @@
 /* global Sentry */
 
 import { getLogger } from './logger.js';
+import { APP_VERSION } from './version.js';
 
 /**
  * 错误严重程度级别
@@ -40,7 +41,7 @@ class MonitoringConfig {
 		// 自定义配置
 		this.environment = options.environment || 'production';
 		this.serviceName = options.serviceName || '2fa';
-		this.version = options.version || '1.5.0';
+		this.version = options.version || APP_VERSION;
 	}
 
 	/**
@@ -495,14 +496,14 @@ export function getMonitoring(env = null) {
 			sentryDsn: env?.SENTRY_DSN || null,
 			sentryEnabled: !!env?.SENTRY_DSN,
 			sentryEnvironment: env?.ENVIRONMENT || 'production',
-			sentryRelease: env?.VERSION || '1.5.0',
+			sentryRelease: env?.VERSION || APP_VERSION,
 			errorSampleRate: parseFloat(env?.ERROR_SAMPLE_RATE || '1.0'),
 			traceSampleRate: parseFloat(env?.TRACE_SAMPLE_RATE || '0.1'),
 			enablePerformanceMonitoring: env?.ENABLE_PERFORMANCE_MONITORING !== 'false',
 			slowRequestThreshold: parseInt(env?.SLOW_REQUEST_THRESHOLD || '3000'),
 			environment: env?.ENVIRONMENT || 'production',
 			serviceName: '2fa',
-			version: env?.VERSION || '1.5.0',
+			version: env?.VERSION || APP_VERSION,
 		});
 
 		defaultMonitoring = new MonitoringManager(config);

@@ -14,6 +14,7 @@ import {
   resetMonitoring,
   monitoring
 } from '../../src/utils/monitoring.js';
+import { APP_VERSION } from '../../src/utils/version.js';
 
 // ==================== Mock 设置 ====================
 
@@ -115,7 +116,7 @@ describe('Monitoring System', () => {
       expect(config.slowRequestThreshold).toBe(3000);
       expect(config.environment).toBe('production');
       expect(config.serviceName).toBe('2fa');
-      expect(config.version).toBe('1.5.0');
+      expect(config.version).toBe(APP_VERSION);
     });
 
     it('应该使用自定义配置创建', () => {
@@ -1103,7 +1104,7 @@ describe('Monitoring System', () => {
       expect(monitoring.config.sentryEnabled).toBe(false);
       expect(monitoring.config.environment).toBe('production');
       expect(monitoring.config.serviceName).toBe('2fa');
-      expect(monitoring.config.version).toBe('1.5.0');
+      expect(monitoring.config.version).toBe(APP_VERSION);
       expect(monitoring.config.errorSampleRate).toBe(1.0);
       expect(monitoring.config.traceSampleRate).toBe(0.1);
       expect(monitoring.config.enablePerformanceMonitoring).toBe(true);
