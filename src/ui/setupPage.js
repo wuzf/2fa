@@ -99,6 +99,23 @@ export async function createSetupPage() {
       font-size: 14px;
     }
 
+    .insecure-warning {
+      background: var(--danger-light);
+      border-left: 4px solid var(--danger-dark);
+      border-radius: var(--radius-sm);
+      padding: 15px;
+      margin-bottom: 25px;
+      font-size: 13px;
+      color: var(--danger-dark);
+      line-height: 1.5;
+    }
+
+    .insecure-warning strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
+
     .form-group {
       margin-bottom: 20px;
     }
@@ -301,6 +318,11 @@ export async function createSetupPage() {
       请设置一个强密码，并妥善保管。这是您登录管理密钥的唯一凭证。
     </div>
 
+    <div id="insecureWarning" class="insecure-warning" style="display: none;">
+      <strong>⚠️ 当前正通过 HTTP 访问</strong>
+      浏览器无法在 HTTP 下保存登录状态，设置完成后会反复要求输入密码。请将地址栏中的 http:// 改为 https:// 后重新访问。
+    </div>
+
     <div id="errorMessage" class="error-message"></div>
     <div id="successMessage" class="success-message"></div>
 
@@ -360,6 +382,20 @@ export async function createSetupPage() {
   </div>
 
   <script>
+    // 检测不安全上下文：HTTP 下浏览器无法保存 Secure Cookie，登录状态无法保持
+    (function() {
+      let insecure;
+      if (typeof window.isSecureContext === 'boolean') {
+        insecure = !window.isSecureContext;
+      } else {
+        const localHosts = ['localhost', '127.0.0.1', '[::1]'];
+        insecure = location.protocol === 'http:' && !localHosts.includes(location.hostname);
+      }
+      if (insecure) {
+        document.getElementById('insecureWarning').style.display = 'block';
+      }
+    })();
+
     // 切换密码可见性
     function togglePasswordVisibility(inputId) {
       const input = document.getElementById(inputId);

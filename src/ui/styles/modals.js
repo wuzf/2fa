@@ -570,6 +570,23 @@ export function getModalStyles() {
       line-height: 1.5;
     }
 
+    .login-insecure-warning {
+      background: var(--danger-light);
+      border-left: 4px solid var(--danger-dark);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: var(--danger-dark);
+      line-height: 1.5;
+      text-align: left;
+    }
+
+    .login-insecure-warning strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
     .login-modal-hint {
       color: var(--text-tertiary);
       font-size: 12px;

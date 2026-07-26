@@ -92,14 +92,29 @@ export function getAuthCode() {
       setLoginPasswordVisibility(tokenInput.type === 'password');
     }
 
+    // 检测是否处于无法保存 Secure Cookie 的不安全上下文（HTTP 且非本机地址）
+    // 登录 Cookie 带有 Secure 属性，HTTP 访问时浏览器会拒绝保存，导致反复要求登录
+    function isInsecureCookieContext() {
+      if (typeof window.isSecureContext === 'boolean') {
+        return !window.isSecureContext;
+      }
+      const localHosts = ['localhost', '127.0.0.1', '[::1]'];
+      return location.protocol === 'http:' && !localHosts.includes(location.hostname);
+    }
+
     // 显示登录模态框
     function showLoginModal() {
       const modal = document.getElementById('loginModal');
       const tokenInput = document.getElementById('loginToken');
       const errorDiv = document.getElementById('loginError');
+      const insecureWarning = document.getElementById('loginInsecureWarning');
 
       if (!modal) {
         return;
+      }
+
+      if (insecureWarning) {
+        insecureWarning.style.display = isInsecureCookieContext() ? 'block' : 'none';
       }
 
       if (loginModalHideTimer) {

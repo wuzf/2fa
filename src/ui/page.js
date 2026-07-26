@@ -1582,6 +1582,10 @@ function getHTMLBody() {
         请输入密码以管理密钥<br>
         <small class="login-modal-hint">或点击"取消"使用 OTP 生成功能</small>
       </p>
+      <div id="loginInsecureWarning" class="login-insecure-warning" style="display: none;">
+        <strong>⚠️ 当前正通过 HTTP 访问</strong>
+        浏览器无法在 HTTP 下保存登录状态，登录后仍会反复要求输入密码。请将地址栏中的 http:// 改为 https:// 后重新访问。
+      </div>
       <form id="loginForm" onsubmit="event.preventDefault(); handleLoginSubmit(); return false;" autocomplete="on">
       <div class="form-group">
         <label for="loginToken">密码</label>
