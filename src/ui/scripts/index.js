@@ -19,6 +19,7 @@ import { getCoreCode } from './core.js';
 import { getUtilsCode } from './utils.js';
 import { getPWACode } from './pwa.js';
 import { getModuleLoaderCode } from './moduleLoader.js';
+import { getVersionCheckCode } from './versionCheck.js';
 
 /**
  * 获取核心JavaScript代码（首次加载必需）
@@ -26,7 +27,7 @@ import { getModuleLoaderCode } from './moduleLoader.js';
  * @returns {string} 核心JavaScript代码
  */
 export function getCoreScripts() {
-	return `${getUtilsCode()}${getStateCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getCoreCode()}${getPWACode()}${getModuleLoaderCode()}`;
+	return `${getUtilsCode()}${getStateCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getCoreCode()}${getPWACode()}${getModuleLoaderCode()}${getVersionCheckCode()}`;
 }
 
 /**
@@ -37,7 +38,7 @@ export function getCoreScripts() {
 export function getScripts() {
 	// QRCode must come before GoogleMigration, GoogleMigration must come before Export
 	// because Export calls showExportToGoogleModal from GoogleMigration
-	return `${getUtilsCode()}${getStateCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getQRCodeCode()}${getGoogleMigrationCode()}${getExportCode()}${getImportCode()}${getBackupCode()}${getToolsCode()}${getCoreCode()}${getPWACode()}`;
+	return `${getUtilsCode()}${getStateCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getQRCodeCode()}${getGoogleMigrationCode()}${getExportCode()}${getImportCode()}${getBackupCode()}${getToolsCode()}${getCoreCode()}${getPWACode()}${getVersionCheckCode()}`;
 }
 
 /**

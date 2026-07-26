@@ -577,6 +577,28 @@ export function getComponentStyles() {
       color: var(--footer-link-hover);
     }
 
+    .footer-version {
+      font-family: monospace;
+      color: var(--text-tertiary);
+      user-select: text;
+    }
+
+    .footer-update-badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      color: var(--footer-link);
+      background: var(--bg-secondary);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+
+    .footer-update-badge:hover {
+      color: var(--footer-link-hover);
+    }
+
     /* ========== 离线状态横幅 ========== */
     .offline-banner {
       position: fixed;
