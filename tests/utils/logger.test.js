@@ -105,7 +105,7 @@ describe('Logger System', () => {
 
     it('应该使用自定义配置创建 Logger', () => {
       const logger = new Logger({
-        minLevel: LogLevel.WARN, // 使用非0值避免 0 || default 的问题
+        minLevel: LogLevel.WARN,
         environment: 'production',
         serviceName: 'test-service',
         version: '9.9.9',
@@ -543,12 +543,10 @@ describe('Logger System', () => {
       expect(logger.minLevel).toBe(LogLevel.INFO);
     });
 
-    it('开发环境默认 INFO 级别（由于构造函数的0值bug）', () => {
+    it('开发环境默认 DEBUG 级别', () => {
       const logger = getLogger({ ENVIRONMENT: 'development' });
 
-      // 注意：由于Logger构造函数的 `options.minLevel || LogLevel.INFO` bug，
-      // DEBUG(0) 被错误地替换为 INFO(1)
-      expect(logger.minLevel).toBe(LogLevel.INFO);
+      expect(logger.minLevel).toBe(LogLevel.DEBUG);
     });
 
     it('应该启用远程日志（如果提供endpoint）', () => {
@@ -558,6 +556,63 @@ describe('Logger System', () => {
 
       expect(logger.enableRemote).toBe(true);
       expect(logger.remoteEndpoint).toBe('https://logs.example.com');
+    });
+
+    it('无 env 创建后，首次携带 env 的调用应该就地更新配置', () => {
+      // 模拟模块加载阶段的无 env 调用（如 ErrorMonitor 构造函数）
+      const early = getLogger();
+      expect(early.minLevel).toBe(LogLevel.DEBUG); // 无 env 默认 development → DEBUG
+
+      // 首个请求携带 env（worker.js fetch 入口）
+      const configured = getLogger({ LOG_LEVEL: 'ERROR', ENVIRONMENT: 'production' });
+
+      // 同一实例：已持有该 logger 引用的对象（如 ErrorMonitor）同样拿到新配置
+      expect(configured).toBe(early);
+      expect(early.minLevel).toBe(LogLevel.ERROR);
+      expect(early.environment).toBe('production');
+    });
+
+    it('已用 env 配置后不应被后续调用重复覆盖', () => {
+      getLogger({ LOG_LEVEL: 'ERROR' });
+      const logger = getLogger({ LOG_LEVEL: 'DEBUG' });
+
+      expect(logger.minLevel).toBe(LogLevel.ERROR); // 保持首次 env 配置
+    });
+
+    it('minLevel 为非法值时应回退 INFO', () => {
+      // NaN 若被保留，level < NaN 恒为 false，会放开全部日志
+      expect(new Logger({ minLevel: NaN }).minLevel).toBe(LogLevel.INFO);
+      expect(new Logger({ minLevel: Infinity }).minLevel).toBe(LogLevel.INFO);
+      expect(new Logger({ minLevel: -Infinity }).minLevel).toBe(LogLevel.INFO);
+      expect(new Logger({ minLevel: 'abc' }).minLevel).toBe(LogLevel.INFO);
+      expect(new Logger({ minLevel: '2' }).minLevel).toBe(LogLevel.INFO); // 数字字符串不接受
+      expect(new Logger({ minLevel: true }).minLevel).toBe(LogLevel.INFO);
+    });
+
+    it('minLevel 越界或非整数时应回退 INFO', () => {
+      // 5 会让 level < 5 恒真，连 FATAL 都被屏蔽；-1 则放开全部日志
+      expect(new Logger({ minLevel: 5 }).minLevel).toBe(LogLevel.INFO);
+      expect(new Logger({ minLevel: -1 }).minLevel).toBe(LogLevel.INFO);
+      expect(new Logger({ minLevel: 1.5 }).minLevel).toBe(LogLevel.INFO);
+    });
+
+    it('minLevel 为合法枚举值时应原样保留', () => {
+      for (const level of [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR, LogLevel.FATAL]) {
+        expect(new Logger({ minLevel: level }).minLevel).toBe(level);
+      }
+    });
+
+    it('setMinLevel 应拒绝非法值', () => {
+      const logger = new Logger({ minLevel: LogLevel.WARN });
+
+      logger.setMinLevel(5);
+      expect(logger.minLevel).toBe(LogLevel.WARN); // 保持原值
+
+      logger.setMinLevel(NaN);
+      expect(logger.minLevel).toBe(LogLevel.WARN);
+
+      logger.setMinLevel(LogLevel.DEBUG);
+      expect(logger.minLevel).toBe(LogLevel.DEBUG); // 合法值正常生效
     });
   });
 
@@ -935,7 +990,7 @@ describe('Logger System', () => {
       const logger = getLogger({ LOG_LEVEL: 'INVALID' });
 
       // 应该降级到默认级别（DEBUG for development）
-      expect(logger.minLevel).toBeDefined();
+      expect(logger.minLevel).toBe(LogLevel.DEBUG);
     });
   });
 

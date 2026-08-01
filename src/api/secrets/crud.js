@@ -29,8 +29,6 @@ import {
 } from '../../utils/errors.js';
 import { KV_KEYS } from '../../utils/constants.js';
 
-const monitoring = getMonitoring();
-
 /**
  * 获取所有密钥列表
  *
@@ -62,17 +60,13 @@ export async function handleGetSecrets(env) {
 			error instanceof ConfigurationError
 		) {
 			logError(error, logger, { operation: 'handleGetSecrets' });
-			if (monitoring && monitoring.getErrorMonitor) {
-				monitoring.getErrorMonitor().captureError(error, { operation: 'handleGetSecrets' }, ErrorSeverity.ERROR);
-			}
+			getMonitoring(env).getErrorMonitor().captureError(error, { operation: 'handleGetSecrets' }, ErrorSeverity.ERROR);
 			return errorToResponse(error);
 		}
 
 		// 未知错误
 		logger.error('获取密钥列表失败', { operation: 'handleGetSecrets' }, error);
-		if (monitoring && monitoring.getErrorMonitor) {
-			monitoring.getErrorMonitor().captureError(error, { operation: 'handleGetSecrets' }, ErrorSeverity.ERROR);
-		}
+		getMonitoring(env).getErrorMonitor().captureError(error, { operation: 'handleGetSecrets' }, ErrorSeverity.ERROR);
 		return createErrorResponse('获取密钥列表失败', `从存储中获取密钥时发生错误: ${error.message}`, 500);
 	}
 }
@@ -156,17 +150,13 @@ export async function handleAddSecret(request, env, ctx) {
 			error instanceof ConfigurationError
 		) {
 			logError(error, logger, { operation: 'handleAddSecret' });
-			if (monitoring && monitoring.getErrorMonitor) {
-				monitoring.getErrorMonitor().captureError(error, { operation: 'handleAddSecret' }, ErrorSeverity.WARNING);
-			}
+			getMonitoring(env).getErrorMonitor().captureError(error, { operation: 'handleAddSecret' }, ErrorSeverity.WARNING);
 			return errorToResponse(error, request);
 		}
 
 		// 未知错误
 		logger.error('添加密钥失败', { operation: 'handleAddSecret', errorMessage: error.message }, error);
-		if (monitoring && monitoring.getErrorMonitor) {
-			monitoring.getErrorMonitor().captureError(error, { operation: 'handleAddSecret' }, ErrorSeverity.ERROR);
-		}
+		getMonitoring(env).getErrorMonitor().captureError(error, { operation: 'handleAddSecret' }, ErrorSeverity.ERROR);
 		return createErrorResponse('添加密钥失败', `添加密钥时发生内部错误`, 500, request);
 	}
 }
@@ -264,17 +254,13 @@ export async function handleUpdateSecret(request, env, ctx) {
 			error instanceof ConfigurationError
 		) {
 			logError(error, logger, { operation: 'handleUpdateSecret' });
-			if (monitoring && monitoring.getErrorMonitor) {
-				monitoring.getErrorMonitor().captureError(error, { operation: 'handleUpdateSecret' }, ErrorSeverity.WARNING);
-			}
+			getMonitoring(env).getErrorMonitor().captureError(error, { operation: 'handleUpdateSecret' }, ErrorSeverity.WARNING);
 			return errorToResponse(error, request);
 		}
 
 		// 未知错误
 		logger.error('更新密钥失败', { operation: 'handleUpdateSecret', errorMessage: error.message }, error);
-		if (monitoring && monitoring.getErrorMonitor) {
-			monitoring.getErrorMonitor().captureError(error, { operation: 'handleUpdateSecret' }, ErrorSeverity.ERROR);
-		}
+		getMonitoring(env).getErrorMonitor().captureError(error, { operation: 'handleUpdateSecret' }, ErrorSeverity.ERROR);
 		return createErrorResponse('更新密钥失败', `更新密钥时发生内部错误`, 500, request);
 	}
 }
@@ -337,17 +323,13 @@ export async function handleDeleteSecret(request, env, ctx) {
 			error instanceof ConfigurationError
 		) {
 			logError(error, logger, { operation: 'handleDeleteSecret' });
-			if (monitoring && monitoring.getErrorMonitor) {
-				monitoring.getErrorMonitor().captureError(error, { operation: 'handleDeleteSecret' }, ErrorSeverity.WARNING);
-			}
+			getMonitoring(env).getErrorMonitor().captureError(error, { operation: 'handleDeleteSecret' }, ErrorSeverity.WARNING);
 			return errorToResponse(error);
 		}
 
 		// 未知错误
 		logger.error('删除密钥失败', { operation: 'handleDeleteSecret', errorMessage: error.message }, error);
-		if (monitoring && monitoring.getErrorMonitor) {
-			monitoring.getErrorMonitor().captureError(error, { operation: 'handleDeleteSecret' }, ErrorSeverity.ERROR);
-		}
+		getMonitoring(env).getErrorMonitor().captureError(error, { operation: 'handleDeleteSecret' }, ErrorSeverity.ERROR);
 		return createErrorResponse('删除密钥失败', `删除密钥操作时发生内部错误`, 500);
 	}
 }
