@@ -1,6 +1,6 @@
 /**
  * Monitoring 监控系统测试
- * 测试错误追踪、性能监控、Sentry 集成
+ * 测试错误追踪、性能监控
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -15,6 +15,7 @@ import {
   monitoring
 } from '../../src/utils/monitoring.js';
 import { APP_VERSION } from '../../src/utils/version.js';
+import { getLogger } from '../../src/utils/logger.js';
 
 // ==================== Mock 设置 ====================
 
@@ -31,28 +32,12 @@ vi.mock('../../src/utils/logger.js', () => ({
 // ==================== 测试辅助工具 ====================
 
 /**
- * 创建 Mock Sentry 对象
- */
-function createMockSentry() {
-  return {
-    init: vi.fn(),
-    captureException: vi.fn(),
-    captureMessage: vi.fn(),
-    addBreadcrumb: vi.fn(),
-    setUser: vi.fn()
-  };
-}
-
-/**
  * 创建 Mock 环境变量
  */
 function createMockEnv(overrides = {}) {
   return {
-    SENTRY_DSN: null,
     ENVIRONMENT: 'test',
     VERSION: '1.0.0',
-    ERROR_SAMPLE_RATE: '1.0',
-    TRACE_SAMPLE_RATE: '0.1',
     ENABLE_PERFORMANCE_MONITORING: 'true',
     SLOW_REQUEST_THRESHOLD: '3000',
     ...overrides
@@ -80,8 +65,6 @@ describe('Monitoring System', () => {
     resetMonitoring();
     vi.clearAllMocks();
     vi.restoreAllMocks();
-    // 清除全局 Sentry
-    global.Sentry = undefined;
   });
 
   afterEach(() => {
@@ -106,12 +89,6 @@ describe('Monitoring System', () => {
     it('应该使用默认配置创建', () => {
       const config = new MonitoringConfig();
 
-      expect(config.sentryDsn).toBeNull();
-      expect(config.sentryEnabled).toBeFalsy(); // undefined when no DSN
-      expect(config.sentryEnvironment).toBe('production');
-      expect(config.sentryRelease).toBeNull();
-      expect(config.errorSampleRate).toBe(1.0);
-      expect(config.traceSampleRate).toBe(0.1);
       expect(config.enablePerformanceMonitoring).toBe(true);
       expect(config.slowRequestThreshold).toBe(3000);
       expect(config.environment).toBe('production');
@@ -121,12 +98,6 @@ describe('Monitoring System', () => {
 
     it('应该使用自定义配置创建', () => {
       const config = new MonitoringConfig({
-        sentryDsn: 'https://example.com/sentry',
-        sentryEnabled: true,
-        sentryEnvironment: 'staging',
-        sentryRelease: '1.2.3',
-        errorSampleRate: 0.5,
-        traceSampleRate: 0.2,
         enablePerformanceMonitoring: false,
         slowRequestThreshold: 5000,
         environment: 'development',
@@ -134,12 +105,6 @@ describe('Monitoring System', () => {
         version: '3.0.0'
       });
 
-      expect(config.sentryDsn).toBe('https://example.com/sentry');
-      expect(config.sentryEnabled).toBeTruthy(); // Truthy (DSN string) when both provided
-      expect(config.sentryEnvironment).toBe('staging');
-      expect(config.sentryRelease).toBe('1.2.3');
-      expect(config.errorSampleRate).toBe(0.5);
-      expect(config.traceSampleRate).toBe(0.2);
       expect(config.enablePerformanceMonitoring).toBe(false);
       expect(config.slowRequestThreshold).toBe(5000);
       expect(config.environment).toBe('development');
@@ -147,48 +112,25 @@ describe('Monitoring System', () => {
       expect(config.version).toBe('3.0.0');
     });
 
-    it('sentryEnabled 应该依赖 sentryDsn', () => {
-      const config1 = new MonitoringConfig({ sentryEnabled: true });
-      expect(config1.sentryEnabled).toBeFalsy(); // No DSN → falsy
-
-      const config2 = new MonitoringConfig({
-        sentryDsn: 'https://example.com',
-        sentryEnabled: true
-      });
-      expect(config2.sentryEnabled).toBeTruthy(); // Has DSN → truthy
-    });
-
     it('enablePerformanceMonitoring 默认为 true', () => {
       const config = new MonitoringConfig({ enablePerformanceMonitoring: undefined });
       expect(config.enablePerformanceMonitoring).toBe(true);
     });
 
-    describe('shouldSample', () => {
-      it('采样率 1.0 应该总是返回 true', () => {
-        const config = new MonitoringConfig();
-        vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    it('slowRequestThreshold 为 0 时不应被默认值吞掉', () => {
+      const config = new MonitoringConfig({ slowRequestThreshold: 0 });
+      expect(config.slowRequestThreshold).toBe(0);
+    });
 
-        expect(config.shouldSample(1.0)).toBe(true);
-      });
-
-      it('采样率 0.0 应该总是返回 false', () => {
-        const config = new MonitoringConfig();
-        vi.spyOn(Math, 'random').mockReturnValue(0.5);
-
-        expect(config.shouldSample(0.0)).toBe(false);
-      });
-
-      it('应该根据随机数采样', () => {
-        const config = new MonitoringConfig();
-
-        // random() < 0.5 → true
-        vi.spyOn(Math, 'random').mockReturnValue(0.3);
-        expect(config.shouldSample(0.5)).toBe(true);
-
-        // random() >= 0.5 → false
-        vi.spyOn(Math, 'random').mockReturnValue(0.6);
-        expect(config.shouldSample(0.5)).toBe(false);
-      });
+    it('slowRequestThreshold 为非法值时应回退默认值', () => {
+      // NaN 若被保留，duration > NaN 恒为 false，会静默关闭慢请求告警
+      expect(new MonitoringConfig({ slowRequestThreshold: NaN }).slowRequestThreshold).toBe(3000);
+      expect(new MonitoringConfig({ slowRequestThreshold: Infinity }).slowRequestThreshold).toBe(3000);
+      expect(new MonitoringConfig({ slowRequestThreshold: -Infinity }).slowRequestThreshold).toBe(3000);
+      expect(new MonitoringConfig({ slowRequestThreshold: -1 }).slowRequestThreshold).toBe(3000);
+      expect(new MonitoringConfig({ slowRequestThreshold: 'abc' }).slowRequestThreshold).toBe(3000);
+      expect(new MonitoringConfig({ slowRequestThreshold: '5000' }).slowRequestThreshold).toBe(3000); // 数字字符串不接受
+      expect(new MonitoringConfig({ slowRequestThreshold: true }).slowRequestThreshold).toBe(3000);
     });
   });
 
@@ -207,155 +149,6 @@ describe('Monitoring System', () => {
       it('应该创建 ErrorMonitor 实例', () => {
         expect(monitor.config).toBe(config);
         expect(monitor.logger).toBeDefined();
-        expect(monitor.sentryInitialized).toBe(false);
-      });
-    });
-
-    describe('initSentry', () => {
-      it('sentryEnabled=false 时应该不初始化', async () => {
-        const mockSentry = createMockSentry();
-        global.Sentry = mockSentry;
-
-        await monitor.initSentry();
-
-        expect(mockSentry.init).not.toHaveBeenCalled();
-        expect(monitor.sentryInitialized).toBe(false);
-      });
-
-      it('已初始化时应该不重复初始化', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        global.Sentry = mockSentry;
-
-        await enabledMonitor.initSentry();
-        await enabledMonitor.initSentry(); // 第二次调用
-
-        expect(mockSentry.init).toHaveBeenCalledTimes(1);
-      });
-
-      it('Sentry SDK 可用时应该初始化', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com/sentry',
-          sentryEnabled: true,
-          sentryEnvironment: 'staging',
-          sentryRelease: '1.0.0',
-          traceSampleRate: 0.2
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        global.Sentry = mockSentry;
-
-        await enabledMonitor.initSentry();
-
-        expect(mockSentry.init).toHaveBeenCalledWith({
-          dsn: 'https://example.com/sentry',
-          environment: 'staging',
-          release: '1.0.0',
-          tracesSampleRate: 0.2,
-          beforeSend: expect.any(Function)
-        });
-        expect(enabledMonitor.sentryInitialized).toBe(true);
-        expect(enabledMonitor.logger.info).toHaveBeenCalledWith(
-          expect.stringContaining('Sentry initialized'),
-          expect.any(Object)
-        );
-      });
-
-      it('Sentry SDK 不可用时应该记录警告', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        // 不设置 global.Sentry
-
-        await enabledMonitor.initSentry();
-
-        expect(enabledMonitor.sentryInitialized).toBe(false);
-        expect(enabledMonitor.logger.warn).toHaveBeenCalledWith(
-          expect.stringContaining('Sentry SDK not loaded')
-        );
-      });
-
-      it('Sentry 初始化失败应该记录错误', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        mockSentry.init.mockImplementation(() => {
-          throw new Error('Init failed');
-        });
-        global.Sentry = mockSentry;
-
-        await enabledMonitor.initSentry();
-
-        expect(enabledMonitor.logger.error).toHaveBeenCalledWith(
-          'Failed to initialize Sentry',
-          {},
-          expect.any(Error)
-        );
-      });
-    });
-
-    describe('_beforeSendSentry', () => {
-      it('应该移除敏感请求头', () => {
-        const event = {
-          request: {
-            headers: {
-              'authorization': 'Bearer token',
-              'cookie': 'session=abc',
-              'x-api-key': 'secret',
-              'content-type': 'application/json'
-            }
-          }
-        };
-
-        vi.spyOn(Math, 'random').mockReturnValue(0.5); // 采样通过
-        const result = monitor._beforeSendSentry(event);
-
-        expect(result.request.headers).not.toHaveProperty('authorization');
-        expect(result.request.headers).not.toHaveProperty('cookie');
-        expect(result.request.headers).not.toHaveProperty('x-api-key');
-        expect(result.request.headers).toHaveProperty('content-type');
-      });
-
-      it('应该清空 cookies', () => {
-        const event = {
-          request: {
-            cookies: { session: 'abc', auth: 'xyz' }
-          }
-        };
-
-        vi.spyOn(Math, 'random').mockReturnValue(0.5);
-        const result = monitor._beforeSendSentry(event);
-
-        expect(result.request.cookies).toEqual({});
-      });
-
-      it('采样失败应该返回 null', () => {
-        config.errorSampleRate = 0.5;
-        vi.spyOn(Math, 'random').mockReturnValue(0.6); // > 0.5, 采样失败
-
-        const event = { request: {} };
-        const result = monitor._beforeSendSentry(event);
-
-        expect(result).toBeNull();
-      });
-
-      it('采样成功应该返回事件', () => {
-        config.errorSampleRate = 0.5;
-        vi.spyOn(Math, 'random').mockReturnValue(0.3); // < 0.5, 采样成功
-
-        const event = { request: {} };
-        const result = monitor._beforeSendSentry(event);
-
-        expect(result).toBe(event);
       });
     });
 
@@ -398,76 +191,6 @@ describe('Monitoring System', () => {
           timestamp: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
         });
       });
-
-      it('Sentry 已启用时应该发送到 Sentry', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true,
-          serviceName: 'test-service',
-          version: '1.0.0',
-          environment: 'staging'
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        global.Sentry = mockSentry;
-
-        await enabledMonitor.initSentry();
-
-        const error = new Error('Test error');
-        const context = { userId: '123' };
-        enabledMonitor.captureError(error, context, ErrorSeverity.ERROR);
-
-        expect(mockSentry.captureException).toHaveBeenCalledWith(error, {
-          level: ErrorSeverity.ERROR,
-          tags: {
-            service: 'test-service',
-            version: '1.0.0',
-            environment: 'staging'
-          },
-          extra: { userId: '123' }
-        });
-      });
-
-      it('Sentry 未初始化时不应该发送', () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        global.Sentry = mockSentry;
-
-        // 不调用 initSentry()
-
-        const error = new Error('Test');
-        enabledMonitor.captureError(error, {});
-
-        expect(mockSentry.captureException).not.toHaveBeenCalled();
-      });
-
-      it('Sentry 发送失败应该记录警告', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        mockSentry.captureException.mockImplementation(() => {
-          throw new Error('Sentry error');
-        });
-        global.Sentry = mockSentry;
-
-        await enabledMonitor.initSentry();
-
-        const error = new Error('Test');
-        enabledMonitor.captureError(error, {});
-
-        expect(enabledMonitor.logger.warn).toHaveBeenCalledWith(
-          'Failed to send error to Sentry',
-          {},
-          expect.any(Error)
-        );
-      });
     });
 
     describe('captureMessage', () => {
@@ -481,54 +204,6 @@ describe('Monitoring System', () => {
             level: ErrorSeverity.INFO,
             foo: 'bar'
           }
-        );
-      });
-
-      it('Sentry 已启用时应该发送到 Sentry', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true,
-          serviceName: 'test-service',
-          version: '1.0.0'
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        global.Sentry = mockSentry;
-
-        await enabledMonitor.initSentry();
-
-        enabledMonitor.captureMessage('Test message', ErrorSeverity.WARNING, { userId: '456' });
-
-        expect(mockSentry.captureMessage).toHaveBeenCalledWith('Test message', {
-          level: ErrorSeverity.WARNING,
-          tags: {
-            service: 'test-service',
-            version: '1.0.0'
-          },
-          extra: { userId: '456' }
-        });
-      });
-
-      it('Sentry 发送失败应该记录警告', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        mockSentry.captureMessage.mockImplementation(() => {
-          throw new Error('Sentry error');
-        });
-        global.Sentry = mockSentry;
-
-        await enabledMonitor.initSentry();
-
-        enabledMonitor.captureMessage('Test message');
-
-        expect(enabledMonitor.logger.warn).toHaveBeenCalledWith(
-          'Failed to send message to Sentry',
-          {},
-          expect.any(Error)
         );
       });
     });
@@ -556,125 +231,6 @@ describe('Monitoring System', () => {
             buttonId: 'add'
           }
         );
-      });
-
-      it('Sentry 已启用时应该添加到 Sentry', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        global.Sentry = mockSentry;
-
-        await enabledMonitor.initSentry();
-
-        enabledMonitor.addBreadcrumb('Navigation', 'navigation', { to: '/settings' });
-
-        expect(mockSentry.addBreadcrumb).toHaveBeenCalledWith({
-          message: 'Navigation',
-          category: 'navigation',
-          data: { to: '/settings' },
-          timestamp: expect.any(Number)
-        });
-      });
-
-      it('Sentry 失败应该静默处理', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        mockSentry.addBreadcrumb.mockImplementation(() => {
-          throw new Error('Sentry error');
-        });
-        global.Sentry = mockSentry;
-
-        await enabledMonitor.initSentry();
-
-        // 不应该抛出错误
-        expect(() => {
-          enabledMonitor.addBreadcrumb('Test');
-        }).not.toThrow();
-      });
-    });
-
-    describe('setUser', () => {
-      it('Sentry 已启用时应该设置用户', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        global.Sentry = mockSentry;
-
-        await enabledMonitor.initSentry();
-
-        enabledMonitor.setUser('user123', 'user@example.com', 'testuser');
-
-        expect(mockSentry.setUser).toHaveBeenCalledWith({
-          id: 'user123',
-          email: 'user@example.com',
-          username: 'testuser'
-        });
-      });
-
-      it('Sentry 失败应该静默处理', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        mockSentry.setUser.mockImplementation(() => {
-          throw new Error('Sentry error');
-        });
-        global.Sentry = mockSentry;
-
-        await enabledMonitor.initSentry();
-
-        expect(() => {
-          enabledMonitor.setUser('user123');
-        }).not.toThrow();
-      });
-    });
-
-    describe('clearUser', () => {
-      it('Sentry 已启用时应该清除用户', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        global.Sentry = mockSentry;
-
-        await enabledMonitor.initSentry();
-
-        enabledMonitor.clearUser();
-
-        expect(mockSentry.setUser).toHaveBeenCalledWith(null);
-      });
-
-      it('Sentry 失败应该静默处理', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true
-        });
-        const enabledMonitor = new ErrorMonitor(enabledConfig);
-        const mockSentry = createMockSentry();
-        mockSentry.setUser.mockImplementation(() => {
-          throw new Error('Sentry error');
-        });
-        global.Sentry = mockSentry;
-
-        await enabledMonitor.initSentry();
-
-        expect(() => {
-          enabledMonitor.clearUser();
-        }).not.toThrow();
       });
     });
   });
@@ -948,25 +504,10 @@ describe('Monitoring System', () => {
         expect(manager.logger.info).toHaveBeenCalledWith(
           expect.stringContaining('Initializing monitoring system'),
           {
-            sentryEnabled: undefined, // undefined when no DSN provided
             performanceEnabled: true,
             environment: 'production'
           }
         );
-      });
-
-      it('Sentry 已启用时应该初始化 Sentry', async () => {
-        const enabledConfig = new MonitoringConfig({
-          sentryDsn: 'https://example.com',
-          sentryEnabled: true
-        });
-        const enabledManager = new MonitoringManager(enabledConfig);
-        const mockSentry = createMockSentry();
-        global.Sentry = mockSentry;
-
-        await enabledManager.initialize();
-
-        expect(mockSentry.init).toHaveBeenCalled();
       });
     });
 
@@ -1077,23 +618,16 @@ describe('Monitoring System', () => {
 
     it('应该使用环境变量配置', () => {
       const env = createMockEnv({
-        SENTRY_DSN: 'https://sentry.example.com',
         ENVIRONMENT: 'staging',
         VERSION: '2.5.0',
-        ERROR_SAMPLE_RATE: '0.8',
-        TRACE_SAMPLE_RATE: '0.3',
         ENABLE_PERFORMANCE_MONITORING: 'false',
         SLOW_REQUEST_THRESHOLD: '5000'
       });
 
       const monitoring = getMonitoring(env);
 
-      expect(monitoring.config.sentryDsn).toBe('https://sentry.example.com');
-      expect(monitoring.config.sentryEnabled).toBeTruthy(); // Truthy (DSN string) when configured
-      expect(monitoring.config.sentryEnvironment).toBe('staging');
-      expect(monitoring.config.sentryRelease).toBe('2.5.0');
-      expect(monitoring.config.errorSampleRate).toBe(0.8);
-      expect(monitoring.config.traceSampleRate).toBe(0.3);
+      expect(monitoring.config.environment).toBe('staging');
+      expect(monitoring.config.version).toBe('2.5.0');
       expect(monitoring.config.enablePerformanceMonitoring).toBe(false);
       expect(monitoring.config.slowRequestThreshold).toBe(5000);
     });
@@ -1101,14 +635,70 @@ describe('Monitoring System', () => {
     it('应该使用默认配置', () => {
       const monitoring = getMonitoring();
 
-      expect(monitoring.config.sentryEnabled).toBe(false);
       expect(monitoring.config.environment).toBe('production');
       expect(monitoring.config.serviceName).toBe('2fa');
       expect(monitoring.config.version).toBe(APP_VERSION);
-      expect(monitoring.config.errorSampleRate).toBe(1.0);
-      expect(monitoring.config.traceSampleRate).toBe(0.1);
       expect(monitoring.config.enablePerformanceMonitoring).toBe(true);
       expect(monitoring.config.slowRequestThreshold).toBe(3000);
+    });
+
+    it('无 env 创建后，首次携带 env 的调用应该就地更新配置', () => {
+      // 模拟模块加载阶段的无 env 调用（如 monitoring 快捷方法）
+      const early = getMonitoring();
+      expect(early.config.slowRequestThreshold).toBe(3000);
+
+      // 首个请求携带 env
+      const configured = getMonitoring(createMockEnv({
+        ENVIRONMENT: 'staging',
+        SLOW_REQUEST_THRESHOLD: '5000'
+      }));
+
+      // 同一实例，且内部监控器持有的 config 引用同样生效
+      expect(configured).toBe(early);
+      expect(early.config.slowRequestThreshold).toBe(5000);
+      expect(early.config.environment).toBe('staging');
+      expect(early.getPerformanceMonitor().config.slowRequestThreshold).toBe(5000);
+    });
+
+    it('已用 env 配置后不应被后续调用重复覆盖', () => {
+      getMonitoring(createMockEnv({ SLOW_REQUEST_THRESHOLD: '5000' }));
+      const monitoring = getMonitoring(createMockEnv({ SLOW_REQUEST_THRESHOLD: '9000' }));
+
+      expect(monitoring.config.slowRequestThreshold).toBe(5000);
+    });
+
+    it('冷启动时应把 env 透传给内部 logger（不依赖先调用 getLogger）', () => {
+      const env = createMockEnv({ LOG_LEVEL: 'ERROR' });
+      getLogger.mockClear();
+
+      // 未先调用 getLogger(env)，直接 getMonitoring(env)
+      getMonitoring(env);
+
+      // 断言 env 真的传到了 getLogger —— 只断言 logger 存在的话，不传 env 的旧实现也能通过
+      expect(getLogger).toHaveBeenCalledWith(env);
+      // manager + errorMonitor + performanceMonitor 三处构造都应携带 env
+      expect(getLogger.mock.calls.filter((args) => args[0] === env)).toHaveLength(3);
+    });
+
+    it('env 后到时应触发 logger 单例更新', () => {
+      getMonitoring(); // 冷启动无 env（模拟模块加载阶段）
+      const env = createMockEnv({ LOG_LEVEL: 'ERROR' });
+      getLogger.mockClear();
+
+      getMonitoring(env);
+
+      // 三个构造函数不会重跑，只能靠 getMonitoring 内部补调 getLogger(env) 更新单例
+      expect(getLogger).toHaveBeenCalledWith(env);
+    });
+
+    it('env 中 SLOW_REQUEST_THRESHOLD 为空串或非法值时应回退默认值', () => {
+      expect(getMonitoring(createMockEnv({ SLOW_REQUEST_THRESHOLD: '' })).config.slowRequestThreshold).toBe(3000);
+
+      resetMonitoring();
+      expect(getMonitoring(createMockEnv({ SLOW_REQUEST_THRESHOLD: 'abc' })).config.slowRequestThreshold).toBe(3000);
+
+      resetMonitoring();
+      expect(getMonitoring(createMockEnv({ SLOW_REQUEST_THRESHOLD: '0' })).config.slowRequestThreshold).toBe(0);
     });
   });
 
@@ -1207,43 +797,6 @@ describe('Monitoring System', () => {
   // ==================== 集成测试 ====================
 
   describe('集成测试', () => {
-    it('完整的错误监控流程', async () => {
-      const env = createMockEnv({
-        SENTRY_DSN: 'https://sentry.example.com'
-      });
-      const monitoring = getMonitoring(env);
-      const mockSentry = createMockSentry();
-      global.Sentry = mockSentry;
-
-      // 初始化
-      await monitoring.initialize();
-      expect(mockSentry.init).toHaveBeenCalled();
-
-      // 设置用户
-      monitoring.getErrorMonitor().setUser('user123', 'user@example.com');
-      expect(mockSentry.setUser).toHaveBeenCalledWith({
-        id: 'user123',
-        email: 'user@example.com',
-        username: null
-      });
-
-      // 添加面包屑
-      monitoring.getErrorMonitor().addBreadcrumb('User action', 'navigation');
-      expect(mockSentry.addBreadcrumb).toHaveBeenCalled();
-
-      // 捕获错误
-      const error = new Error('Test error');
-      monitoring.getErrorMonitor().captureError(error);
-      expect(mockSentry.captureException).toHaveBeenCalledWith(
-        error,
-        expect.any(Object)
-      );
-
-      // 清除用户
-      monitoring.getErrorMonitor().clearUser();
-      expect(mockSentry.setUser).toHaveBeenCalledWith(null);
-    });
-
     it('完整的性能监控流程', () => {
       vi.useFakeTimers();
       const monitoring = getMonitoring();
@@ -1374,17 +927,6 @@ describe('Monitoring System', () => {
       expect(monitor.getActiveTracesCount()).toBe(1000);
 
       vi.useRealTimers();
-    });
-
-    it('无效采样率应该处理', () => {
-      const config = new MonitoringConfig();
-
-      // 负数采样率
-      expect(config.shouldSample(-0.5)).toBe(false);
-
-      // 超过 1.0 的采样率
-      vi.spyOn(Math, 'random').mockReturnValue(0.5);
-      expect(config.shouldSample(1.5)).toBe(true);
     });
   });
 

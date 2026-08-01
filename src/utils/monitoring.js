@@ -1,9 +1,7 @@
 /**
  * 错误监控和追踪系统
- * 支持 Sentry 集成、自定义错误追踪、性能监控
+ * 自定义错误追踪、性能监控
  */
-
-/* global Sentry */
 
 import { getLogger } from './logger.js';
 import { APP_VERSION } from './version.js';
@@ -24,31 +22,16 @@ export const ErrorSeverity = {
  */
 class MonitoringConfig {
 	constructor(options = {}) {
-		// Sentry 配置
-		this.sentryDsn = options.sentryDsn || null;
-		this.sentryEnabled = options.sentryEnabled && this.sentryDsn;
-		this.sentryEnvironment = options.sentryEnvironment || 'production';
-		this.sentryRelease = options.sentryRelease || null;
-
-		// 采样率配置
-		this.errorSampleRate = options.errorSampleRate || 1.0; // 100% 错误采样
-		this.traceSampleRate = options.traceSampleRate || 0.1; // 10% 性能追踪
-
 		// 性能监控配置
 		this.enablePerformanceMonitoring = options.enablePerformanceMonitoring !== false;
-		this.slowRequestThreshold = options.slowRequestThreshold || 3000; // 3秒
+		// 显式校验数值：既保留合法的 0（耗时 > 0ms 的请求均视为慢请求），又让 NaN / 负数 / 非数字回退默认值
+		this.slowRequestThreshold =
+			Number.isFinite(options.slowRequestThreshold) && options.slowRequestThreshold >= 0 ? options.slowRequestThreshold : 3000; // 3秒
 
 		// 自定义配置
 		this.environment = options.environment || 'production';
 		this.serviceName = options.serviceName || '2fa';
 		this.version = options.version || APP_VERSION;
-	}
-
-	/**
-	 * 是否应该采样（基于采样率）
-	 */
-	shouldSample(rate = 1.0) {
-		return Math.random() < rate;
 	}
 }
 
@@ -56,68 +39,9 @@ class MonitoringConfig {
  * 错误监控类
  */
 class ErrorMonitor {
-	constructor(config) {
+	constructor(config, env = null) {
 		this.config = config;
-		this.logger = getLogger();
-		this.sentryInitialized = false;
-	}
-
-	/**
-	 * 初始化 Sentry（如果配置）
-	 */
-	async initSentry() {
-		if (!this.config.sentryEnabled || this.sentryInitialized) {
-			return;
-		}
-
-		try {
-			// Sentry for Cloudflare Workers 初始化
-			// 注意：需要安装 @sentry/cloudflare-workers
-			if (typeof Sentry !== 'undefined') {
-				Sentry.init({
-					dsn: this.config.sentryDsn,
-					environment: this.config.sentryEnvironment,
-					release: this.config.sentryRelease,
-					tracesSampleRate: this.config.traceSampleRate,
-					beforeSend: (event) => this._beforeSendSentry(event),
-				});
-
-				this.sentryInitialized = true;
-				this.logger.info('✅ Sentry initialized', {
-					environment: this.config.sentryEnvironment,
-					release: this.config.sentryRelease,
-				});
-			} else {
-				this.logger.warn('⚠️ Sentry SDK not loaded');
-			}
-		} catch (error) {
-			this.logger.error('Failed to initialize Sentry', {}, error);
-		}
-	}
-
-	/**
-	 * Sentry beforeSend 钩子（过滤敏感信息）
-	 * @private
-	 */
-	_beforeSendSentry(event) {
-		// 移除敏感数据
-		if (event.request) {
-			if (event.request.headers) {
-				delete event.request.headers['authorization'];
-				delete event.request.headers['cookie'];
-				delete event.request.headers['x-api-key'];
-			}
-			if (event.request.cookies) {
-				event.request.cookies = {};
-			}
-		}
-
-		// 采样检查
-		if (!this.config.shouldSample(this.config.errorSampleRate)) {
-			return null; // 丢弃此事件
-		}
-
-		return event;
+		this.logger = getLogger(env);
 	}
 
 	/**
@@ -135,25 +59,6 @@ class ErrorMonitor {
 			},
 			error,
 		);
-
-		// 发送到 Sentry
-		if (this.config.sentryEnabled && this.sentryInitialized) {
-			try {
-				if (typeof Sentry !== 'undefined') {
-					Sentry.captureException(error, {
-						level: severity,
-						tags: {
-							service: this.config.serviceName,
-							version: this.config.version,
-							environment: this.config.environment,
-						},
-						extra: context,
-					});
-				}
-			} catch (sentryError) {
-				this.logger.warn('Failed to send error to Sentry', {}, sentryError);
-			}
-		}
 
 		return {
 			errorId: this._generateErrorId(),
@@ -177,23 +82,6 @@ class ErrorMonitor {
 			level,
 			...context,
 		});
-
-		if (this.config.sentryEnabled && this.sentryInitialized) {
-			try {
-				if (typeof Sentry !== 'undefined') {
-					Sentry.captureMessage(message, {
-						level,
-						tags: {
-							service: this.config.serviceName,
-							version: this.config.version,
-						},
-						extra: context,
-					});
-				}
-			} catch (error) {
-				this.logger.warn('Failed to send message to Sentry', {}, error);
-			}
-		}
 	}
 
 	/**
@@ -213,55 +101,6 @@ class ErrorMonitor {
 			category,
 			...data,
 		});
-
-		if (this.config.sentryEnabled && this.sentryInitialized) {
-			try {
-				if (typeof Sentry !== 'undefined') {
-					Sentry.addBreadcrumb({
-						message,
-						category,
-						data,
-						timestamp: Date.now() / 1000,
-					});
-				}
-			} catch {
-				// 静默失败
-			}
-		}
-	}
-
-	/**
-	 * 设置用户上下文
-	 */
-	setUser(userId, email = null, username = null) {
-		if (this.config.sentryEnabled && this.sentryInitialized) {
-			try {
-				if (typeof Sentry !== 'undefined') {
-					Sentry.setUser({
-						id: userId,
-						email,
-						username,
-					});
-				}
-			} catch {
-				// 静默失败
-			}
-		}
-	}
-
-	/**
-	 * 清除用户上下文
-	 */
-	clearUser() {
-		if (this.config.sentryEnabled && this.sentryInitialized) {
-			try {
-				if (typeof Sentry !== 'undefined') {
-					Sentry.setUser(null);
-				}
-			} catch {
-				// 静默失败
-			}
-		}
 	}
 }
 
@@ -269,9 +108,9 @@ class ErrorMonitor {
  * 性能监控类
  */
 class PerformanceMonitor {
-	constructor(config) {
+	constructor(config, env = null) {
 		this.config = config;
-		this.logger = getLogger();
+		this.logger = getLogger(env);
 		this.metrics = new Map();
 	}
 
@@ -400,11 +239,11 @@ class PerformanceMonitor {
  * 统一的监控管理器
  */
 class MonitoringManager {
-	constructor(config) {
+	constructor(config, env = null) {
 		this.config = config;
-		this.errorMonitor = new ErrorMonitor(config);
-		this.performanceMonitor = new PerformanceMonitor(config);
-		this.logger = getLogger();
+		this.errorMonitor = new ErrorMonitor(config, env);
+		this.performanceMonitor = new PerformanceMonitor(config, env);
+		this.logger = getLogger(env);
 	}
 
 	/**
@@ -412,14 +251,9 @@ class MonitoringManager {
 	 */
 	async initialize() {
 		this.logger.info('🚀 Initializing monitoring system', {
-			sentryEnabled: this.config.sentryEnabled,
 			performanceEnabled: this.config.enablePerformanceMonitoring,
 			environment: this.config.environment,
 		});
-
-		if (this.config.sentryEnabled) {
-			await this.errorMonitor.initSentry();
-		}
 	}
 
 	/**
@@ -486,27 +320,38 @@ class MonitoringManager {
  * 默认监控实例
  */
 let defaultMonitoring = null;
+let defaultMonitoringConfigured = false; // 单例是否已用运行时 env 完成配置
+
+/**
+ * 根据环境变量解析监控配置
+ * @private
+ */
+function resolveMonitoringOptions(env) {
+	return {
+		enablePerformanceMonitoring: env?.ENABLE_PERFORMANCE_MONITORING !== 'false',
+		slowRequestThreshold: parseInt(env?.SLOW_REQUEST_THRESHOLD ?? '3000'),
+		environment: env?.ENVIRONMENT || 'production',
+		serviceName: '2fa',
+		version: env?.VERSION || APP_VERSION,
+	};
+}
 
 /**
  * 获取默认监控实例
+ *
+ * 与 getLogger 同理：单例可能先被无 env 的快捷方法调用创建，
+ * 因此首次携带 env 的调用会就地更新 config，
+ * 保证已持有该 config 引用的 ErrorMonitor / PerformanceMonitor 同样生效。
  */
 export function getMonitoring(env = null) {
 	if (!defaultMonitoring) {
-		const config = new MonitoringConfig({
-			sentryDsn: env?.SENTRY_DSN || null,
-			sentryEnabled: !!env?.SENTRY_DSN,
-			sentryEnvironment: env?.ENVIRONMENT || 'production',
-			sentryRelease: env?.VERSION || APP_VERSION,
-			errorSampleRate: parseFloat(env?.ERROR_SAMPLE_RATE || '1.0'),
-			traceSampleRate: parseFloat(env?.TRACE_SAMPLE_RATE || '0.1'),
-			enablePerformanceMonitoring: env?.ENABLE_PERFORMANCE_MONITORING !== 'false',
-			slowRequestThreshold: parseInt(env?.SLOW_REQUEST_THRESHOLD || '3000'),
-			environment: env?.ENVIRONMENT || 'production',
-			serviceName: '2fa',
-			version: env?.VERSION || APP_VERSION,
-		});
-
-		defaultMonitoring = new MonitoringManager(config);
+		defaultMonitoring = new MonitoringManager(new MonitoringConfig(resolveMonitoringOptions(env)), env);
+		defaultMonitoringConfigured = Boolean(env);
+	} else if (env && !defaultMonitoringConfigured) {
+		Object.assign(defaultMonitoring.config, new MonitoringConfig(resolveMonitoringOptions(env)));
+		// 内部监控器持有的 logger 也可能是无 env 创建的单例，一并触发其配置更新
+		getLogger(env);
+		defaultMonitoringConfigured = true;
 	}
 
 	return defaultMonitoring;
@@ -517,6 +362,7 @@ export function getMonitoring(env = null) {
  */
 export function resetMonitoring() {
 	defaultMonitoring = null;
+	defaultMonitoringConfigured = false;
 }
 
 /**
