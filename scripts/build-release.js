@@ -151,7 +151,7 @@ wrangler deploy worker.js
 ### 1. 创建 KV Namespace
 
 \`\`\`bash
-wrangler kv:namespace create SECRETS_KV
+wrangler kv namespace create SECRETS_KV
 \`\`\`
 
 或在 Dashboard 中：

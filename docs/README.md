@@ -31,12 +31,12 @@
 
 - **部署应用** → [DEPLOYMENT.md](DEPLOYMENT.md)
 - **配置 OneDrive / Google Drive 备份** → [CLOUD_DRIVE_SETUP.md](CLOUD_DRIVE_SETUP.md)
-- **本地开发** → [DEVELOPMENT.md](DEVELOPMENT.md#开发环境)
+- **本地开发** → [DEVELOPMENT.md](DEVELOPMENT.md#️-开发环境)
 - **了解架构** → [ARCHITECTURE.md](ARCHITECTURE.md)
 - **调用 API** → [API_REFERENCE.md](API_REFERENCE.md)
 - **安装 PWA** → [PWA_GUIDE.md](PWA_GUIDE.md)
-- **运行测试** → [DEVELOPMENT.md](DEVELOPMENT.md#测试指南)
-- **故障排查** → [DEVELOPMENT.md](DEVELOPMENT.md#故障排查)
+- **运行测试** → [DEVELOPMENT.md](DEVELOPMENT.md#-测试指南)
+- **故障排查** → [DEVELOPMENT.md](DEVELOPMENT.md#-故障排查)
 
 ## 🔗 其他资源
 

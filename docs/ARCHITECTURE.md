@@ -191,7 +191,6 @@ src/
     ├── monitoring.js              # 📊 监控系统
     │                              # - 错误追踪
     │                              # - 性能监控
-    │                              # - Sentry 集成
     │
     ├── rateLimit.js               # 🛡️ 请求限流
     │                              # - 滑动窗口算法
@@ -664,7 +663,6 @@ class BackupManager {
 └───────┬───────┘
         │
         ├─→ Console (开发环境)
-        ├─→ Sentry (生产环境)
         └─→ Cloudflare Analytics
 ```
 
@@ -736,73 +734,6 @@ class PerformanceTimer {
 
 		// 记录到性能监控
 		monitoring.recordMetric(this.name, duration, 'ms', meta);
-	}
-}
-```
-
-#### Sentry 集成
-
-```javascript
-class ErrorMonitor {
-	constructor(env) {
-		this.env = env;
-		this.sentryDSN = env.SENTRY_DSN;
-		this.enabled = !!this.sentryDSN;
-	}
-
-	captureError(error, context = {}, severity = ErrorSeverity.ERROR) {
-		// 生成错误ID
-		const errorId = `err_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-		// 本地日志
-		console.error('[ErrorMonitor]', {
-			errorId,
-			message: error.message,
-			stack: error.stack,
-			context,
-			severity,
-		});
-
-		// 发送到 Sentry（如果配置）
-		if (this.enabled) {
-			this._sendToSentry({
-				errorId,
-				error,
-				context,
-				severity,
-				timestamp: new Date().toISOString(),
-			});
-		}
-
-		return { errorId, captured: this.enabled };
-	}
-
-	async _sendToSentry(data) {
-		// Sentry API 集成
-		try {
-			await fetch(this.sentryDSN, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					event_id: data.errorId,
-					message: data.error.message,
-					level: data.severity.toLowerCase(),
-					exception: {
-						values: [
-							{
-								type: data.error.name,
-								value: data.error.message,
-								stacktrace: { frames: this._parseStackTrace(data.error.stack) },
-							},
-						],
-					},
-					extra: data.context,
-					timestamp: data.timestamp,
-				}),
-			});
-		} catch (err) {
-			console.error('[Sentry] Failed to send error:', err);
-		}
 	}
 }
 ```

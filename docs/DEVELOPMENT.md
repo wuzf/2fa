@@ -2,16 +2,16 @@
 
 ## 📋 目录
 
-- [项目架构](#项目架构)
-- [模块说明](#模块说明)
-- [开发环境](#开发环境)
-- [代码规范](#代码规范)
-- [API设计](#api设计)
-- [数据库设计](#数据库设计)
-- [部署](#部署)
-- [测试指南](#测试指南)
-- [性能优化](#性能优化)
-- [故障排查](#故障排查)
+- [项目架构](#️-项目架构)
+- [模块说明](#-模块说明)
+- [开发环境](#️-开发环境)
+- [代码规范](#-代码规范)
+- [API设计](#-api设计)
+- [数据库设计](#️-数据库设计)
+- [部署](#-部署)
+- [测试指南](#-测试指南)
+- [性能优化](#-性能优化)
+- [故障排查](#-故障排查)
 
 ## 🏗️ 项目架构
 
@@ -80,7 +80,7 @@ src/
     ├── crypto.js         # 🔐 加密工具（HMAC-SHA1/256）
     ├── encryption.js     # 🔒 AES-GCM 256 位加密
     ├── logger.js         # 📝 结构化日志
-    ├── monitoring.js     # 📊 错误追踪（Sentry 集成）
+    ├── monitoring.js     # 📊 错误追踪与性能监控
     ├── rateLimit.js      # 🛡️ 请求限流
     ├── response.js       # 📡 标准化 HTTP 响应
     ├── security.js       # 🔒 CORS/CSP 安全头
@@ -272,7 +272,7 @@ const otp = binary % 1000000;
 **关键特性**:
 
 - JWT tokens 存储在 HttpOnly, Secure, SameSite=Strict cookies
-- Token 有效期 1 天
+- Token 默认有效期 30 天（可在设置中自定义），剩余不足 7 天时自动续期
 - 首次使用通过 `/setup` 设置密码
 
 #### 加密模块 (`utils/encryption.js`)
@@ -378,8 +378,8 @@ npm install
 npx wrangler login
 
 # 创建KV存储
-npx wrangler kv:namespace create SECRETS_KV
-npx wrangler kv:namespace create SECRETS_KV --preview
+npx wrangler kv namespace create SECRETS_KV
+npx wrangler kv namespace create SECRETS_KV --preview
 ```
 
 4. **启动开发服务器**:
@@ -690,8 +690,7 @@ function migrateSecrets(secrets) {
 详细的部署指南请参考 [部署文档](DEPLOYMENT.md)，包括：
 
 - 一键部署（GitHub 按钮）
-- 非开发者图文教程
-- 开发者快速部署
+- 命令行部署
 - 自定义域名和环境变量配置
 
 ## 🧪 测试指南
@@ -843,8 +842,8 @@ if (currentHash !== lastHash) {
 const logger = getLogger(env);
 logger.info('Operation completed', { duration: elapsed, operation: 'backup' });
 
-// 错误追踪（可选 Sentry 集成）
-// 配置 SENTRY_DSN 环境变量启用
+// 错误追踪（使用 utils/monitoring.js）
+monitoring.captureError(error, { operation: 'backup' });
 ```
 
 ## 🔧 故障排查
@@ -924,10 +923,10 @@ npx wrangler tail --grep "ERROR"
 
 ```bash
 # 查看KV数据
-npx wrangler kv:key list --namespace-id=your-namespace-id
+npx wrangler kv key list --namespace-id=your-namespace-id
 
 # 获取特定键值
-npx wrangler kv:key get "secrets" --namespace-id=your-namespace-id
+npx wrangler kv key get "secrets" --namespace-id=your-namespace-id
 ```
 
 **生产环境监控**:
