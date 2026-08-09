@@ -1,6 +1,6 @@
 {
   "name": "2fa",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "type": "module",
   "private": true,
   "description": "2FA - OTP Generator using Cloudflare Workers",

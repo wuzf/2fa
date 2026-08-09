@@ -4,7 +4,7 @@
  * 发版时与 package.json、git tag 一起更新
  */
 
-export const APP_VERSION = '1.7.0';
+export const APP_VERSION = '1.7.1';
 
 /**
  * 比较两个语义化版本号（支持 "v" 前缀）
