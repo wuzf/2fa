@@ -204,10 +204,6 @@ Welcome to submit [Issues](https://github.com/wuzf/2fa/issues) and [Pull Request
 
 [MIT License](LICENSE)
 
-## 🌟 Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=wuzf/2fa&type=date&legend=top-left)](https://www.star-history.com/#wuzf/2fa&type=date&legend=top-left)
-
 ---
 
 <div align="center">
