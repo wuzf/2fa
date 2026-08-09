@@ -37,6 +37,7 @@ export function getTimeCode() {
         this.syncAttemptId = 0;
         this.activeSampleControllers = new Set();
         this.started = false;
+        this.hasSettledSync = false;
         this.loadCachedOffset();
       }
 
@@ -248,6 +249,7 @@ export function getTimeCode() {
         this.localWallAtSyncMs = Date.now();
         this.monotonicEpochAtSyncMs = this.monotonicEpochNow();
         this.status = 'synced';
+        this.hasSettledSync = true;
         this.generation += 1;
         this.persistOffset();
         this.renderStatus();
@@ -256,6 +258,7 @@ export function getTimeCode() {
       }
 
       markSyncFailure() {
+        this.hasSettledSync = true;
         this.status = Number.isFinite(this.offsetMs) ? 'cached' : 'local';
         this.renderStatus();
       }
@@ -352,7 +355,11 @@ export function getTimeCode() {
         const isStale = Number.isFinite(ageMs) && ageMs > CLOCK_SYNC_STALE_MS;
         let message = '';
 
-        if (this.status === 'local' && !this.syncPromise) {
+        // 首次校准落地前不提示：页面刚加载时缓存偏移已生效但校准仍在进行，
+        // 此时提示会在校准成功后立即消失，表现为刷新时的一次闪烁。
+        if (!this.hasSettledSync) {
+          message = '';
+        } else if (this.status === 'local') {
           message = '无法校准服务器时间，OTP 正在使用设备时间，可能不正确。';
         } else if (this.status === 'cached') {
           const ageText = this.formatAge(ageMs);

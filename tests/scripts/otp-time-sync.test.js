@@ -548,6 +548,61 @@ describe('trusted browser clock', () => {
 		await expect(backgroundSync).resolves.toBe(true);
 	});
 
+	it('keeps the warning hidden on load while the first sync is still in flight', async () => {
+		const elements = createWarningElements();
+		const harness = createHarness({
+			elements,
+			storageValues: {
+				[STORAGE_KEY]: createCachedClock({
+					offsetMs: 12_000,
+					localWallAtSyncMs: SERVER_BASE_MS - 60 * 60 * 1000,
+				}),
+			},
+		});
+		expect(harness.api.trustedClock.status).toBe('cached');
+
+		harness.queueSamples([20, 40, 60].map((rttMs) => ({ rttMs, offsetMs: 15_000 })));
+		harness.api.trustedClock.start();
+		const initialSync = harness.api.trustedClock.syncPromise;
+
+		expect(elements.clockWarning.hidden).toBe(true);
+		expect(elements.clockWarningText.textContent).toBe('');
+		expect(elements.clockWarning.classList.toggle).not.toHaveBeenCalledWith('show', true);
+
+		await harness.completePendingRequests();
+		await expect(initialSync).resolves.toBe(true);
+
+		expect(harness.api.trustedClock.status).toBe('synced');
+		expect(elements.clockWarning.hidden).toBe(true);
+		expect(elements.clockWarning.classList.toggle).not.toHaveBeenCalledWith('show', true);
+	});
+
+	it('shows the cached warning once the first sync fails instead of before it settles', async () => {
+		const elements = createWarningElements();
+		const harness = createHarness({
+			elements,
+			storageValues: {
+				[STORAGE_KEY]: createCachedClock({
+					offsetMs: 12_000,
+					localWallAtSyncMs: SERVER_BASE_MS - 60 * 60 * 1000,
+				}),
+			},
+		});
+
+		harness.queueSamples([20, 40, 60].map((rttMs) => ({ reject: true, rttMs })));
+		harness.api.trustedClock.start();
+		const initialSync = harness.api.trustedClock.syncPromise;
+		expect(elements.clockWarning.hidden).toBe(true);
+
+		await harness.completePendingRequests();
+		await expect(initialSync).resolves.toBe(false);
+
+		expect(harness.api.trustedClock.status).toBe('cached');
+		expect(elements.clockWarning.hidden).toBe(false);
+		expect(elements.clockWarning.classList.toggle).toHaveBeenLastCalledWith('show', true);
+		expect(elements.clockWarningText.textContent).not.toBe('');
+	});
+
 	it('shows a stale warning after 24 hours during periodic and offline status refreshes', async () => {
 		const elements = createWarningElements();
 		const harness = createHarness({ elements });
