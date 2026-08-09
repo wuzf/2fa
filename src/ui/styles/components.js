@@ -2,7 +2,91 @@
  * 组件样式模块
  */
 export function getComponentStyles() {
-	return `    .secrets-list {
+	return `    .clock-warning {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--warning-light);
+      border: 1px solid var(--warning);
+      border-left: 3px solid var(--warning-dark);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      line-height: 1.45;
+    }
+
+    .clock-warning[hidden] {
+      display: none;
+    }
+
+    .clock-warning-message {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .clock-warning-icon {
+      flex: 0 0 auto;
+      font-size: 15px;
+      line-height: 1.4;
+    }
+
+    .clock-warning-text {
+      min-width: 0;
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .clock-sync-retry-button {
+      min-height: 32px;
+      flex: 0 0 auto;
+      padding: 6px 10px;
+      border: 1px solid var(--warning-dark);
+      border-radius: 4px;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+
+    .clock-sync-retry-button:hover {
+      background: var(--bg-hover);
+    }
+
+    .clock-sync-retry-button:focus-visible {
+      outline: 2px solid var(--border-focus);
+      outline-offset: 2px;
+    }
+
+    .clock-sync-retry-button:disabled {
+      cursor: wait;
+      opacity: 0.65;
+    }
+
+    @media (max-width: 480px) {
+      .clock-warning {
+        padding: 10px;
+        gap: 8px;
+      }
+
+      .clock-warning-message {
+        gap: 7px;
+      }
+
+      .clock-sync-retry-button {
+        min-height: 44px;
+        padding: 8px 10px;
+      }
+    }
+
+    .secrets-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: 10px;

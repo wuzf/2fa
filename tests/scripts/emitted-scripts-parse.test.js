@@ -25,6 +25,7 @@ import { getQRCodeCode } from '../../src/ui/scripts/qrcode.js';
 import { getSearchCode } from '../../src/ui/scripts/search.js';
 import { getSettingsCode } from '../../src/ui/scripts/settings.js';
 import { getStateCode } from '../../src/ui/scripts/state.js';
+import { getTimeCode } from '../../src/ui/scripts/time.js';
 import { getToolsCode } from '../../src/ui/scripts/tools.js';
 import { getUICode } from '../../src/ui/scripts/ui.js';
 import { getUtilsCode } from '../../src/ui/scripts/utils.js';
@@ -43,6 +44,7 @@ function assertParses(label, code) {
 describe('emitted script modules parse as valid JavaScript', () => {
 	it.each([
 		['state', getStateCode],
+		['time', getTimeCode],
 		['auth', getAuthCode],
 		['otp', getOTPCode],
 		['ui', getUICode],

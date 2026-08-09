@@ -44,6 +44,7 @@ import {
 } from '../api/gdrive.js';
 import { handleChangePassword } from '../api/password.js';
 import { handleGetSettings, handleSaveSettings } from '../api/settings.js';
+import { handleGetTime } from '../api/time.js';
 
 // UI 页面生成器
 import { createMainPage } from '../ui/page.js';
@@ -81,6 +82,16 @@ export async function handleRequest(request, env, ctx) {
 	const logger = getLogger(env);
 
 	try {
+		// 时间校准接口必须在设置和认证检查前处理，确保无需访问 KV。
+		if (pathname === '/api/time') {
+			if (method === 'GET') {
+				return handleGetTime(request);
+			}
+			const response = createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+			response.headers.set('Allow', 'GET');
+			return response;
+		}
+
 		// 🔧 首次设置路由（不需要认证）
 		if (pathname === '/setup') {
 			// 检查是否需要首次设置

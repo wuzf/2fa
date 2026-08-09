@@ -5,6 +5,7 @@
 - [认证](#认证)
 - [端点列表](#端点列表)
 - [密钥管理 API](#密钥管理-api)
+- [时间校准 API](#时间校准-api)
 - [OTP 生成 API](#otp-生成-api)
 - [备份管理 API](#备份管理-api)
 - [云盘同步 API](#云盘同步-api)
@@ -37,6 +38,7 @@ Cookie: auth_token=<JWT_TOKEN>
 - `GET /icon-*.png` - PWA 图标
 - `POST /api/login` - 登录
 - `POST /api/logout` - 退出登录
+- `GET /api/time` - 客户端时间校准
 - `GET /otp` - OTP 使用说明
 - `GET /otp/{secret}` - OTP 生成
 - `GET /api/favicon/{domain}` - Favicon 代理
@@ -128,6 +130,7 @@ Set-Cookie: auth_token=<NEW_JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-A
 | 端点                                        | 方法   | 认证 | 限流    | 描述                         |
 | ------------------------------------------- | ------ | ---- | ------- | ---------------------------- |
 | `/api/setup`                                | POST   | ❌   | 5/min   | 首次设置                     |
+| [/api/time](#获取服务端时间)                | GET    | ❌   | -       | 获取 Worker Unix 毫秒时间    |
 | [/api/secrets](#获取所有密钥)               | GET    | ✅   | 60/min  | 获取所有密钥                 |
 | [/api/secrets](#添加新密钥)                 | POST   | ✅   | 60/min  | 添加新密钥                   |
 | [/api/secrets/{id}](#更新密钥)              | PUT    | ✅   | 60/min  | 更新指定密钥                 |
@@ -704,6 +707,26 @@ GitHub,user@example.com,JBSWY3DPEHPK3PXP,TOTP,6,30,SHA1
 | Authenticator Pro    | JSON（含 `Authenticators` 大写） | 字段 `Type`: 1=HOTP, 2=TOTP            |
 | FreeOTP+             | JSON（含 `tokens`）              | `secret` 可为 Base32 或字节数组        |
 | FreeOTP              | JSON（含 `tokenOrder`）          | `secret` 为字节数组格式                |
+
+---
+
+## 时间校准 API
+
+### 获取服务端时间
+
+**端点**: `GET /api/time`
+
+**认证**: ❌ 不需要
+
+**描述**: 返回 Worker 当前的 Unix 毫秒时间，供客户端修正 TOTP 计算时钟。响应禁止缓存，不包含密钥或 OTP 数据。
+
+**成功响应** (200 OK):
+
+```json
+{
+	"serverTimeMs": 1786248000123
+}
+```
 
 ---
 

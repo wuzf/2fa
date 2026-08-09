@@ -90,7 +90,7 @@ vi.mock('../../src/utils/auth.js', () => ({
   verifyAuthWithDetails: vi.fn(async (request, env) => ({ valid: true, token: 'test-token' })),
   requiresAuth: vi.fn((pathname) => {
     // Public routes
-    const publicPaths = ['/', '/api/login', '/api/logout', '/api/refresh-token', '/api/setup', '/setup', '/manifest.json', '/sw.js', '/icon-192.png', '/icon-512.png', '/api/onedrive/oauth/callback', '/api/gdrive/oauth/callback'];
+    const publicPaths = ['/', '/api/login', '/api/logout', '/api/refresh-token', '/api/setup', '/api/time', '/setup', '/manifest.json', '/sw.js', '/icon-192.png', '/icon-512.png', '/api/onedrive/oauth/callback', '/api/gdrive/oauth/callback'];
     if (publicPaths.includes(pathname)) return false;
     if (pathname.startsWith('/otp')) return false;
     return true;
@@ -105,6 +105,12 @@ vi.mock('../../src/utils/auth.js', () => ({
 
 // Mock response utilities
 vi.mock('../../src/utils/response.js', () => ({
+  createJsonResponse: vi.fn((data, status = 200, request = null, additionalHeaders = {}) => {
+    return new Response(JSON.stringify(data), {
+      status,
+      headers: { 'Content-Type': 'application/json', ...additionalHeaders }
+    });
+  }),
   createErrorResponse: vi.fn((error, message, status = 500, request = null) => {
     return new Response(
       JSON.stringify({ error, message, timestamp: new Date().toISOString() }),
@@ -441,6 +447,41 @@ describe('Router Handler', () => {
   });
 
   describe('handleRequest - API 路由分发', () => {
+    it('应该公开返回服务端时间且不访问认证或 KV', async () => {
+      const { checkIfSetupRequired, requiresAuth, verifyAuthWithDetails } = await import('../../src/utils/auth.js');
+      const request = createMockRequest({ pathname: '/api/time' });
+      const env = createMockEnv();
+      const beforeRequest = Date.now();
+
+      const response = await handleRequest(request, env);
+      const afterRequest = Date.now();
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      expect(body.serverTimeMs).toBeGreaterThanOrEqual(beforeRequest);
+      expect(body.serverTimeMs).toBeLessThanOrEqual(afterRequest);
+      expect(checkIfSetupRequired).not.toHaveBeenCalled();
+      expect(requiresAuth).not.toHaveBeenCalled();
+      expect(verifyAuthWithDetails).not.toHaveBeenCalled();
+      expect(env.SECRETS_KV.get).not.toHaveBeenCalled();
+    });
+
+    it('应该拒绝 /api/time 的非 GET 请求且不访问认证或 KV', async () => {
+      const { checkIfSetupRequired, requiresAuth, verifyAuthWithDetails } = await import('../../src/utils/auth.js');
+      const request = createMockRequest({ method: 'POST', pathname: '/api/time' });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(response.status).toBe(405);
+      expect(response.headers.get('Allow')).toBe('GET');
+      expect(checkIfSetupRequired).not.toHaveBeenCalled();
+      expect(requiresAuth).not.toHaveBeenCalled();
+      expect(verifyAuthWithDetails).not.toHaveBeenCalled();
+      expect(env.SECRETS_KV.get).not.toHaveBeenCalled();
+    });
+
     it('应该处理 GET /api/secrets', async () => {
       const { handleGetSecrets } = await import('../../src/api/secrets/index.js');
 

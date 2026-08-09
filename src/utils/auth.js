@@ -949,6 +949,7 @@ export function requiresAuth(pathname) {
 		'/api/logout', // 退出登录接口
 		'/api/refresh-token', // Token 刷新接口（已在内部验证）
 		'/api/setup', // 首次设置接口
+		'/api/time', // 客户端 TOTP 时间校准接口
 		'/setup', // 设置页面
 		'/manifest.json', // PWA manifest
 		'/sw.js', // Service Worker

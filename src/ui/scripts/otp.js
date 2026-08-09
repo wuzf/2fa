@@ -19,7 +19,7 @@ export function getOTPCode() {
 
       // 获取当前时间窗口
       getCurrentTimeWindow(period = 30) {
-        const currentTime = Math.floor(Date.now() / 1000);
+        const currentTime = Math.floor(getCorrectedNowMs() / 1000);
         return Math.floor(currentTime / period);
       }
 
@@ -30,7 +30,7 @@ export function getOTPCode() {
 
       // 获取剩余时间
       getRemainingTime(period = 30) {
-        const currentTime = Math.floor(Date.now() / 1000);
+        const currentTime = Math.floor(getCorrectedNowMs() / 1000);
         const currentWindow = this.getCurrentTimeWindow(period);
         const nextRefresh = (currentWindow + 1) * period;
         return Math.max(0, nextRefresh - currentTime);
@@ -56,6 +56,10 @@ export function getOTPCode() {
           value,
           timestamp: Date.now()
         });
+      }
+
+      clearCache() {
+        this.cache.clear();
       }
 
       // 计算当前OTP
@@ -353,8 +357,10 @@ export function getOTPCode() {
       if (!secret) return;
 
       try {
-        const currentTime = Math.floor(Date.now() / 1000);
+        const currentTime = Math.floor(getCorrectedNowMs() / 1000);
         const timeStep = secret.period || 30;
+        const isHOTP = secret.type && secret.type.toUpperCase() === 'HOTP';
+        const clockGeneration = isHOTP ? null : getTrustedClockGeneration();
         const currentWindow = otpCalculator.getCurrentTimeWindow(timeStep);
         const nextWindow = otpCalculator.getNextTimeWindow(timeStep);
 
@@ -365,6 +371,13 @@ export function getOTPCode() {
           otpCalculator.calculateCurrentOTP(secret),
           otpCalculator.calculateNextOTP(secret)
         ]);
+
+        if (!isHOTP) {
+          if (clockGeneration !== getTrustedClockGeneration()) return;
+          if (currentWindow !== otpCalculator.getCurrentTimeWindow(timeStep)) {
+            return updateOTP(secretId);
+          }
+        }
 
         // 更新当前OTP显示
         const otpElement = document.getElementById('otp-' + secretId);

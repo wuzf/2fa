@@ -94,6 +94,7 @@ export function getCoreCode() {
 
     // 页面加载时获取密钥列表
     document.addEventListener('DOMContentLoaded', function() {
+        initializeTrustedClock();
         // 先检查认证状态
         if (checkAuth()) {
           loadSecrets();
@@ -129,6 +130,7 @@ export function getCoreCode() {
     async function loadSecrets() {
       const CACHE_KEY = '2fa-secrets-cache';
       try {
+        await ensureServerTimeSynchronized();
         const response = await authenticatedFetch('/api/secrets');
 
         if (response.status === 401) {
@@ -825,7 +827,7 @@ export function getCoreCode() {
         return;
       }
 
-      const currentTime = Math.floor(Date.now() / 1000);
+      const currentTime = Math.floor(getCorrectedNowMs() / 1000);
       
       secrets.forEach(secret => {
         // 只检查TOTP类型

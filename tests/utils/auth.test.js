@@ -670,6 +670,10 @@ describe('JWT Authentication Utils', () => {
       expect(requiresAuth('/api/refresh-token')).toBe(false);
     });
 
+    it('时间校准接口不需要认证', () => {
+      expect(requiresAuth('/api/time')).toBe(false);
+    });
+
     it('OTP 生成路径不需要认证', () => {
       expect(requiresAuth('/otp/JBSWY3DPEHPK3PXP')).toBe(false);
       expect(requiresAuth('/otp/any-secret-key')).toBe(false);
