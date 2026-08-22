@@ -1,0 +1,87 @@
+name: Update Star History
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/scripts/star-history.mjs'
+      - '.github/workflows/update-star-history.yml'
+  schedule:
+    - cron: '17 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: star-history
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.repository == 'wuzf/2fa'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Test generator
+        run: node .github/scripts/star-history.mjs self-test
+
+      - name: Prepare data branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="$RUNNER_TEMP/star-history"
+          mode="bootstrap"
+
+          if git ls-remote --exit-code --heads origin refs/heads/star-history >/dev/null; then
+            git fetch --no-tags origin refs/heads/star-history:refs/remotes/origin/star-history
+            git worktree add --detach "$target" refs/remotes/origin/star-history
+            if [[ -f "$target/history.json" ]]; then
+              mode="snapshot"
+            fi
+          else
+            status=$?
+            if [[ "$status" -ne 2 ]]; then
+              echo "Unable to check the star-history branch" >&2
+              exit "$status"
+            fi
+
+            git worktree add --detach "$target"
+            git -C "$target" switch --orphan star-history
+            git -C "$target" rm -rf --ignore-unmatch .
+          fi
+
+          echo "STAR_HISTORY_DIR=$target" >> "$GITHUB_ENV"
+          echo "STAR_HISTORY_MODE=$mode" >> "$GITHUB_ENV"
+
+      - name: Generate snapshot
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/scripts/star-history.mjs "$STAR_HISTORY_MODE" "$STAR_HISTORY_DIR"
+
+      - name: Publish snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C "$STAR_HISTORY_DIR" config user.name "github-actions[bot]"
+          git -C "$STAR_HISTORY_DIR" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$STAR_HISTORY_DIR" add -- history.json star-history.svg
+
+          if git -C "$STAR_HISTORY_DIR" diff --cached --quiet; then
+            echo "Star history is already up to date"
+            exit 0
+          fi
+
+          git -C "$STAR_HISTORY_DIR" commit -m "chore: update star history snapshot"
+          git -C "$STAR_HISTORY_DIR" push origin HEAD:refs/heads/star-history

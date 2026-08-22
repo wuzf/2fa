@@ -204,6 +204,14 @@ https://your-worker.workers.dev/otp/YOUR_SECRET_KEY?type=hotp&counter=5
 
 [MIT License](LICENSE)
 
+## 🌟 Star History
+
+<p align="center">
+  <a href="https://github.com/wuzf/2fa/tree/star-history">
+    <img alt="Star History Chart" src="https://raw.githubusercontent.com/wuzf/2fa/refs/heads/star-history/star-history.svg" />
+  </a>
+</p>
+
 ---
 
 <div align="center">
