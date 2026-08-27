@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="520" viewBox="0 0 960 520" role="img" aria-labelledby="title description">
+  <title id="title">wuzf/2fa Star History</title>
+  <desc id="description">GitHub stars over time, last updated 2026-08-27</desc>
+  <style>
+    .background { fill: #ffffff; }
+    .grid { fill: none; stroke: #d8dee4; stroke-width: 1; }
+    .vertical { stroke-dasharray: 3 5; opacity: .65; }
+    .label, .subtitle { fill: #57606a; font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .heading, .value { fill: #24292f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .heading { font-size: 20px; font-weight: 600; }
+    .value { font-size: 24px; font-weight: 600; }
+    .area { fill: #0969da; opacity: .12; }
+    .line { fill: none; stroke: #0969da; stroke-linecap: round; stroke-linejoin: round; stroke-width: 3; }
+    .point { fill: #0969da; stroke: #ffffff; stroke-width: 2; }
+    @media (prefers-color-scheme: dark) {
+      .background { fill: #0d1117; }
+      .grid { stroke: #30363d; }
+      .label, .subtitle { fill: #8b949e; }
+      .heading, .value { fill: #f0f6fc; }
+      .area { fill: #58a6ff; }
+      .line { stroke: #58a6ff; }
+      .point { fill: #58a6ff; stroke: #0d1117; }
+    }
+  </style>
+  <rect class="background" width="960" height="520" rx="8"/>
+  <text class="heading" x="76" y="38">wuzf/2fa Star History</text>
+  <text class="subtitle" x="76" y="62">GitHub stars over time &#183; updated 2026-08-27</text>
+  <text class="value" x="928" y="40" text-anchor="end">437 stars</text>
+  <path class="grid" d="M 76 456.0 H 928"/><text class="label" x="64" y="460.0" text-anchor="end">0</text><path class="grid" d="M 76 383.2 H 928"/><text class="label" x="64" y="387.2" text-anchor="end">100</text><path class="grid" d="M 76 310.4 H 928"/><text class="label" x="64" y="314.4" text-anchor="end">200</text><path class="grid" d="M 76 237.6 H 928"/><text class="label" x="64" y="241.6" text-anchor="end">300</text><path class="grid" d="M 76 164.8 H 928"/><text class="label" x="64" y="168.8" text-anchor="end">400</text><path class="grid" d="M 76 92.0 H 928"/><text class="label" x="64" y="96.0" text-anchor="end">500</text>
+  <path class="grid vertical" d="M 227.3 92 V 456"/><text class="label" x="227.3" y="484" text-anchor="middle">2024-07</text><path class="grid vertical" d="M 391.2 92 V 456"/><text class="label" x="391.2" y="484" text-anchor="middle">2025-01</text><path class="grid vertical" d="M 552.3 92 V 456"/><text class="label" x="552.3" y="484" text-anchor="middle">2025-07</text><path class="grid vertical" d="M 716.1 92 V 456"/><text class="label" x="716.1" y="484" text-anchor="middle">2026-01</text><path class="grid vertical" d="M 877.3 92 V 456"/><text class="label" x="877.3" y="484" text-anchor="middle">2026-07</text>
+  <path class="area" d="M 76.0 455.3 H 77.8 V 454.5 H 86.7 V 452.4 H 94.7 V 450.2 H 95.6 V 449.4 H 141.9 V 448.7 H 149.0 V 448.0 H 159.7 V 447.3 H 204.2 V 446.5 H 230.0 V 445.8 H 290.6 V 445.1 H 308.4 V 444.4 H 320.8 V 443.6 H 375.1 V 442.9 H 387.6 V 442.2 H 460.6 V 441.4 H 475.7 V 440.7 H 503.3 V 440.0 H 548.7 V 439.3 H 624.4 V 438.5 H 628.0 V 437.8 H 657.4 V 437.1 H 764.2 V 412.3 H 765.1 V 367.9 H 766.0 V 340.2 H 766.9 V 330.1 H 767.7 V 317.7 H 768.6 V 314.0 H 769.5 V 311.1 H 770.4 V 310.4 H 771.3 V 309.7 H 772.2 V 308.9 H 773.1 V 306.0 H 774.0 V 305.3 H 775.8 V 304.6 H 777.5 V 303.1 H 778.4 V 300.2 H 779.3 V 299.5 H 780.2 V 298.8 H 781.1 V 296.6 H 782.0 V 295.1 H 782.9 V 265.3 H 783.8 V 260.9 H 784.7 V 258.7 H 785.6 V 257.3 H 786.4 V 256.5 H 787.3 V 250.0 H 788.2 V 242.7 H 789.1 V 239.8 H 793.6 V 239.1 H 794.5 V 236.9 H 795.3 V 236.1 H 798.0 V 235.4 H 800.7 V 234.7 H 801.6 V 233.2 H 803.4 V 228.9 H 805.1 V 227.4 H 806.0 V 226.7 H 807.8 V 226.0 H 808.7 V 225.2 H 809.6 V 223.8 H 810.5 V 222.3 H 812.3 V 221.6 H 813.2 V 220.9 H 814.0 V 218.7 H 814.9 V 215.0 H 815.8 V 213.6 H 817.6 V 212.1 H 818.5 V 210.7 H 820.3 V 209.9 H 822.1 V 209.2 H 822.9 V 208.5 H 824.7 V 207.0 H 827.4 V 206.3 H 828.3 V 204.8 H 829.2 V 199.0 H 830.1 V 196.1 H 831.0 V 193.2 H 831.8 V 191.7 H 833.6 V 191.0 H 836.3 V 190.3 H 838.1 V 189.6 H 839.0 V 186.6 H 839.9 V 185.9 H 842.5 V 185.2 H 843.4 V 183.0 H 846.1 V 182.3 H 847.9 V 177.9 H 848.8 V 176.4 H 849.7 V 175.0 H 852.3 V 174.3 H 855.0 V 172.8 H 855.9 V 172.1 H 856.8 V 171.4 H 857.7 V 170.6 H 859.4 V 169.2 H 861.2 V 168.4 H 862.1 V 165.5 H 863.0 V 164.8 H 863.9 V 164.1 H 865.7 V 163.3 H 868.4 V 162.6 H 875.5 V 161.9 H 879.9 V 161.2 H 881.7 V 160.4 H 882.6 V 159.0 H 885.3 V 158.2 H 887.0 V 157.5 H 887.9 V 155.3 H 892.4 V 154.6 H 902.2 V 153.9 H 903.1 V 152.4 H 904.0 V 151.7 H 904.9 V 151.0 H 906.6 V 149.5 H 908.4 V 148.8 H 910.2 V 147.3 H 911.1 V 146.6 H 912.9 V 145.9 H 913.8 V 144.4 H 914.6 V 143.7 H 920.9 V 143.0 H 922.7 V 139.3 H 925.3 V 138.6 H 927.1 V 137.9 H 928.0 V 137.9 V 456 H 76.0 Z"/>
+  <path class="line" d="M 76.0 455.3 H 77.8 V 454.5 H 86.7 V 452.4 H 94.7 V 450.2 H 95.6 V 449.4 H 141.9 V 448.7 H 149.0 V 448.0 H 159.7 V 447.3 H 204.2 V 446.5 H 230.0 V 445.8 H 290.6 V 445.1 H 308.4 V 444.4 H 320.8 V 443.6 H 375.1 V 442.9 H 387.6 V 442.2 H 460.6 V 441.4 H 475.7 V 440.7 H 503.3 V 440.0 H 548.7 V 439.3 H 624.4 V 438.5 H 628.0 V 437.8 H 657.4 V 437.1 H 764.2 V 412.3 H 765.1 V 367.9 H 766.0 V 340.2 H 766.9 V 330.1 H 767.7 V 317.7 H 768.6 V 314.0 H 769.5 V 311.1 H 770.4 V 310.4 H 771.3 V 309.7 H 772.2 V 308.9 H 773.1 V 306.0 H 774.0 V 305.3 H 775.8 V 304.6 H 777.5 V 303.1 H 778.4 V 300.2 H 779.3 V 299.5 H 780.2 V 298.8 H 781.1 V 296.6 H 782.0 V 295.1 H 782.9 V 265.3 H 783.8 V 260.9 H 784.7 V 258.7 H 785.6 V 257.3 H 786.4 V 256.5 H 787.3 V 250.0 H 788.2 V 242.7 H 789.1 V 239.8 H 793.6 V 239.1 H 794.5 V 236.9 H 795.3 V 236.1 H 798.0 V 235.4 H 800.7 V 234.7 H 801.6 V 233.2 H 803.4 V 228.9 H 805.1 V 227.4 H 806.0 V 226.7 H 807.8 V 226.0 H 808.7 V 225.2 H 809.6 V 223.8 H 810.5 V 222.3 H 812.3 V 221.6 H 813.2 V 220.9 H 814.0 V 218.7 H 814.9 V 215.0 H 815.8 V 213.6 H 817.6 V 212.1 H 818.5 V 210.7 H 820.3 V 209.9 H 822.1 V 209.2 H 822.9 V 208.5 H 824.7 V 207.0 H 827.4 V 206.3 H 828.3 V 204.8 H 829.2 V 199.0 H 830.1 V 196.1 H 831.0 V 193.2 H 831.8 V 191.7 H 833.6 V 191.0 H 836.3 V 190.3 H 838.1 V 189.6 H 839.0 V 186.6 H 839.9 V 185.9 H 842.5 V 185.2 H 843.4 V 183.0 H 846.1 V 182.3 H 847.9 V 177.9 H 848.8 V 176.4 H 849.7 V 175.0 H 852.3 V 174.3 H 855.0 V 172.8 H 855.9 V 172.1 H 856.8 V 171.4 H 857.7 V 170.6 H 859.4 V 169.2 H 861.2 V 168.4 H 862.1 V 165.5 H 863.0 V 164.8 H 863.9 V 164.1 H 865.7 V 163.3 H 868.4 V 162.6 H 875.5 V 161.9 H 879.9 V 161.2 H 881.7 V 160.4 H 882.6 V 159.0 H 885.3 V 158.2 H 887.0 V 157.5 H 887.9 V 155.3 H 892.4 V 154.6 H 902.2 V 153.9 H 903.1 V 152.4 H 904.0 V 151.7 H 904.9 V 151.0 H 906.6 V 149.5 H 908.4 V 148.8 H 910.2 V 147.3 H 911.1 V 146.6 H 912.9 V 145.9 H 913.8 V 144.4 H 914.6 V 143.7 H 920.9 V 143.0 H 922.7 V 139.3 H 925.3 V 138.6 H 927.1 V 137.9 H 928.0 V 137.9"/>
+  <circle class="point" cx="928.0" cy="137.9" r="5"/>
+</svg>
