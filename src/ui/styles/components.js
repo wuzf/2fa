@@ -96,7 +96,7 @@ export function getComponentStyles() {
 
     .secret-card {
       background: var(--card-bg);
-      border-radius: var(--radius-md);
+      border-radius: var(--radius-lg);
       padding: 16px;
       padding-top: 20px;
       border: 1px solid var(--card-border);
@@ -423,15 +423,14 @@ export function getComponentStyles() {
     }
 
     .progress-top {
-      width: 100%;
       height: 1px;
-      background: var(--bg-primary);
+      background: transparent;
       border-radius: 0;
       overflow: hidden;
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
+      top: -1px;
+      left: var(--radius-lg);
+      right: var(--radius-lg);
     }
 
     .progress-top-fill {
