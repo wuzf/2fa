@@ -286,6 +286,9 @@ export function getAuthCode() {
       currentSearchQuery = '';
 
       const secretsList = document.getElementById('secretsList');
+      if (typeof clearAllOTPAnimations === 'function') {
+        clearAllOTPAnimations();
+      }
       if (secretsList) {
         secretsList.innerHTML = '';
         secretsList.style.display = 'none';

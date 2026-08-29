@@ -39,7 +39,7 @@ export function getCoreScripts() {
 export function getScripts() {
 	// QRCode must come before GoogleMigration, GoogleMigration must come before Export
 	// because Export calls showExportToGoogleModal from GoogleMigration
-	return `${getUtilsCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getQRCodeCode()}${getGoogleMigrationCode()}${getExportCode()}${getImportCode()}${getBackupCode()}${getToolsCode()}${getCoreCode()}${getPWACode()}${getVersionCheckCode()}`;
+	return `${getUtilsCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getQRCodeCode()}${getGoogleMigrationCode()}${getExportCode()}${getImportCode()}${getBackupCode()}${getToolsCode()}${getCoreCode()}${getPWACode()}${getVersionCheckCode()}`;
 }
 
 /**

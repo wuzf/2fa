@@ -1209,6 +1209,16 @@ function getHTMLBody() {
             </div>
             <div class="settings-divider"></div>
             <div class="settings-section">
+              <h3 class="settings-section-title" id="settingsOTPAnimationTitle">验证码交接动效</h3>
+              <select id="settingsOTPAnimationMode" class="settings-select" aria-labelledby="settingsOTPAnimationTitle" onchange="applyOTPAnimationFromSettings(this.value)">
+                <option value="none">关闭动效</option>
+                <option value="flow">流转交接</option>
+                <option value="flip">翻牌交接</option>
+                <option value="spotlight">聚光显现</option>
+              </select>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
               <h3 class="settings-section-title">批量导出和备份导出偏好格式</h3>
               <p class="settings-desc">设置批量导出和“导出备份”共用的默认格式。它会影响这两个导出弹窗的默认操作，也会用于新创建的手动备份、自动备份和远程自动备份文件。</p>
               <select id="settingsDefaultExportFormat" class="settings-select" onchange="saveDefaultExportFormat()">

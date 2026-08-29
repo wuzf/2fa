@@ -272,6 +272,10 @@ export function getCoreCode() {
       const secretsList = document.getElementById('secretsList');
       const emptyState = document.getElementById('emptyState');
 
+      if (typeof clearAllOTPAnimations === 'function') {
+        clearAllOTPAnimations();
+      }
+
       loading.style.display = 'none';
 
       if (currentSearchQuery && filteredSecrets.length === 0) {

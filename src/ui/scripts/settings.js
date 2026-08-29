@@ -271,6 +271,11 @@ export function getSettingsCode() {
         radio.checked = radio.value === currentTheme;
       });
 
+      const animationSelect = document.getElementById('settingsOTPAnimationMode');
+      if (animationSelect) {
+        animationSelect.value = getOTPAnimationMode();
+      }
+
       const formatSelect = document.getElementById('settingsDefaultExportFormat');
       const localDefaultFormat = localStorage.getItem('defaultExportFormat') || 'json';
       if (formatSelect) {
@@ -311,6 +316,18 @@ export function getSettingsCode() {
     function applyThemeFromSettings(theme) {
       localStorage.setItem('theme', theme);
       applyTheme(theme, true);
+    }
+
+    /**
+     * 应用验证码切换动效
+     * @param {string} mode - 动效模式
+     */
+    function applyOTPAnimationFromSettings(mode) {
+      const appliedMode = setOTPAnimationMode(mode);
+      const animationSelect = document.getElementById('settingsOTPAnimationMode');
+      if (animationSelect) {
+        animationSelect.value = appliedMode;
+      }
     }
 
     /**

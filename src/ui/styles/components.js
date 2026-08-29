@@ -407,6 +407,243 @@ export function getComponentStyles() {
       text-align: right;
     }
 
+    /* TOTP 窗口切换动效：同一组 nextToken 通过流转、翻牌或聚光显现完成交接 */
+    @keyframes otp-promote-current-slide {
+      0%, 38% {
+        opacity: 0;
+        transform: translateX(12px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes otp-promote-next-settle {
+      from {
+        opacity: 0;
+        transform: translateX(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes otp-promote-flip-current {
+      0%, 28% {
+        opacity: 0;
+        transform: perspective(420px) rotateX(88deg);
+      }
+      62% {
+        opacity: 1;
+        transform: perspective(420px) rotateX(-8deg);
+      }
+      100% {
+        opacity: 1;
+        transform: perspective(420px) rotateX(0);
+      }
+    }
+
+    @keyframes otp-promote-flip-next {
+      0%, 72% {
+        opacity: 0;
+        transform: none;
+      }
+      100% {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @keyframes otp-promote-spotlight-current {
+      0%, 18% {
+        opacity: 0;
+        transform: scale(0.94);
+        text-shadow: none;
+      }
+      54% {
+        opacity: 1;
+        transform: scale(1.04);
+        text-shadow: 0 0 14px var(--accent-color, #2196F3);
+      }
+      100% {
+        opacity: 1;
+        transform: scale(1);
+        text-shadow: none;
+      }
+    }
+
+    @keyframes otp-promote-spotlight-next {
+      0%, 72% {
+        opacity: 0;
+        transform: none;
+      }
+      100% {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @keyframes otp-promote-source-flip {
+      0%, 12% {
+        opacity: 0.95;
+        transform: translate(-50%, -50%) perspective(420px) rotateX(0) scale(1);
+      }
+      48% {
+        opacity: 0.3;
+        transform: translate(-50%, -50%) perspective(420px) rotateX(-78deg) scale(1);
+      }
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) perspective(420px) rotateX(-90deg) scale(0.98);
+      }
+    }
+
+    @keyframes otp-promote-source-spotlight {
+      0%, 12% {
+        opacity: 0.72;
+        transform: translate(-50%, -50%) scale(1);
+        text-shadow: none;
+      }
+      30% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.1);
+        text-shadow: 0 0 10px var(--accent-color, #2196F3);
+      }
+      52% {
+        opacity: 0.8;
+        transform: translate(-50%, -50%) scale(1.02);
+        text-shadow: 0 0 5px var(--accent-color, #2196F3);
+      }
+      72% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.96);
+        text-shadow: none;
+      }
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.96);
+        text-shadow: none;
+      }
+    }
+
+    @keyframes otp-promote-fly {
+      0% {
+        opacity: 0.78;
+        transform: translate(-50%, -50%) scale(var(--otp-fly-start-scale, 0.5));
+      }
+      68% {
+        opacity: 1;
+        transform: translate(
+          calc(-50% + var(--otp-fly-x, 0px)),
+          calc(-50% + var(--otp-fly-y, 0px))
+        ) scale(1.06);
+      }
+      100% {
+        opacity: 0;
+        transform: translate(
+          calc(-50% + var(--otp-fly-x, 0px)),
+          calc(-50% + var(--otp-fly-y, 0px))
+        ) scale(1);
+      }
+    }
+
+    .otp-promote-current {
+      animation: otp-promote-current-slide 360ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+      transition: none;
+      will-change: transform, opacity;
+    }
+
+    .otp-promote-next {
+      animation: otp-promote-next-settle 180ms ease-out both;
+      transition: none;
+      will-change: transform, opacity;
+    }
+
+    .otp-promote-flip-current {
+      animation: otp-promote-flip-current 520ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+      transform-origin: center top;
+      backface-visibility: hidden;
+      transition: none;
+      will-change: transform, opacity;
+    }
+
+    .otp-promote-flip-next {
+      animation: otp-promote-flip-next 520ms ease-out both;
+      transition: none;
+      will-change: transform, opacity;
+    }
+
+    .otp-promote-spotlight-current {
+      animation: otp-promote-spotlight-current 460ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+      transform-origin: center;
+      transition: none;
+      will-change: transform, opacity;
+    }
+
+    .otp-promote-spotlight-next {
+      animation: otp-promote-spotlight-next 460ms ease-out both;
+      transition: none;
+      will-change: opacity;
+    }
+
+    .otp-promotion-flyer {
+      position: fixed;
+      display: block;
+      z-index: 1002;
+      pointer-events: none;
+      user-select: none;
+      white-space: nowrap;
+      margin: 0;
+      padding: 0;
+      color: var(--otp-text);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', 'SF Pro Display', monospace;
+      font-size: 42px;
+      font-weight: 300;
+      letter-spacing: 6px;
+      line-height: 1.1;
+      text-align: left;
+      transform-origin: center;
+      opacity: 0;
+      will-change: transform, opacity;
+    }
+
+    .otp-promotion-flyer-active {
+      animation: otp-promote-fly 360ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    }
+
+    .otp-promotion-flyer-flip {
+      animation: otp-promote-source-flip 520ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+      backface-visibility: hidden;
+    }
+
+    .otp-promotion-flyer-spotlight {
+      animation: otp-promote-source-spotlight 460ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .otp-promote-current,
+      .otp-promote-next,
+      .otp-promote-flip-current,
+      .otp-promote-flip-next,
+      .otp-promote-spotlight-current,
+      .otp-promote-spotlight-next {
+        animation: none;
+        transform: none;
+        opacity: 1;
+        will-change: auto;
+      }
+
+      .otp-promotion-flyer,
+      .otp-promotion-flyer-active,
+      .otp-promotion-flyer-flip,
+      .otp-promotion-flyer-spotlight {
+        display: none !important;
+        animation: none !important;
+      }
+    }
+
     .progress-mini {
       width: 60px;
       height: 4px;

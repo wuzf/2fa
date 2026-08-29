@@ -436,6 +436,9 @@ export function getTimeCode() {
     }
 
     function refreshTOTPsAfterClockChange() {
+      if (typeof clearAllOTPAnimations === 'function') {
+        clearAllOTPAnimations();
+      }
       if (typeof otpCalculator !== 'undefined' && typeof otpCalculator.clearCache === 'function') {
         otpCalculator.clearCache();
       }
