@@ -3,7 +3,7 @@
  * 测试标准化响应格式和安全头处理
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   createJsonResponse,
   createErrorResponse,

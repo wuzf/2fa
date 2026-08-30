@@ -34,7 +34,7 @@ vi.mock('../../src/utils/s3.js', () => s3Mock);
 vi.mock('../../src/utils/onedrive.js', () => onedriveMock);
 vi.mock('../../src/utils/gdrive.js', () => gdriveMock);
 
-const { BackupManager, triggerBackup } = await import('../../src/utils/backup.js');
+const { BackupManager } = await import('../../src/utils/backup.js');
 const { saveSecretsToKV } = await import('../../src/api/secrets/shared.js');
 
 function createEnv() {

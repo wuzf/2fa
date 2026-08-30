@@ -18,7 +18,9 @@ function createMockKV() {
   return {
     async get(key, type = 'text') {
       const value = store.get(key);
-      if (!value) return null;
+      if (!value) {
+        return null;
+      }
 
       if (type === 'json') {
         try {
@@ -153,7 +155,6 @@ describe('Rate Limiting - 滑动窗口算法', () => {
       const startTime = Date.now();
       let now = startTime;
 
-      const realDateNow = Date.now.bind(Date);
       vi.spyOn(Date, 'now').mockImplementation(() => now);
 
       try {

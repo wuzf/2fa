@@ -95,13 +95,6 @@ function createTestSecrets(count = 3) {
   }));
 }
 
-/**
- * 等待指定时间
- */
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 async function flushAsyncWork() {
   await Promise.resolve();
   await vi.advanceTimersByTimeAsync(0);
@@ -431,7 +424,9 @@ describe('Backup System', () => {
       const manager = new BackupManager(env);
 
       env.SECRETS_KV.get.mockImplementation(async (key) => {
-        if (key === 'settings') return JSON.stringify({ maxBackups: 1 });
+        if (key === 'settings') {
+          return JSON.stringify({ maxBackups: 1 });
+        }
         return null;
       });
       env.SECRETS_KV.list.mockResolvedValueOnce({
@@ -730,9 +725,6 @@ describe('Backup System', () => {
 
   describe('generateBackupKey - 备份文件名生成', () => {
     it('应该生成正确格式的备份文件名', () => {
-      const env = createMockEnv();
-      const manager = new BackupManager(env);
-
       const key = generateBackupKey('json', { includeUtcMarker: true });
 
       // 格式: backup_YYYY-MM-DD_HH-MM-SS-mmm-UTC-xxxx.json（含毫秒和UTC标记）
@@ -740,9 +732,6 @@ describe('Backup System', () => {
     });
 
     it('应该包含当前日期和时间', () => {
-      const env = createMockEnv();
-      const manager = new BackupManager(env);
-
       const now = new Date();
       const key = generateBackupKey('json', { includeUtcMarker: true, now });
 
@@ -751,9 +740,6 @@ describe('Backup System', () => {
     });
 
     it('连续生成的文件名应该不同', () => {
-      const env = createMockEnv();
-      const manager = new BackupManager(env);
-
       const key1 = generateBackupKey('json', { includeUtcMarker: true });
 
       // 等待1秒
@@ -819,7 +805,9 @@ describe('Backup System', () => {
 
       // 通过 KV 设置限制为1，只保留最新的
       env.SECRETS_KV.get.mockImplementation(async (key) => {
-        if (key === 'settings') return JSON.stringify({ maxBackups: 1 });
+        if (key === 'settings') {
+          return JSON.stringify({ maxBackups: 1 });
+        }
         return null;
       });
 
@@ -837,7 +825,9 @@ describe('Backup System', () => {
 
       // 用户设置 maxBackups 为 2
       env.SECRETS_KV.get.mockImplementation(async (key) => {
-        if (key === 'settings') return JSON.stringify({ maxBackups: 2 });
+        if (key === 'settings') {
+          return JSON.stringify({ maxBackups: 2 });
+        }
         return null;
       });
 
@@ -857,7 +847,9 @@ describe('Backup System', () => {
       const manager = new BackupManager(env);
 
       env.SECRETS_KV.get.mockImplementation(async (key) => {
-        if (key === 'settings') return JSON.stringify({ maxBackups: 0 });
+        if (key === 'settings') {
+          return JSON.stringify({ maxBackups: 0 });
+        }
         return null;
       });
 
@@ -872,7 +864,9 @@ describe('Backup System', () => {
       const manager = new BackupManager(env);
 
       env.SECRETS_KV.get.mockImplementation(async (key) => {
-        if (key === 'settings') throw new Error('KV read error');
+        if (key === 'settings') {
+          throw new Error('KV read error');
+        }
         return null;
       });
 
@@ -893,7 +887,9 @@ describe('Backup System', () => {
 
       // KV 被手工写入负数
       env.SECRETS_KV.get.mockImplementation(async (key) => {
-        if (key === 'settings') return JSON.stringify({ maxBackups: -5 });
+        if (key === 'settings') {
+          return JSON.stringify({ maxBackups: -5 });
+        }
         return null;
       });
 
@@ -978,8 +974,12 @@ describe('Backup System', () => {
       }));
 
       env.SECRETS_KV.get.mockImplementation(async (key) => {
-        if (key === 'settings') return JSON.stringify({ maxBackups: 100 });
-        if (key === 'backup_index_state_v1') return JSON.stringify({ version: 2, count: mockKeys.length });
+        if (key === 'settings') {
+          return JSON.stringify({ maxBackups: 100 });
+        }
+        if (key === 'backup_index_state_v1') {
+          return JSON.stringify({ version: 2, count: mockKeys.length });
+        }
         return null;
       });
       env.SECRETS_KV.list.mockResolvedValueOnce({ keys: mockKeys });
@@ -1277,9 +1277,6 @@ describe('Backup System', () => {
     });
 
     it('备份文件名生成应该高效', () => {
-      const env = createMockEnv();
-      const manager = new BackupManager(env);
-
       const start = performance.now();
       for (let i = 0; i < 1000; i++) {
         generateBackupKey('json', { includeUtcMarker: true });

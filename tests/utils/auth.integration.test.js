@@ -36,7 +36,9 @@ class MockKV {
 
   async get(key, type = 'text') {
     const value = this.store.get(key);
-    if (!value) return null;
+    if (!value) {
+      return null;
+    }
 
     if (type === 'json') {
       try {
@@ -129,31 +131,13 @@ function createMockEnv(kvStore = null) {
 }
 
 /**
- * 从 Response 中提取 Cookie
- */
-function extractCookie(response, cookieName) {
-  const setCookieHeader = response.headers.get('Set-Cookie');
-  if (!setCookieHeader) return null;
-
-  const cookies = setCookieHeader.split(', ').map(c => c.trim());
-  for (const cookie of cookies) {
-    const [nameValue] = cookie.split(';');
-    const [name, value] = nameValue.split('=');
-    if (name === cookieName) {
-      return value;
-    }
-  }
-  return null;
-}
-
-/**
  * 从 Response 中提取 JSON body
  */
 async function getResponseJson(response) {
   const text = await response.text();
   try {
     return JSON.parse(text);
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -402,7 +386,6 @@ describe('Auth.js Integration Tests', () => {
         body: { credential: testPassword }
       });
       const loginResponse = await handleLogin(loginRequest, env);
-      const loginData = await getResponseJson(loginResponse);
       // 从 Cookie 头提取 token
       const setCookieHeader = loginResponse.headers.get('Set-Cookie');
       const tokenMatch = setCookieHeader?.match(/auth_token=([^;]+)/);
@@ -499,7 +482,6 @@ describe('Auth.js Integration Tests', () => {
         body: { credential: testPassword }
       });
       const loginResponse = await handleLogin(loginRequest, env);
-      const loginData = await getResponseJson(loginResponse);
       // 从 Cookie 头提取 token
       const setCookieHeader = loginResponse.headers.get('Set-Cookie');
       const tokenMatch = setCookieHeader?.match(/auth_token=([^;]+)/);
@@ -748,7 +730,6 @@ describe('Auth.js Integration Tests', () => {
       const loginResponse = await handleLogin(loginRequest, env);
       expect(loginResponse.status).toBe(200);
 
-      const loginData = await getResponseJson(loginResponse);
       const setCookieHeader = loginResponse.headers.get('Set-Cookie');
       const tokenMatch = setCookieHeader?.match(/auth_token=([^;]+)/);
       const token = tokenMatch ? tokenMatch[1] : null;
@@ -865,7 +846,7 @@ describe('Auth.js Integration Tests', () => {
       let isSetupRequired;
       try {
         isSetupRequired = await checkIfSetupRequired(mockEnv);
-      } catch (error) {
+      } catch {
         // 如果抛出错误，这也是可以接受的行为
         isSetupRequired = true;
       }

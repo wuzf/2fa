@@ -83,6 +83,20 @@ export default [
 		},
 	},
 	{
+		files: ['tests/**/*.js'],
+		languageOptions: {
+			globals: {
+				Buffer: 'readonly',
+				global: 'readonly',
+				performance: 'readonly',
+				process: 'readonly',
+			},
+		},
+		rules: {
+			'no-unused-vars': ['error', { args: 'none', varsIgnorePattern: '^_' }],
+		},
+	},
+	{
 		ignores: ['node_modules/**', 'dist/**', 'coverage/**', '*.min.js', '.wrangler/**'],
 	},
 ];

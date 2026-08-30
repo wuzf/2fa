@@ -18,8 +18,8 @@
     "test:watch": "vitest --watch",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
+    "lint": "eslint src/ tests/ --max-warnings=0",
+    "lint:fix": "eslint src/ tests/ --fix --max-warnings=0",
     "format": "prettier --write \"src/**/*.js\"",
     "format:check": "prettier --check \"src/**/*.js\"",
     "release:patch": "node scripts/release.js patch",
@@ -30,8 +30,11 @@
   },
   "lint-staged": {
     "src/**/*.js": [
-      "eslint --fix",
+      "eslint --fix --max-warnings=0",
       "prettier --write"
+    ],
+    "tests/**/*.js": [
+      "eslint --fix --max-warnings=0"
     ],
     "*.md": [
       "prettier --write"

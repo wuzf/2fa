@@ -3,7 +3,7 @@
  * 测试 AES-GCM 256位加密
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   encryptData,
   decryptData,

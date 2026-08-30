@@ -7,6 +7,7 @@ import { getImportCode } from '../../src/ui/scripts/import/index.js';
 function createImportApi() {
 	const code = getImportCode();
 
+	// eslint-disable-next-line no-new-func
 	return new Function(
 		'crypto',
 		'TextEncoder',

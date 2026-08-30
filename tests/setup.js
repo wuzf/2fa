@@ -17,7 +17,7 @@ try {
       configurable: true
     });
   }
-} catch (error) {
+} catch {
   // 如果已经有 crypto 对象且不可配置，则忽略
   console.warn('Warning: crypto object already exists and is not configurable');
 }

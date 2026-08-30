@@ -3,7 +3,7 @@
  * 测试固定窗口计数器算法、客户端识别、响应生成
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   checkRateLimit,
   resetRateLimit,
@@ -24,7 +24,9 @@ describe('Rate Limiting Utils', () => {
 
     async get(key, type = 'text') {
       const value = this.store.get(key);
-      if (!value) return null;
+      if (!value) {
+        return null;
+      }
 
       if (type === 'json') {
         return JSON.parse(value);

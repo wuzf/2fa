@@ -39,9 +39,13 @@ class MockKV {
 
   async get(key, type = 'text') {
     const value = this.store.get(key);
-    if (value === undefined || value === null) return null;
+    if (value === undefined || value === null) {
+      return null;
+    }
     if (type === 'json') {
-      if (typeof value === 'object') return value;
+      if (typeof value === 'object') {
+        return value;
+      }
       return JSON.parse(value);
     }
     return value;
