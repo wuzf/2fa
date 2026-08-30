@@ -138,7 +138,9 @@ function createHarness({
 		}),
 		removeChild: vi.fn((element) => {
 			const index = body.children.indexOf(element);
-			if (index >= 0) body.children.splice(index, 1);
+			if (index >= 0) {
+				body.children.splice(index, 1);
+			}
 			element.parentNode = null;
 			return element;
 		}),
@@ -217,6 +219,7 @@ function createHarness({
 		setInterval: vi.fn(),
 	};
 
+	// eslint-disable-next-line no-new-func
 	const api = new Function(
 		'Date',
 		'performance',
@@ -239,6 +242,7 @@ function createHarness({
 			trustedClock,
 			otpCalculator,
 			getOTPAnimationMode,
+			isNextOTPTransitionActive,
 			setOTPAnimationMode,
 			updateOTP
 		};`,
@@ -285,7 +289,9 @@ function createHarness({
 		for (let frame = 0; frame < 10 && animationFrameCallbacks.size > 0; frame += 1) {
 			const callbacks = [...animationFrameCallbacks.entries()];
 			for (const [id, callback] of callbacks) {
-				if (!animationFrameCallbacks.has(id)) continue;
+				if (!animationFrameCallbacks.has(id)) {
+					continue;
+				}
 				animationFrameCallbacks.delete(id);
 				callback(state.monotonicMs);
 			}
@@ -422,6 +428,7 @@ describe('OTP asynchronous result races', () => {
 
 			const currentElement = harness.elements['otp-race'];
 			const nextElement = harness.elements['next-otp-race'];
+			expect(harness.api.isNextOTPTransitionActive('race')).toBe(true);
 			expect(currentElement.textContent).toBe(PROMOTED_TOKEN);
 			expect(nextElement.textContent).toBe(NEXT_TOKEN);
 			expect(currentElement.textContent).not.toBe(nextElement.textContent);
@@ -465,6 +472,7 @@ describe('OTP asynchronous result races', () => {
 			expect(harness.body.children).toHaveLength(1);
 
 			await harness.runTimeouts();
+			expect(harness.api.isNextOTPTransitionActive('race')).toBe(false);
 			expect(currentElement.classList.contains(currentClass)).toBe(false);
 			expect(nextElement.classList.contains(nextClass)).toBe(false);
 			expect(currentElement.classList.remove).toHaveBeenCalledWith(currentClass);
@@ -506,6 +514,7 @@ describe('OTP asynchronous result races', () => {
 
 		expect(harness.api.setOTPAnimationMode('none')).toBe('none');
 
+		expect(harness.api.isNextOTPTransitionActive('race')).toBe(false);
 		expect(harness.elements['otp-race'].classList.contains('otp-promote-current')).toBe(false);
 		expect(harness.elements['next-otp-race'].classList.contains('otp-promote-next')).toBe(false);
 		expect(harness.clearTimeout).toHaveBeenCalledTimes(1);
@@ -594,12 +603,33 @@ describe('OTP asynchronous result races', () => {
 		harness.document.visibilityState = 'hidden';
 		await harness.dispatchDocumentEvent('visibilitychange');
 
+		expect(harness.api.isNextOTPTransitionActive('race')).toBe(false);
 		expect(harness.elements['otp-race'].classList.contains('otp-promote-current')).toBe(false);
 		expect(harness.elements['next-otp-race'].classList.contains('otp-promote-next')).toBe(false);
 		expect(harness.clearTimeout).toHaveBeenCalledTimes(1);
 		expect(harness.timeoutCallbacks.size).toBe(0);
 		expect(flyer.remove).toHaveBeenCalledTimes(1);
 		expect(harness.body.children).toHaveLength(0);
+	});
+
+	it('clears transition state when the promotion flyer cannot be created', async () => {
+		const harness = createHarness({ storedAnimationMode: 'flow' });
+		const initialUpdate = harness.api.updateOTP('race');
+		await resolveGenerationPair(harness, INITIAL_TOKEN, PROMOTED_TOKEN);
+		await initialUpdate;
+
+		harness.document.createElement.mockImplementationOnce(() => {
+			throw new Error('simulated flyer creation failure');
+		});
+		harness.state.monotonicMs += 30_000;
+		const promotedUpdate = harness.api.updateOTP('race');
+		await resolveGenerationPair(harness, PROMOTED_TOKEN, NEXT_TOKEN, 2);
+		await promotedUpdate;
+		await harness.flushAnimationFrames();
+
+		expect(harness.api.isNextOTPTransitionActive('race')).toBe(false);
+		expect(harness.body.children).toHaveLength(0);
+		expect(harness.timeoutCallbacks.size).toBe(0);
 	});
 
 	it('does not queue a promotion when the document becomes hidden during OTP calculation', async () => {

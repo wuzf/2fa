@@ -17,7 +17,9 @@ function findMatchingDelimiter(source, openingIndex, openingDelimiter, closingDe
 		const nextCharacter = source[index + 1];
 
 		if (lineComment) {
-			if (character === '\n') lineComment = false;
+			if (character === '\n') {
+				lineComment = false;
+			}
 			continue;
 		}
 
@@ -61,7 +63,9 @@ function findMatchingDelimiter(source, openingIndex, openingDelimiter, closingDe
 			depth += 1;
 		} else if (character === closingDelimiter) {
 			depth -= 1;
-			if (depth === 0) return index;
+			if (depth === 0) {
+				return index;
+			}
 		}
 	}
 
@@ -70,7 +74,9 @@ function findMatchingDelimiter(source, openingIndex, openingDelimiter, closingDe
 
 function extractNamedFunction(source, functionName) {
 	const declaration = new RegExp(`\\b(?:async\\s+)?function\\s+${functionName}\\s*\\(`).exec(source);
-	if (!declaration) throw new Error(`Missing generated function: ${functionName}`);
+	if (!declaration) {
+		throw new Error(`Missing generated function: ${functionName}`);
+	}
 
 	const openingParenthesis = source.indexOf('(', declaration.index);
 	const closingParenthesis = findMatchingDelimiter(source, openingParenthesis, '(', ')');
@@ -88,7 +94,9 @@ function extractEventListener(source, eventName) {
 		const openingParenthesis = source.indexOf('(', registration.index);
 		const closingParenthesis = findMatchingDelimiter(source, openingParenthesis, '(', ')');
 		const listenerSource = source.slice(registration.index, closingParenthesis + 1);
-		if (new RegExp(`['"]${eventName}['"]`).test(listenerSource)) return listenerSource;
+		if (new RegExp(`['"]${eventName}['"]`).test(listenerSource)) {
+			return listenerSource;
+		}
 		registrationPattern.lastIndex = closingParenthesis + 1;
 	}
 

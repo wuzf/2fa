@@ -230,6 +230,31 @@ export function getAuthCode() {
         console.warn('清除缓存失败:', e);
       }
 
+      try {
+        Object.keys(otpIntervals || {}).forEach(secretId => {
+          clearInterval(otpIntervals[secretId]);
+          delete otpIntervals[secretId];
+        });
+      } catch (e) {
+        console.warn('清除验证码定时器失败:', e);
+      }
+
+      if (typeof clearAllOTPAnimations === 'function') {
+        clearAllOTPAnimations();
+      }
+      if (typeof clearOTPWindowScheduler === 'function') {
+        clearOTPWindowScheduler();
+      }
+
+      secrets = [];
+      filteredSecrets = [];
+      currentSearchQuery = '';
+      const secretsList = document.getElementById('secretsList');
+      if (secretsList) {
+        secretsList.innerHTML = '';
+        secretsList.style.display = 'none';
+      }
+
       showCenterToast('⚠️', '登录已过期，请重新登录');
       setTimeout(() => {
         showLoginModal();
@@ -281,14 +306,18 @@ export function getAuthCode() {
         console.warn('清除验证码定时器失败:', e);
       }
 
+      if (typeof clearAllOTPAnimations === 'function') {
+        clearAllOTPAnimations();
+      }
+      if (typeof clearOTPWindowScheduler === 'function') {
+        clearOTPWindowScheduler();
+      }
+
       secrets = [];
       filteredSecrets = [];
       currentSearchQuery = '';
 
       const secretsList = document.getElementById('secretsList');
-      if (typeof clearAllOTPAnimations === 'function') {
-        clearAllOTPAnimations();
-      }
       if (secretsList) {
         secretsList.innerHTML = '';
         secretsList.style.display = 'none';

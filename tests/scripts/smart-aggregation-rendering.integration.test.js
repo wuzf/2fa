@@ -418,13 +418,22 @@ function createStorage(initialValues = {}) {
 	};
 }
 
-function createHarness(initialStorage = {}) {
+function createHarness(initialStorage = {}, overrides = {}) {
 	const page = createPageDocument();
 	const localStorage = createStorage(initialStorage);
+	const updateOTP = overrides.updateOTP ?? vi.fn(async () => {});
+	const updateOTPSecretsInBatch =
+		overrides.updateOTPSecretsInBatch ?? vi.fn(async () => {});
+	const startOTPInterval = overrides.startOTPInterval ?? vi.fn();
 	const window = {
 		addEventListener: vi.fn(),
 		innerHeight: 800,
 		visualViewport: null,
+	};
+	const navigator = {
+		clipboard: {
+			writeText: vi.fn(async () => {}),
+		},
 	};
 	const quietConsole = { error: vi.fn(), log: vi.fn(), warn: vi.fn() };
 	const source = `
@@ -436,12 +445,11 @@ function createHarness(initialStorage = {}) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
     }
-    async function updateOTP() {}
-    function startOTPInterval() {}
     function hideSecretModal() {}
     function hideQRModal() {}
     function hideQRScanner() {}
     function hideImportModal() {}
+    function showCenterToast() {}
     ${getStateCode()}
     ${getCoreCode()}
     ${getServiceAggregationCode()}
@@ -450,6 +458,8 @@ function createHarness(initialStorage = {}) {
       filterSecrets,
       getServiceLogo,
       initSortDropdownOutsideClose,
+      copyNextOTP,
+      copyOTP,
       renderFilteredSecrets,
       restoreGroupSortPreference,
       restoreSortPreference,
@@ -473,6 +483,7 @@ function createHarness(initialStorage = {}) {
 	const api = new Function(
 		'document',
 		'window',
+		'navigator',
 		'localStorage',
 		'console',
 		'setInterval',
@@ -483,10 +494,14 @@ function createHarness(initialStorage = {}) {
 		'requestAnimationFrame',
 		'cancelAnimationFrame',
 		'performance',
+		'updateOTP',
+		'updateOTPSecretsInBatch',
+		'startOTPInterval',
 		source,
 	)(
 		page.document,
 		window,
+		navigator,
 		localStorage,
 		quietConsole,
 		vi.fn(() => 1),
@@ -497,9 +512,22 @@ function createHarness(initialStorage = {}) {
 		undefined,
 		undefined,
 		{ now: vi.fn(() => 0) },
+		updateOTP,
+		updateOTPSecretsInBatch,
+		startOTPInterval,
 	);
 
-	return { ...page, api, clearInterval, localStorage, window };
+	return {
+		...page,
+		api,
+		clearInterval,
+		localStorage,
+		navigator,
+		startOTPInterval,
+		updateOTP,
+		updateOTPSecretsInBatch,
+		window,
+	};
 }
 
 function secret(id, name, account = '') {
@@ -562,6 +590,38 @@ describe('smart aggregation rendering integration', () => {
 		expect(groupCount.getAttribute('aria-label')).toBe('匹配 1 个，共 2 个');
 		expect(list.querySelectorAll('.secret-card')).toHaveLength(1);
 		expect(list.querySelector('h3').textContent).toBe('Gmail');
+	});
+
+	it('clears old intervals before awaiting render and starts new ones with secret hints', async () => {
+		let resolveBatch;
+		const batchPromise = new Promise((resolve) => {
+			resolveBatch = resolve;
+		});
+		const updateOTPSecretsInBatch = vi.fn(() => batchPromise);
+		const { api, clearInterval, startOTPInterval } = createHarness(
+			{},
+			{ updateOTPSecretsInBatch },
+		);
+		const renderedSecrets = TEST_SECRETS.slice(0, 2);
+		api.setSecrets(renderedSecrets);
+		api.setOTPIntervals({ google: 101, gmail: 102 });
+
+		const renderPromise = api.renderFilteredSecrets();
+
+		expect(updateOTPSecretsInBatch).toHaveBeenCalledWith(renderedSecrets, {
+			includeHOTP: true,
+		});
+		expect(api.getOTPIntervalIds()).toEqual([]);
+		expect(clearInterval.mock.calls).toEqual([[101], [102]]);
+		expect(startOTPInterval).not.toHaveBeenCalled();
+
+		resolveBatch();
+		await renderPromise;
+
+		expect(startOTPInterval).toHaveBeenCalledTimes(renderedSecrets.length);
+		for (const item of renderedSecrets) {
+			expect(startOTPInterval).toHaveBeenCalledWith(item.id, item);
+		}
 	});
 
 	it('searches displayed family names in grouped and flat views', async () => {
@@ -644,6 +704,32 @@ describe('smart aggregation rendering integration', () => {
 		const list = document.getElementById('secretsList');
 		expect(list.querySelector('.service-group-title').textContent).toBe('其他服务');
 		expect(list.querySelectorAll('h3').map((node) => node.textContent)).toEqual(['GitHub', 'Discord']);
+	});
+
+	it('does not copy failed eight-digit OTP placeholders', async () => {
+		const { api, document, navigator } = createHarness();
+		api.setSecrets([{ id: 'eight', name: 'Eight digit', digits: 8, secret: 'JBSWY3DPEHPK3PXP' }]);
+
+		const current = document.createElement('div');
+		current.id = 'otp-eight';
+		current.textContent = '--------';
+		document.body.appendChild(current);
+		const next = document.createElement('div');
+		next.id = 'next-otp-eight';
+		next.textContent = '--------';
+		document.body.appendChild(next);
+
+		await api.copyOTP('eight');
+		await api.copyNextOTP('eight');
+
+		expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+
+		current.textContent = '12345678';
+		next.textContent = '87654321';
+		await api.copyOTP('eight');
+		await api.copyNextOTP('eight');
+
+		expect(navigator.clipboard.writeText.mock.calls).toEqual([['12345678'], ['87654321']]);
 	});
 
 	it('closes the sort dropdown with Escape and restores focus to its trigger', () => {

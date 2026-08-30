@@ -82,7 +82,9 @@ function createHarness({
 	const navigator = { onLine: true };
 	const fetch = vi.fn((url, options) => {
 		const sample = state.queuedSamples.shift();
-		if (!sample) return Promise.reject(new Error('No queued time sample'));
+		if (!sample) {
+			return Promise.reject(new Error('No queued time sample'));
+		}
 
 		return new Promise((resolve, reject) => {
 			const request = {
@@ -96,7 +98,9 @@ function createHarness({
 				url,
 			};
 			const rejectOnce = (error) => {
-				if (request.settled) return;
+				if (request.settled) {
+					return;
+				}
 				request.settled = true;
 				reject(error);
 			};
@@ -119,6 +123,7 @@ function createHarness({
 		crypto: globalThis.crypto,
 	};
 
+	// eslint-disable-next-line no-new-func
 	const api = new Function(
 		'Date',
 		'performance',
@@ -195,7 +200,9 @@ function createHarness({
 
 	async function completeNextPendingRequest() {
 		const index = state.pendingRequests.findIndex((request) => !request.settled);
-		if (index === -1) throw new Error('No pending time request');
+		if (index === -1) {
+			throw new Error('No pending time request');
+		}
 		const [request] = state.pendingRequests.splice(index, 1);
 		await completeRequests([request]);
 		return request;
@@ -371,7 +378,9 @@ describe('trusted browser clock', () => {
 		await Promise.resolve();
 		expect(oldRequests.every((request) => request.options.signal.aborted)).toBe(true);
 		await expect(oldSync).resolves.toBe(false);
-		for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+		for (let turn = 0; turn < 5; turn += 1) {
+			await Promise.resolve();
+		}
 
 		expect(harness.fetch).toHaveBeenCalledTimes(6);
 		expect(harness.state.pendingRequests.filter((request) => !request.settled)).toHaveLength(3);
@@ -397,7 +406,9 @@ describe('trusted browser clock', () => {
 		const oldSync = harness.api.syncServerTime();
 		const oldRequests = harness.state.pendingRequests.slice();
 		await harness.completeNextPendingRequest();
-		for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+		for (let turn = 0; turn < 5; turn += 1) {
+			await Promise.resolve();
+		}
 
 		expect(oldRequests[0].settled).toBe(true);
 		expect(oldRequests.slice(1).every((request) => !request.settled)).toBe(true);
@@ -419,7 +430,9 @@ describe('trusted browser clock', () => {
 		expect(oldRequests[0].options.signal.aborted).toBe(false);
 		expect(oldRequests.slice(1).every((request) => request.options.signal.aborted)).toBe(true);
 		await expect(oldSync).resolves.toBe(false);
-		for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+		for (let turn = 0; turn < 5; turn += 1) {
+			await Promise.resolve();
+		}
 
 		expect(harness.api.trustedClock.generation).toBe(recoveredState.generation);
 		expect(harness.api.trustedClock.anchorLocalWallMs).toBe(recoveredState.anchorLocalWallMs);
@@ -524,7 +537,6 @@ describe('trusted browser clock', () => {
 
 	it('returns immediately from cached readiness while sharing one background sync', async () => {
 		const offsetMs = 12_000;
-		const correctedNowMs = SERVER_BASE_MS + offsetMs;
 		const harness = createHarness({
 			storageValues: {
 				[STORAGE_KEY]: createCachedClock({

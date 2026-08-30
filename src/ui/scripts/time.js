@@ -415,6 +415,10 @@ export function getTimeCode() {
       return trustedClock.generation;
     }
 
+    function getTrustedMonotonicNowMs() {
+      return trustedClock.monotonicNow();
+    }
+
     function initializeTrustedClock() {
       trustedClock.start();
     }
@@ -439,16 +443,38 @@ export function getTimeCode() {
       if (typeof clearAllOTPAnimations === 'function') {
         clearAllOTPAnimations();
       }
+      if (typeof invalidateOTPWindowSchedulerForClockChange === 'function') {
+        invalidateOTPWindowSchedulerForClockChange();
+      }
       if (typeof otpCalculator !== 'undefined' && typeof otpCalculator.clearCache === 'function') {
         otpCalculator.clearCache();
       }
       if (typeof secrets === 'undefined' || !Array.isArray(secrets) || typeof updateOTP !== 'function') return;
 
+      if (typeof updateOTPSecretsInBatch === 'function') {
+        updateOTPSecretsInBatch(secrets);
+        secrets.forEach(secret => {
+          if (secret.type && secret.type.toUpperCase() === 'HOTP') return;
+          if (typeof updateCountdown === 'function') updateCountdown(secret.id, secret);
+        });
+        return;
+      }
+
+      const animationBatch = typeof createOTPAnimationBatch === 'function'
+        ? createOTPAnimationBatch()
+        : null;
       secrets.forEach(secret => {
         if (secret.type && secret.type.toUpperCase() === 'HOTP') return;
-        updateOTP(secret.id);
-        if (typeof updateCountdown === 'function') updateCountdown(secret.id);
+        try {
+          updateOTP(secret.id, animationBatch, secret);
+        } catch (error) {
+          console.warn('校时后刷新OTP失败:', error);
+        }
+        if (typeof updateCountdown === 'function') updateCountdown(secret.id, secret);
       });
+      if (animationBatch && typeof sealOTPAnimationBatch === 'function') {
+        sealOTPAnimationBatch(animationBatch);
+      }
     }
 
 `;

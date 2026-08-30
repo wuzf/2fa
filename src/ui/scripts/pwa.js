@@ -281,15 +281,18 @@ export function getPWACode() {
         if (typeof secrets !== 'undefined' && secrets && secrets.length > 0) {
           console.log('🔄 正在刷新 ' + secrets.length + ' 个验证码...');
           
-          // 并发刷新所有验证码
-          Promise.all(
-            secrets.map(secret => {
-              if (typeof updateOTP === 'function') {
-                return updateOTP(secret.id);
-              }
-              return Promise.resolve();
-            })
-          ).then(() => {
+          // 并发计算并原子提交所有验证码，避免快卡先闪现、慢卡随后再播放动画。
+          const refreshPromise = typeof updateOTPSecretsInBatch === 'function'
+            ? updateOTPSecretsInBatch(secrets, { includeHOTP: true })
+            : Promise.all(
+              secrets.map(secret => {
+                if (typeof updateOTP === 'function') {
+                  return updateOTP(secret.id, null, secret);
+                }
+                return Promise.resolve();
+              })
+            );
+          refreshPromise.then(() => {
             console.log('✅ 所有验证码已刷新完成');
           }).catch(err => {
             console.error('❌ 刷新验证码时出错:', err);
@@ -313,11 +316,15 @@ export function getPWACode() {
         if (typeof secrets !== 'undefined' && secrets && secrets.length > 0) {
           console.log('🔄 窗口焦点恢复，检查并刷新验证码');
           
-          secrets.forEach(secret => {
-            if (typeof updateOTP === 'function') {
-              updateOTP(secret.id);
-            }
-          });
+          if (typeof updateOTPSecretsInBatch === 'function') {
+            updateOTPSecretsInBatch(secrets, { includeHOTP: true });
+          } else {
+            secrets.forEach(secret => {
+              if (typeof updateOTP === 'function') {
+                updateOTP(secret.id, null, secret);
+              }
+            });
+          }
         }
       }, 100);
     });

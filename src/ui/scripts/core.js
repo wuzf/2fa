@@ -127,9 +127,13 @@ export function getCoreCode() {
         setTimeout(() => {
           if (secrets && secrets.length > 0) {
             console.log('页面加载完成，立即刷新所有OTP');
-            secrets.forEach(secret => {
-              updateOTP(secret.id);
-            });
+            if (typeof updateOTPSecretsInBatch === 'function') {
+              updateOTPSecretsInBatch(secrets, { includeHOTP: true });
+            } else {
+              secrets.forEach(secret => {
+                updateOTP(secret.id, null, secret);
+              });
+            }
           }
         }, 500);
       });
@@ -309,9 +313,15 @@ export function getCoreCode() {
       const secretsList = document.getElementById('secretsList');
       const emptyState = document.getElementById('emptyState');
 
+      // 重绘会替换 OTP 节点；先取消旧节点上的排队/播放动效，避免 flyer 残留或异步回调命中脱离节点。
       if (typeof clearAllOTPAnimations === 'function') {
         clearAllOTPAnimations();
       }
+      if (typeof clearOTPWindowScheduler === 'function') {
+        clearOTPWindowScheduler();
+      }
+      // 旧 interval 会命中新替换的占位节点并启动非 batch 请求；重绘完成后统一重建。
+      clearOTPIntervalsExcept([]);
 
       loading.style.display = 'none';
 
@@ -363,9 +373,13 @@ export function getCoreCode() {
       const perfStart = performance.now();
 
       // 并发计算所有密钥的OTP（等待全部完成）
-      await Promise.all(
-        sortedSecrets.map(secret => updateOTP(secret.id))
-      );
+      if (typeof updateOTPSecretsInBatch === 'function') {
+        await updateOTPSecretsInBatch(sortedSecrets, { includeHOTP: true });
+      } else {
+        await Promise.all(
+          sortedSecrets.map(secret => updateOTP(secret.id, null, secret))
+        );
+      }
 
       if (renderGeneration !== secretRenderGeneration) return;
 
@@ -376,7 +390,7 @@ export function getCoreCode() {
 
       // OTP计算完成后再启动定时器
       sortedSecrets.forEach(secret => {
-        startOTPInterval(secret.id);
+        startOTPInterval(secret.id, secret);
       });
 
       clearOTPIntervalsExcept(filteredSecrets);
@@ -410,7 +424,7 @@ export function getCoreCode() {
       if (!otpElement) return;
 
       const otpText = otpElement.textContent;
-      if (otpText === '------') return;
+      if (!isCopyableOTPValue(secretId, otpText)) return;
 
       try {
         await navigator.clipboard.writeText(otpText);
@@ -440,8 +454,18 @@ export function getCoreCode() {
       const nextOtpElement = document.getElementById('next-otp-' + secretId);
       if (!nextOtpElement) return;
 
+      // 交接动画期间 flyer 仍在展示旧值，而节点已保存新的未来验证码。
+      // 单次点击先结束过渡、露出节点中的未来值，再复制与画面一致的数字。
+      if (
+        typeof isNextOTPTransitionActive === 'function' &&
+        isNextOTPTransitionActive(secretId)
+      ) {
+        if (typeof clearOTPAnimationTimer !== 'function') return;
+        clearOTPAnimationTimer(nextOtpElement);
+      }
+
       const nextOtpText = nextOtpElement.textContent;
-      if (nextOtpText === '------') return;
+      if (!isCopyableOTPValue(secretId, nextOtpText)) return;
 
       try {
         await navigator.clipboard.writeText(nextOtpText);
@@ -462,6 +486,14 @@ export function getCoreCode() {
       const serviceName = secret ? secret.name : '验证码';
 
       showCenterToast('⏭️', serviceName + ' 下一个验证码已复制到剪贴板');
+    }
+
+    function isCopyableOTPValue(secretId, value) {
+      const secret = secrets.find(s => String(s.id) === String(secretId));
+      const expectedLength = Number(secret && secret.digits) || 6;
+      return typeof value === 'string' &&
+        value.length === expectedLength &&
+        /^[0-9]+$/.test(value);
     }
 
     // 复制OTP链接（otpauth://格式）
@@ -832,9 +864,13 @@ export function getCoreCode() {
       if (e.ctrlKey && e.key === 'r') {
         e.preventDefault();
         console.log('Manually refreshing all OTP codes');
-        secrets.forEach(secret => {
-          updateOTP(secret.id);
-        });
+        if (typeof updateOTPSecretsInBatch === 'function') {
+          updateOTPSecretsInBatch(secrets, { includeHOTP: true });
+        } else {
+          secrets.forEach(secret => {
+            updateOTP(secret.id, null, secret);
+          });
+        }
         
         const refreshInfo = document.createElement('div');
         refreshInfo.style.cssText = 
@@ -888,7 +924,7 @@ export function getCoreCode() {
         // 检查验证码是否为默认值（未初始化或更新失败）
         if (otpElement.textContent === '------') {
           console.warn('⚠️  [安全检查] 发现未初始化的验证码:', secret.name);
-          updateOTP(secret.id);
+          updateOTP(secret.id, null, secret);
           return;
         }
 
@@ -905,8 +941,11 @@ export function getCoreCode() {
           
           if (lastRefreshWindow !== currentWindow) {
             console.log('🔄 [安全检查] 时间窗口已切换，刷新验证码:', secret.name, '窗口:', currentWindow);
-            updateOTP(secret.id);
             window[lastRefreshKey] = currentWindow;
+            // 共享窗口调度器负责可见卡片的统一刷新；仅在其不可用时走单卡兜底。
+            if (typeof isOTPWindowScheduled !== 'function' || !isOTPWindowScheduled(secret.id)) {
+              updateOTP(secret.id, null, secret);
+            }
           }
         }
       });
