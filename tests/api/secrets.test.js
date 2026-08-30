@@ -3,7 +3,7 @@
  * 测试密钥 CRUD 操作、备份恢复功能
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   handleGetSecrets,
   handleAddSecret,
@@ -23,7 +23,9 @@ class MockKV {
 
   async get(key, type = 'text') {
     const value = this.store.get(key);
-    if (!value) return null;
+    if (!value) {
+      return null;
+    }
 
     if (type === 'json') {
       return JSON.parse(value);
@@ -707,6 +709,25 @@ describe('API Secrets Module', () => {
         expect(response.status).toBe(200);
       }
     });
+
+    it.each(['1.5', String(Number.MAX_SAFE_INTEGER + 1)])(
+      '应该拒绝不精确的 HOTP counter: %s',
+      async counter => {
+        const secret = 'JBSWY3DPEHPK3PXP';
+        const mockRequest = createMockRequest(
+          {},
+          'GET',
+          `https://example.com/otp/${secret}?type=HOTP&counter=${counter}&format=json`
+        );
+
+        const response = await handleGenerateOTP(secret, mockRequest);
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data.error).toBe('OTP参数验证失败');
+        expect(data.message).toContain('安全整数');
+      }
+    );
 
     it('应该处理无 secret 的请求', async () => {
       const mockRequest = createMockRequest({}, 'GET', 'https://example.com/otp/');

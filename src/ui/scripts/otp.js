@@ -41,6 +41,35 @@ export function getOTPCode() {
         return secret + '_' + counter + '_' + options.digits + '_' + options.algorithm;
       }
 
+      // HOTP 计数器必须能被 JavaScript 精确表示；offset 用于预计算下一个验证码。
+      getHOTPCounter(secret, offset = 0) {
+        const counter = secret && secret.counter !== undefined ? secret.counter : 0;
+        if (!Number.isSafeInteger(counter) || counter < 0) {
+          throw new RangeError('HOTP counter must be a non-negative safe integer');
+        }
+
+        const resolvedCounter = counter + offset;
+        if (!Number.isSafeInteger(resolvedCounter) || resolvedCounter < 0) {
+          throw new RangeError('HOTP counter increment exceeds the safe integer range');
+        }
+        return resolvedCounter;
+      }
+
+      // RFC 4226 使用 8 字节大端计数器，不能只写低 32 位。
+      getCounterBytes(counter) {
+        if (!Number.isSafeInteger(counter) || counter < 0) {
+          throw new RangeError('OTP counter must be a non-negative safe integer');
+        }
+
+        const counterBytes = new ArrayBuffer(8);
+        const counterView = new DataView(counterBytes);
+        const high = Math.floor(counter / 0x100000000);
+        const low = counter % 0x100000000;
+        counterView.setUint32(0, high, false);
+        counterView.setUint32(4, low, false);
+        return counterBytes;
+      }
+
       // 检查缓存
       getCachedResult(cacheKey) {
         const cached = this.cache.get(cacheKey);
@@ -64,49 +93,55 @@ export function getOTPCode() {
 
       // 计算当前OTP
       async calculateCurrentOTP(secret) {
-        const timeWindow = this.getCurrentTimeWindow(secret.period || 30);
         const options = {
           digits: secret.digits || 6,
           algorithm: secret.algorithm || 'SHA1'
         };
 
-        const cacheKey = this.getCacheKey(secret.secret, timeWindow, options);
-        const cached = this.getCachedResult(cacheKey);
-        if (cached) {
-          return cached;
-        }
-
         try {
-          const token = await this.generateTOTP(secret.secret, timeWindow, options);
+          const isHOTP = String(secret.type || 'TOTP').toUpperCase() === 'HOTP';
+          const counter = isHOTP
+            ? this.getHOTPCounter(secret)
+            : this.getCurrentTimeWindow(secret.period || 30);
+          const cacheKey = this.getCacheKey(secret.secret, counter, options);
+          const cached = this.getCachedResult(cacheKey);
+          if (cached) {
+            return cached;
+          }
+
+          const token = await this.generateTOTP(secret.secret, counter, options);
           this.setCachedResult(cacheKey, token);
           return token;
         } catch (error) {
           console.error('计算当前OTP失败:', error);
-          return '------';
+          return '-'.repeat(options.digits);
         }
       }
 
       // 计算下一个OTP
       async calculateNextOTP(secret) {
-        const timeWindow = this.getNextTimeWindow(secret.period || 30);
         const options = {
           digits: secret.digits || 6,
           algorithm: secret.algorithm || 'SHA1'
         };
 
-        const cacheKey = this.getCacheKey(secret.secret, timeWindow, options);
-        const cached = this.getCachedResult(cacheKey);
-        if (cached) {
-          return cached;
-        }
-
         try {
-          const token = await this.generateTOTP(secret.secret, timeWindow, options);
+          const isHOTP = String(secret.type || 'TOTP').toUpperCase() === 'HOTP';
+          const counter = isHOTP
+            ? this.getHOTPCounter(secret, 1)
+            : this.getNextTimeWindow(secret.period || 30);
+          const cacheKey = this.getCacheKey(secret.secret, counter, options);
+          const cached = this.getCachedResult(cacheKey);
+          if (cached) {
+            return cached;
+          }
+
+          const token = await this.generateTOTP(secret.secret, counter, options);
           this.setCachedResult(cacheKey, token);
           return token;
         } catch (error) {
           console.error('计算下一个OTP失败:', error);
-          return '------';
+          return '-'.repeat(options.digits);
         }
       }
 
@@ -131,9 +166,7 @@ export function getOTPCode() {
 
           const hashAlg = hashAlgMap[options.algorithm?.toUpperCase()] || 'SHA-1';
           const key = this.base32Decode(secret);
-          const counterBytes = new ArrayBuffer(8);
-          const counterView = new DataView(counterBytes);
-          counterView.setUint32(4, counter, false);
+          const counterBytes = this.getCounterBytes(counter);
 
           return crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: hashAlg }, false, ['sign'])
             .then(cryptoKey => crypto.subtle.sign('HMAC', cryptoKey, counterBytes))
@@ -165,9 +198,7 @@ export function getOTPCode() {
 
           // 使用纯JavaScript的HMAC实现
           const key = this.base32Decode(secret);
-          const counterBytes = new ArrayBuffer(8);
-          const counterView = new DataView(counterBytes);
-          counterView.setUint32(4, counter, false);
+          const counterBytes = this.getCounterBytes(counter);
 
           // 简化的HMAC-SHA1实现
           const hmac = this.simpleHMAC(key, new Uint8Array(counterBytes), algorithm);
@@ -353,6 +384,8 @@ export function getOTPCode() {
 
     // 保存每个验证码节点最近一次成功提交的窗口，避免首次加载或重复刷新时误触发动效
     const otpTransitionStates = new WeakMap();
+    // HOTP 文本只有与生成它的参数、counter 和实际 DOM 节点绑定后才允许复制。
+    const committedHOTPTokenStates = new WeakMap();
     const otpAnimationTimers = new WeakMap();
     const activeOTPAnimationRecords = new Set();
     // 动画会暂时让 flyer 展示旧的“下一个”验证码，而 DOM 已提交新值。
@@ -1061,21 +1094,48 @@ export function getOTPCode() {
       return !request || otpUpdateInFlight.get(secretId) === request;
     }
 
+    function getHOTPTokenFingerprint(secret) {
+      if (!secret || String(secret.type || '').toUpperCase() !== 'HOTP') return null;
+      return JSON.stringify([
+        String(secret.id),
+        secret.secret,
+        Number(secret.digits) || 6,
+        String(secret.algorithm || 'SHA1').toUpperCase(),
+        secret.counter === undefined ? 0 : secret.counter,
+        secret.hotpCounterNamespace || null
+      ]);
+    }
+
+    function getCommittedHOTPToken(secretId, secret) {
+      const element = document.getElementById('otp-' + secretId);
+      const committed = element ? committedHOTPTokenStates.get(element) : null;
+      if (
+        !committed ||
+        committed.fingerprint !== getHOTPTokenFingerprint(secret) ||
+        committed.token !== element.textContent ||
+        !isValidOTPAnimationToken(committed.token, secret.digits)
+      ) return null;
+      return committed.token;
+    }
+
     function commitOTPUpdateResult(secretId, request, result) {
       const {
         animationMode,
         clockGeneration,
         currentToken,
         currentWindow,
+        hotpFingerprint,
         isHOTP,
         nextToken,
         nextWindow,
+        secret,
         timeStep,
         tokenDigits
       } = result;
 
       // 批处理中较快的计算会等待慢卡；真正写 DOM 前必须再次确认请求、窗口和时钟代次。
       if (!isCurrentOTPUpdateRequest(secretId, request)) return;
+      if (isHOTP && hotpFingerprint !== getHOTPTokenFingerprint(secret)) return;
       if (!isHOTP) {
         if (clockGeneration !== getTrustedClockGeneration()) return;
         if (currentWindow !== otpCalculator.getCurrentTimeWindow(timeStep)) return;
@@ -1125,6 +1185,14 @@ export function getOTPCode() {
 
       if (otpElement) {
         otpElement.textContent = currentToken;
+        if (isHOTP && isValidOTPAnimationToken(currentToken, tokenDigits)) {
+          committedHOTPTokenStates.set(otpElement, {
+            fingerprint: hotpFingerprint,
+            token: currentToken
+          });
+        } else {
+          committedHOTPTokenStates.delete(otpElement);
+        }
         console.log('当前OTP更新:', currentToken, '时间窗口:', currentWindow);
       }
       if (nextOtpElement) {
@@ -1163,6 +1231,7 @@ export function getOTPCode() {
 
       const timeStep = secret.period || 30;
       const isHOTP = secret.type && secret.type.toUpperCase() === 'HOTP';
+      const hotpFingerprint = isHOTP ? getHOTPTokenFingerprint(secret) : null;
       const maxAttempts = isHOTP ? 1 : 3;
 
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -1198,9 +1267,11 @@ export function getOTPCode() {
               clockGeneration,
               currentToken,
               currentWindow,
+              hotpFingerprint,
               isHOTP,
               nextToken,
               nextWindow,
+              secret,
               timeStep,
               tokenDigits: secret.digits || 6
             }
@@ -1226,7 +1297,8 @@ export function getOTPCode() {
           secret.digits,
           secret.algorithm,
           secret.counter,
-          secret.period
+          secret.period,
+          secret.hotpCounterNamespace
         ]),
         period,
         window: isHOTP ? null : otpCalculator.getCurrentTimeWindow(period),

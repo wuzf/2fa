@@ -202,11 +202,41 @@ export const addSecretSchema = new Schema({
 		required: false,
 		type: 'number',
 		default: 0,
-		transform: (v) => parseInt(v, 10),
-		validator: (v) => {
-			const num = parseInt(v, 10);
-			return (num >= 0 && Number.isInteger(num)) || 'HOTP计数器必须是非负整数';
-		},
+		validator: (v) => (v >= 0 && Number.isSafeInteger(v)) || 'HOTP计数器必须是非负安全整数',
+	},
+});
+
+/**
+ * HOTP counter advance request validation rules.
+ */
+export const advanceHOTPCounterSchema = new Schema({
+	expectedNamespace: {
+		required: false,
+		type: 'string',
+		default: null,
+		validator: (v) => v.length > 0 || 'expectedNamespace必须是非空字符串',
+	},
+	expectedCounter: {
+		required: true,
+		type: 'number',
+		validator: (v) => (v >= 0 && Number.isSafeInteger(v)) || 'expectedCounter必须是非负安全整数',
+	},
+	expectedSecret: {
+		required: true,
+		type: 'string',
+		transform: (v) => v.toUpperCase().trim(),
+		validator: (v) => validateBase32(v).valid || 'expectedSecret不是有效的Base32密钥',
+	},
+	expectedDigits: {
+		required: true,
+		type: 'number',
+		validator: (v) => [6, 8].includes(v) || 'expectedDigits仅支持6位或8位',
+	},
+	expectedAlgorithm: {
+		required: true,
+		type: 'string',
+		transform: (v) => v.toUpperCase(),
+		validator: (v) => ['SHA1', 'SHA256', 'SHA512'].includes(v.toUpperCase()) || 'expectedAlgorithm仅支持SHA1、SHA256或SHA512',
 	},
 });
 
@@ -571,10 +601,10 @@ export function validateOTPParams({ type = 'TOTP', digits = 6, period = 30, algo
 	}
 
 	// 验证HOTP计数器
-	if (normalizedType === 'HOTP' && (counter < 0 || !Number.isInteger(counter))) {
+	if (normalizedType === 'HOTP' && (counter < 0 || !Number.isSafeInteger(counter))) {
 		return {
 			valid: false,
-			error: `HOTP计数器值"${counter}"无效，必须是大于或等于0的整数（如：0, 1, 2...）`,
+			error: `HOTP计数器值"${counter}"无效，必须是大于或等于0的安全整数（如：0, 1, 2...）`,
 		};
 	}
 

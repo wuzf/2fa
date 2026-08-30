@@ -3,6 +3,7 @@
  */
 
 import { saveSecretsToKV } from './shared.js';
+import { rotateHOTPCounterEpoch } from './counter-state.js';
 import { getLogger } from '../../utils/logger.js';
 import {
 	buildDownloadContent,
@@ -442,6 +443,9 @@ export async function handleRestoreBackup(request, env, ctx) {
 		}
 
 		await saveSecretsToKV(env, decoded.secrets, 'backup-restored', { immediate: true }, ctx);
+		// The base replacement and epoch rotation cannot be atomic in Workers KV.
+		// A rotation failure returns an error so the paused maintenance operation can be retried.
+		await rotateHOTPCounterEpoch(env);
 
 		logger.info('✅ 备份恢复完成', {
 			backupKey,

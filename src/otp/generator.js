@@ -168,7 +168,10 @@ export async function generateTOTP(secret, counter, options = {}) {
 		// 将counter转换为8字节数组
 		const counterBytes = new ArrayBuffer(8);
 		const counterView = new DataView(counterBytes);
-		counterView.setUint32(4, counter, false); // 大端序
+		const highBits = Math.floor(counter / 0x100000000);
+		const lowBits = counter % 0x100000000;
+		counterView.setUint32(0, highBits, false);
+		counterView.setUint32(4, lowBits, false);
 
 		// 支持多种哈希算法
 		const hashAlgorithm = getHashAlgorithm(algorithm);

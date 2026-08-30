@@ -161,6 +161,8 @@ export function normalizeBackupSecrets(secrets = [], _timestamp = new Date().toI
 				period: parseInteger(secret.period ?? secret.timeStep, 30),
 				algorithm: String(secret.algorithm || secret.algo || 'SHA1').toUpperCase(),
 				counter: parseInteger(secret.counter, 0),
+				...(typeof secret.hotpCounterNamespace === 'string' &&
+					secret.hotpCounterNamespace && { hotpCounterNamespace: secret.hotpCounterNamespace }),
 			};
 		})
 		.filter(Boolean);

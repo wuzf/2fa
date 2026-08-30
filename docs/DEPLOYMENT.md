@@ -238,6 +238,29 @@ git diff wrangler.toml   # 检查配置变更，确认自己维护的 KV ID、�
 npm run deploy
 ```
 
+### 回滚到 1.8.0 之前的版本
+
+1.8.0 起，HOTP 密钥每次复制验证码后的计数器递增写入独立的 KV 键（`hotp-counter:*`，当前纪元记录在 `hotp-counter-epoch`），不再改写加密主文档 `secrets`。1.8.0 之前的版本只读主文档，**直接回滚会让 HOTP 计数器退回到升级时的值**，之后生成的验证码会被服务方判定为已使用。
+
+回滚前先登录，再调用一次压实接口把有效计数器写回主文档：
+
+```bash
+# 1. 登录并保存 Cookie
+curl -X POST https://your-worker.workers.dev/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"credential":"YOUR_PASSWORD"}' \
+  -c cookies.txt
+
+# 2. 压实 HOTP 计数器
+curl -X POST https://your-worker.workers.dev/api/secrets/counters/compact \
+  -H "X-Confirm-Maintenance: compact-hotp-counters" \
+  -b cookies.txt
+```
+
+返回 `"success":true` 并带有 `compactedCount`（HOTP 密钥数）即完成，之后再到 Cloudflare Dashboard → Worker → **Deployments** 回滚，或用命令行部署旧版本。返回 500 时直接重试，轮换成功前旧计数器仍然有效。压实期间不要在其他设备复制 HOTP 验证码。没有 HOTP 密钥的部署可以跳过这一步。
+
+接口细节见 [API 参考：压实 HOTP 计数器](API_REFERENCE.md#压实-hotp-计数器)。
+
 ---
 
 ## 故障排查

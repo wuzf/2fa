@@ -386,7 +386,7 @@ function getHTMLBody() {
             <div class="form-row" id="counterRow" style="display: none;">
               <div class="form-group-small" id="counterGroup">
                 <label for="secretCounter">📊 计数器</label>
-                <input type="number" id="secretCounter" value="0" min="0" step="1" placeholder="初始计数器值" autocomplete="off">
+                <input type="number" id="secretCounter" value="0" min="0" max="9007199254740991" step="1" placeholder="初始计数器值" autocomplete="off">
               </div>
             </div>
             

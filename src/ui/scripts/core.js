@@ -18,6 +18,58 @@ export function getCoreCode() {
 
     // ========== Service Logo 处理逻辑（唯一实现） ==========
     // 注意：逻辑只在客户端实现，服务器端的 serviceLogos.js 只是纯数据配置
+    const hotpCopyLocks = new Map();
+    const SECRETS_CACHE_KEY = '2fa-secrets-cache';
+
+    function cacheSecretsLocally() {
+      try {
+        localStorage.setItem(SECRETS_CACHE_KEY, JSON.stringify({
+          data: secrets,
+          timestamp: Date.now()
+        }));
+        return true;
+      } catch (error) {
+        console.warn('缓存数据失败:', error);
+        return false;
+      }
+    }
+
+    function getHOTPGenerationSnapshot(secret) {
+      const counter = secret && secret.counter !== undefined ? secret.counter : 0;
+      const nextCounter = counter + 1;
+      if (
+        !secret ||
+        String(secret.type || '').toUpperCase() !== 'HOTP' ||
+        !Number.isSafeInteger(counter) ||
+        counter < 0 ||
+        !Number.isSafeInteger(nextCounter)
+      ) {
+        return null;
+      }
+
+      return {
+        id: String(secret.id),
+        counter,
+        nextCounter,
+        secret: secret.secret,
+        digits: Number(secret.digits) || 6,
+        algorithm: String(secret.algorithm || 'SHA1').toUpperCase(),
+        hotpCounterNamespace: secret.hotpCounterNamespace || null
+      };
+    }
+
+    function matchesHOTPGenerationSnapshot(secret, snapshot) {
+      return !!(
+        secret &&
+        snapshot &&
+        String(secret.id) === snapshot.id &&
+        String(secret.type || '').toUpperCase() === 'HOTP' &&
+        secret.secret === snapshot.secret &&
+        (Number(secret.digits) || 6) === snapshot.digits &&
+        String(secret.algorithm || 'SHA1').toUpperCase() === snapshot.algorithm &&
+        (secret.hotpCounterNamespace || null) === snapshot.hotpCounterNamespace
+      );
+    }
 
     /**
      * 将服务名拆分为单词数组（处理空格、连字符、点号等分隔符）
@@ -140,7 +192,7 @@ export function getCoreCode() {
 
     // 加载密钥列表
     async function loadSecrets() {
-      const CACHE_KEY = '2fa-secrets-cache';
+      const loadGeneration = ++secretLoadGeneration;
       try {
         await ensureServerTimeSynchronized();
         const response = await authenticatedFetch('/api/secrets');
@@ -154,25 +206,21 @@ export function getCoreCode() {
           throw new Error('加载失败: ' + response.statusText);
         }
 
-        secrets = await response.json();
+        const loadedSecrets = await response.json();
+        if (loadGeneration !== secretLoadGeneration) return;
+        secrets = loadedSecrets;
 
         // 成功获取数据后，保存到 localStorage 作为缓存
-        try {
-          localStorage.setItem(CACHE_KEY, JSON.stringify({
-            data: secrets,
-            timestamp: Date.now()
-          }));
-        } catch (e) {
-          console.warn('缓存数据失败:', e);
-        }
+        cacheSecretsLocally();
 
         await renderSecrets();
       } catch (error) {
+        if (loadGeneration !== secretLoadGeneration) return;
         console.error('加载密钥失败:', error);
 
         // 尝试从缓存中读取数据
         try {
-          const cached = localStorage.getItem(CACHE_KEY);
+          const cached = localStorage.getItem(SECRETS_CACHE_KEY);
           if (cached) {
             const { data, timestamp } = JSON.parse(cached);
             secrets = data;
@@ -248,7 +296,7 @@ export function getCoreCode() {
             '<div class="secret-text">' +
             '<h3>' + secret.name + (isHOTP ? ' <span style="font-size: 11px; color: var(--text-tertiary); font-weight: 500;">[HOTP]</span>' : '') + '</h3>' +
             (secret.account ? '<p>' + secret.account + '</p>' : '') +
-            (isHOTP ? '<p style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">计数器: ' + (secret.counter || 0) + '</p>' : '') +
+            (isHOTP ? '<p id="counter-' + secret.id + '" style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">计数器: ' + (secret.counter ?? 0) + '</p>' : '') +
             '</div>' +
           '</div>' +
           '<div class="card-menu" onclick="event.stopPropagation(); toggleCardMenu(&quot;' + secret.id + '&quot;)">' +
@@ -420,6 +468,11 @@ export function getCoreCode() {
       // 关闭所有打开的卡片菜单
       closeAllCardMenus();
 
+      const secret = secrets.find(s => String(s.id) === String(secretId));
+      if (secret && String(secret.type || '').toUpperCase() === 'HOTP') {
+        return copyHOTPAndAdvanceCounter(secretId);
+      }
+
       const otpElement = document.getElementById('otp-' + secretId);
       if (!otpElement) return;
 
@@ -438,6 +491,195 @@ export function getCoreCode() {
         document.body.removeChild(textArea);
         showOTPCopyFeedback(secretId);
       }
+    }
+
+    function copyHOTPAndAdvanceCounter(secretId) {
+      const lockKey = String(secretId);
+      const existing = hotpCopyLocks.get(lockKey);
+      if (existing) return existing;
+
+      // 等待更早的编辑/删除完成后再读取并复制，保证验证码与随后推进的 counter 属于同一快照。
+      const operation = saveQueue
+        .then(() => performHOTPCopyAndAdvance(secretId))
+        .catch(async error => {
+          console.error('HOTP 计数器更新失败:', error);
+          try {
+            await loadSecrets();
+          } catch (reconcileError) {
+            console.warn('重新加载 HOTP 计数器失败:', reconcileError);
+          }
+          const message = error.hotpCopied
+            ? '验证码已复制，但本地计数器同步失败：'
+            : '验证码未复制，计数器状态已重新对账：';
+          showCenterToast('⚠️', message + error.message);
+          return false;
+        });
+      hotpCopyLocks.set(lockKey, operation);
+      saveQueue = operation.then(() => undefined);
+      const clearLock = () => {
+        if (hotpCopyLocks.get(lockKey) === operation) {
+          hotpCopyLocks.delete(lockKey);
+        }
+      };
+      operation.then(clearLock, clearLock);
+      return operation;
+    }
+
+    async function performHOTPCopyAndAdvance(secretId) {
+      const secret = secrets.find(item => String(item.id) === String(secretId));
+      const snapshot = getHOTPGenerationSnapshot(secret);
+      if (!snapshot) {
+        showCenterToast('⚠️', 'HOTP 计数器无效或已达到上限');
+        return false;
+      }
+
+      const otpElement = document.getElementById('otp-' + secretId);
+      if (!otpElement) return false;
+
+      // 被批次替换的更新也会 resolve；必须同步确认节点实际提交了当前 counter 的验证码。
+      const otpText = getCommittedHOTPToken(secretId, secret);
+      if (!otpText) {
+        // 恢复计算失败或被取消的 HOTP；本次不等待计算后自动复制，避免丢失用户激活。
+        updateOTP(secretId, null, secret).catch(error => console.warn('刷新 HOTP 失败:', error));
+        showCenterToast('⏳', '验证码正在更新，请稍后重试');
+        return false;
+      }
+      if (navigator.onLine === false) {
+        showCenterToast('⚠️', '离线状态下无法安全复制 HOTP 验证码');
+        return false;
+      }
+
+      // 本地校验通过并即将预留；更早开始的 GET 不得在复制后回写旧状态。
+      secretLoadGeneration += 1;
+      // 剪贴板调用必须在用户激活仍有效时启动；与服务端预留并发，避免网络 await 后权限失效。
+      const clipboardOperation = copyHOTPText(otpText);
+      const reservationOperation = reserveHOTPCounter(snapshot);
+      const [clipboardResult, reservationResult] = await Promise.allSettled([
+        clipboardOperation,
+        reservationOperation
+      ]);
+      const copied = clipboardResult.status === 'fulfilled' && clipboardResult.value === true;
+      if (reservationResult.status === 'rejected') {
+        const reservationError = reservationResult.reason instanceof Error
+          ? reservationResult.reason
+          : new Error(String(reservationResult.reason));
+        reservationError.hotpCopied = copied;
+        throw reservationError;
+      }
+
+      try {
+        await commitReservedHOTPCounter(snapshot);
+      } catch (error) {
+        error.hotpCopied = copied;
+        throw error;
+      }
+
+      if (!copied) {
+        showCenterToast('⚠️', '复制失败，HOTP 计数器已安全推进，请使用新验证码重试');
+        return false;
+      }
+
+      showOTPCopyFeedback(secretId);
+      return true;
+    }
+
+    async function copyHOTPText(otpText) {
+      try {
+        await navigator.clipboard.writeText(otpText);
+        return true;
+      } catch (clipboardError) {
+        const textArea = document.createElement('textarea');
+        try {
+          textArea.value = otpText;
+          document.body.appendChild(textArea);
+          textArea.select();
+          if (document.execCommand('copy') === false) throw clipboardError;
+          return true;
+        } catch (fallbackError) {
+          console.warn('HOTP 复制失败:', fallbackError);
+          return false;
+        } finally {
+          if (textArea.parentNode) textArea.parentNode.removeChild(textArea);
+        }
+      }
+    }
+
+    async function reserveHOTPCounter(snapshot) {
+      const queuedSecret = secrets.find(item => String(item.id) === snapshot.id);
+      const queuedCounter = queuedSecret && queuedSecret.counter !== undefined
+        ? queuedSecret.counter
+        : 0;
+      if (
+        !matchesHOTPGenerationSnapshot(queuedSecret, snapshot) ||
+        queuedCounter !== snapshot.counter
+      ) {
+        throw new Error('密钥已发生变化，已取消旧验证码的计数器更新');
+      }
+
+      const response = await authenticatedFetch(
+        '/api/secrets/' + encodeURIComponent(snapshot.id) + '/counter',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            expectedCounter: snapshot.counter,
+            expectedSecret: snapshot.secret,
+            expectedDigits: snapshot.digits,
+            expectedAlgorithm: snapshot.algorithm,
+            expectedNamespace: snapshot.hotpCounterNamespace
+          })
+        }
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || result.error || '服务器拒绝更新计数器');
+      }
+
+      const queuedOffline = result.queued === true && result.offline === true;
+      if (queuedOffline) {
+        throw new Error('离线状态下无法安全推进 HOTP 计数器');
+      }
+      const responseSecret = result.data && result.data.secret;
+      if (
+        (!matchesHOTPGenerationSnapshot(responseSecret, snapshot) ||
+          responseSecret.counter !== snapshot.nextCounter)
+      ) {
+        throw new Error('服务器返回了无效的计数器状态');
+      }
+
+      const currentSecret = secrets.find(item => String(item.id) === snapshot.id);
+      const currentCounter = currentSecret && currentSecret.counter !== undefined
+        ? currentSecret.counter
+        : 0;
+      if (
+        !matchesHOTPGenerationSnapshot(currentSecret, snapshot) ||
+        (currentCounter !== snapshot.counter &&
+          currentCounter !== snapshot.nextCounter)
+      ) {
+        throw new Error('密钥状态已更新，请刷新后重试');
+      }
+    }
+
+    async function commitReservedHOTPCounter(snapshot) {
+      const currentSecret = secrets.find(item => String(item.id) === snapshot.id);
+      const currentCounter = currentSecret && currentSecret.counter !== undefined
+        ? currentSecret.counter
+        : 0;
+      if (
+        !matchesHOTPGenerationSnapshot(currentSecret, snapshot) ||
+        (currentCounter !== snapshot.counter &&
+          currentCounter !== snapshot.nextCounter)
+      ) {
+        throw new Error('密钥状态已更新，请刷新后重试');
+      }
+      // 使 POST 期间启动的 GET 失效，再提交本地新 counter。
+      secretLoadGeneration += 1;
+      currentSecret.counter = snapshot.nextCounter;
+      cacheSecretsLocally();
+      const counterElement = document.getElementById('counter-' + snapshot.id);
+      if (counterElement) counterElement.textContent = '计数器: ' + snapshot.nextCounter;
+      await updateOTP(snapshot.id, null, currentSecret);
     }
 
     function showOTPCopyFeedback(secretId) {
@@ -731,10 +973,18 @@ export function getCoreCode() {
       const digits = parseInt(document.getElementById('secretDigits').value) || 6;
       const period = parseInt(document.getElementById('secretPeriod').value) || 30;
       const algorithm = document.getElementById('secretAlgorithm').value || 'SHA1';
-      const counter = parseInt(document.getElementById('secretCounter').value) || 0;
+      const counterValue = document.getElementById('secretCounter').value;
+      const counter = counterValue === '' ? 0 : Number(counterValue);
 
       if (!name || !secret) {
         showCenterToast('❌', '请填写服务名称和密钥');
+        return;
+      }
+      if (
+        type.toUpperCase() === 'HOTP' &&
+        (!Number.isSafeInteger(counter) || counter < 0)
+      ) {
+        showCenterToast('❌', 'HOTP 计数器必须是 0 到 9007199254740991 之间的整数');
         return;
       }
 

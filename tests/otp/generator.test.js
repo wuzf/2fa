@@ -399,6 +399,16 @@ describe('OTP Generator - RFC 测试向量', () => {
       expect(otp).toBeDefined();
       expect(otp).toMatch(/^\d{6}$/);
     });
+
+    it('应该编码大于 32 位的完整 counter', async () => {
+      const secret = 'JBSWY3DPEHPK3PXP';
+      const counter = 0x100000001;
+
+      const preview = await generateTOTP(secret, counter, { type: 'HOTP' });
+      const generated = await generateOTP(secret, 0, { type: 'HOTP', counter });
+
+      expect(preview).toBe(generated);
+    });
   });
 
   describe('generateOTPAuthURL - OTPAuth URL 生成', () => {

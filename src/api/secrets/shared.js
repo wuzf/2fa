@@ -7,6 +7,7 @@ import { getLogger } from '../../utils/logger.js';
 import { triggerBackup } from '../../utils/backup.js';
 import { KV_KEYS } from '../../utils/constants.js';
 import { clearPendingDataHash, stageDataHash } from '../../utils/data-hash.js';
+import { overlayHOTPCounterStates, overlaySingleHOTPCounterState } from './counter-state.js';
 
 /**
  * Save secrets to KV and trigger event-driven backup.
@@ -17,8 +18,8 @@ import { clearPendingDataHash, stageDataHash } from '../../utils/data-hash.js';
  */
 export async function saveSecretsToKV(env, secrets, reason = 'update', options = {}, ctx) {
 	const logger = getLogger(env);
-	const { immediate = false, skipBackup = false } = options;
-	const shouldStageDataHash = Boolean(ctx?.waitUntil) && immediate !== true && skipBackup !== true;
+	const { immediate = false, skipBackup = false, skipEventBackup = false } = options;
+	const shouldStageDataHash = Boolean(ctx?.waitUntil) && immediate !== true && skipBackup !== true && skipEventBackup !== true;
 
 	try {
 		const encryptedData = await encryptSecrets(secrets, env);
@@ -28,6 +29,15 @@ export async function saveSecretsToKV(env, secrets, reason = 'update', options =
 			logger.info('✅ 密钥已加密保存', { count: secrets.length });
 		} else {
 			logger.warn('⚠️ 密钥以明文保存（未配置 ENCRYPTION_KEY）', { count: secrets.length });
+		}
+
+		if (skipEventBackup === true) {
+			const stagedHash = await stageDataHash(env, secrets);
+			if (stagedHash === null) {
+				throw new Error('无法stage compact后的数据哈希');
+			}
+			logger.debug('已跳过事件备份并stage数据哈希', { reason });
+			return;
 		}
 
 		if (skipBackup === true) {
@@ -102,9 +112,23 @@ export async function getAllSecrets(env) {
 
 	try {
 		const secretsData = await env.SECRETS_KV.get(KV_KEYS.SECRETS, 'text');
-		return await decryptSecrets(secretsData, env);
+		const secrets = await decryptSecrets(secretsData, env);
+		return await overlayHOTPCounterStates(env, secrets);
 	} catch (error) {
 		logger.error('获取密钥列表失败', { errorMessage: error.message }, error);
 		throw error;
 	}
+}
+
+/**
+ * Read one base secret and overlay only its HOTP sidecar.
+ */
+export async function getSecretByIdWithHOTPState(env, secretId) {
+	const secretsData = await env.SECRETS_KV.get(KV_KEYS.SECRETS, 'text');
+	const secrets = await decryptSecrets(secretsData, env);
+	const secret = secrets.find((item) => String(item.id) === String(secretId));
+	if (!secret) {
+		return { secret: null, epoch: null };
+	}
+	return overlaySingleHOTPCounterState(env, secret);
 }

@@ -5,6 +5,8 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { handleBatchAddSecrets } from '../../src/api/secrets/batch.js';
+import { decryptSecrets, encryptSecrets } from '../../src/utils/encryption.js';
+import { saveHOTPCounterState } from '../../src/api/secrets/counter-state.js';
 
 // Mock KV 存储
 class MockKV {
@@ -13,6 +15,9 @@ class MockKV {
   }
 
   async get(key, type = 'text') {
+		if (Array.isArray(key)) {
+			return new Map(await Promise.all(key.map(async (item) => [item, await this.get(item, type)])));
+		}
     const value = this.store.get(key);
     if (value === undefined) {
       return null;
@@ -371,6 +376,31 @@ describe('Batch Import API Module', () => {
       expect(data.results[0].secret.type).toBe('HOTP');
       expect(data.results[0].secret.counter).toBe(0);
     });
+
+		it('批量导入保存时保留现有HOTP sidecar有效计数器', async () => {
+			const env = createMockEnv();
+			const existingHOTP = {
+				id: 'existing-hotp',
+				name: 'Existing HOTP',
+				account: '',
+				secret: 'JBSWY3DPEHPK3PXP',
+				type: 'HOTP',
+				digits: 6,
+				period: 30,
+				algorithm: 'SHA1',
+				counter: 2
+			};
+			await env.SECRETS_KV.put('secrets', await encryptSecrets([existingHOTP], env));
+			await saveHOTPCounterState(env, existingHOTP, 9);
+
+			const response = await handleBatchAddSecrets(createMockRequest({
+				secrets: [{ name: 'New TOTP', secret: 'MFRGGZDFMZTWQ2LK' }]
+			}), env);
+			const storedSecrets = await decryptSecrets(await env.SECRETS_KV.get('secrets', 'text'), env);
+
+			expect(response.status).toBe(200);
+			expect(storedSecrets.find(({ id }) => id === existingHOTP.id).counter).toBe(9);
+		});
 
     it('应该设置默认值', async () => {
       const env = createMockEnv();

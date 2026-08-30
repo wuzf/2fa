@@ -139,13 +139,14 @@ export async function handleGenerateOTP(secret, request = null) {
 			digits = parseInt(url.searchParams.get('digits')) || 6;
 			period = parseInt(url.searchParams.get('period')) || 30;
 			algorithm = url.searchParams.get('algorithm') || 'SHA1';
-			counter = parseInt(url.searchParams.get('counter')) || 0;
+			const counterParam = url.searchParams.get('counter');
+			counter = counterParam === null || counterParam === '' ? 0 : Number(counterParam);
 			format = url.searchParams.get('format') || 'html'; // 支持 ?format=json
 
 			// 验证OTP参数
 			const otpValidation = validateOTPParams({ type, digits, period, algorithm, counter });
 			if (!otpValidation.valid) {
-				return createErrorResponse('OTP参数验证失败', otpValidation.errors.join('; '), 400, request);
+				return createErrorResponse('OTP参数验证失败', otpValidation.error, 400, request);
 			}
 		}
 

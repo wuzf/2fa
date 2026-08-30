@@ -9,6 +9,8 @@ import {
 	handleAddSecret,
 	handleUpdateSecret,
 	handleDeleteSecret,
+	handleAdvanceHOTPCounter,
+	handleCompactHOTPCounters,
 	handleGenerateOTP,
 	handleBatchAddSecrets,
 	handleBackupSecrets,
@@ -297,6 +299,22 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 	if (pathname === '/api/secrets/export') {
 		if (method === 'POST') {
 			return handleExportSecrets(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
+	// 回滚旧版本前显式压实HOTP sidecar（受统一API认证保护）
+	if (pathname === '/api/secrets/counters/compact') {
+		if (method === 'POST') {
+			return handleCompactHOTPCounters(request, env, ctx);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
+	// HOTP 计数器递增API（必须在 /api/secrets/{id} 之前匹配）
+	if (/^\/api\/secrets\/[^/]+\/counter$/.test(pathname)) {
+		if (method === 'POST') {
+			return handleAdvanceHOTPCounter(request, env, ctx);
 		}
 		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 	}

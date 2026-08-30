@@ -3,11 +3,12 @@
  * 测试 Base32 验证、OTP 参数验证、密钥数据验证
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   validateBase32,
   validateSecretData,
   validateOTPParams,
+  addSecretSchema,
   createSecretObject,
   sortSecretsByName,
   checkDuplicateSecret
@@ -45,23 +46,11 @@ describe('Validation Utils', () => {
         'INVALID8',        // 包含 8
         'INVALID9',        // 包含 9
         'invalid@#$',      // 特殊字符
-        'JBSWY3DP EHPK3P', // 空格（测试会清理）
-        'hello world',     // 小写和空格
       ];
 
       invalidSecrets.forEach(secret => {
-        const result = validateBase32(secret);
-        // 注意：空格会被清理，所以 'JBSWY3DP EHPK3P' 实际上有效
-        if (!secret.match(/[089]/)) {
-          // 不包含 0、8、9 的可能仍然有效
-        }
+        expect(validateBase32(secret).valid).toBe(false);
       });
-
-      // 明确测试包含数字 0, 1, 8, 9 的情况
-      expect(validateBase32('INVALID0').valid).toBe(false);
-      expect(validateBase32('INVALID1').valid).toBe(false);
-      expect(validateBase32('INVALID8').valid).toBe(false);
-      expect(validateBase32('INVALID9').valid).toBe(false);
     });
 
     it('应该拒绝过短的密钥', () => {
@@ -335,12 +324,18 @@ describe('Validation Utils', () => {
     });
 
     it('应该接受有效的 HOTP 计数器', () => {
-      const validCounters = [0, 1, 10, 100, 1000];
+      const validCounters = [0, 1, 10, 100, 1000, Number.MAX_SAFE_INTEGER];
 
       validCounters.forEach(counter => {
         const result = validateOTPParams({ type: 'HOTP', counter });
         expect(result.valid).toBe(true);
       });
+    });
+
+    it('应该拒绝超出安全整数范围的 HOTP 计数器', () => {
+      const result = validateOTPParams({ type: 'HOTP', counter: Number.MAX_SAFE_INTEGER + 1 });
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('安全整数');
     });
 
     it('应该在 TOTP 模式下忽略周期验证以外的参数', () => {
@@ -351,6 +346,26 @@ describe('Validation Utils', () => {
         counter: 999 // 应该被忽略
       });
       expect(result.valid).toBe(true);
+    });
+  });
+
+  describe('addSecretSchema HOTP counter', () => {
+    const baseSecret = {
+      name: 'Hardware Token',
+      secret: 'JBSWY3DPEHPK3PXP',
+      type: 'HOTP'
+    };
+
+    it('应该接受最大安全整数', () => {
+      const result = addSecretSchema.validate({ ...baseSecret, counter: Number.MAX_SAFE_INTEGER });
+      expect(result.valid).toBe(true);
+      expect(result.data.counter).toBe(Number.MAX_SAFE_INTEGER);
+    });
+
+    it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1])('应该拒绝无效或不安全的计数器 %s', (counter) => {
+      const result = addSecretSchema.validate({ ...baseSecret, counter });
+      expect(result.valid).toBe(false);
+      expect(result.errors.join('; ')).toContain('安全整数');
     });
   });
 

@@ -72,6 +72,8 @@ This approach does not affect existing Workers, KV bindings, or Secrets. **If yo
 
 > ⚠️ `ENCRYPTION_KEY` is the master key for decrypting existing data. Please make sure to save it to a password manager when first created. Cloudflare Secrets cannot be viewed after saving; normal upgrades don't require re-entry, but if you delete it without saving the original value, existing encrypted data cannot be recovered.
 
+> ⚠️ **Rolling back to a version before 1.8.0**: Since 1.8.0, HOTP counter increments are stored separately from the main data. Before rolling back, call the compaction endpoint once to write the counters back; otherwise HOTP counters revert to their values at upgrade time. See [rollback steps](docs/DEPLOYMENT.md#回滚到-180-之前的版本) (Chinese). Deployments that only use TOTP are not affected.
+
 #### Checking the Merge Result
 
 The `Sync Upstream` workflow is designed to always complete upgrades on **the same repository and the same Worker**. The workflow now automatically merges `wrangler.toml` and shows the diff with upstream in the summary, so you can confirm which values come from your local deployment config:

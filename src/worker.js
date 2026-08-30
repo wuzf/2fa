@@ -14,10 +14,9 @@
  */
 
 import { handleRequest, handleCORS } from './router/handler.js';
-import { decryptSecrets } from './utils/encryption.js';
+import { getAllSecrets } from './api/secrets/shared.js';
 import { getLogger, createRequestLogger, PerformanceTimer } from './utils/logger.js';
 import { getMonitoring, ErrorSeverity } from './utils/monitoring.js';
-import { KV_KEYS } from './utils/constants.js';
 import { pushToAllWebDAV } from './utils/webdav.js';
 import { pushToAllS3 } from './utils/s3.js';
 import { pushToAllOneDrive } from './utils/onedrive.js';
@@ -28,42 +27,6 @@ import { createBackupEntry, isValidBackupKey, parseBackupTimeFromKey } from './u
 import { generateDataHash, getPendingDataHash, isPendingDataHashFresh, saveDataHash } from './utils/data-hash.js';
 
 export { generateDataHash, saveDataHash } from './utils/data-hash.js';
-
-/**
- * 获取所有密钥
- * 🔒 自动解密数据
- * @param {Object} env - 环境变量对象
- * @returns {Array} 密钥列表
- */
-async function getAllSecrets(env) {
-	const logger = getLogger(env);
-
-	try {
-		// 从 KV_KEYS.SECRETS 键获取所有密钥（可能是加密的）
-		const secretsData = await env.SECRETS_KV.get(KV_KEYS.SECRETS, 'text');
-
-		if (!secretsData) {
-			logger.info('没有找到密钥数据');
-			return [];
-		}
-
-		// 🔒 解密数据（自动检测是否加密）
-		const secrets = await decryptSecrets(secretsData, env);
-
-		// 确保返回的是数组
-		if (Array.isArray(secrets)) {
-			return secrets;
-		} else {
-			logger.warn('密钥数据格式不正确，期望数组', {
-				actualType: typeof secrets,
-			});
-			return [];
-		}
-	} catch (error) {
-		logger.error('获取密钥列表失败', {}, error);
-		return [];
-	}
-}
 
 /**
  * 检查数据是否发生变化

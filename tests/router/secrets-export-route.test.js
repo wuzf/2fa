@@ -5,6 +5,8 @@ vi.mock('../../src/api/secrets/index.js', () => ({
 	handleAddSecret: vi.fn(),
 	handleUpdateSecret: vi.fn(),
 	handleDeleteSecret: vi.fn(),
+	handleAdvanceHOTPCounter: vi.fn(),
+	handleCompactHOTPCounters: vi.fn(),
 	handleGenerateOTP: vi.fn(),
 	handleBatchAddSecrets: vi.fn(),
 	handleBackupSecrets: vi.fn(),

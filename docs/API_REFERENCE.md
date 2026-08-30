@@ -127,39 +127,41 @@ Set-Cookie: auth_token=<NEW_JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-A
 
 ## 端点列表
 
-| 端点                                        | 方法   | 认证 | 限流    | 描述                         |
-| ------------------------------------------- | ------ | ---- | ------- | ---------------------------- |
-| `/api/setup`                                | POST   | ❌   | 5/min   | 首次设置                     |
-| [/api/time](#获取服务端时间)                | GET    | ❌   | -       | 获取 Worker Unix 毫秒时间    |
-| [/api/secrets](#获取所有密钥)               | GET    | ✅   | 60/min  | 获取所有密钥                 |
-| [/api/secrets](#添加新密钥)                 | POST   | ✅   | 60/min  | 添加新密钥                   |
-| [/api/secrets/{id}](#更新密钥)              | PUT    | ✅   | 60/min  | 更新指定密钥                 |
-| [/api/secrets/{id}](#删除密钥)              | DELETE | ✅   | 60/min  | 删除指定密钥                 |
-| [/api/secrets/batch](#批量添加密钥)         | POST   | ✅   | 20/5m   | 批量添加密钥                 |
-| [/api/secrets/export](#批量导出密钥)        | POST   | ✅   | 10/min  | 导出标准 TXT/JSON/CSV/HTML   |
-| [/api/backup](#手动触发备份)                | POST   | ✅   | 5/min   | 手动触发备份                 |
-| [/api/backup](#获取备份列表)                | GET    | ✅   | 30/min  | 获取备份列表                 |
-| [/api/backup/export/{backupKey}](#导出备份) | GET    | ✅   | 10/min  | 导出指定备份                 |
-| [/api/backup/restore](#恢复备份)            | POST   | ✅   | 5/min   | 恢复或预览指定备份           |
-| `/api/change-password`                      | POST   | ✅   | 10/min  | 修改密码                     |
-| `/api/settings`                             | GET    | ✅   | -       | 获取系统设置                 |
-| `/api/settings`                             | POST   | ✅   | 10/min  | 保存系统设置                 |
-| `/api/onedrive/config`                      | GET    | ✅   | 30/min  | 获取 OneDrive 目标           |
-| `/api/onedrive/config`                      | POST   | ✅   | 10/min  | 保存 OneDrive 目标           |
-| `/api/onedrive/config?id={id}`              | DELETE | ✅   | 10/min  | 删除 OneDrive 目标           |
-| `/api/onedrive/toggle`                      | POST   | ✅   | 10/min  | 启用或禁用 OneDrive 目标     |
-| `/api/onedrive/oauth/start`                 | POST   | ✅   | 10/min  | 启动 OneDrive OAuth          |
-| `/api/onedrive/oauth/callback`              | GET    | ❌   | -       | OneDrive OAuth 回调          |
-| `/api/gdrive/config`                        | GET    | ✅   | 30/min  | 获取 Google Drive 目标       |
-| `/api/gdrive/config`                        | POST   | ✅   | 10/min  | 保存 Google Drive 目标       |
-| `/api/gdrive/config?id={id}`                | DELETE | ✅   | 10/min  | 删除 Google Drive 目标       |
-| `/api/gdrive/toggle`                        | POST   | ✅   | 10/min  | 启用或禁用 Google Drive 目标 |
-| `/api/gdrive/oauth/start`                   | POST   | ✅   | 10/min  | 启动 Google Drive OAuth      |
-| `/api/gdrive/oauth/callback`                | GET    | ❌   | -       | Google Drive OAuth 回调      |
-| [/api/login](#获取认证-token)               | POST   | ❌   | 5/min   | 用户登录                     |
-| [/api/logout](#退出登录)                    | POST   | ❌   | 10/min  | 退出登录（清除 Cookie）      |
-| [/api/refresh-token](#token-刷新)           | POST   | ✅   | -       | 刷新 Token                   |
-| [/otp/{secret}](#otp-生成)                  | GET    | ❌   | 100/min | 公开 OTP 生成                |
+| 端点                                               | 方法   | 认证 | 限流    | 描述                         |
+| -------------------------------------------------- | ------ | ---- | ------- | ---------------------------- |
+| `/api/setup`                                       | POST   | ❌   | 5/min   | 首次设置                     |
+| [/api/time](#获取服务端时间)                       | GET    | ❌   | -       | 获取 Worker Unix 毫秒时间    |
+| [/api/secrets](#获取所有密钥)                      | GET    | ✅   | 60/min  | 获取所有密钥                 |
+| [/api/secrets](#添加新密钥)                        | POST   | ✅   | 60/min  | 添加新密钥                   |
+| [/api/secrets/{id}](#更新密钥)                     | PUT    | ✅   | 60/min  | 更新指定密钥                 |
+| [/api/secrets/{id}](#删除密钥)                     | DELETE | ✅   | 60/min  | 删除指定密钥                 |
+| [/api/secrets/{id}/counter](#递增-hotp-计数器)     | POST   | ✅   | -       | 递增 HOTP 计数器             |
+| [/api/secrets/counters/compact](#压实-hotp-计数器) | POST   | ✅   | -       | 回滚前压实 HOTP 计数器       |
+| [/api/secrets/batch](#批量添加密钥)                | POST   | ✅   | 20/5m   | 批量添加密钥                 |
+| [/api/secrets/export](#批量导出密钥)               | POST   | ✅   | 10/min  | 导出标准 TXT/JSON/CSV/HTML   |
+| [/api/backup](#手动触发备份)                       | POST   | ✅   | 5/min   | 手动触发备份                 |
+| [/api/backup](#获取备份列表)                       | GET    | ✅   | 30/min  | 获取备份列表                 |
+| [/api/backup/export/{backupKey}](#导出备份)        | GET    | ✅   | 10/min  | 导出指定备份                 |
+| [/api/backup/restore](#恢复备份)                   | POST   | ✅   | 5/min   | 恢复或预览指定备份           |
+| `/api/change-password`                             | POST   | ✅   | 10/min  | 修改密码                     |
+| `/api/settings`                                    | GET    | ✅   | -       | 获取系统设置                 |
+| `/api/settings`                                    | POST   | ✅   | 10/min  | 保存系统设置                 |
+| `/api/onedrive/config`                             | GET    | ✅   | 30/min  | 获取 OneDrive 目标           |
+| `/api/onedrive/config`                             | POST   | ✅   | 10/min  | 保存 OneDrive 目标           |
+| `/api/onedrive/config?id={id}`                     | DELETE | ✅   | 10/min  | 删除 OneDrive 目标           |
+| `/api/onedrive/toggle`                             | POST   | ✅   | 10/min  | 启用或禁用 OneDrive 目标     |
+| `/api/onedrive/oauth/start`                        | POST   | ✅   | 10/min  | 启动 OneDrive OAuth          |
+| `/api/onedrive/oauth/callback`                     | GET    | ❌   | -       | OneDrive OAuth 回调          |
+| `/api/gdrive/config`                               | GET    | ✅   | 30/min  | 获取 Google Drive 目标       |
+| `/api/gdrive/config`                               | POST   | ✅   | 10/min  | 保存 Google Drive 目标       |
+| `/api/gdrive/config?id={id}`                       | DELETE | ✅   | 10/min  | 删除 Google Drive 目标       |
+| `/api/gdrive/toggle`                               | POST   | ✅   | 10/min  | 启用或禁用 Google Drive 目标 |
+| `/api/gdrive/oauth/start`                          | POST   | ✅   | 10/min  | 启动 Google Drive OAuth      |
+| `/api/gdrive/oauth/callback`                       | GET    | ❌   | -       | Google Drive OAuth 回调      |
+| [/api/login](#获取认证-token)                      | POST   | ❌   | 5/min   | 用户登录                     |
+| [/api/logout](#退出登录)                           | POST   | ❌   | 10/min  | 退出登录（清除 Cookie）      |
+| [/api/refresh-token](#token-刷新)                  | POST   | ✅   | -       | 刷新 Token                   |
+| [/otp/{secret}](#otp-生成)                         | GET    | ❌   | 100/min | 公开 OTP 生成                |
 
 ---
 
@@ -207,6 +209,9 @@ Cookie: auth_token=<JWT_TOKEN>
 | `name` | String | 服务名称（如 "GitHub"） |
 | `account` | String | 账户名称（可选） |
 | `secret` | String | Base32 编码的密钥 |
+| `type` / `digits` / `period` / `algorithm` | String / Number / Number / String | OTP 参数，见[添加新密钥](#添加新密钥) |
+| `counter` | Number | 仅 HOTP。返回的是叠加 sidecar 后的**有效计数器**，见[递增 HOTP 计数器](#递增-hotp-计数器) |
+| `hotpCounterNamespace` | String (UUID) | 仅 HOTP，可选。编辑时变更了密钥、位数或算法后由服务端生成，用于隔离不同生成参数的计数器；客户端只需原样透传 |
 
 ---
 
@@ -330,6 +335,25 @@ Cookie: auth_token=<JWT_TOKEN>
 }
 ```
 
+**409 Conflict** - HOTP 计数器不能通过编辑降低：
+
+当密钥、位数、算法都未变化时，请求体中的 `counter` 不能低于服务端当前有效值（计数器只允许通过[递增接口](#递增-hotp-计数器)前进）。客户端应重新拉取密钥列表后再提交编辑。需要把计数器归零时，请删除后重新添加，或同时更换密钥。
+
+```json
+{
+	"error": "ConflictError",
+	"message": "HOTP计数器已推进，不能通过编辑操作降低计数器",
+	"statusCode": 409,
+	"details": {
+		"operation": "updateSecret",
+		"secretId": "550e8400-e29b-41d4-a716-446655440000",
+		"requestedCounter": 3,
+		"currentCounter": 12
+	},
+	"timestamp": "2025-10-24T10:30:00.000Z"
+}
+```
+
 ---
 
 ### 删除密钥
@@ -367,6 +391,123 @@ Cookie: auth_token=<JWT_TOKEN>
 	"timestamp": "2025-10-24T10:30:00.000Z"
 }
 ```
+
+---
+
+### 递增 HOTP 计数器
+
+**端点**: `POST /api/secrets/{id}/counter`
+
+**认证**: ✅ 需要
+
+**描述**: 将指定 HOTP 密钥的计数器加 1。请求体携带客户端当前看到的生成参数快照，服务端逐项比对通过后才递增；任何一项不一致都返回 409，客户端应重新拉取密钥列表后重试，不要盲目重发。
+
+自 1.8.0 起，递增结果写入独立的 KV 键 `hotp-counter:{epoch}:{id}[:{namespace}]`（下称 sidecar），不再改写加密主文档 `secrets`。`GET /api/secrets` 返回的 `counter` 已经是叠加 sidecar 后的有效值；编辑、备份、云盘推送等所有读路径同样使用有效值。回滚到 1.8.0 之前的版本前必须先执行[压实](#压实-hotp-计数器)。
+
+**URL 参数**:
+
+- `id` (UUID): 密钥的唯一标识符
+
+**请求体**:
+
+```json
+{
+	"expectedNamespace": null,
+	"expectedCounter": 5,
+	"expectedSecret": "JBSWY3DPEHPK3PXP",
+	"expectedDigits": 6,
+	"expectedAlgorithm": "SHA1"
+}
+```
+
+| 字段                | 类型           | 必填 | 说明                                                                |
+| ------------------- | -------------- | ---- | ------------------------------------------------------------------- |
+| `expectedNamespace` | String \| null | 否   | 密钥对象的 `hotpCounterNamespace`；密钥没有该字段时传 `null` 或省略 |
+| `expectedCounter`   | Number         | 是   | 客户端当前看到的计数器值（非负安全整数）                            |
+| `expectedSecret`    | String         | 是   | Base32 密钥                                                         |
+| `expectedDigits`    | Number         | 是   | `6` 或 `8`                                                          |
+| `expectedAlgorithm` | String         | 是   | `SHA1` / `SHA256` / `SHA512`                                        |
+
+**成功响应** (200 OK):
+
+```json
+{
+	"success": true,
+	"message": "HOTP计数器递增成功",
+	"data": {
+		"secret": {
+			"id": "550e8400-e29b-41d4-a716-446655440000",
+			"name": "GitHub",
+			"account": "user@example.com",
+			"secret": "JBSWY3DPEHPK3PXP",
+			"type": "HOTP",
+			"digits": 6,
+			"period": 30,
+			"algorithm": "SHA1",
+			"counter": 6
+		},
+		"id": "550e8400-e29b-41d4-a716-446655440000",
+		"counter": 6,
+		"idempotent": false
+	}
+}
+```
+
+**错误响应**:
+
+| 状态码 | `message`                                    | 说明                                                                                 |
+| ------ | -------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 400    | 字段校验信息                                 | 请求体缺字段或类型错误                                                               |
+| 404    | 密钥不存在                                   | `id` 不存在                                                                          |
+| 409    | `只有HOTP密钥可以递增计数器`                 | 目标是 TOTP 或 Steam 密钥                                                            |
+| 409    | `HOTP生成参数已变更，请刷新后重试`           | 密钥、位数、算法或 namespace 与服务端不一致，`details.currentCounter` 为服务端当前值 |
+| 409    | `HOTP计数器已变更，请刷新后重试`             | 计数器已被其他设备推进，`details` 含 `expectedCounter` 与 `currentCounter`           |
+| 409    | `HOTP计数器已达到安全整数上限，无法继续递增` | 计数器已是 `Number.MAX_SAFE_INTEGER`                                                 |
+| 500    | `HOTP计数器递增失败`                         | sidecar 无法解密或 KV 异常。此时不会写入任何数据                                     |
+
+**并发说明**: Workers KV 没有原子比较写入。两台设备在同一秒对同一密钥发起递增时，可能都通过快照比对并得到同一个新值。这是 HOTP 在 KV 上的固有限制，客户端应在 409 或对账发现不一致后刷新列表。
+
+---
+
+### 压实 HOTP 计数器
+
+**端点**: `POST /api/secrets/counters/compact`
+
+**认证**: ✅ 需要
+
+**描述**: 维护接口。把所有 HOTP 密钥的有效计数器写回加密主文档 `secrets`，然后轮换 sidecar 纪元（KV 键 `hotp-counter-epoch`），使旧 sidecar 全部失效。
+
+**什么时候需要调用**: 回滚到 1.8.0 之前的版本之前。旧版本只读主文档，不认识 sidecar；不压实就回滚，HOTP 计数器会退回到升级 1.8.0 时的值，之后生成的验证码会被服务方判定为已使用。没有 HOTP 密钥的部署无需调用。正常升级、日常使用都不需要调用。
+
+**请求头**:
+
+```http
+X-Confirm-Maintenance: compact-hotp-counters
+```
+
+缺少该头时返回 400，避免误触。
+
+**成功响应** (200 OK):
+
+```json
+{
+	"success": true,
+	"message": "HOTP计数器压实成功",
+	"data": {
+		"compactedCount": 3,
+		"secretCount": 12
+	}
+}
+```
+
+`compactedCount` 为 HOTP 密钥数，`secretCount` 为全部密钥数。
+
+**注意事项**:
+
+- 主文档写入与纪元轮换是两步 KV 操作，不是原子的。若返回 500，直接重试即可：轮换成功前旧 sidecar 仍然有效，不会丢计数器。
+- 压实过程中请勿在其他设备复制 HOTP 验证码，否则该次递增可能落在即将失效的旧纪元里。
+- 该操作不触发事件备份，但会记录数据哈希，定时备份按正常规则处理。
+- 旧纪元的 sidecar 键不会被删除，只是不再被读取。
 
 ---
 
@@ -1743,6 +1884,14 @@ curl -X POST https://2fa.example.com/api/secrets \
 
 ```bash
 curl "https://2fa.example.com/otp/JBSWY3DPEHPK3PXP?format=json"
+```
+
+#### 回滚到 1.8.0 之前的版本前压实 HOTP 计数器
+
+```bash
+curl -X POST https://2fa.example.com/api/secrets/counters/compact \
+  -H "X-Confirm-Maintenance: compact-hotp-counters" \
+  -b cookies.txt
 ```
 
 ### Python

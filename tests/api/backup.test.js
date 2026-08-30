@@ -4,7 +4,7 @@
  * 目标覆盖率: 70%+
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import worker from '../../src/worker.js';
 import {
   handleBackupSecrets,
@@ -15,6 +15,11 @@ import {
   handleExportBackup
 } from '../../src/api/secrets/restore.js';
 import { getAllSecrets, saveSecretsToKV } from '../../src/api/secrets/shared.js';
+import {
+	getHOTPCounterStateKey,
+	HOTP_COUNTER_EPOCH_KEY,
+	saveHOTPCounterState
+} from '../../src/api/secrets/counter-state.js';
 import { encryptSecrets } from '../../src/utils/encryption.js';
 import { createBackupEntry } from '../../src/utils/backup-format.js';
 import { buildBackupIndexMetadata, createBackupIndexKey, ensureBackupIndexes, putBackupRecord } from '../../src/utils/backup-index.js';
@@ -30,8 +35,13 @@ class MockKV {
   }
 
   async get(key, type = 'text') {
+		if (Array.isArray(key)) {
+			return new Map(await Promise.all(key.map(async (item) => [item, await this.get(item, type)])));
+		}
     const value = this.store.get(key);
-    if (!value) return null;
+    if (!value) {
+      return null;
+    }
 
     if (type === 'json') {
       return JSON.parse(value);
@@ -2110,19 +2120,53 @@ describe('Backup API Module', () => {
   });
 
   describe('handleRestoreBackup - 备份恢复', () => {
+		it('定时备份使用sidecar覆盖后的有效HOTP计数器', async () => {
+			const env = createMockEnv();
+			const secret = {
+				id: 'scheduled-hotp',
+				name: 'Scheduled HOTP',
+				account: '',
+				secret: 'JBSWY3DPEHPK3PXP',
+				type: 'HOTP',
+				digits: 6,
+				period: 30,
+				algorithm: 'SHA1',
+				counter: 4
+			};
+			await env.SECRETS_KV.put('secrets', await encryptSecrets([secret], env));
+			await saveHOTPCounterState(env, secret, 9);
+
+			await worker.scheduled({ cron: '0 0 * * *' }, env, { waitUntil: vi.fn() });
+
+			const backupKey = [...env.SECRETS_KV.store.keys()].find(
+				(key) => key.startsWith('backup_') && key !== 'backup_index_state_v1'
+			);
+			const previewResponse = await handleRestoreBackup(createMockRequest({
+				backupKey,
+				preview: true
+			}, 'POST', 'https://example.com/api/backup/restore'), env);
+			const preview = await previewResponse.json();
+
+			expect(previewResponse.status).toBe(200);
+			expect(preview.data.secrets[0].counter).toBe(9);
+		});
+
     it('应该成功恢复备份 (POST方式)', async () => {
       const env = createMockEnv();
+			const restoredSecret = {
+				id: '1',
+				name: 'GitHub',
+				account: 'user@example.com',
+				secret: 'JBSWY3DPEHPK3PXP',
+				type: 'HOTP',
+				digits: 6,
+				period: 30,
+				algorithm: 'SHA1',
+				counter: 3
+			};
 
       // 创建备份
-      await saveSecretsToKV(env, [
-        {
-          id: '1',
-          name: 'GitHub',
-          account: 'user@example.com',
-          secret: 'JBSWY3DPEHPK3PXP',
-          type: 'TOTP'
-        }
-      ], 'test');
+      await saveSecretsToKV(env, [restoredSecret], 'test');
 
       const backupReq = createMockRequest();
       const backupResp = await handleBackupSecrets(backupReq, env);
@@ -2130,6 +2174,9 @@ describe('Backup API Module', () => {
 
       // 清空当前密钥
       await env.SECRETS_KV.delete('secrets');
+
+			const orphanSidecarKey = getHOTPCounterStateKey(restoredSecret.id);
+			await saveHOTPCounterState(env, restoredSecret, 99);
 
       // 恢复备份
       const restoreReq = createMockRequest({
@@ -2144,7 +2191,55 @@ describe('Backup API Module', () => {
       expect(data.success).toBe(true);
       expect(data.message).toContain('恢复备份成功');
       expect(data.count).toBe(1);
+			expect(await env.SECRETS_KV.get(orphanSidecarKey)).not.toBeNull();
+			expect(await env.SECRETS_KV.get(HOTP_COUNTER_EPOCH_KEY)).toBeTruthy();
+			expect((await getAllSecrets(env))[0].counter).toBe(3);
     });
+
+		it('sidecar清理失败时完整恢复返回500并保留已恢复数据', async () => {
+			const env = createMockEnv();
+			const restoredSecret = {
+				id: 'restore-source',
+				name: 'Restore source',
+				account: '',
+				secret: 'JBSWY3DPEHPK3PXP',
+				type: 'HOTP',
+				digits: 6,
+				period: 30,
+				algorithm: 'SHA1',
+				counter: 4
+			};
+			await saveSecretsToKV(env, [restoredSecret], 'test');
+			const backupResponse = await handleBackupSecrets(createMockRequest(), env);
+			const { backupKey } = await backupResponse.json();
+			const orphanSidecarKey = getHOTPCounterStateKey('restore-source');
+			await saveHOTPCounterState(env, restoredSecret, 20);
+			const originalPut = env.SECRETS_KV.put.bind(env.SECRETS_KV);
+			let failEpochWrite = true;
+			env.SECRETS_KV.put = vi.fn(async (key, value, options = {}) => {
+				if (key === HOTP_COUNTER_EPOCH_KEY && failEpochWrite) {
+					throw new Error('epoch rotation failed');
+				}
+				return originalPut(key, value, options);
+			});
+
+			const response = await handleRestoreBackup(createMockRequest({
+				backupKey,
+				preview: false
+			}, 'POST', 'https://example.com/api/backup/restore'), env);
+
+			expect(response.status).toBe(500);
+			expect(await env.SECRETS_KV.get(orphanSidecarKey)).not.toBeNull();
+			expect((await getAllSecrets(env))[0].counter).toBe(20);
+
+			failEpochWrite = false;
+			const retryResponse = await handleRestoreBackup(createMockRequest({
+				backupKey,
+				preview: false
+			}, 'POST', 'https://example.com/api/backup/restore'), env);
+			expect(retryResponse.status).toBe(200);
+			expect((await getAllSecrets(env))[0].counter).toBe(4);
+		});
 
     it('应该支持预览模式', async () => {
       const env = createMockEnv();
@@ -3229,9 +3324,7 @@ describe('Backup API Module', () => {
 
       // Mock KV put 方法失败
       const originalPut = env.SECRETS_KV.put.bind(env.SECRETS_KV);
-      let callCount = 0;
       env.SECRETS_KV.put = vi.fn(async (key, value) => {
-        callCount++;
         // 只让备份写入失败，secrets 写入成功
         if (key.startsWith('backup_')) {
           throw new Error('KV error');

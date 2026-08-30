@@ -9,7 +9,7 @@
  */
 
 import { saveSecretsToKV, getAllSecrets } from './shared.js';
-import { decryptSecrets } from '../../utils/encryption.js';
+import { deleteHOTPCounterState, generateHOTPGenerationHash } from './counter-state.js';
 import { getLogger } from '../../utils/logger.js';
 import { PerformanceTimer } from '../../utils/logger.js';
 import { getMonitoring, ErrorSeverity } from '../../utils/monitoring.js';
@@ -27,7 +27,6 @@ import {
 	errorToResponse,
 	logError,
 } from '../../utils/errors.js';
-import { KV_KEYS } from '../../utils/constants.js';
 
 /**
  * 获取所有密钥列表
@@ -40,11 +39,8 @@ export async function handleGetSecrets(env) {
 	const timer = new PerformanceTimer('GetSecrets', logger);
 
 	try {
-		const secretsData = await env.SECRETS_KV.get(KV_KEYS.SECRETS, 'text');
-		timer.checkpoint('KV fetched');
-
-		const secrets = await decryptSecrets(secretsData, env);
-		timer.checkpoint('Decrypted');
+		const secrets = await getAllSecrets(env);
+		timer.checkpoint('Fetched, decrypted, and overlaid');
 
 		timer.end({ count: secrets.length });
 
@@ -205,6 +201,21 @@ export async function handleUpdateSecret(request, env, ctx) {
 		}
 
 		const existingSecret = existingSecrets[secretIndex];
+		const existingWasHOTP = String(existingSecret.type || '').toUpperCase() === 'HOTP';
+		const sameHOTPGeneration =
+			existingWasHOTP &&
+			secretData.type === 'HOTP' &&
+			(await generateHOTPGenerationHash(existingSecret)) === (await generateHOTPGenerationHash(secretData));
+		const existingCounter = Number.isSafeInteger(existingSecret.counter) && existingSecret.counter >= 0 ? existingSecret.counter : 0;
+		if (sameHOTPGeneration && secretData.counter < existingCounter) {
+			throw new ConflictError('HOTP计数器已推进，不能通过编辑操作降低计数器', {
+				operation: 'updateSecret',
+				secretId,
+				requestedCounter: secretData.counter,
+				currentCounter: existingCounter,
+			});
+		}
+		const updatedCounter = secretData.type === 'HOTP' ? secretData.counter : undefined;
 
 		// 检测内容是否实际发生变化（数据已经通过验证和规范化）
 		const contentChanged =
@@ -215,7 +226,7 @@ export async function handleUpdateSecret(request, env, ctx) {
 			existingSecret.digits !== secretData.digits ||
 			existingSecret.period !== secretData.period ||
 			existingSecret.algorithm !== secretData.algorithm ||
-			(secretData.type === 'HOTP' && existingSecret.counter !== secretData.counter);
+			(secretData.type === 'HOTP' && existingSecret.counter !== updatedCounter);
 
 		// 更新密钥对象
 		const updatedSecret = {
@@ -227,12 +238,16 @@ export async function handleUpdateSecret(request, env, ctx) {
 			digits: secretData.digits,
 			period: secretData.period,
 			algorithm: secretData.algorithm,
-			counter: secretData.type === 'HOTP' ? secretData.counter : undefined,
+			counter: updatedCounter,
+			...(secretData.type === 'HOTP' && {
+				hotpCounterNamespace: sameHOTPGeneration ? existingSecret.hotpCounterNamespace : crypto.randomUUID(),
+			}),
 		};
 
 		existingSecrets[secretIndex] = updatedSecret;
 
-		// 保存到 KV (自动加密、排序、触发备份)
+		// A fresh namespace becomes active only with this base write. Keep the old
+		// sidecar so a failed/interrupted write or an old request cannot lose state.
 		await saveSecretsToKV(env, existingSecrets, 'secret-updated', {}, ctx);
 
 		logger.info('密钥更新成功', {
@@ -295,6 +310,8 @@ export async function handleDeleteSecret(request, env, ctx) {
 		// 查找要删除的密钥
 		const secretIndex = existingSecrets.findIndex((s) => s.id === secretId);
 		if (secretIndex === -1) {
+			// Without the deleted object we cannot identify its namespace safely.
+			// Unreferenced sidecars remain inactive, as with generation changes.
 			throw ErrorFactory.secretNotFound(secretId, {
 				operation: 'deleteSecret',
 			});
@@ -305,6 +322,7 @@ export async function handleDeleteSecret(request, env, ctx) {
 
 		// 保存到 KV (自动加密、排序、触发备份)
 		await saveSecretsToKV(env, existingSecrets, 'secret-deleted', {}, ctx);
+		await deleteHOTPCounterState(env, deletedSecret);
 
 		logger.info('密钥删除成功', {
 			operation: 'handleDeleteSecret',

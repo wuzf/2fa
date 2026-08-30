@@ -16,6 +16,10 @@
 // CRUD 操作处理器
 export { handleGetSecrets, handleAddSecret, handleUpdateSecret, handleDeleteSecret } from './crud.js';
 
+// HOTP 计数器处理器
+export { handleAdvanceHOTPCounter } from './counter.js';
+export { handleCompactHOTPCounters } from './counter.js';
+
 // 批量导入处理器
 export { handleBatchAddSecrets } from './batch.js';
 
@@ -30,4 +34,4 @@ export { handleExportSecrets } from './export.js';
 export { handleGenerateOTP } from './otp.js';
 
 // 共享工具函数（内部使用或测试）
-export { saveSecretsToKV, getAllSecrets } from './shared.js';
+export { saveSecretsToKV, getAllSecrets, getSecretByIdWithHOTPState } from './shared.js';

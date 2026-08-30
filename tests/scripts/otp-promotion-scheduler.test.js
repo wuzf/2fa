@@ -766,6 +766,7 @@ describe('OTP promotion scheduling', () => {
 		const harness = createHarness([30], [{ type: 'HOTP', counter: 42 }]);
 		const initialUpdate = harness.api.updateOTP('a');
 		expect(harness.generationCalls).toHaveLength(2);
+		expect(harness.generationCalls.map(({ counter }) => counter)).toEqual([42, 43]);
 
 		// A cached clock lets initial rendering continue while synchronization runs
 		// in the background. Its completion invalidates TOTP work, but HOTP is not
