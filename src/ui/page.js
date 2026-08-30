@@ -169,7 +169,7 @@ function getHTMLBody() {
                    name="search-query"
                    class="search-input"
                    placeholder="搜索服务或账户名称"
-                   oninput="filterSecrets(this.value)"
+                   oninput="scheduleSecretFilter(this.value)"
                    autocomplete="off"
                    autocorrect="off"
                    autocapitalize="off"
@@ -186,21 +186,42 @@ function getHTMLBody() {
       </div>
           <div class="sort-controls">
             <details class="sort-dropdown" id="sortDropdown">
-              <summary class="sort-trigger" aria-label="排序" aria-haspopup="menu" title="排序">
+              <summary class="sort-trigger" aria-label="显示与排序" title="显示与排序">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M3 6h18"></path>
                   <path d="M6 12h12"></path>
                   <path d="M10 18h4"></path>
                 </svg>
-                <span class="sort-trigger-label">排序</span>
+                <span class="sort-trigger-label">显示与排序</span>
               </summary>
-              <div class="sort-menu" role="menu">
-                <button type="button" role="menuitemradio" aria-checked="true" class="sort-option active" data-sort="oldest-first" onclick="selectSort('oldest-first')">最早添加</button>
-                <button type="button" role="menuitemradio" aria-checked="false" class="sort-option" data-sort="newest-first" onclick="selectSort('newest-first')">最晚添加</button>
-                <button type="button" role="menuitemradio" aria-checked="false" class="sort-option" data-sort="name-asc" onclick="selectSort('name-asc')">服务名称 A-Z</button>
-                <button type="button" role="menuitemradio" aria-checked="false" class="sort-option" data-sort="name-desc" onclick="selectSort('name-desc')">服务名称 Z-A</button>
-                <button type="button" role="menuitemradio" aria-checked="false" class="sort-option" data-sort="account-asc" onclick="selectSort('account-asc')">账户名称 A-Z</button>
-                <button type="button" role="menuitemradio" aria-checked="false" class="sort-option" data-sort="account-desc" onclick="selectSort('account-desc')">账户名称 Z-A</button>
+              <div class="sort-menu" aria-label="显示与排序选项">
+                <div class="sort-menu-section">
+                  <div class="sort-menu-label" id="viewModeLabel">显示方式</div>
+                  <div class="view-mode-segmented" role="group" aria-labelledby="viewModeLabel">
+                    <button type="button" class="view-mode-option active" data-view-mode="grouped" aria-pressed="true" onclick="selectViewMode('grouped')">智能聚合</button>
+                    <button type="button" class="view-mode-option" data-view-mode="flat" aria-pressed="false" onclick="selectViewMode('flat')">全部平铺</button>
+                  </div>
+                </div>
+                <div class="sort-menu-divider"></div>
+                <div class="sort-menu-section group-sort-only" id="groupSortSection">
+                  <div class="sort-menu-label" id="groupSortLabel">聚合分组</div>
+                  <div class="view-mode-segmented" role="group" aria-labelledby="groupSortLabel">
+                    <button type="button" class="group-sort-option active" data-group-sort="name-asc" aria-pressed="true" onclick="selectGroupSort('name-asc')">名称 A-Z</button>
+                    <button type="button" class="group-sort-option" data-group-sort="name-desc" aria-pressed="false" onclick="selectGroupSort('name-desc')">名称 Z-A</button>
+                  </div>
+                </div>
+                <div class="sort-menu-divider group-sort-only"></div>
+                <div class="sort-menu-section">
+                  <div class="sort-menu-label" id="sortModeLabel">组内排序</div>
+                  <div class="sort-options" role="group" aria-labelledby="sortModeLabel">
+                    <button type="button" aria-pressed="true" class="sort-option active" data-sort="oldest-first" onclick="selectSort('oldest-first')">最早添加</button>
+                    <button type="button" aria-pressed="false" class="sort-option" data-sort="newest-first" onclick="selectSort('newest-first')">最晚添加</button>
+                    <button type="button" aria-pressed="false" class="sort-option flat-sort-only" data-sort="name-asc" onclick="selectSort('name-asc')">服务名称 A-Z</button>
+                    <button type="button" aria-pressed="false" class="sort-option flat-sort-only" data-sort="name-desc" onclick="selectSort('name-desc')">服务名称 Z-A</button>
+                    <button type="button" aria-pressed="false" class="sort-option" data-sort="account-asc" onclick="selectSort('account-asc')">账户名称 A-Z</button>
+                    <button type="button" aria-pressed="false" class="sort-option" data-sort="account-desc" onclick="selectSort('account-desc')">账户名称 Z-A</button>
+                  </div>
+                </div>
               </div>
             </details>
             <select id="sortSelect" class="sort-select-hidden" onchange="applySorting()" aria-hidden="true" tabindex="-1">
@@ -213,7 +234,7 @@ function getHTMLBody() {
             </select>
       </div>
           </div>
-          <div class="search-stats" id="searchStats" style="display: none;"></div>
+          <div class="search-stats" id="searchStats" role="status" aria-live="polite" aria-atomic="true"></div>
         </div>
       </div>
 

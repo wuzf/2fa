@@ -17,6 +17,7 @@ import { getToolsCode } from './tools.js';
 import { getSettingsCode } from './settings.js';
 import { getGoogleMigrationCode } from './googleMigration.js';
 import { getCoreCode } from './core.js';
+import { getServiceAggregationCode } from './serviceAggregation.js';
 import { getUtilsCode } from './utils.js';
 import { getPWACode } from './pwa.js';
 import { getModuleLoaderCode } from './moduleLoader.js';
@@ -28,7 +29,7 @@ import { getVersionCheckCode } from './versionCheck.js';
  * @returns {string} 核心JavaScript代码
  */
 export function getCoreScripts() {
-	return `${getUtilsCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getCoreCode()}${getPWACode()}${getModuleLoaderCode()}${getVersionCheckCode()}`;
+	return `${getUtilsCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getCoreCode()}${getServiceAggregationCode()}${getPWACode()}${getModuleLoaderCode()}${getVersionCheckCode()}`;
 }
 
 /**
@@ -39,7 +40,7 @@ export function getCoreScripts() {
 export function getScripts() {
 	// QRCode must come before GoogleMigration, GoogleMigration must come before Export
 	// because Export calls showExportToGoogleModal from GoogleMigration
-	return `${getUtilsCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getQRCodeCode()}${getGoogleMigrationCode()}${getExportCode()}${getImportCode()}${getBackupCode()}${getToolsCode()}${getCoreCode()}${getPWACode()}${getVersionCheckCode()}`;
+	return `${getUtilsCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getQRCodeCode()}${getGoogleMigrationCode()}${getExportCode()}${getImportCode()}${getBackupCode()}${getToolsCode()}${getCoreCode()}${getServiceAggregationCode()}${getPWACode()}${getVersionCheckCode()}`;
 }
 
 /**

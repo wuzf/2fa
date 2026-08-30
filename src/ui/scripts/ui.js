@@ -279,9 +279,21 @@ export function getUICode() {
       const vh = window.innerHeight || document.documentElement.clientHeight;
       const maxX = Math.max(margin, vw - w - margin);
       const maxY = Math.max(margin, vh - h - margin);
+      const clampedX = Math.min(Math.max(x, margin), maxX);
+      let clampedY = Math.min(Math.max(y, margin), maxY);
+      const headerControls = document.querySelector('.search-action-row');
+      if (headerControls) {
+        const controlsRect = headerControls.getBoundingClientRect();
+        const overlapsHeader =
+          clampedX < controlsRect.right + margin &&
+          clampedX + w > controlsRect.left - margin &&
+          clampedY < controlsRect.bottom + margin &&
+          clampedY + h > controlsRect.top - margin;
+        if (overlapsHeader) clampedY = maxY;
+      }
       return {
-        x: Math.min(Math.max(x, margin), maxX),
-        y: Math.min(Math.max(y, margin), maxY)
+        x: clampedX,
+        y: clampedY
       };
     }
 

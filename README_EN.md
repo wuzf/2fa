@@ -100,6 +100,7 @@ Click the **➕** floating button in the bottom right:
 - **Copy Code**: Click the code digits directly
 - **Manage Keys**: Click **⋯** on the top right of a card → Edit / Delete / View QR Code
 - **Search**: Real-time search by service name or account name in the top search bar
+- **Smart grouping**: Automatically group related services and multiple accounts, with an option to switch back to a flat list
 - **Sort**: Sort by add time or name
 - **Theme**: Toggle light/dark/follow system with 🌓 in the bottom right
 

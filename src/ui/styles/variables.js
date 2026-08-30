@@ -94,6 +94,7 @@ export function getVariables() {
       /* 文字色 */
       --text-primary: #2c3e50;
       --text-secondary: #6c757d;
+      --segmented-option-text: #66717b;
       --text-tertiary: #95a5a6;
       --text-disabled: #adb5bd;
       --text-inverse: #ffffff;
@@ -266,6 +267,7 @@ export function getVariables() {
       /* 文字色 */
       --text-primary: #ffffff;
       --text-secondary: #a0aec0;
+      --segmented-option-text: #a0aec0;
       --text-tertiary: #718096;
       --text-disabled: #4a5568;
       --text-inverse: #2c3e50;
@@ -420,6 +422,7 @@ export function getVariables() {
         /* 文字色 */
         --text-primary: #ffffff;
         --text-secondary: #a0aec0;
+        --segmented-option-text: #a0aec0;
         --text-tertiary: #718096;
 
         /* 边框色 */

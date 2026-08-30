@@ -86,12 +86,70 @@ export function getComponentStyles() {
       }
     }
 
-    .secrets-list {
+    .secrets-list,
+    .service-group-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: 10px;
       justify-content: center;
       margin: 0 auto;
+    }
+
+    .secrets-list.is-grouped {
+      display: block;
+    }
+
+    .service-group {
+      min-width: 0;
+    }
+
+    .service-group + .service-group {
+      margin-top: 24px;
+    }
+
+    .service-group-header {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .service-group-header::after {
+      content: '';
+      flex: 1 1 auto;
+      min-width: 18px;
+      border-top: 1px solid var(--border-primary);
+    }
+
+    .service-group-title {
+      min-width: 0;
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .service-group-count {
+      flex: 0 0 auto;
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.3;
+      white-space: nowrap;
+    }
+
+    .service-group-grid {
+      min-width: 0;
+    }
+
+    @media (max-width: 480px) {
+      .service-group + .service-group {
+        margin-top: 20px;
+      }
     }
 
     .secret-card {
