@@ -40,6 +40,7 @@ const DB_NAME = '2fa-offline-db';
 const DB_VERSION = 1;
 const SW_VERSION = '${version}';
 const STORE_NAME = 'pending-operations';
+let syncPendingOperationsPromise = null;
 
 // 版本信息（用于调试）
 console.log('[SW] Service Worker 版本:', SW_VERSION);
@@ -610,15 +611,36 @@ self.addEventListener('sync', event => {
   console.log('[SW] 后台同步事件触发:', event.tag);
 
   if (event.tag === 'sync-operations') {
-    event.waitUntil(syncPendingOperations());
+    event.waitUntil(syncPendingOperations().then(result => {
+      // Background Sync 以 Promise 拒绝判断是否需要稍后重试。
+      if (result && result.deferredCount > 0) {
+        throw new Error('网络不可用，离线操作等待重试');
+      }
+    }));
   }
 });
 
 /**
  * 同步所有待处理的离线操作
- * @returns {Promise<void>}
+ * @returns {Promise<Object|undefined>} 本批同步结果，包含等待网络恢复的数量
  */
-async function syncPendingOperations() {
+function syncPendingOperations() {
+  if (syncPendingOperationsPromise) return syncPendingOperationsPromise;
+
+  const operation = performPendingOperationSync();
+  syncPendingOperationsPromise = operation;
+  operation.then(
+    () => {
+      if (syncPendingOperationsPromise === operation) syncPendingOperationsPromise = null;
+    },
+    () => {
+      if (syncPendingOperationsPromise === operation) syncPendingOperationsPromise = null;
+    }
+  );
+  return operation;
+}
+
+async function performPendingOperationSync() {
   try {
     console.log('[SW] 开始同步离线操作...');
     const operations = await getPendingOperations();
@@ -635,8 +657,14 @@ async function syncPendingOperations() {
 
     let successCount = 0;
     let failCount = 0;
+    let deferredCount = 0;
 
     for (const operation of operations) {
+      if (self.navigator && self.navigator.onLine === false) {
+        deferredCount = operations.length - successCount - failCount;
+        break;
+      }
+
       try {
         console.log('[SW] 正在同步操作:', operation.id, operation.type);
 
@@ -655,7 +683,16 @@ async function syncPendingOperations() {
         }
 
         // 发送请求
-        const response = await fetch(operation.url, requestOptions);
+        let response;
+        try {
+          response = await fetch(operation.url, requestOptions);
+        } catch (error) {
+          // onLine 不能保证服务器可达。传输失败不消耗 HTTP 重试额度，
+          // 并停止本批，避免掉线后继续请求后面的操作。
+          console.warn('[SW] 网络请求未完成，保留操作等待重试:', operation.id, error);
+          deferredCount = operations.length - successCount - failCount;
+          break;
+        }
 
         if (response.ok) {
           // 同步成功，删除操作
@@ -667,7 +704,8 @@ async function syncPendingOperations() {
           await notifyClients({
             type: 'SYNC_SUCCESS',
             operationId: operation.id,
-            operationType: operation.type
+            operationType: operation.type,
+            operationUrl: operation.url
           });
         } else {
           // 同步失败，增加重试计数
@@ -688,6 +726,7 @@ async function syncPendingOperations() {
               type: 'SYNC_FAILED',
               operationId: operation.id,
               operationType: operation.type,
+              operationUrl: operation.url,
               error: \`HTTP \${response.status}\`
             });
           } else {
@@ -701,7 +740,7 @@ async function syncPendingOperations() {
           }
         }
       } catch (error) {
-        // 网络错误或其他异常
+        // 请求构建或本地存储异常（fetch 传输错误已在上方单独处理）
         console.error('[SW] 同步操作时出错:', operation.id, error);
         const newRetryCount = (operation.retryCount || 0) + 1;
 
@@ -712,6 +751,13 @@ async function syncPendingOperations() {
             lastError: error.message
           });
           failCount++;
+          await notifyClients({
+            type: 'SYNC_FAILED',
+            operationId: operation.id,
+            operationType: operation.type,
+            operationUrl: operation.url,
+            error: error.message
+          });
         } else {
           await updateOperation(operation.id, {
             retryCount: newRetryCount,
@@ -725,12 +771,15 @@ async function syncPendingOperations() {
     console.log(\`[SW] 同步完成: 成功 \${successCount} 个, 失败 \${failCount} 个\`);
 
     // 通知前端同步完成
-    await notifyClients({
+    const result = {
       type: 'SYNC_COMPLETE',
       successCount,
       failCount,
+      deferredCount,
       totalCount: operations.length
-    });
+    };
+    await notifyClients(result);
+    return result;
 
   } catch (error) {
     console.error('[SW] 同步离线操作失败:', error);
@@ -783,6 +832,10 @@ self.addEventListener('message', event => {
   
   if (event.data && event.data.type === 'GET_VERSION') {
     event.ports[0].postMessage({ version: CACHE_NAME });
+  }
+
+  if (event.data && event.data.type === 'SYNC_OPERATIONS') {
+    event.waitUntil(syncPendingOperations());
   }
 });
 

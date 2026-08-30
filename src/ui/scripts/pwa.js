@@ -37,6 +37,7 @@ export function getPWACode() {
           // 监听控制器变化
           navigator.serviceWorker.addEventListener('controllerchange', () => {
             console.log('🔄 Service Worker 控制器已更新');
+            requestPendingOperationSync();
           });
 
           // 📨 监听 Service Worker 消息（离线同步通知）
@@ -44,6 +45,8 @@ export function getPWACode() {
             console.log('[PWA] 收到 Service Worker 消息:', event.data);
             handleServiceWorkerMessage(event.data);
           });
+
+          requestPendingOperationSync(registration);
 
           // 定期检查更新（每小时）
           setInterval(() => {
@@ -59,6 +62,30 @@ export function getPWACode() {
       });
     } else {
       console.log('ℹ️  当前浏览器不支持 Service Worker');
+    }
+
+    /**
+     * 触发离线操作同步；不支持 Background Sync 时直接通知 Service Worker。
+     * @param {ServiceWorkerRegistration|null} registration - 当前注册对象
+     */
+    function requestPendingOperationSync(registration = null) {
+      if (navigator.onLine === false) return;
+
+      const postSyncMessage = () => {
+        // 注册后台同步失败时，页面可能已经离线。
+        if (navigator.onLine !== false && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'SYNC_OPERATIONS' });
+        }
+      };
+
+      if (registration && registration.sync) {
+        registration.sync.register('sync-operations').catch(error => {
+          console.warn('注册后台同步失败，改用页面触发:', error);
+          postSyncMessage();
+        });
+        return;
+      }
+      postSyncMessage();
     }
 
     /**
@@ -98,6 +125,15 @@ export function getPWACode() {
 
           if (message.failCount > 0) {
             showCenterToast('⚠️', \`\${message.failCount} 个操作同步失败\`);
+          }
+
+          // 网络传输失败只延后同步；在线信号可能滞后，保留页面重试机会。
+          if ((message.failCount > 0 || message.deferredCount > 0) && navigator.onLine !== false) {
+            setTimeout(() => {
+              navigator.serviceWorker.ready
+                .then(requestPendingOperationSync)
+                .catch(error => console.warn('重试离线同步失败:', error));
+            }, 30000);
           }
           break;
 
@@ -215,11 +251,7 @@ export function getPWACode() {
 
       // 手动触发同步（作为备用，如果 Background Sync 不可用）
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.ready.then(registration => {
-          if (registration.sync) {
-            return registration.sync.register('sync-operations');
-          }
-        }).catch(err => {
+        navigator.serviceWorker.ready.then(requestPendingOperationSync).catch(err => {
           console.warn('手动触发同步失败:', err);
         });
       }
