@@ -59,14 +59,16 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 > ⚠️ **升级前务必先备份数据**：在执行版本更新前，请先通过 **批量导出** 或 **还原配置 → 导出备份** 将当前数据导出到本地，以防操作失败导致数据丢失。
 
-> ⚠️**首次升级前需要添加工作流文件**：一键部署创建的仓库如果不包含 `.github/workflows/` 目录。请先在自己的仓库中新增文件 `.github/workflows/sync-upstream.yml`，内容复制自上游仓库文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次。之后就都按下面步骤原地升级。
-
 1. 打开一键部署时在你 GitHub 上生成的 2fa 仓库
 2. 进入 **Actions** → **Sync Upstream**
-3. 点击 **Run workflow**
-4. 等待工作流把上游最新代码同步到当前仓库
-5. 工作流会自动以最新上游配置为基础，合并你当前仓库里的 Worker 名称、KV 绑定和常见部署配置
-6. Cloudflare 会基于当前仓库重新部署**同一个 Worker**
+3. 点击 **Run workflow**，上游分支保持默认的 `main`，发起一次新运行
+4. 等待同步完成及 Cloudflare 自动部署，之后刷新应用即可
+
+工作流会自动保留你当前仓库里的 Worker 名称、KV 绑定和常见部署配置，并重新部署**同一个 Worker**。仓库中已有的工作流文件也会保留。
+
+> **没有 Sync Upstream 入口时**：一键部署创建的仓库可能不包含工作流。此时才需要在自己的仓库中新增 `.github/workflows/sync-upstream.yml`，内容复制自上游文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次。之后按上面步骤升级。
+
+> **之前因 `without workflows permission` 升级失败**：修复发布到上游 `main` 后，已有自动合并部署配置步骤的 **Sync Upstream** 可以直接按上面步骤升级，无需修改 YAML 或配置 PAT。请选择 `main` 发起新运行，不要选择不含修复的旧版本标签。其他情况见[升级故障排查](docs/DEPLOYMENT.md#升级故障排查)。
 
 这种方式不会动现有 Worker、KV 绑定或 Secrets。**如果你已经设置了 `ENCRYPTION_KEY`，升级时无需重新填写；如果你没设置，也照样用这套流程升级。**
 

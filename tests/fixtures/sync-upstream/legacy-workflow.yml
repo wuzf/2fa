@@ -39,8 +39,7 @@ jobs:
       - name: Sync files from upstream
         run: |
           rsync -a --delete \
-            --exclude '/.git/' \
-            --exclude '/.github/workflows/' \
+            --exclude '.git/' \
             ../upstream/ ./
 
       - name: Merge deployment config
@@ -79,17 +78,13 @@ jobs:
 
       - name: Commit and push changes
         run: |
-          git add -A
-
-          # Application upgrades must not change the caller's workflows.
-          git diff --cached --exit-code -- .github/workflows/
-
-          if git diff --cached --quiet --exit-code; then
+          if git diff --quiet --exit-code; then
             echo "No upstream changes to commit."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
           git commit -m "chore: sync upstream ($UPSTREAM_REF)"
           git push

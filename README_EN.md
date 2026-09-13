@@ -59,14 +59,16 @@ One-click deploy creates an independent repository (not a Fork). Upgrades are do
 
 > ⚠️ **Always back up your data before upgrading**: Before performing a version update, export your current data via **Bulk Export** or **Restore Config → Export Backup** to prevent data loss in case of failure.
 
-> ⚠️ **First-time upgrade requires adding the workflow file**: The repository created by one-click deploy may not include the `.github/workflows/` directory. Please first add the file `.github/workflows/sync-upstream.yml` to your repository, copying the content from the upstream repository file: <https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>, and commit it once. After that, follow the steps below for in-place upgrades.
-
 1. Open the 2fa repository generated on your GitHub account during one-click deploy
 2. Go to **Actions** → **Sync Upstream**
-3. Click **Run workflow**
-4. Wait for the workflow to sync the latest upstream code to your repository
-5. The workflow will automatically merge your current repository's Worker name, KV bindings, and common deployment config based on the latest upstream configuration
-6. Cloudflare will redeploy **the same Worker** based on your current repository
+3. Click **Run workflow**, keep the upstream branch set to the default `main`, and start a new run
+4. Wait for synchronization and Cloudflare's automatic deployment to finish, then refresh the app
+
+The workflow automatically preserves your repository's Worker name, KV bindings, and common deployment settings, and redeploys **the same Worker**. Existing workflow files in your repository are also preserved.
+
+> **If Sync Upstream is missing**: A repository created by one-click deploy may not include workflows. Only in that case, add `.github/workflows/sync-upstream.yml` to your repository, copy its contents from <https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>, and commit it once. Then follow the upgrade steps above.
+
+> **If an earlier upgrade failed with `without workflows permission`**: Once the fix is published to upstream `main`, existing **Sync Upstream** workflows with the automatic deployment config merge step can upgrade using the steps above, without editing YAML or configuring a PAT. Start a new run with `main`; older release tags do not include the fix. For other cases, see [upgrade troubleshooting](docs/DEPLOYMENT.md#升级故障排查) (Chinese).
 
 This approach does not affect existing Workers, KV bindings, or Secrets. **If you've already set `ENCRYPTION_KEY`, you don't need to re-enter it during upgrades; if you haven't set it, you can still use this upgrade process.**
 

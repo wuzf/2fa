@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { readFileSync, writeFileSync } from 'fs';
-import { preserveWorkflowsForSync } from './sync-upstream-compat.js';
 
 const [, , localPath, upstreamPath, outputPath] = process.argv;
 
@@ -42,10 +41,6 @@ merged = mergeTableArrayBlock(merged, local, '[[kv_namespaces]]', 'SECRETS_KV');
 merged = mergeTableArrayBlock(merged, local, '[[env.development.kv_namespaces]]', 'SECRETS_KV');
 
 writeFileSync(outputPath, merged, 'utf8');
-
-// Keep this call in the legacy entry point: existing users execute this updated
-// script after rsync even when their installed workflow predates the fix.
-preserveWorkflowsForSync({ localPath, upstreamPath, outputPath });
 
 function normalize(text) {
 	return text.replace(/\r\n/g, '\n');
