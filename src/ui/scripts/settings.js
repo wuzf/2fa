@@ -34,6 +34,12 @@ export function getSettingsCode() {
         panel.classList.toggle('active', panel.dataset.panel === tabName);
       });
 
+      // 每次进入标签页都从顶部开始，避免沿用上一个面板的滚动位置。
+      const settingsContent = document.querySelector('#settingsModal .settings-content');
+      if (settingsContent) {
+        settingsContent.scrollTop = 0;
+      }
+
       // 同步设置标签页打开时加载配置
       if (tabName === 'sync') {
         loadSyncStatus();
