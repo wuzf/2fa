@@ -233,6 +233,10 @@ CORS 采用动态同源策略：仅允许与当前请求 Host 同源的来源（
 
 ### 升级故障排查
 
+**Actions 成功、`package.json` 已更新，但 `src/utils/version.js` 仍是旧版本**：旧工作流的 `rsync -a` 只比较文件大小和修改时间。检出与克隆在同一秒完成时，大小相同但内容不同的文件可能被跳过。自 **v1.8.1** 起，包含 **Merge deployment config** 步骤的旧入口会自动按内容补齐遗漏，再合并原有部署配置；新版工作流同时使用 `--checksum` 避免漏同步。请选择 `main`（或 `v1.8.1`）发起一次新的 **Run workflow**，确认仓库中的版本文件更新，再等待 Cloudflare 部署该提交。无需手动编辑 YAML。不要只手动改版本号，因为其他同样大小的代码文件也可能漏更新。
+
+如需手动修正旧工作流，可在自己的 `.github/workflows/sync-upstream.yml` 中将 `rsync -a --delete` 改为 `rsync -a --checksum --delete`，保留其余参数和步骤，提交后发起新运行。若仓库版本已正确而页面仍旧，请检查 Cloudflare 是否成功部署最新提交，再刷新页面。
+
 **提示 `refusing to allow a GitHub App to create or update workflow ... without workflows permission`**：这是旧同步流程尝试更新工作流文件时触发的权限错误。修复发布到上游 `main` 后，包含 **Merge deployment config**（自动合并部署配置）步骤的现有 **Sync Upstream** 工作流会自动获得兼容修复，包括 [Issue #18](https://github.com/wuzf/2fa/issues/18) 对应的版本。直接选择 `main`，通过 **Run workflow** 发起一次新运行即可，无需手动修改 YAML、增加令牌权限或配置 PAT。不要选择不含修复的旧版本标签。
 
 同步会保留您仓库中原有的工作流文件，因此上游新增的统计等工作流不会影响应用升级。极早期、不包含自动合并部署配置步骤的入口无法自动获得这个修复，需要先将入口更新为上面的上游文件；完全没有入口的仓库也需要先完成一次安装。

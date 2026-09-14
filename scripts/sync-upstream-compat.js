@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, lstatSync, realpathSync, unlinkSync } from 'node:fs';
+import { appendFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +52,13 @@ export function preserveWorkflowsForSync({ localPath, upstreamPath, outputPath }
 
 	// Reject redirected directories before Git or filesystem operations can follow them.
 	assertDirectoryPath(repository, resolve(repository, workflowsPath));
+	// Legacy rsync -a can skip different contents with equal sizes and mtimes.
+	// The clone is still available next to the checkout. Compare bytes, including
+	// wrangler.toml before the caller merges the saved local deployment settings.
+	const source = resolve(repository, '../upstream');
+	assertDirectoryPath(dirname(repository), source);
+	repairSkippedFiles(source, repository);
+
 	const originalWorkflows = git(['ls-tree', '-r', '--name-only', '-z', 'HEAD', '--', workflowsPath]);
 	if (originalWorkflows) {
 		git(['restore', '--source=HEAD', '--staged', '--worktree', '--', workflowsPath]);
@@ -82,10 +89,46 @@ export function preserveWorkflowsForSync({ localPath, upstreamPath, outputPath }
 		git(['add', '--intent-to-add', '--pathspec-from-file=-', '--pathspec-file-nul'], addedFiles);
 	}
 
-	const message = 'Existing upgrade and custom workflows were preserved. No manual workflow changes or extra token are needed.';
+	const message =
+		'Upstream file contents were verified and missed updates repaired. Existing upgrade and custom workflows were preserved. No manual workflow changes or extra token are needed.';
 	console.log(message);
 	if (process.env.GITHUB_STEP_SUMMARY) {
 		appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n### Upgrade compatibility\n\n${message}\n`, 'utf8');
+	}
+}
+
+function repairSkippedFiles(source, repository, directory = '') {
+	for (const entry of readdirSync(resolve(source, directory), { withFileTypes: true })) {
+		const name = directory ? `${directory}/${entry.name}` : entry.name;
+		if (entry.name === '.git' || name === workflowsPath) {
+			continue;
+		}
+		const target = resolve(repository, name);
+		assertDirectoryPath(repository, dirname(target));
+		if (entry.isDirectory()) {
+			assertDirectoryPath(repository, target);
+			repairSkippedFiles(source, repository, name);
+			continue;
+		}
+		if (!entry.isFile()) {
+			throw new Error(`Unsupported upstream file type: ${name}`);
+		}
+		let existing;
+		try {
+			if (!lstatSync(target).isFile()) {
+				throw new Error(`Sync destination must be a regular file: ${name}`);
+			}
+			existing = readFileSync(target);
+		} catch (error) {
+			if (error.code !== 'ENOENT') {
+				throw error;
+			}
+		}
+		const contents = readFileSync(resolve(source, name));
+		if (!existing || !contents.equals(existing)) {
+			mkdirSync(dirname(target), { recursive: true });
+			writeFileSync(target, contents);
+		}
 	}
 }
 

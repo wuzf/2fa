@@ -38,7 +38,7 @@ jobs:
 
       - name: Sync files from upstream
         run: |
-          rsync -a --delete \
+          rsync -a --checksum --delete \
             --exclude '/.git/' \
             --exclude '/.github/workflows/' \
             ../upstream/ ./

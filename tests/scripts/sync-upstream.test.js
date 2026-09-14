@@ -10,6 +10,7 @@ import {
 	readdirSync,
 	rmSync,
 	symlinkSync,
+	utimesSync,
 	writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,6 +23,9 @@ const fixtureRoot = join(projectRoot, 'tests/fixtures/sync-upstream');
 const legacyWorkflow = readFileSync(join(fixtureRoot, 'legacy-workflow.yml'), 'utf8').replace(/\r\n/g, '\n');
 const currentWorkflow = readFileSync(join(projectRoot, '.github/workflows/sync-upstream.yml'), 'utf8').replace(/\r\n/g, '\n');
 const sandboxes = [];
+const rsyncCommand = process.platform === 'win32' ? 'wsl' : 'rsync';
+const rsyncPrefix = process.platform === 'win32' ? ['--exec', 'rsync'] : [];
+const hasRsync = spawnSync(rsyncCommand, [...rsyncPrefix, '--version'], { windowsHide: true, timeout: 15000 }).status === 0;
 
 const localConfig = `name = "my-existing-worker"
 main = "src/worker.js"
@@ -140,6 +144,14 @@ function step(workflow, name) {
 // Mirror rsync's relevant file effects without requiring rsync on Windows. The exclusion
 // directories come from the chosen YAML; merge, diff, commit and push run their actual code.
 function syncFiles(context, upstream, workflow = legacyWorkflow) {
+	// Keep the cloned source available to the legacy compatibility entry point.
+	const source = join(context.root, 'upstream');
+	if (existsSync(source)) {
+		safeRemove(context, source);
+	}
+	for (const [name, content] of upstream) {
+		write(source, name, content);
+	}
 	const excludes = [...step(workflow, 'Sync files from upstream').matchAll(/--exclude\s+'([^']+)'/g)].map((match) =>
 		match[1].replace(/^\//, '').replace(/\/$/, ''),
 	);
@@ -262,6 +274,66 @@ afterEach(() => {
 });
 
 describe('Sync Upstream compatibility using real Git repositories', () => {
+	it.skipIf(!hasRsync).each([
+		['legacy workflow with compatibility repair', legacyWorkflow, true],
+		['current workflow without compatibility repair', currentWorkflow, false],
+	])(
+		'syncs equal-size, equal-mtime files using real rsync: %s',
+		(_, workflow, useCompatibility) => {
+			const context = createSandbox({ remote: true });
+			const oldVersion = "export const APP_VERSION = '1.6.0';\n";
+			const newVersion = oldVersion.replace('1.6.0', '1.8.0');
+			const upstream = new Map(context.upstream).set('src/utils/version.js', newVersion);
+			upstream.set('scripts/build-release.js', 'export const fixed = true;\n');
+			upstream.set('wrangler.toml', readFileSync(context.local, 'utf8').replaceAll('old-version', 'new-version'));
+			syncFiles(context, upstream, currentWorkflow);
+			write(context.repo, 'src/utils/version.js', oldVersion);
+			write(context.repo, 'scripts/build-release.js', 'export const fixed = null;\n');
+			write(context.repo, 'wrangler.toml', readFileSync(context.local));
+			// Commit a partially upgraded installation with the original workflows.
+			for (const [name, content] of context.originalWorkflows) {
+				write(context.repo, `.github/workflows/${name}`, content);
+			}
+			for (const name of ['src/utils/version.js', 'scripts/build-release.js']) {
+				git(context, ['add', name]);
+			}
+			git(context, ['commit', '-m', 'Partially upgraded application']);
+			git(context, ['push']);
+			for (const root of [context.repo, join(context.root, 'upstream')]) {
+				for (const name of ['src/utils/version.js', 'scripts/build-release.js', 'wrangler.toml']) {
+					utimesSync(join(root, name), 1700000000, 1700000000);
+				}
+			}
+			const linuxPath = (path) => path.replace(/^([A-Za-z]):/, (_, drive) => `/mnt/${drive.toLowerCase()}`).replaceAll('\\', '/');
+			const script = step(workflow, 'Sync files from upstream');
+			const args = script
+				.split('\\\n')
+				.join(' ')
+				.trim()
+				.split(/\s+/)
+				.slice(1, -2)
+				.map((arg) => arg.replace(/^'|'$/g, ''));
+			args.push(`${linuxPath(join(context.root, 'upstream'))}/`, `${linuxPath(context.repo)}/`);
+			run(rsyncCommand, [...rsyncPrefix, ...args], context.repo);
+			expect(readFileSync(join(context.repo, 'src/utils/version.js'), 'utf8')).toBe(useCompatibility ? oldVersion : newVersion);
+			if (useCompatibility) {
+				merge(context);
+			} else {
+				merge(context, { env: { GITHUB_ACTIONS: '' } });
+			}
+			expectWorkflowsPreserved(context);
+			commitStep(context, workflow);
+			expect(git(context, ['show', 'origin/main:src/utils/version.js']).stdout).toBe(newVersion);
+			expect(git(context, ['show', 'origin/main:scripts/build-release.js']).stdout).toBe(upstream.get('scripts/build-release.js'));
+			const merged = readFileSync(join(context.repo, 'wrangler.toml'), 'utf8');
+			expect(merged).toContain('my-existing-worker');
+			expect(merged).toContain('existing-production-kv');
+			expect(merged).toContain('new-version');
+			expect(merged).not.toContain('old-version');
+		},
+		60000,
+	);
+
 	it('reproduces the reported rejection with the frozen legacy workflow and merger', () => {
 		const context = createSandbox({ legacy: true, remote: true });
 		const oldUpstream = new Map(context.upstream);
