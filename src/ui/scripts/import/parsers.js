@@ -33,18 +33,21 @@ export function getCSVParserCode() {
         const header = lines[0];
 
         // 检测 Bitwarden Authenticator CSV 格式: folder,favorite,type,name,login_uri,login_totp
-        if (header.includes('login_totp') && header.includes('folder')) {
+        const bitwardenHeaders = parseCSVLine(header).map(column => column.toLowerCase());
+        if (bitwardenHeaders.includes('login_totp') && bitwardenHeaders.includes('folder')) {
           console.log('检测到 Bitwarden Authenticator CSV 格式');
+          const totpIndex = bitwardenHeaders.indexOf('login_totp');
 
           for (let i = 1; i < lines.length; i++) {
             try {
               const line = lines[i].trim();
               if (!line) continue;
 
-              // 查找 otpauth:// URL
-              const otpauthMatch = line.match(/otpauth:\\/\\/[^,\\s]+/);
-              if (otpauthMatch) {
-                otpauthUrls.push(decodeURIComponent(otpauthMatch[0]));
+              // Parse the CSV field before the URI; decoding the entire URI corrupts
+              // escaped ampersands, hashes and percent signs in account labels.
+              const otpauthUrl = parseCSVLine(line)[totpIndex];
+              if (otpauthUrl && /^otpauth:\\/\\/(totp|hotp)\\//i.test(otpauthUrl)) {
+                otpauthUrls.push(otpauthUrl);
                 console.log('Bitwarden Auth CSV 第', i + 1, '行解析成功');
               }
             } catch (err) {

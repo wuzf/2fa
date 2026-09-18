@@ -148,6 +148,7 @@ export function getPreviewImportCode() {
       }
       // 检测并解析CSV格式
       else if (text.includes('服务名称,账户信息,密钥') ||
+               parseCSVLine(text.split('\\n')[0]).some(column => column.trim().toLowerCase() === 'login_totp') ||
                (text.toLowerCase().includes('service') && text.toLowerCase().includes('secret') && text.includes(','))) {
         const csvLines = parseCSVImport(text);
         if (csvLines.length === 0) {

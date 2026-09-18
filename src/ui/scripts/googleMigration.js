@@ -433,10 +433,10 @@ export function getGoogleMigrationCode() {
               return '<div class="export-secret-item" style="padding: 12px; border-bottom: 1px solid var(--border-primary); display: flex; align-items: center; gap: 10px;">' +
                 '<input type="checkbox" id="export-' + i + '" checked style="width: 18px; height: 18px;">' +
                 '<div style="flex: 1; min-width: 0;">' +
-                  '<div style="font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (s.name || '未知服务') + '</div>' +
-                  '<div style="font-size: var(--dialog-caption-size); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (s.account || '') + '</div>' +
+                  '<div style="font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHTML(s.name || '未知服务') + '</div>' +
+                  '<div style="font-size: var(--dialog-caption-size); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHTML(s.account || '') + '</div>' +
                 '</div>' +
-                '<span style="font-size: var(--dialog-caption-size); padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);">' + (s.type || 'TOTP') + '</span>' +
+                '<span style="font-size: var(--dialog-caption-size); padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);">' + escapeHTML(s.type || 'TOTP') + '</span>' +
               '</div>';
             }).join('') +
           '</div>' +
@@ -647,10 +647,10 @@ export function getGoogleMigrationCode() {
               return '<div class="migration-preview-item" style="padding: 12px; border-bottom: 1px solid var(--border-primary); display: flex; align-items: center; gap: 10px;">' +
                 '<input type="checkbox" id="migrate-' + i + '" checked style="width: 18px; height: 18px;">' +
                 '<div style="flex: 1; min-width: 0;">' +
-                  '<div style="font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (s.issuer || s.name || '未知服务') + '</div>' +
-                  '<div style="font-size: var(--dialog-caption-size); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (s.name || '') + '</div>' +
+                  '<div style="font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHTML(s.issuer || s.name || '未知服务') + '</div>' +
+                  '<div style="font-size: var(--dialog-caption-size); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHTML(s.name || '') + '</div>' +
                 '</div>' +
-                '<span style="font-size: var(--dialog-caption-size); padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);">' + s.type + '</span>' +
+                '<span style="font-size: var(--dialog-caption-size); padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);">' + escapeHTML(s.type || 'TOTP') + '</span>' +
               '</div>';
             }).join('') +
           '</div>' +

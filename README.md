@@ -120,7 +120,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 | Google Authenticator   | 迁移二维码（`otpauth-migration://`）    |
 | Aegis                  | JSON 导出文件                           |
 | 2FAS                   | `.2fas` 导出文件                        |
-| Bitwarden              | JSON 导出文件                           |
+| Bitwarden              | JSON、Authenticator CSV 导出文件        |
 | LastPass Authenticator | JSON 导出文件                           |
 | andOTP                 | JSON 导出文件                           |
 | Ente Auth              | 导出文件                                |

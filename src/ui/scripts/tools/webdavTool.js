@@ -42,7 +42,7 @@ export function getWebdavToolCode() {
         }
 
         // 达到上限时隐藏添加按钮
-        addBtn.style.display = data.count >= data.maxAllowed ? 'none' : 'block';
+        addBtn.dataset.canAdd = data.count < data.maxAllowed ? 'true' : 'false';
 
         // 隐藏表单
         hideWebdavForm();
@@ -114,6 +114,8 @@ export function getWebdavToolCode() {
 
     function hideWebdavForm() {
       document.getElementById('webdavFormArea').style.display = 'none';
+      const addBtn = document.getElementById('webdavAddBtn');
+      addBtn.style.display = addBtn.dataset.canAdd === 'false' ? 'none' : 'block';
     }
 
     async function editWebdavDest(id) {

@@ -120,7 +120,7 @@ Click the floating button → **📥 Bulk Import**, supports file import or text
 | Google Authenticator   | Migration QR code (`otpauth-migration://`) |
 | Aegis                  | JSON export file                           |
 | 2FAS                   | `.2fas` export file                        |
-| Bitwarden              | JSON export file                           |
+| Bitwarden              | JSON or Authenticator CSV export           |
 | LastPass Authenticator | JSON export file                           |
 | andOTP                 | JSON export file                           |
 | Ente Auth              | Export file                                |

@@ -1074,6 +1074,10 @@ export function getExportCode() {
      * @param {Object} options - 导出选项
      */
     async function exportAsLastPass(sortedSecrets, options = {}) {
+      if (sortedSecrets.some(secret => String(secret.type || 'TOTP').toUpperCase() === 'HOTP')) {
+        showCenterToast('❌', '当前 LastPass 导出格式无法保留 HOTP 计数器，请改用 JSON、Aegis 或 FreeOTP');
+        return false;
+      }
       const filenamePrefix = options.filenamePrefix || 'LastPass Authenticator';
 
       // 生成 UUID v4
@@ -1168,6 +1172,10 @@ export function getExportCode() {
           period: (secret.period || 30).toString()
         });
 
+        if (type === 'hotp') {
+          params.delete('period');
+          params.set('counter', String(secret.counter || 0));
+        }
         const uri = 'otpauth://' + type + '/' + label + '?' + params.toString();
 
         return {
@@ -1283,20 +1291,23 @@ export function getExportCode() {
           issuer: serviceName
         });
 
+        if (type === 'hotp') {
+          params.delete('period');
+          params.set('counter', String(secret.counter || 0));
+        }
         const otpauthUrl = 'otpauth://' + type + '/' + label + '?' + params.toString();
 
-        // Bitwarden Authenticator CSV 格式: folder,favorite,type,name,login_uri,login_totp,issuer,period,digits
-        // 但实际只需要前6列header，后面的数据会自动跟上
+        // Keep each row aligned with the six-column header; OTP parameters live in the URI.
         const row = [
           '',                    // folder
           '',                    // favorite
           '1',                   // type (1 = login)
           serviceName,           // name
           '',                    // login_uri
-          otpauthUrl + ',' + serviceName + ',' + period + ',' + digits  // login_totp + extra fields
+          otpauthUrl              // login_totp
         ];
 
-        csvRows.push(row.join(','));
+        csvRows.push(row.map(escapeCSV).join(','));
       });
 
       const content = csvRows.join('\\n');
@@ -1351,6 +1362,10 @@ export function getExportCode() {
           issuer: serviceName
         });
 
+        if (type === 'hotp') {
+          params.delete('period');
+          params.set('counter', String(secret.counter || 0));
+        }
         const otpauthUrl = 'otpauth://' + type + '/' + label + '?' + params.toString();
 
         return {
@@ -1556,7 +1571,8 @@ export function getExportCode() {
           issuerExt: secret.name || '',
           label: secret.account || '',
           period: secret.period || 30,
-          type: type
+          type: type,
+          ...(type === 'HOTP' ? { counter: secret.counter || 0 } : {})
         };
 
         // 解码 secret 为字节
@@ -1699,7 +1715,11 @@ export function getExportCode() {
 
         // 2. 写入 uuid-token -> meta (JSON字符串)
         parts.push(writeJavaString(token.uuid + '-token'));
-        parts.push(writeJavaString(JSON.stringify(token.meta)));
+        // ASCII JSON escapes preserve Unicode through Java's modified UTF-8
+        // strings and the binary-string import path, including surrogate pairs.
+        const metaJson = JSON.stringify(token.meta).replace(/[^\\x00-\\x7f]/g,
+          char => '\\\\u' + char.charCodeAt(0).toString(16).padStart(4, '0'));
+        parts.push(writeJavaString(metaJson));
       }
 
       // 写入 masterKey (也需要转义斜杠)
@@ -1770,14 +1790,12 @@ export function getExportCode() {
       }
 
       try {
-        showCenterToast('⏳', '正在生成加密备份...');
-
         // 获取排序后的密钥
         const sortSelect = document.getElementById('exportSortOrder');
         const sortValue = sortSelect ? sortSelect.value : 'index-asc';
         const secretsToExport = sortSecretsForExport([...secrets], sortValue);
 
-        await exportAsTOTPAuthenticatorEncrypted(secretsToExport, password);
+        if (await exportAsTOTPAuthenticatorEncrypted(secretsToExport, password) === false) return;
         hideTOTPAuthExportModal();
       } catch (error) {
         showCenterToast('❌', '导出失败：' + error.message);
@@ -1816,6 +1834,11 @@ export function getExportCode() {
      * @param {string} password - 加密密码
      */
     async function exportAsTOTPAuthenticatorEncrypted(sortedSecrets, password) {
+      if (sortedSecrets.some(secret => String(secret.type || 'TOTP').toUpperCase() === 'HOTP' ||
+          String(secret.algorithm || 'SHA1').toUpperCase() !== 'SHA1')) {
+        showCenterToast('❌', '当前 TOTP Authenticator 导出仅支持 SHA1 TOTP，请改用 JSON、Aegis 或 FreeOTP 保留完整参数');
+        return false;
+      }
       const filenamePrefix = '2FA-secrets';
 
       // 构建 TOTP Authenticator 格式的数据
