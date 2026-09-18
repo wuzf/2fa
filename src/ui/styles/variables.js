@@ -11,11 +11,13 @@ export function getVariables() {
     /* 浅色模式变量定义 */
     :root {
       /* === 主题过渡动画 === */
-      --theme-transition-duration: 0.3s;
+      --theme-transition-duration: 0.18s;
       --theme-transition:
         background-color var(--theme-transition-duration) ease,
         color var(--theme-transition-duration) ease,
         border-color var(--theme-transition-duration) ease,
+        outline-color var(--theme-transition-duration) ease,
+        accent-color var(--theme-transition-duration) ease,
         box-shadow var(--theme-transition-duration) ease;
 
       /* === 基础颜色 === */
@@ -448,28 +450,66 @@ export function getVariables() {
     }
 
     /* ========== 主题过渡动画 ========== */
-    html.theme-transition,
-    html.theme-transition *,
-    html.theme-transition *::before,
-    html.theme-transition *::after {
-      transition: var(--theme-transition) !important;
+    /* Animate surfaces and explicit text colors; descendants inherit the result
+       without starting their own trailing transitions. Keep layout motion intact. */
+    html.theme-transition .fluent-app,
+    html.theme-transition .fluent-app :is(
+      .secret-card.theme-viewport-transition, .theme-viewport-transition :is(
+        .service-icon, .secret-text h3, .secret-text p, .secret-type,
+        .otp-code, .otp-next-container, .otp-next-code, .card-menu-trigger,
+        .card-menu-dropdown.show, .card-menu-dropdown.show .menu-item
+      ),
+      .search-input-wrapper, .search-input, .search-icon, .search-clear, .search-stats,
+      .sort-trigger, .sort-dropdown[open] :is(.sort-menu, .sort-menu-label, .sort-menu-divider, .view-mode-segmented, button),
+      .service-group-header.theme-viewport-transition,
+      .theme-viewport-transition :is(.service-group-title, .service-group-count),
+      .action-submenu.show, .action-submenu.show :is(.submenu-item, .item-icon, .item-text),
+      .page-footer, .footer-link, .footer-info, .empty-state, .empty-state h3,
+      .clock-warning, .clock-warning-icon,
+      .center-toast.show :is(.toast-content, .toast-icon, .toast-message), .dialog-toast,
+      .modal.show, .modal.show :is(
+        .modal-content, .modal-header, .settings-tabs, .settings-section, .settings-divider,
+        .settings-modal-actions, .form-actions, .modal-actions, .login-modal-actions, .confirm-dialog-actions,
+        h2, h3, p, label, input, select, textarea, button, a, small, strong, summary, dt, dd, th, td, pre, code,
+        .theme-option-label, .settings-unit, .settings-desc, .settings-info-box, .settings-result, .change-password-result,
+        .tool-title, .tool-desc, .tool-icon, .tool-description, .section-title, .form-section,
+        .sync-status, .sync-card-title, .sync-card-desc, .sync-card-icon,
+        .dialog-warning, .restore-instructions, .backup-preview-content, .login-modal-error, .confirm-dialog-icon,
+        .result-content, .key-result, .check-result, .time-info, .qr-decode-result, .qr-subtitle-section,
+        .dest-card, .format-icon, .format-ext, .format-compat, .format-section-title,
+        .sub-format-icon, .sub-format-ext, .sub-format-desc, .sub-format-compat, .format-details, .import-format-details,
+        .import-tip-divider, .file-info-badge, .import-preview-compact, .import-progress-panel, .import-progress-percent,
+        .dialog-backup-format .dialog-icon, .dialog-result-icon, .dialog-qr-state,
+        .dialog-qr-error .dialog-icon, .backup-table, .scanner-bottom-actions, .scanner-hint, .video-wrapper
+      )
+    ) {
+      transition: var(--theme-transition), opacity .16s ease, transform .16s ease !important;
       transition-delay: 0s !important;
     }
 
-    /* 应用过渡到主要元素 */
-    body,
-    .card,
-    .secret-card,
-    .modal,
-    .modal-content,
-    input,
-    select,
-    textarea,
-    button,
-    .search-container,
-    .header,
-    .footer {
-      transition: var(--theme-transition);
+    /* Offscreen cards take the new palette immediately, including legacy hover
+       transitions. Visible progress bars keep their normal width animation. */
+    html.theme-transition .fluent-app .secret-card:not(.theme-viewport-transition),
+    html.theme-transition .fluent-app .secret-card:not(.theme-viewport-transition) :not(.progress-top-fill) {
+      transition: none !important;
+    }
+
+    /* Pseudo-elements have their own explicit colors; they do not inherit the
+       transition on the control (notably placeholders and the active tab marker). */
+    html.theme-transition .fluent-app :is(input, textarea)::placeholder,
+    html.theme-transition .fluent-app .settings-tab.active::before,
+    html.theme-transition .fluent-app .service-group-header.theme-viewport-transition::after,
+    html.theme-transition .fluent-app .sort-option.active::before,
+    html.theme-transition .fluent-app .loading-backup::before {
+      transition: var(--theme-transition) !important;
+    }
+
+    /* Explicitly suppress existing component transitions for an immediate change. */
+    html.theme-instant,
+    html.theme-instant *,
+    html.theme-instant *::before,
+    html.theme-instant *::after {
+      transition: none !important;
     }
 
     /* 禁用过渡的情况（减少动画偏好） */

@@ -112,6 +112,8 @@ export function getWorkspaceStyles() {
     .fluent-app .secrets-list, .fluent-app .service-group-grid { grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); gap: 16px; }
     .fluent-app .secret-card { --card-shadow: 0 1px 2px #00000005; --card-hover-shadow: 0 2px 4px #00000008; display: flex; flex-direction: column; padding: 20px; min-width: 0; border: 1px solid var(--card-border); border-radius: 16px; background: var(--card-bg); box-shadow: var(--card-shadow); -webkit-tap-highlight-color: transparent; transition: border-color .12s ease, box-shadow .12s ease; }
     [data-theme="dark"] .fluent-app .secret-card { --card-shadow: 0 1px 2px #00000010; }
+    /* Isolate offscreen cards and group headings from the body's animated text. */
+    .fluent-app .secret-card, .fluent-app .service-group-header { color: var(--workspace-text); }
     .fluent-app .secret-card:hover { border-color: var(--card-hover-border); box-shadow: var(--card-hover-shadow); }
     .fluent-app .secret-card:active { background: var(--workspace-selected); }
     .fluent-app .secret-card button { -webkit-tap-highlight-color: transparent; }

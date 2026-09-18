@@ -79,30 +79,62 @@ export function getUICode() {
       }
     }
 
+    // Keep a single active change so an older cleanup cannot interrupt a newer fade.
+    let themeChange = null;
+
     // 应用主题（支持过渡动画）
     function applyTheme(theme, withTransition = false) {
       const root = document.documentElement;
+      const nextTheme = theme === 'dark' || (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        ? 'dark' : 'light';
+      if (nextTheme === (themeChange ? themeChange.theme : root.getAttribute('data-theme'))) return;
 
-      // 添加过渡类（如果需要动画）
-      if (withTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        root.classList.add('theme-transition');
+      const animate = withTransition && !document.hidden && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      // Only visible cards and group headings need a fade. Offscreen transitions
+      // otherwise keep style/paint work running throughout the transition.
+      // Read bounds BEFORE removing existing transition styles. A layout read
+      // between removal and reapplication would finish the old fade immediately,
+      // making a rapid reversal jump to the previous target color first.
+      const surfaces = animate ? Array.from(document.querySelectorAll('.secret-card, .service-group-header')).filter(surface => {
+        const rect = surface.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 &&
+          rect.top < window.innerHeight && rect.left < window.innerWidth;
+      }) : [];
 
-        // 过渡完成后移除类
-        setTimeout(() => {
-          root.classList.remove('theme-transition');
-        }, 300);
+      const previous = themeChange;
+      themeChange = null;
+      if (previous) {
+        if (previous.timer !== null) clearTimeout(previous.timer);
+        if (previous.frame !== null) cancelAnimationFrame(previous.frame);
+        previous.surfaces.forEach(surface => surface.classList.remove('theme-viewport-transition'));
       }
+      root.classList.remove('theme-transition', 'theme-instant');
+      surfaces.forEach(surface => surface.classList.add('theme-viewport-transition'));
+      const change = { theme: nextTheme, timer: null, frame: null, surfaces };
+      themeChange = change;
+      const finish = () => {
+        if (themeChange !== change) return;
+        themeChange = null;
+        surfaces.forEach(surface => surface.classList.remove('theme-viewport-transition'));
+        root.classList.remove('theme-transition', 'theme-instant');
+      };
+      const afterPaint = (callback) => {
+        change.frame = requestAnimationFrame(() => {
+          if (themeChange !== change) return;
+          change.frame = requestAnimationFrame(() => {
+            change.frame = null;
+            if (themeChange === change) callback();
+          });
+        });
+      };
 
-      // 设置主题属性
-      if (theme === 'dark') {
-        root.setAttribute('data-theme', 'dark');
-      } else if (theme === 'light') {
-        root.setAttribute('data-theme', 'light');
-      } else {
-        // auto 模式：跟随系统
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        root.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
-      }
+      root.classList.add(animate ? 'theme-transition' : 'theme-instant');
+      root.setAttribute('data-theme', nextTheme);
+      // Start cleanup after styles have painted, with a small margin over 180ms.
+      afterPaint(() => {
+        if (animate) change.timer = setTimeout(finish, 220);
+        else finish();
+      });
     }
 
     function initTheme() {
@@ -110,7 +142,7 @@ export function getUICode() {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
         const currentTheme = localStorage.getItem('theme') || 'auto';
         if (currentTheme === 'auto') {
-          applyTheme('auto');
+          applyTheme('auto', true);
         }
       });
     }
