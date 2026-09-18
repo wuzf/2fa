@@ -903,11 +903,12 @@ GitHub,user@example.com,JBSWY3DPEHPK3PXP,TOTP,6,30,SHA1
 **查询参数** (可选):
 
 - `type` (String): OTP 类型 (`totp`, `hotp`)，默认 `TOTP`
-- `digits` (Number): OTP 位数，默认 `6`
-- `period` (Number): TOTP 时间步长（秒），默认 `30`
+- `digits` (Number): OTP 位数，支持 `6`、`8`，默认 `6`
+- `period` (Number): TOTP 时间步长（秒），支持 `30`、`60`、`120`，默认 `30`
 - `algorithm` (String): 哈希算法，支持 `SHA1`、`SHA256`、`SHA512`
 - `counter` (Number): HOTP 计数器（仅 `HOTP` 使用）
 - `format` (String): `html` 或 `json`，默认 `html`
+- `preview` (String): 显式设为 `1` 时，TOTP JSON 响应包含后续两个周期的验证码和时间信息；HOTP 忽略此参数
 
 **请求示例**:
 
@@ -927,8 +928,25 @@ Host: 2fa.example.com
 **成功响应** (`format=html`, 200 OK):
 
 - 返回可直接展示的 OTP HTML 页面
-- TOTP 页面会显示剩余有效时间
-- HOTP 页面不会显示倒计时
+- TOTP 页面显示当前、下一周期验证码和剩余有效时间，并自动更新
+- HOTP 页面只显示指定计数器的当前验证码，不显示倒计时、不自动递增计数器
+
+**TOTP 预览响应** (`format=json&preview=1`, 200 OK):
+
+```json
+{
+	"token": "123456",
+	"nextToken": "654321",
+	"followingToken": "789012",
+	"period": 30,
+	"validUntil": 1800000030000,
+	"serverTime": 1800000015000
+}
+```
+
+`validUntil` 为当前验证码所属周期的结束时间，`serverTime` 为验证码生成结束时的服务器时间，二者均为 Unix 毫秒。三个验证码使用同一个时间基准生成；如果生成期间跨过周期边界，`validUntil` 可能已经过去，客户端应按时间判断有效性。`nextToken` 仅在下一周期生效；`followingToken` 在再下一个周期生效，用于周期交接时补上新的下期码，页面不单独显示第三个验证码。
+
+不带 `preview=1` 的 JSON 请求，以及所有 HOTP JSON 请求，仍只返回 `{ "token": "…" }`。OTP JSON 响应使用 `Cache-Control: no-store`。
 
 **错误响应**:
 

@@ -192,6 +192,8 @@ https://your-worker.workers.dev/otp/YOUR_SECRET_KEY?type=hotp&counter=5
 
 参数：`type`（totp/hotp）、`digits`（6/8）、`period`（30/60/120）、`algorithm`（sha1/sha256/sha512）、`counter`（HOTP 用）
 
+TOTP 网页同时显示当前和下一个验证码，均可点击复制，到期后原地更新。HOTP 网页显示链接中指定计数器的验证码，复制不会推进计数器。
+
 ## 📚 更多文档
 
 | 文档                                          | 说明                                               |

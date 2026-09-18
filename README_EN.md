@@ -192,6 +192,8 @@ https://your-worker.workers.dev/otp/YOUR_SECRET_KEY?type=hotp&counter=5
 
 Parameters: `type` (totp/hotp), `digits` (6/8), `period` (30/60/120), `algorithm` (sha1/sha256/sha512), `counter` (for HOTP)
 
+TOTP pages show both the current and next codes, each available to copy, and update in place when the period ends. HOTP pages use the counter specified in the link; copying does not advance it.
+
 ## 📚 More Documentation
 
 | Document                                       | Description                                   |

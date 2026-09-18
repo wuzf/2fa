@@ -1,26 +1,35 @@
 import { dialogIcon } from './dialogIcons.js';
 import { getStandaloneHead } from './standalone.js';
-import { PROGRESS_GRADIENT, PROGRESS_HEIGHT } from './styles/progress.js';
+import { getQuickOtpScript } from './scripts/quickOtp.js';
+import { getQuickOtpStyles } from './styles/quickOtp.js';
 
 /** Public entry form; API clients still receive the plain-text usage response. */
 export function createOtpEntryPage() {
 	return new Response(
 		`<!DOCTYPE html>
 <html lang="zh-CN">
-<head>${getStandaloneHead('OTP 生成 - 2FA')}</head>
+<head>${getStandaloneHead('OTP 生成 - 2FA', getQuickOtpStyles())}</head>
 <body>
-  <main class="standalone-card">
-    <div class="page-icon">${dialogIcon('key')}</div>
-    <h1 class="page-title">生成验证码</h1>
-    <p class="page-description">无需登录，输入 Base32 密钥即可获取验证码。</p>
-    <form id="otpEntryForm">
-      <label class="page-label" for="s">Base32 密钥</label>
-      <input class="page-input" id="s" name="secret" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="例如 JBSWY3DPEHPK3PXP" required>
-      <div class="page-actions">
+  <main class="otp-shell" aria-labelledby="otpEntryTitle">
+    <a class="otp-brand" href="/">${dialogIcon('key')}<span>2FA</span></a>
+    <section class="standalone-card otp-card otp-entry" aria-label="输入验证器密钥">
+      <header class="otp-header">
+        <div class="otp-header-icon">${dialogIcon('lock')}</div>
+        <div>
+          <h1 class="page-title" id="otpEntryTitle">生成验证码</h1>
+          <p class="otp-subtitle">查看当前与下一期验证码</p>
+        </div>
+      </header>
+      <form id="otpEntryForm">
+        <label class="page-label" for="s">Base32 密钥</label>
+        <input class="page-input" id="s" name="secret" aria-describedby="otpEntryHint" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="粘贴或输入验证器密钥" required>
+        <p class="otp-entry-hint" id="otpEntryHint">支持粘贴带空格的密钥</p>
         <button class="page-button" type="submit">生成验证码</button>
-        <a class="page-link" href="/">返回首页</a>
-      </div>
-    </form>
+      </form>
+    </section>
+    <nav class="otp-footer" aria-label="页面导航">
+      <a class="page-link" href="/">返回首页</a>
+    </nav>
   </main>
   <script>
     document.getElementById('otpEntryForm').addEventListener('submit', function (event) {
@@ -43,108 +52,88 @@ export function createOtpEntryPage() {
 	);
 }
 
-/** Render a TOTP countdown or a fixed-counter HOTP code. */
+/** Render current/next TOTP codes or a fixed-counter HOTP code. */
 export function createQuickOtpPage(otp, options = {}) {
-	const { period = 30, remainingTime = 30, type = 'TOTP', counter = 0 } = options;
+	const {
+		period = 30,
+		remainingTime = 30,
+		type = 'TOTP',
+		counter = 0,
+		nextToken = '',
+		followingToken = '',
+		validUntil = 0,
+		serverTime,
+	} = options;
 	const isHOTP = String(type).toUpperCase() === 'HOTP';
-	const safeOTP = String(otp).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+	const safeCode = (value) => (/^([0-9]{6}|[0-9]{8})$/.test(String(value)) ? String(value) : '');
+	const current = safeCode(otp);
+	const next = safeCode(nextToken);
+	const totalTime = [30, 60, 120].includes(period) ? period : 30;
+	const remaining =
+		Number.isFinite(serverTime) && Number.isFinite(validUntil) && validUntil > 0
+			? (validUntil - serverTime) / 1000
+			: Number.isFinite(remainingTime)
+				? remainingTime
+				: totalTime;
 	const counterLabel = Number.isSafeInteger(counter) && counter >= 0 ? counter : 0;
-	const styles = `
-    .token {
-      display: block;
-      width: 100%;
-      padding: 16px 0;
-      margin: 8px 0 0;
-      border: 0;
-      border-radius: 4px;
-      background: transparent;
-      color: var(--page-text);
-      font: 600 clamp(28px, 8vw, 44px)/1.3 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 2px;
-      text-align: left;
-      white-space: nowrap;
-      cursor: pointer;
-    }
-    .token:hover { color: var(--page-brand); }
-    .token:active { background: var(--page-hover); }
-    .copied-message { min-height: 20px; margin: 0 0 16px; color: var(--page-muted); font-size: 12px; }
-    .copied-message.error { color: var(--page-danger); }
-    .progress-container { height: ${PROGRESS_HEIGHT}; background: var(--page-line); overflow: hidden; }
-    .progress-bar { height: 100%; width: 100%; background: ${PROGRESS_GRADIENT}; transform-origin: left; }
-    .countdown { margin: 8px 0 0; color: var(--page-muted); font-size: 12px; }
-  `;
+	const copyIcon =
+		'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>';
 	const htmlContent = `<!DOCTYPE html>
 <html lang="zh-CN">
-<head>${getStandaloneHead('验证码 - 2FA', styles)}</head>
+<head>${getStandaloneHead('验证码 - 2FA', getQuickOtpStyles())}</head>
 <body>
-  <main class="standalone-card">
-    <div class="page-icon">${dialogIcon(isHOTP ? 'key' : 'clock')}</div>
-    <h1 class="page-title">${isHOTP ? 'HOTP 验证码' : '验证码'}</h1>
-    <button class="token" id="token" type="button" title="点击复制验证码" aria-label="复制验证码 ${safeOTP}">${safeOTP}</button>
-    <p class="copied-message" id="copied" role="status" aria-live="polite">点击验证码复制</p>
-    ${
-			isHOTP
-				? `<p class="page-notice">计数器：${counterLabel}。此链接的验证码不会随时间变化，复制不会增加计数器。</p>`
-				: `<div class="progress-container">
-      <div class="progress-bar" id="progress" role="progressbar" aria-label="验证码剩余有效期" aria-valuemin="0" aria-valuemax="100"></div>
-    </div>
-    <p class="countdown" id="countdown"></p>`
-		}
-    <div class="page-actions">
+  <main class="otp-shell" aria-labelledby="otpTitle">
+    <a class="otp-brand" href="/">${dialogIcon('key')}<span>2FA</span></a>
+    <section class="standalone-card otp-card" aria-label="验证码">
+      ${isHOTP ? '' : `<div class="progress-container"><div class="progress-bar" id="progress" role="progressbar" aria-label="验证码剩余有效期" aria-valuemin="0" aria-valuemax="100"></div></div>`}
+      <header class="otp-header">
+        <div class="otp-header-icon">${dialogIcon(isHOTP ? 'key' : 'clock')}</div>
+        <div>
+          <h1 class="page-title" id="otpTitle">两步验证码</h1>
+          <p class="otp-subtitle">${isHOTP ? '基于计数器 · HOTP' : '每 ' + totalTime + ' 秒自动更新'}</p>
+        </div>
+      </header>
+      <div class="otp-current-label">
+        <span>当前验证码</span>
+        ${isHOTP ? '' : '<p class="countdown" id="countdown"></p>'}
+      </div>
+      <button class="token-button token" id="token" type="button" aria-label="复制当前验证码" title="复制当前验证码">
+        <span class="token-value" id="tokenValue">${current || '------'}</span>
+        ${copyIcon}
+      </button>
+      ${
+				isHOTP
+					? `<p class="page-notice">计数器：${counterLabel}。此链接的验证码不会随时间变化，复制不会增加计数器。</p>`
+					: `<div class="otp-next">
+        <span class="otp-next-label">下一个验证码</span>
+        <button class="token-button next-token" id="nextToken" type="button" aria-label="复制下一个验证码" title="复制下一个验证码">
+          <span class="next-token-value" id="nextTokenValue">${next}</span>
+          ${copyIcon}
+        </button>
+      </div>`
+			}
+      <p class="copied-message" id="copied" role="status" aria-live="polite">点击验证码即可复制</p>
+      ${
+				isHOTP
+					? ''
+					: `<div class="refresh-status">
+        <p id="refreshMessage" role="status" aria-live="polite"></p>
+        <button class="retry-button" id="retry" type="button" hidden>重试更新</button>
+      </div>`
+			}
+    </section>
+    <nav class="otp-footer" aria-label="页面导航">
       <a class="page-link" href="/otp">输入其他密钥</a>
       <a class="page-link" href="/">返回首页</a>
-    </div>
+    </nav>
   </main>
-  <script>
-    const tokenEl = document.getElementById('token');
-    const copiedEl = document.getElementById('copied');
-    let copyMessageTimer = null;
-    tokenEl.addEventListener('click', async function () {
-      if (copyMessageTimer !== null) clearTimeout(copyMessageTimer);
-      try {
-        await navigator.clipboard.writeText(tokenEl.textContent);
-        copiedEl.classList.remove('error');
-        copiedEl.textContent = '验证码已复制';
-      } catch {
-        copiedEl.classList.add('error');
-        copiedEl.textContent = '复制失败，请检查浏览器的剪贴板权限';
-      }
-      copyMessageTimer = setTimeout(function () {
-        copiedEl.classList.remove('error');
-        copiedEl.textContent = '点击验证码复制';
-        copyMessageTimer = null;
-      }, 2000);
-    });
-    ${
-			isHOTP
-				? ''
-				: `
-    const totalTime = ${Number(period)};
-    const expiresAt = performance.now() + ${Number(remainingTime)} * 1000;
-    const progressBar = document.getElementById('progress');
-    const countdown = document.getElementById('countdown');
-    let refreshing = false;
-    function updateCountdown() {
-      if (refreshing) return;
-      const remaining = Math.max(0, Math.ceil((expiresAt - performance.now()) / 1000));
-      const fraction = Math.min(1, remaining / totalTime);
-      progressBar.style.transform = 'scaleX(' + fraction + ')';
-      progressBar.setAttribute('aria-valuenow', String(Math.round(fraction * 100)));
-      countdown.textContent = remaining > 0 ? remaining + ' 秒后更新' : '正在更新验证码…';
-      if (remaining === 0) {
-        refreshing = true;
-        clearInterval(interval);
-        location.reload();
-      }
-    }
-    const interval = setInterval(updateCountdown, 1000);
-    document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) updateCountdown();
-    });
-    updateCountdown();`
-		}
-  </script>
+  <script>${getQuickOtpScript({
+		isHOTP,
+		period: totalTime,
+		remainingTime: remaining,
+		validUntil: Number.isFinite(validUntil) ? validUntil : 0,
+		followingToken: safeCode(followingToken),
+	})}</script>
 </body>
 </html>`;
 
@@ -154,8 +143,9 @@ export function createQuickOtpPage(otp, options = {}) {
 			'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
 			Pragma: 'no-cache',
 			Expires: '0',
-			'Access-Control-Allow-Origin': '*', // Public API allows cross-origin access.
+			'Access-Control-Allow-Origin': '*',
 			'Access-Control-Allow-Methods': 'GET, OPTIONS',
+			'Referrer-Policy': 'no-referrer',
 		},
 	});
 }
