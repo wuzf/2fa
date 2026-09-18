@@ -1,3 +1,5 @@
+import { PROGRESS_GRADIENT, PROGRESS_HEIGHT } from './progress.js';
+
 /**
  * CSS 变量定义模块
  * 实现浅色模式和深色模式的主题变量
@@ -58,7 +60,7 @@ export function getVariables() {
       --action-btn-shadow: 0 4px 12px rgba(33, 150, 243, 0.30);
       --qr-btn-color: var(--primary-600);
       --qr-btn-hover-bg: var(--primary-600);
-      --progress-mini-fill: #8B5CF6;
+      --progress-mini-fill: var(--progress-fill);
 
       /* 功能色 */
       --success-light: #e8f5e8;
@@ -157,8 +159,9 @@ export function getVariables() {
       --fab-modal-lg-max-width: 680px;
 
       /* 进度条 */
-      --progress-bg: #e9ecef;
-      --progress-fill: linear-gradient(90deg, #4CAF50, #2196F3);
+      --progress-height: ${PROGRESS_HEIGHT};
+      --progress-bg: #e0e0e0;
+      --progress-fill: ${PROGRESS_GRADIENT};
 
       /* 滚动条 */
       --scrollbar-track: transparent;
@@ -323,8 +326,8 @@ export function getVariables() {
       --modal-header-border: #4a5568;
 
       /* 进度条 */
-      --progress-bg: #333333;
-      --progress-fill: linear-gradient(90deg, #4CAF50, #2196F3);
+      --progress-bg: #424242;
+      --progress-fill: ${PROGRESS_GRADIENT};
 
       /* 滚动条 */
       --scrollbar-track: transparent;

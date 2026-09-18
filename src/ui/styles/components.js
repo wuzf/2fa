@@ -704,21 +704,21 @@ export function getComponentStyles() {
 
     .progress-mini {
       width: 60px;
-      height: 4px;
-      background: var(--border-primary);
-      border-radius: 2px;
+      height: var(--progress-height);
+      background: var(--progress-bg);
+      border-radius: 0;
       overflow: hidden;
     }
 
     .progress-mini-fill {
       height: 100%;
-      background: #8B5CF6;
-      border-radius: 2px;
+      background: var(--progress-fill);
+      border-radius: inherit;
       transition: width 1s ease-in-out;
     }
 
     .progress-top {
-      height: 1px;
+      height: var(--progress-height);
       background: transparent;
       border-radius: 0;
       overflow: hidden;

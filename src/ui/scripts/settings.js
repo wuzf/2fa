@@ -16,6 +16,26 @@ export function getSettingsCode() {
     let preferencesLoadRequestId = 0;
     let defaultExportFormatChangeVersion = 0;
     let defaultExportFormatSaveRequestId = 0;
+    let preferenceSaveQueue = Promise.resolve();
+    const NUMERIC_PREFERENCE_SAVE_DELAY = 500;
+    const numericPreferences = {
+      jwtExpiryDays: {
+        inputId: 'settingsJwtExpiryDays', resultId: 'settingsJwtExpiryResult', min: 1, max: 365,
+        version: 0, dirty: false, savedValue: null, timer: null, saving: null
+      },
+      maxBackups: {
+        inputId: 'settingsMaxBackups', resultId: 'settingsMaxBackupsResult', min: 0, max: 1000,
+        version: 0, dirty: false, savedValue: null, timer: null, saving: null
+      }
+    };
+
+    // Settings are stored together on the server. Serialize writes from all
+    // preference controls so one field cannot overwrite another field's update.
+    function enqueuePreferenceSave(save) {
+      const request = preferenceSaveQueue.then(save);
+      preferenceSaveQueue = request.catch(() => {});
+      return request;
+    }
 
     /**
      * 切换设置标签
@@ -270,6 +290,11 @@ export function getSettingsCode() {
       // 主题模式
       const requestId = ++preferencesLoadRequestId;
       const formatVersionAtStart = defaultExportFormatChangeVersion;
+      const numericVersionsAtStart = {};
+      Object.keys(numericPreferences).forEach(key => {
+        const state = numericPreferences[key];
+        numericVersionsAtStart[key] = state.dirty ? null : state.version;
+      });
 
       const currentTheme = localStorage.getItem('theme') || 'auto';
       const themeRadios = document.querySelectorAll('input[name="settingsTheme"]');
@@ -301,14 +326,14 @@ export function getSettingsCode() {
             formatSelect.value = data.defaultExportFormat;
             localStorage.setItem('defaultExportFormat', data.defaultExportFormat);
           }
-          const jwtInput = document.getElementById('settingsJwtExpiryDays');
-          if (jwtInput && data.jwtExpiryDays) {
-            jwtInput.value = data.jwtExpiryDays;
-          }
-          const backupsInput = document.getElementById('settingsMaxBackups');
-          if (backupsInput && typeof data.maxBackups === 'number') {
-            backupsInput.value = data.maxBackups;
-          }
+          Object.keys(numericPreferences).forEach(key => {
+            const state = numericPreferences[key];
+            const input = document.getElementById(state.inputId);
+            if (input && !state.dirty && numericVersionsAtStart[key] === state.version && Number.isInteger(data[key])) {
+              input.value = String(data[key]);
+              state.savedValue = data[key];
+            }
+          });
         }
       } catch {
         // 加载失败静默处理
@@ -347,11 +372,11 @@ export function getSettingsCode() {
       defaultExportFormatChangeVersion += 1;
 
       try {
-        const resp = await authenticatedFetch('/api/settings', {
+        const resp = await enqueuePreferenceSave(() => authenticatedFetch('/api/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ defaultExportFormat: selectedFormat }),
-        });
+        }));
         const data = await resp.json();
         if (requestId !== defaultExportFormatSaveRequestId) {
           return;
@@ -373,78 +398,113 @@ export function getSettingsCode() {
       }
     }
 
-    /**
-     * 保存登录有效期设置
-     */
-    async function saveJwtExpiryDays() {
-      const input = document.getElementById('settingsJwtExpiryDays');
-      const resultEl = document.getElementById('settingsJwtExpiryResult');
-      if (!input) return;
-
-      const days = parseInt(input.value, 10);
-      if (isNaN(days) || days < 1 || days > 365) {
-        resultEl.textContent = '请输入 1~365 之间的整数';
-        resultEl.className = 'settings-result error';
-        resultEl.style.display = 'block';
-        return;
-      }
-
-      try {
-        const resp = await authenticatedFetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jwtExpiryDays: days }),
-        });
-        const data = await resp.json();
-        if (resp.ok && data.success) {
-          resultEl.textContent = '已保存，下次登录生效';
-          resultEl.className = 'settings-result success';
-        } else {
-          resultEl.textContent = data.message || '保存失败';
-          resultEl.className = 'settings-result error';
-        }
-      } catch {
-        resultEl.textContent = '网络错误，请稍后重试';
-        resultEl.className = 'settings-result error';
-      }
-      resultEl.style.display = 'block';
+    function showNumericPreferenceResult(key, message, status = '') {
+      const result = document.getElementById(numericPreferences[key].resultId);
+      result.textContent = message;
+      result.className = 'settings-result' + (status ? ' ' + status : '');
+      result.style.display = 'block';
     }
 
-    /**
-     * 保存备份保留数量设置
-     */
-    async function saveMaxBackups() {
-      const input = document.getElementById('settingsMaxBackups');
-      const resultEl = document.getElementById('settingsMaxBackupsResult');
-      if (!input) return;
-
-      const num = parseInt(input.value, 10);
-      if (isNaN(num) || num < 0 || num > 1000) {
-        resultEl.textContent = '请输入 0~1000 之间的整数';
-        resultEl.className = 'settings-result error';
-        resultEl.style.display = 'block';
-        return;
+    function readNumericPreference(key) {
+      const state = numericPreferences[key];
+      const input = document.getElementById(state.inputId);
+      const raw = input.value.trim();
+      const value = Number(raw);
+      const valid = raw !== '' && Number.isInteger(value) && value >= state.min && value <= state.max;
+      input.setAttribute('aria-invalid', String(!valid));
+      if (!valid) {
+        showNumericPreferenceResult(key, '请输入 ' + state.min + '~' + state.max + ' 之间的整数', 'error');
+        return null;
       }
+      return value;
+    }
+
+    function numericPreferenceSavedMessage(key, value) {
+      if (key === 'jwtExpiryDays') return '已保存，下次登录生效';
+      return value === 0 ? '已保存，备份不限数量' : '已保存，保留最新 ' + value + ' 条备份';
+    }
+
+    // Input events debounce typing and spinner changes. Blur and Enter flush
+    // immediately; loading a value programmatically never schedules a save.
+    function scheduleNumericPreferenceSave(key) {
+      const state = numericPreferences[key];
+      state.version += 1;
+      state.dirty = true;
+      if (state.timer !== null) clearTimeout(state.timer);
+      showNumericPreferenceResult(key, '等待保存…');
+      state.timer = setTimeout(() => {
+        state.timer = null;
+        saveNumericPreference(key);
+      }, NUMERIC_PREFERENCE_SAVE_DELAY);
+    }
+
+    async function saveNumericPreference(key) {
+      const state = numericPreferences[key];
+      if (state.timer !== null) clearTimeout(state.timer);
+      state.timer = null;
+      if (!state.dirty || readNumericPreference(key) === null) return;
+      if (state.saving) return state.saving;
+
+      state.saving = (async () => {
+        while (state.dirty) {
+          const version = state.version;
+          const value = readNumericPreference(key);
+          if (value === null) break;
+          if (value === state.savedValue) {
+            state.dirty = false;
+            showNumericPreferenceResult(key, numericPreferenceSavedMessage(key, value), 'success');
+            break;
+          }
+
+          showNumericPreferenceResult(key, '保存中…');
+          try {
+            const resp = await enqueuePreferenceSave(() => authenticatedFetch('/api/settings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ [key]: value }),
+            }));
+            const data = await resp.json();
+            if (resp.ok && data.success) {
+              state.savedValue = value;
+              if (state.version === version) {
+                state.dirty = false;
+                document.getElementById(state.inputId).value = String(value);
+                showNumericPreferenceResult(key, numericPreferenceSavedMessage(key, value), 'success');
+              }
+            } else {
+              state.savedValue = null;
+              if (state.version === version) {
+                showNumericPreferenceResult(key, data.message || '保存失败，请稍后重试', 'error');
+                break;
+              }
+            }
+          } catch {
+            // A lost response does not prove the server left the old value intact.
+            state.savedValue = null;
+            if (state.version === version) {
+              showNumericPreferenceResult(key, '网络错误，未保存，请稍后重试', 'error');
+              break;
+            }
+          }
+          // If editing continues, let the pending debounce finish. If its timer
+          // already fired during this request, save the latest value next.
+          if (state.timer !== null) break;
+        }
+      })();
 
       try {
-        const resp = await authenticatedFetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ maxBackups: num }),
-        });
-        const data = await resp.json();
-        if (resp.ok && data.success) {
-          resultEl.textContent = num === 0 ? '已保存，备份不限数量' : '已保存，保留最新 ' + num + ' 条备份';
-          resultEl.className = 'settings-result success';
-        } else {
-          resultEl.textContent = data.message || '保存失败';
-          resultEl.className = 'settings-result error';
-        }
-      } catch {
-        resultEl.textContent = '网络错误，请稍后重试';
-        resultEl.className = 'settings-result error';
+        await state.saving;
+      } finally {
+        state.saving = null;
       }
-      resultEl.style.display = 'block';
+    }
+
+    function saveJwtExpiryDays() {
+      return saveNumericPreference('jwtExpiryDays');
+    }
+
+    function saveMaxBackups() {
+      return saveNumericPreference('maxBackups');
     }
   `;
 }

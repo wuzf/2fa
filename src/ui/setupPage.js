@@ -3,7 +3,8 @@
  * 用于用户首次访问时设置管理员密码
  */
 
-import { getVariables } from './styles/variables.js';
+import { getSetupStyles } from './styles/setup.js';
+import { dialogIcon } from './dialogIcons.js';
 
 /**
  * 创建首次设置页面
@@ -14,317 +15,53 @@ export async function createSetupPage() {
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>首次设置 - 2FA 密钥管理器</title>
 
   <script>
     (function() {
-      try {
-        const theme = localStorage.getItem('theme') || 'auto';
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const dataTheme = (theme === 'dark' || (theme === 'auto' && prefersDark)) ? 'dark' : 'light';
+      const themeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+      function applySetupTheme() {
+        let theme = 'auto';
+        try { theme = localStorage.getItem('theme') || 'auto'; } catch (e) { /* Use the system preference. */ }
+        const dataTheme = (theme === 'dark' || (theme === 'auto' && themeMedia.matches)) ? 'dark' : 'light';
         document.documentElement.setAttribute('data-theme', dataTheme);
-      } catch (e) {
-        document.documentElement.setAttribute('data-theme', 'light');
       }
+      applySetupTheme();
+      if (themeMedia.addEventListener) themeMedia.addEventListener('change', applySetupTheme);
+      else if (themeMedia.addListener) themeMedia.addListener(applySetupTheme);
+      window.addEventListener('storage', function(event) {
+        if (event.key === 'theme' || event.key === null) applySetupTheme();
+      });
     })();
   </script>
 
   <style>
-    ${getVariables()}
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background: var(--bg-secondary);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      color: var(--text-primary);
-    }
-
-    .setup-container {
-      background: var(--bg-primary);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-xl);
-      max-width: 480px;
-      width: 100%;
-      padding: 40px;
-    }
-
-    .setup-header {
-      text-align: center;
-      margin-bottom: 30px;
-    }
-
-    .setup-icon {
-      font-size: 64px;
-      margin-bottom: 15px;
-    }
-
-    .setup-title {
-      font-size: 28px;
-      font-weight: 700;
-      color: var(--text-primary);
-      margin-bottom: 10px;
-    }
-
-    .setup-description {
-      font-size: 15px;
-      color: var(--text-secondary);
-      line-height: 1.6;
-    }
-
-    .security-notice {
-      background: var(--warning-light);
-      border-left: 4px solid var(--warning-dark);
-      border-radius: var(--radius-sm);
-      padding: 15px;
-      margin-bottom: 25px;
-      font-size: 13px;
-      color: var(--warning-dark);
-      line-height: 1.5;
-    }
-
-    .security-notice strong {
-      display: block;
-      margin-bottom: 5px;
-      font-size: 14px;
-    }
-
-    .insecure-warning {
-      background: var(--danger-light);
-      border-left: 4px solid var(--danger-dark);
-      border-radius: var(--radius-sm);
-      padding: 15px;
-      margin-bottom: 25px;
-      font-size: 13px;
-      color: var(--danger-dark);
-      line-height: 1.5;
-    }
-
-    .insecure-warning strong {
-      display: block;
-      margin-bottom: 5px;
-      font-size: 14px;
-    }
-
-    .form-group {
-      margin-bottom: 20px;
-    }
-
-    .form-label {
-      display: block;
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin-bottom: 8px;
-    }
-
-    .password-input-wrapper {
-      position: relative;
-    }
-
-    .form-input {
-      width: 100%;
-      padding: 14px 40px 14px 16px;
-      border: 2px solid var(--input-border);
-      border-radius: var(--radius-md);
-      font-size: 15px;
-      transition: all 0.3s ease;
-      font-family: inherit;
-      background: var(--input-bg);
-      color: var(--text-primary);
-    }
-
-    .form-input:focus {
-      outline: none;
-      border-color: var(--input-border-focus);
-      background: var(--input-bg-focus);
-      box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.12);
-    }
-
-    .toggle-password {
-      position: absolute;
-      right: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 20px;
-      padding: 5px;
-      color: var(--text-tertiary);
-      transition: color 0.2s;
-    }
-
-    .toggle-password:hover {
-      color: var(--primary-600);
-    }
-
-    .password-requirements {
-      background: var(--bg-secondary);
-      border-radius: var(--radius-sm);
-      padding: 12px 15px;
-      margin-top: 10px;
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-
-    .password-requirements ul {
-      list-style: none;
-      margin: 5px 0 0 0;
-    }
-
-    .password-requirements li {
-      padding: 3px 0;
-      padding-left: 20px;
-      position: relative;
-    }
-
-    .password-requirements li:before {
-      content: '✓';
-      position: absolute;
-      left: 0;
-      color: #4caf50;
-      font-weight: bold;
-    }
-
-    .password-strength {
-      margin-top: 10px;
-      height: 4px;
-      background: var(--border-primary);
-      border-radius: 2px;
-      overflow: hidden;
-    }
-
-    .password-strength-bar {
-      height: 100%;
-      width: 0%;
-      transition: all 0.3s ease;
-      border-radius: 2px;
-    }
-
-    .strength-weak { background: #f44336; width: 33%; }
-    .strength-medium { background: #ff9800; width: 66%; }
-    .strength-strong { background: #4caf50; width: 100%; }
-
-    .submit-button {
-      width: 100%;
-      padding: 16px;
-      background: var(--primary-600);
-      color: white;
-      border: none;
-      border-radius: var(--radius-md);
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background-color 0.2s ease;
-      margin-top: 10px;
-    }
-
-    .submit-button:hover {
-      background: var(--primary-700);
-    }
-
-    .submit-button:active {
-      opacity: 0.9;
-    }
-
-    .submit-button:disabled {
-      background: var(--text-tertiary);
-      cursor: not-allowed;
-      opacity: 0.8;
-    }
-
-    .error-message {
-      background: var(--danger-light);
-      border: 1px solid var(--danger-dark);
-      border-radius: var(--radius-sm);
-      padding: 12px;
-      margin-bottom: 20px;
-      color: var(--danger-darker);
-      font-size: 14px;
-      display: none;
-    }
-
-    .success-message {
-      background: var(--success-light);
-      border: 1px solid var(--success-dark);
-      border-radius: var(--radius-sm);
-      padding: 12px;
-      margin-bottom: 20px;
-      color: var(--success-dark);
-      font-size: 14px;
-      display: none;
-    }
-
-    .loading-spinner {
-      display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid rgba(255, 255, 255, 0.3);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin-right: 8px;
-      vertical-align: middle;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    /* 响应式设计 */
-    @media (max-width: 600px) {
-      .setup-container {
-        padding: 30px 25px;
-      }
-
-      .setup-icon {
-        font-size: 48px;
-      }
-
-      .setup-title {
-        font-size: 24px;
-      }
-
-      .setup-description {
-        font-size: 14px;
-      }
-    }
+    ${getSetupStyles()}
   </style>
 </head>
 <body>
-  <div class="setup-container">
+  <main class="setup-container">
     <div class="setup-header">
-      <div class="setup-icon">🔐</div>
-      <h1 class="setup-title">欢迎使用 2FA</h1>
+      <div class="setup-icon" aria-hidden="true">${dialogIcon('lock')}</div>
+      <h1 class="setup-title">设置管理密码</h1>
       <p class="setup-description">
-        首次使用需要设置管理密码<br>
-        密码将被加密存储，用于身份验证
+        首次使用 2FA，请先设置登录密码。
       </p>
     </div>
 
     <div class="security-notice">
-      <strong>🛡️ 安全提示</strong>
+      <strong>请妥善保管密码</strong>
       请设置一个强密码，并妥善保管。这是您登录管理密钥的唯一凭证。
     </div>
 
     <div id="insecureWarning" class="insecure-warning" style="display: none;">
-      <strong>⚠️ 当前正通过 HTTP 访问</strong>
+      <strong>当前正通过 HTTP 访问</strong>
       浏览器无法在 HTTP 下保存登录状态，设置完成后会反复要求输入密码。请将地址栏中的 http:// 改为 https:// 后重新访问。
     </div>
 
-    <div id="errorMessage" class="error-message"></div>
-    <div id="successMessage" class="success-message"></div>
+    <div id="errorMessage" class="error-message" role="alert"></div>
+    <div id="successMessage" class="success-message" role="status"></div>
 
     <form id="setupForm" onsubmit="handleSetup(event)">
       <div class="form-group">
@@ -336,17 +73,18 @@ export async function createSetupPage() {
             class="form-input"
             placeholder="请输入密码"
             autocomplete="new-password"
+            aria-describedby="passwordRequirements"
             required
             oninput="checkPasswordStrength()"
           >
-          <button type="button" class="toggle-password" onclick="togglePasswordVisibility('password')" title="显示/隐藏密码">
-            👁️
+          <button type="button" class="toggle-password" onclick="togglePasswordVisibility('password')" title="显示密码" aria-label="显示密码" aria-controls="password" aria-pressed="false">
+            ${dialogIcon('eye')}
           </button>
         </div>
-        <div class="password-strength" id="passwordStrength">
+        <div class="password-strength" id="passwordStrength" aria-hidden="true">
           <div class="password-strength-bar" id="passwordStrengthBar"></div>
         </div>
-        <div class="password-requirements">
+        <div class="password-requirements" id="passwordRequirements">
           <strong>密码要求：</strong>
           <ul>
             <li>至少 8 个字符</li>
@@ -369,8 +107,8 @@ export async function createSetupPage() {
             autocomplete="new-password"
             required
           >
-          <button type="button" class="toggle-password" onclick="togglePasswordVisibility('confirmPassword')" title="显示/隐藏密码">
-            👁️
+          <button type="button" class="toggle-password" onclick="togglePasswordVisibility('confirmPassword')" title="显示密码" aria-label="显示密码" aria-controls="confirmPassword" aria-pressed="false">
+            ${dialogIcon('eye')}
           </button>
         </div>
       </div>
@@ -379,7 +117,7 @@ export async function createSetupPage() {
         完成设置
       </button>
     </form>
-  </div>
+  </main>
 
   <script>
     // 检测不安全上下文：HTTP 下浏览器无法保存 Secure Cookie，登录状态无法保持
@@ -401,13 +139,12 @@ export async function createSetupPage() {
       const input = document.getElementById(inputId);
       const button = input.nextElementSibling;
 
-      if (input.type === 'password') {
-        input.type = 'text';
-        button.textContent = '🙈';
-      } else {
-        input.type = 'password';
-        button.textContent = '👁️';
-      }
+      const visible = input.type === 'password';
+      input.type = visible ? 'text' : 'password';
+      button.innerHTML = visible ? '${dialogIcon('eye-off')}' : '${dialogIcon('eye')}';
+      button.setAttribute('aria-pressed', String(visible));
+      button.setAttribute('aria-label', visible ? '隐藏密码' : '显示密码');
+      button.title = visible ? '隐藏密码' : '显示密码';
     }
 
     // 检查密码强度

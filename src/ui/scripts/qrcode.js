@@ -106,12 +106,9 @@ export function getQRCodeCode() {
 
       // 显示加载状态
       const loadingDiv = document.createElement('div');
-      loadingDiv.textContent = '🔄 生成中...';
-      loadingDiv.style.cssText =
-        'text-align: center;' +
-        'padding: 80px 20px;' +
-        'color: #7f8c8d;' +
-        'font-size: 14px;';
+      loadingDiv.className = 'dialog-qr-state';
+      loadingDiv.setAttribute('role', 'status');
+      loadingDiv.textContent = '正在生成二维码...';
       container.appendChild(loadingDiv);
 
       try {
@@ -149,22 +146,20 @@ export function getQRCodeCode() {
         img.onerror = function() {
           console.error('二维码显示失败');
           container.innerHTML =
-            '<div style="width: 200px; height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; text-align: center; font-size: 12px; color: #6c757d; line-height: 1.4;">' +
-            '<div style="font-size: 24px; margin-bottom: 10px;">❌</div>' +
-            '<div style="margin-bottom: 8px; font-weight: bold;">二维码生成失败</div>' +
-            '<div style="margin-bottom: 8px;">请检查网络连接</div>' +
-            '<div>或稍后重试</div>' +
+            '<div class="dialog-qr-state dialog-qr-error" role="status">' +
+            dialogIcon('error') +
+            '<strong>二维码显示失败</strong>' +
+            '<span>请关闭弹窗后重试</span>' +
             '</div>';
         };
 
       } catch (error) {
         console.error('二维码生成过程发生错误:', error);
         container.innerHTML =
-          '<div style="width: 200px; height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; text-align: center; font-size: 12px; color: #6c757d; line-height: 1.4;">' +
-          '<div style="font-size: 24px; margin-bottom: 10px;">⚠️</div>' +
-          '<div style="margin-bottom: 8px; font-weight: bold;">生成失败</div>' +
-          '<div style="margin-bottom: 8px;">发生未知错误</div>' +
-          '<div>' + error.message + '</div>' +
+          '<div class="dialog-qr-state dialog-qr-error" role="status">' +
+          dialogIcon('error') +
+          '<strong>二维码生成失败</strong>' +
+          '<span>' + escapeHTML(error.message || '请稍后重试') + '</span>' +
           '</div>';
       }
     }
@@ -812,7 +807,7 @@ export function getQRCodeCode() {
 
       status.textContent = '正在分析图片...';
       status.style.display = 'block';
-      status.style.color = '#17a2b8';
+      status.style.color = 'var(--dialog-brand)';
       error.style.display = 'none';
 
       console.log('开始处理图片文件...');
@@ -845,7 +840,7 @@ export function getQRCodeCode() {
 
               if (qrCode) {
                 status.textContent = '二维码解析成功！';
-                status.style.color = '#4CAF50';
+                status.style.color = 'var(--dialog-success)';
 
                 console.log('成功解析到二维码:', qrCode);
 

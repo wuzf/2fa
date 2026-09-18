@@ -57,7 +57,11 @@ src/
 │   └── generator.js       # 🔐 TOTP/HOTP/Steam Guard 算法
 ├── ui/
 │   ├── page.js           # 🎨 主页面 HTML 生成
+│   ├── quickOtp.js       # 🔢 公开 OTP 输入与验证码页面
 │   ├── setupPage.js      # 🔧 首次设置页面
+│   ├── standalone.js     # 🖥️ 独立页面共享 Fluent 主题
+│   ├── offlinePage.js    # 📴 离线兜底页面
+│   ├── dialogIcons.js    # 🧩 对话框图标
 │   ├── manifest.js       # 📱 PWA Manifest
 │   ├── serviceworker.js  # ⚙️ Service Worker
 │   ├── scripts/          # 📜 前端 JavaScript 模块
@@ -69,10 +73,16 @@ src/
 │   │   └── pwa.js       # PWA 功能
 │   └── styles/           # 🎨 前端 CSS 模块
 │       ├── index.js     # 样式集成入口
+│       ├── variables.js # 主题变量与切换过渡
 │       ├── base.js      # 基础样式
 │       ├── components.js # 组件样式
 │       ├── modals.js    # 模态框样式
-│       └── responsive.js # 响应式样式
+│       ├── responsive.js # 响应式样式
+│       ├── progress.js   # 共享进度条常量
+│       ├── workspace.js # Fluent 2 主工作区
+│       ├── dialogs.js   # Fluent 2 对话框
+│       ├── setup.js     # 首次设置页
+│       └── backupDocument.js # HTML 备份文档
 └── utils/                # 🛠️ 工具函数
     ├── auth.js           # 🔑 JWT 认证（PBKDF2, HttpOnly Cookie）
     ├── backup.js         # 💾 智能备份（事件驱动 + 并发合并 + 自动清理）
@@ -235,7 +245,7 @@ const otp = binary % 1000000;
 - `manifest.js` - PWA Manifest
 - `serviceworker.js` - Service Worker（缓存策略）
 - `scripts/` - 前端JavaScript模块（5个模块）
-- `styles/` - 前端CSS模块（4个模块）
+- `styles/` - 主题变量、基础组件、响应式布局及 Fluent 2 页面样式
 
 **前端 JavaScript 模块加载顺序**:
 
@@ -256,11 +266,12 @@ const otp = binary % 1000000;
 
 ```
 页面组件
-├── 头部区域 (Logo + 主题切换)
+├── 头部区域 (Logo)
 ├── 搜索区域 (实时搜索)
-├── 操作区域 (添加/扫描/导入/导出)
-├── 密钥列表 (卡片式布局)
-└── 模态框 (添加/编辑/二维码/扫描/导入)
+├── 显示控制 (智能聚合/平铺/排序)
+├── 密钥列表 (卡片与服务分组)
+├── 悬浮操作入口 (添加/扫描/导入/导出/设置)
+└── 模态框 (密钥、工具、同步、还原和偏好设置)
 ```
 
 ### 6. 工具模块 (`utils/`)

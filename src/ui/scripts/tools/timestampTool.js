@@ -11,26 +11,51 @@ export function getTimestampToolCode() {
     // ==================== 时间戳工具 ====================
 
     let currentPeriod = 30;
-    let timestampInterval = null;
+    let timestampFrame = null;
+    let timestampActive = false;
+    let lastTimestampSecond = null;
+    let lastTimestampPeriod = null;
+
+    function stopTimestampAnimation() {
+      if (timestampFrame !== null) {
+        cancelAnimationFrame(timestampFrame);
+        timestampFrame = null;
+      }
+    }
+
+    function animateTimestamp() {
+      timestampFrame = null;
+      if (!timestampActive || document.hidden) return;
+      updateTimestamp();
+      timestampFrame = requestAnimationFrame(animateTimestamp);
+    }
+
+    function startTimestampAnimation() {
+      stopTimestampAnimation();
+      if (timestampActive && !document.hidden) animateTimestamp();
+    }
+
+    document.addEventListener('visibilitychange', function() {
+      if (document.hidden) {
+        stopTimestampAnimation();
+      } else {
+        startTimestampAnimation();
+      }
+    });
 
     function showTimestampModal() {
       showModal('timestampModal', () => {
+        timestampActive = true;
         // 设置默认周期
         setPeriod(30);
-
-        // 开始更新
-        updateTimestamp();
-        timestampInterval = setInterval(updateTimestamp, 1000);
+        startTimestampAnimation();
       });
     }
 
     function hideTimestampModal() {
-      hideModal('timestampModal', () => {
-        if (timestampInterval) {
-          clearInterval(timestampInterval);
-          timestampInterval = null;
-        }
-      });
+      timestampActive = false;
+      stopTimestampAnimation();
+      hideModal('timestampModal');
     }
 
     function setPeriod(period) {
@@ -53,24 +78,28 @@ export function getTimestampToolCode() {
     }
 
     function updateTimestamp() {
-      const now = Math.floor(Date.now() / 1000);
-      const counter = Math.floor(now / currentPeriod);
-      const remaining = currentPeriod - (now % currentPeriod);
-      const progress = (remaining / currentPeriod) * 100;
-
-      document.getElementById('currentTimestamp').textContent = now;
-      document.getElementById('totpPeriod').textContent = currentPeriod + ' 秒';
-      document.getElementById('totpCounter').textContent = counter;
-      document.getElementById('remainingTime').textContent = remaining + ' 秒';
-
+      const nowMs = Date.now();
+      const now = Math.floor(nowMs / 1000);
+      const periodMs = currentPeriod * 1000;
+      const remainingMs = periodMs - (nowMs % periodMs);
+      const fraction = remainingMs / periodMs;
       const progressBar = document.getElementById('progressBar');
-      progressBar.style.width = progress + '%';
+      // Continuous time, with an immediate reset at the next cycle. Transform
+      // avoids a layout pass on every frame and does not interpolate backwards.
+      progressBar.style.transform = 'scaleX(' + fraction + ')';
 
-      // 使用与主界面卡片一致的渐变配色（绿色到蓝色）
-      // 使用 CSS 变量确保主题一致性
-      const style = getComputedStyle(document.documentElement);
-      const progressFill = style.getPropertyValue('--progress-fill').trim() || 'linear-gradient(90deg, #4CAF50, #2196F3)';
-      progressBar.style.background = progressFill;
+      // Text and accessibility values only change on second/period boundaries.
+      if (now !== lastTimestampSecond || currentPeriod !== lastTimestampPeriod) {
+        const remaining = Math.ceil(remainingMs / 1000);
+        document.getElementById('currentTimestamp').textContent = now;
+        document.getElementById('totpPeriod').textContent = currentPeriod + ' 秒';
+        document.getElementById('totpCounter').textContent = Math.floor(nowMs / periodMs);
+        document.getElementById('remainingTime').textContent = remaining + ' 秒';
+        progressBar.setAttribute('aria-valuenow', String(Math.round(fraction * 100)));
+        progressBar.setAttribute('aria-valuetext', remaining + ' 秒');
+        lastTimestampSecond = now;
+        lastTimestampPeriod = currentPeriod;
+      }
     }
 
 `;

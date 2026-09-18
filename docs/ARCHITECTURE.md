@@ -130,6 +130,12 @@ src/
 │   │                              # - 样式集成
 │   │                              # - 脚本集成
 │   │
+│   ├── quickOtp.js                # 🔢 公开 OTP 输入与验证码页面
+│   ├── standalone.js              # 🖥️ 独立页面共享 Fluent 主题
+│   ├── offlinePage.js             # 📴 离线兜底页面
+│   ├── setupPage.js               # 🔧 首次设置页面
+│   ├── dialogIcons.js             # 🧩 对话框 SVG 图标
+│   │
 │   ├── manifest.js                # 📱 PWA Manifest
 │   │                              # - 应用信息
 │   │                              # - 图标定义
@@ -150,10 +156,16 @@ src/
 │   │
 │   └── styles/                    # 🎨 前端 CSS 模块
 │       ├── index.js              # 样式集成入口
+│       ├── variables.js          # 主题变量和过渡
 │       ├── base.js               # 基础样式
 │       ├── components.js         # 组件样式
 │       ├── modals.js             # 模态框样式
-│       └── responsive.js         # 响应式样式
+│       ├── responsive.js         # 响应式样式
+│       ├── progress.js           # 共享进度条常量
+│       ├── workspace.js          # Fluent 2 工作区
+│       ├── dialogs.js            # Fluent 2 对话框
+│       ├── setup.js              # 首次设置页
+│       └── backupDocument.js     # HTML 备份文档
 │
 └── utils/                         # 🛠️ 工具模块
     ├── auth.js                    # 🔑 认证系统
@@ -1004,16 +1016,18 @@ page.js → scripts/index.js
     页面加载完成执行
 ```
 
-### 模块化 CSS (4 个模块)
+### 模块化 CSS
 
 ```
 styles/
+├── variables.js      # 主题变量、浅深色配置和切换过渡
+│
 ├── base.js           # 基础样式
 │   ├── * { box-sizing, margin, padding }
 │   ├── body { font, background }
 │   ├── .container
 │   ├── .header
-│   └── .theme-toggle
+│   └── 基础表单与菜单
 │
 ├── components.js     # 组件样式
 │   ├── .secret-card
@@ -1029,20 +1043,29 @@ styles/
 │   ├── .form-group
 │   └── .btn-*
 │
-└── responsive.js     # 响应式样式
-    ├── @media (max-width: 480px)
-    ├── @media (min-width: 481px)
-    └── @media (min-width: 1200px)
+├── responsive.js     # 响应式样式
+│   ├── @media (max-width: 480px)
+│   ├── @media (min-width: 481px)
+│   └── @media (min-width: 1200px)
+│
+├── progress.js       # 共享进度条尺寸与渐变常量
+├── workspace.js      # Fluent 2 主工作区和卡片
+├── dialogs.js        # Fluent 2 对话框与设置页
+├── setup.js          # 首次设置页
+└── backupDocument.js # HTML 备份/导出文档
 ```
 
 **样式加载流程**:
 
 ```
 page.js → styles/index.js
+    ├─ import variables.js
     ├─ import base.js
     ├─ import components.js
     ├─ import modals.js
-    └─ import responsive.js
+    ├─ import responsive.js
+    ├─ import workspace.js
+    └─ import dialogs.js
          ↓
     合并为单个 <style> 标签
          ↓

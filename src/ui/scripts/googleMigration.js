@@ -416,13 +416,11 @@ export function getGoogleMigrationCode() {
 
       const content = document.createElement('div');
       content.className = 'modal-content fab-modal-content';
-      content.style.maxHeight = '80vh';
-      content.style.overflow = 'auto';
 
       content.innerHTML =
         '<div class="modal-header">' +
-          '<h2>📤 导出到 Google Authenticator</h2>' +
-          '<button class="close-btn" onclick="closeExportToGoogleModal()">&times;</button>' +
+          '<h2>导出到 Google Authenticator</h2>' +
+          '<button class="close-btn" type="button" aria-label="关闭弹窗" onclick="closeExportToGoogleModal()">' + dialogIcon('close') + '</button>' +
         '</div>' +
         '<div class="modal-body">' +
           '<p style="margin-bottom: 15px; color: var(--text-secondary);">选择要导出的密钥（共 <strong>' + secrets.length + '</strong> 个）</p>' +
@@ -430,15 +428,15 @@ export function getGoogleMigrationCode() {
             '<button class="btn btn-secondary btn-sm" onclick="selectAllExportSecrets(true)">全选</button>' +
             '<button class="btn btn-secondary btn-sm" onclick="selectAllExportSecrets(false)">取消全选</button>' +
           '</div>' +
-          '<div class="export-secret-list" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 15px;">' +
+          '<div class="export-secret-list" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-primary); border-radius: 8px; margin-bottom: 15px;">' +
             secrets.map(function(s, i) {
-              return '<div class="export-secret-item" style="padding: 12px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px;">' +
+              return '<div class="export-secret-item" style="padding: 12px; border-bottom: 1px solid var(--border-primary); display: flex; align-items: center; gap: 10px;">' +
                 '<input type="checkbox" id="export-' + i + '" checked style="width: 18px; height: 18px;">' +
                 '<div style="flex: 1; min-width: 0;">' +
                   '<div style="font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (s.name || '未知服务') + '</div>' +
-                  '<div style="font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (s.account || '') + '</div>' +
+                  '<div style="font-size: var(--dialog-caption-size); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (s.account || '') + '</div>' +
                 '</div>' +
-                '<span style="font-size: 11px; padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);">' + (s.type || 'TOTP') + '</span>' +
+                '<span style="font-size: var(--dialog-caption-size); padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);">' + (s.type || 'TOTP') + '</span>' +
               '</div>';
             }).join('') +
           '</div>' +
@@ -543,10 +541,10 @@ export function getGoogleMigrationCode() {
       const totalSecrets = batches.reduce(function(sum, b) { return sum + b.length; }, 0);
 
       modal.innerHTML =
-        '<div class="modal-content fab-modal-sm-content" style="text-align: center;">' +
+        '<div class="modal-content fab-modal-sm-content">' +
           '<div class="modal-header">' +
-            '<h2>📱 扫描导入到 Google Authenticator</h2>' +
-            '<button class="close-btn" onclick="closeExportQRCodeModal()">&times;</button>' +
+            '<h2>扫描导入到 Google Authenticator</h2>' +
+            '<button class="close-btn" type="button" aria-label="关闭弹窗" onclick="closeExportQRCodeModal()">' + dialogIcon('close') + '</button>' +
           '</div>' +
           '<div class="modal-body">' +
             (totalPages > 1 ?
@@ -554,9 +552,9 @@ export function getGoogleMigrationCode() {
               '<p style="margin-bottom: 10px; color: var(--text-secondary);">共 ' + totalSecrets + ' 个密钥</p>'
             ) +
             '<div class="qr-code-container" style="display: flex; justify-content: center; align-items: center; min-height: 250px; background: white; border-radius: 12px; padding: 20px; margin-bottom: 15px;">' +
-              '<div style="color: #666;">🔄 生成中...</div>' +
+              '<div style="color: #666;">生成中...</div>' +
             '</div>' +
-            '<div style="margin-bottom: 15px; font-size: 12px; color: var(--text-tertiary);">' +
+            '<div style="margin-bottom: 15px; font-size: var(--dialog-caption-size); color: var(--text-tertiary);">' +
               '用 Google Authenticator 扫描此二维码' +
               (totalPages > 1 ? '<br>（需要依次扫描所有 ' + totalPages + ' 个二维码）' : '') +
             '</div>' +
@@ -588,7 +586,7 @@ export function getGoogleMigrationCode() {
       } catch (error) {
         console.error('生成二维码失败:', error);
         const container = modal.querySelector('.qr-code-container');
-        container.innerHTML = '<div style="color: #e74c3c;">❌ 生成失败: ' + error.message + '</div>';
+        container.innerHTML = '<div style="color: #e74c3c;">生成失败: ' + error.message + '</div>';
       }
     }
 
@@ -636,25 +634,23 @@ export function getGoogleMigrationCode() {
 
       const content = document.createElement('div');
       content.className = 'modal-content fab-modal-content';
-      content.style.maxHeight = '80vh';
-      content.style.overflow = 'auto';
 
       content.innerHTML =
         '<div class="modal-header">' +
-          '<h2>📱 Google Authenticator 导入</h2>' +
-          '<button class="close-btn" onclick="closeMigrationPreview()">&times;</button>' +
+          '<h2>Google Authenticator 导入</h2>' +
+          '<button class="close-btn" type="button" aria-label="关闭弹窗" onclick="closeMigrationPreview()">' + dialogIcon('close') + '</button>' +
         '</div>' +
         '<div class="modal-body">' +
           '<p style="margin-bottom: 15px; color: var(--text-secondary);">检测到 <strong>' + parsedSecrets.length + '</strong> 个密钥，确认导入？</p>' +
-          '<div class="migration-preview-list" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 15px;">' +
+          '<div class="migration-preview-list" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-primary); border-radius: 8px; margin-bottom: 15px;">' +
             parsedSecrets.map(function(s, i) {
-              return '<div class="migration-preview-item" style="padding: 12px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px;">' +
+              return '<div class="migration-preview-item" style="padding: 12px; border-bottom: 1px solid var(--border-primary); display: flex; align-items: center; gap: 10px;">' +
                 '<input type="checkbox" id="migrate-' + i + '" checked style="width: 18px; height: 18px;">' +
                 '<div style="flex: 1; min-width: 0;">' +
                   '<div style="font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (s.issuer || s.name || '未知服务') + '</div>' +
-                  '<div style="font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (s.name || '') + '</div>' +
+                  '<div style="font-size: var(--dialog-caption-size); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (s.name || '') + '</div>' +
                 '</div>' +
-                '<span style="font-size: 11px; padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);">' + s.type + '</span>' +
+                '<span style="font-size: var(--dialog-caption-size); padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);">' + s.type + '</span>' +
               '</div>';
             }).join('') +
           '</div>' +
@@ -705,27 +701,25 @@ export function getGoogleMigrationCode() {
 
       const content = document.createElement('div');
       content.className = 'modal-content fab-modal-sm-content';
-      content.style.maxHeight = '80vh';
-      content.style.overflow = 'auto';
 
       content.innerHTML =
         '<div class="modal-header">' +
-          '<h2>📊 导入结果</h2>' +
-          '<button class="close-btn" onclick="closeImportResultModal()">&times;</button>' +
+          '<h2>导入结果</h2>' +
+          '<button class="close-btn" type="button" aria-label="关闭弹窗" onclick="closeImportResultModal()">' + dialogIcon('close') + '</button>' +
         '</div>' +
         '<div class="modal-body">' +
           '<div style="text-align: center; margin-bottom: 20px;">' +
-            '<div style="font-size: 48px; margin-bottom: 10px;">⚠️</div>' +
-            '<div style="font-size: 16px; color: var(--text-primary);">' +
-              '成功 <span style="color: #4CAF50; font-weight: bold;">' + successCount + '</span> 个，' +
-              '失败 <span style="color: #f44336; font-weight: bold;">' + failCount + '</span> 个' +
+            '<div class="dialog-result-icon">' + dialogIcon(failCount ? 'warning' : 'check') + '</div>' +
+            '<div style="font-size: var(--dialog-body-size); color: var(--text-primary);">' +
+              '成功 <span style="color: var(--dialog-success); font-weight: bold;">' + successCount + '</span> 个，' +
+              '失败 <span style="color: var(--dialog-danger); font-weight: bold;">' + failCount + '</span> 个' +
             '</div>' +
           '</div>' +
           '<div style="background: var(--bg-secondary); border-radius: 8px; padding: 15px; margin-bottom: 15px;">' +
-            '<div style="font-weight: 600; margin-bottom: 10px; color: #f44336;">❌ 失败详情：</div>' +
-            '<div style="font-size: 13px; color: var(--text-secondary); white-space: pre-wrap; line-height: 1.6;">' + failedDetails + '</div>' +
+            '<div style="font-weight: 600; margin-bottom: 10px; color: var(--dialog-danger);">失败详情：</div>' +
+            '<div style="font-size: var(--dialog-caption-size); color: var(--text-secondary); white-space: pre-wrap; line-height: 1.6;">' + escapeHTML(failedDetails) + '</div>' +
           '</div>' +
-          '<div style="text-align: center;">' +
+          '<div class="dialog-result-actions">' +
             '<button class="btn btn-primary" onclick="closeImportResultModal()">确定</button>' +
           '</div>' +
         '</div>';

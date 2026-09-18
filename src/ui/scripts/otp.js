@@ -1711,17 +1711,6 @@ export function getOTPCode() {
       if (progressElement) {
         const progress = (remaining / timeStep) * 100;
         progressElement.style.width = progress + '%';
-
-        const ratio = remaining / timeStep;
-        let color;
-        if (ratio > 0.6) {
-          color = '#4CAF50';
-        } else if (ratio > 0.3) {
-          color = '#FF9800';
-        } else {
-          color = '#F44336';
-        }
-        progressElement.style.backgroundColor = color;
       }
 
       // 🔄 防御性检查：如果验证码显示为默认值，立即刷新

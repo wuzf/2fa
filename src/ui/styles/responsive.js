@@ -7,18 +7,18 @@ export function getResponsiveStyles() {
       /* ========== 全局 Select 和 Option 样式修复 ========== */
       /* 修复 iOS/Safari/iPad 下拉列表显示问题 */
       select.backup-select {
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
       }
 
       /* 强制所有 option 元素不换行 */
       select.backup-select option {
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        line-height: normal !important;
-        display: block !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: normal;
+        display: block;
       }
 
       /* 还原配置样式 */
@@ -156,14 +156,14 @@ export function getResponsiveStyles() {
 
       /* 强制 option 元素不换行并正确显示 */
       .backup-select option {
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        padding: 8px 12px !important;
-        font-size: 14px !important;
-        line-height: normal !important;
-        max-width: 100% !important;
-        display: block !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 8px 12px;
+        font-size: 14px;
+        line-height: normal;
+        max-width: 100%;
+        display: block;
         color: var(--text-primary);
         background: var(--card-bg);
       }
@@ -465,39 +465,38 @@ export function getResponsiveStyles() {
       }
       
       .otp-code {
-        font-size: 28px !important;
-        letter-spacing: 4px !important;
-        margin: 6px 0 !important;
+        font-size: 28px;
+        letter-spacing: 4px;
+        margin: 6px 0;
       }
       
       .otp-main {
-        gap: 12px !important;
+        gap: 12px;
         /* Chrome兼容性修复 */
-        display: -webkit-flex !important;
-        -webkit-align-items: center !important;
-        -webkit-justify-content: space-between !important;
+        display: -webkit-flex;
+        -webkit-align-items: center;
+        -webkit-justify-content: space-between;
       }
       
       .otp-next-container {
-        min-width: 70px !important;
-        padding: 6px 8px !important;
+        min-width: 70px;
+        padding: 6px 8px;
         /* Chrome兼容性修复 */
-        display: -webkit-flex !important;
-        -webkit-flex-direction: column !important;
-        -webkit-justify-content: center !important;
-        -webkit-align-items: flex-end !important;
-        -webkit-flex-shrink: 0 !important;
-        -webkit-box-flex: 0 !important;
+        display: -webkit-flex;
+        -webkit-flex-direction: column;
+        -webkit-justify-content: center;
+        -webkit-align-items: flex-end;
+        -webkit-flex-shrink: 0;
+        -webkit-box-flex: 0;
       }
       
       .otp-next-code {
-        font-size: 14px !important;
-        letter-spacing: 1px !important;
+        font-size: 14px;
+        letter-spacing: 1px;
       }
       
       .progress-mini {
         width: 60px;
-        height: 5px;
       }
 
       .progress-top {
@@ -612,40 +611,40 @@ export function getResponsiveStyles() {
       }
 
       .backup-list-container {
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
       }
 
       .backup-select-wrapper {
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
       }
 
       .backup-select {
-        width: 100% !important;
-        min-width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
-        display: block !important;
+        width: 100%;
+        min-width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        display: block;
       }
 
       /* 强制 option 元素不换行并正确显示 */
       .backup-select option {
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        padding: 10px 15px !important;
-        font-size: 14px !important;
-        line-height: normal !important;
-        max-width: 100% !important;
-        display: block !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 10px 15px;
+        font-size: 14px;
+        line-height: normal;
+        max-width: 100%;
+        display: block;
       }
 
       .backup-preview {
-        width: 100% !important;
-        max-width: 100% !important;
+        width: 100%;
+        max-width: 100%;
       }
 
       /* 容器宽度适配 */
@@ -668,133 +667,133 @@ export function getResponsiveStyles() {
 
       /* 确保备份表格在中等屏幕端正确显示 */
       .backup-table {
-        width: 100% !important;
-        border-collapse: collapse !important;
-        font-size: 13px !important;
-        background: var(--table-bg) !important;
-        border-radius: 8px !important;
-        overflow: hidden !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
-        border: 2px solid var(--table-border) !important;
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        background: var(--table-bg);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border: 2px solid var(--table-border);
       }
 
       .backup-table thead {
-        background: var(--table-header-bg) !important;
-        color: white !important;
+        background: var(--table-header-bg);
+        color: white;
       }
 
       .backup-table th {
-        padding: 12px 16px !important;
-        text-align: left !important;
-        font-weight: 600 !important;
-        font-size: 12px !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.5px !important;
-        border-bottom: 2px solid var(--table-header-border) !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.3) !important;
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-bottom: 2px solid var(--table-header-border);
+        border-right: 1px solid rgba(255, 255, 255, 0.3);
       }
 
       .backup-table th:last-child {
-        border-right: none !important;
+        border-right: none;
       }
 
       .backup-table tbody tr {
-        border-bottom: 1px solid var(--table-border) !important;
-        transition: all 0.2s ease !important;
+        border-bottom: 1px solid var(--table-border);
+        transition: all 0.2s ease;
       }
 
       .backup-table tbody tr:hover {
-        background: var(--table-row-hover) !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+        background: var(--table-row-hover);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       }
 
       .backup-table tbody tr:last-child {
-        border-bottom: none !important;
+        border-bottom: none;
       }
 
       .backup-table td {
-        padding: 12px 16px !important;
-        vertical-align: middle !important;
-        word-break: break-word !important;
-        border-right: 1px solid var(--table-border) !important;
+        padding: 12px 16px;
+        vertical-align: middle;
+        word-break: break-word;
+        border-right: 1px solid var(--table-border);
       }
 
       .backup-table td:last-child {
-        border-right: none !important;
+        border-right: none;
       }
 
       .backup-table .service-name {
-        font-weight: 600 !important;
-        color: var(--text-primary) !important;
-        min-width: 120px !important;
-        max-width: 180px !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        white-space: nowrap !important;
+        font-weight: 600;
+        color: var(--text-primary);
+        min-width: 120px;
+        max-width: 180px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .backup-table .account-info {
-        color: var(--text-secondary) !important;
-        min-width: 150px !important;
-        max-width: 200px !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        white-space: nowrap !important;
+        color: var(--text-secondary);
+        min-width: 150px;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .backup-table .secret-type {
-        color: var(--success) !important;
-        font-weight: 600 !important;
-        text-align: center !important;
-        min-width: 80px !important;
-        white-space: nowrap !important;
+        color: var(--success);
+        font-weight: 600;
+        text-align: center;
+        min-width: 80px;
+        white-space: nowrap;
       }
 
       .backup-table .created-time {
-        color: var(--text-secondary) !important;
-        font-size: 11px !important;
-        min-width: 140px !important;
+        color: var(--text-secondary);
+        font-size: 11px;
+        min-width: 140px;
       }
 
       /* 中等屏幕备份操作按钮样式 */
       .backup-actions {
-        display: flex !important;
-        justify-content: space-between !important;
-        align-items: center !important;
-        margin-top: 12px !important;
-        gap: 12px !important;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 12px;
+        gap: 12px;
       }
 
       /* 中等屏幕下拉框优化 */
       .backup-select {
-        width: 100% !important;
-        min-width: 100% !important;
-        max-width: 100% !important;
-        font-size: 15px !important;
-        padding: 14px 18px !important;
-        padding-right: 45px !important;
-        border-radius: 12px !important;
-        background-size: 18px !important;
-        background-position: right 15px center !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        box-sizing: border-box !important;
-        display: block !important;
-        -webkit-appearance: none !important;
-        appearance: none !important;
+        width: 100%;
+        min-width: 100%;
+        max-width: 100%;
+        font-size: 15px;
+        padding: 14px 18px;
+        padding-right: 45px;
+        border-radius: 12px;
+        background-size: 18px;
+        background-position: right 15px center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        box-sizing: border-box;
+        display: block;
+        -webkit-appearance: none;
+        appearance: none;
       }
 
       /* 强制 option 元素不换行并正确显示 */
       .backup-select option {
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        padding: 10px 15px !important;
-        font-size: 15px !important;
-        line-height: normal !important;
-        max-width: 100% !important;
-        display: block !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 10px 15px;
+        font-size: 15px;
+        line-height: normal;
+        max-width: 100%;
+        display: block;
       }
     }
     
@@ -812,30 +811,30 @@ export function getResponsiveStyles() {
       }
 
       .backup-list-container {
-        width: 100% !important;
-        max-width: 100% !important;
+        width: 100%;
+        max-width: 100%;
       }
 
       .backup-select-wrapper {
-        width: 100% !important;
-        max-width: 100% !important;
+        width: 100%;
+        max-width: 100%;
       }
 
       .backup-select {
-        width: 100% !important;
-        min-width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
+        width: 100%;
+        min-width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
       }
 
       .backup-select option {
-        width: 100% !important;
-        min-width: 100% !important;
+        width: 100%;
+        min-width: 100%;
       }
 
       .backup-preview {
-        width: 100% !important;
-        max-width: 100% !important;
+        width: 100%;
+        max-width: 100%;
       }
 
       .container {
@@ -873,7 +872,6 @@ export function getResponsiveStyles() {
 
       .progress-mini {
         width: 120px;
-        height: 8px;
       }
 
       .progress-top {
@@ -886,134 +884,134 @@ export function getResponsiveStyles() {
 
       /* 确保备份表格在大屏幕端正确显示 */
       .backup-table {
-        width: 100% !important;
-        border-collapse: collapse !important;
-        font-size: 13px !important;
-        background: var(--table-bg) !important;
-        border-radius: 8px !important;
-        overflow: hidden !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
-        border: 2px solid var(--table-border) !important;
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        background: var(--table-bg);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border: 2px solid var(--table-border);
       }
 
       .backup-table thead {
-        background: var(--table-header-bg) !important;
-        color: white !important;
+        background: var(--table-header-bg);
+        color: white;
       }
 
       .backup-table th {
-        padding: 12px 16px !important;
-        text-align: left !important;
-        font-weight: 600 !important;
-        font-size: 12px !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.5px !important;
-        border-bottom: 2px solid var(--table-header-border) !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.3) !important;
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-bottom: 2px solid var(--table-header-border);
+        border-right: 1px solid rgba(255, 255, 255, 0.3);
       }
 
       .backup-table th:last-child {
-        border-right: none !important;
+        border-right: none;
       }
 
       .backup-table tbody tr {
-        border-bottom: 1px solid var(--table-border) !important;
-        transition: all 0.2s ease !important;
+        border-bottom: 1px solid var(--table-border);
+        transition: all 0.2s ease;
       }
 
       .backup-table tbody tr:hover {
-        background: var(--table-row-hover) !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+        background: var(--table-row-hover);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       }
 
       .backup-table tbody tr:last-child {
-        border-bottom: none !important;
+        border-bottom: none;
       }
 
       .backup-table td {
-        padding: 12px 16px !important;
-        vertical-align: middle !important;
-        word-break: break-word !important;
-        border-right: 1px solid var(--table-border) !important;
+        padding: 12px 16px;
+        vertical-align: middle;
+        word-break: break-word;
+        border-right: 1px solid var(--table-border);
       }
 
       .backup-table td:last-child {
-        border-right: none !important;
+        border-right: none;
       }
 
       .backup-table .service-name {
-        font-weight: 600 !important;
-        color: var(--text-primary) !important;
-        min-width: 120px !important;
-        max-width: 180px !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        white-space: nowrap !important;
+        font-weight: 600;
+        color: var(--text-primary);
+        min-width: 120px;
+        max-width: 180px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .backup-table .account-info {
-        color: var(--text-secondary) !important;
-        min-width: 150px !important;
-        max-width: 200px !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        white-space: nowrap !important;
+        color: var(--text-secondary);
+        min-width: 150px;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .backup-table .secret-type {
-        color: var(--success) !important;
-        font-weight: 600 !important;
-        text-align: center !important;
-        min-width: 80px !important;
-        white-space: nowrap !important;
+        color: var(--success);
+        font-weight: 600;
+        text-align: center;
+        min-width: 80px;
+        white-space: nowrap;
       }
 
       .backup-table .created-time {
-        color: var(--text-secondary) !important;
-        font-size: 11px !important;
-        min-width: 140px !important;
+        color: var(--text-secondary);
+        font-size: 11px;
+        min-width: 140px;
       }
 
       /* 大屏幕备份操作按钮样式 */
       .backup-actions {
-        display: flex !important;
-        justify-content: space-between !important;
-        align-items: center !important;
-        margin-top: 15px !important;
-        gap: 15px !important;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 15px;
+        gap: 15px;
       }
 
       /* 大屏幕下拉框优化 */
       .backup-select {
-        width: 100% !important;
-        min-width: 100% !important;
-        max-width: 100% !important;
-        font-size: 16px !important;
-        padding: 16px 20px !important;
-        padding-right: 50px !important;
-        border-radius: 12px !important;
-        background-size: 22px !important;
-        background-position: right 18px center !important;
-        min-height: 50px !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        box-sizing: border-box !important;
-        display: block !important;
-        -webkit-appearance: none !important;
-        appearance: none !important;
+        width: 100%;
+        min-width: 100%;
+        max-width: 100%;
+        font-size: 16px;
+        padding: 16px 20px;
+        padding-right: 50px;
+        border-radius: 12px;
+        background-size: 22px;
+        background-position: right 18px center;
+        min-height: 50px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        box-sizing: border-box;
+        display: block;
+        -webkit-appearance: none;
+        appearance: none;
       }
 
       /* 强制 option 元素不换行并正确显示 */
       .backup-select option {
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        padding: 12px 18px !important;
-        font-size: 16px !important;
-        line-height: normal !important;
-        max-width: 100% !important;
-        display: block !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 12px 18px;
+        font-size: 16px;
+        line-height: normal;
+        max-width: 100%;
+        display: block;
       }
     }
 
@@ -1108,51 +1106,51 @@ export function getResponsiveStyles() {
       }
 
       .backup-list-container {
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
       }
 
       .backup-select-wrapper {
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
       }
 
       .backup-select {
-        width: 100% !important;
-        min-width: 100% !important;
-        max-width: 100% !important;
-        font-size: 15px !important;
-        padding: 14px 18px !important;
-        padding-right: 45px !important;
-        border-radius: 10px !important;
-        background-size: 18px !important;
-        background-position: right 15px center !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        box-sizing: border-box !important;
-        display: block !important;
-        -webkit-appearance: none !important;
-        appearance: none !important;
+        width: 100%;
+        min-width: 100%;
+        max-width: 100%;
+        font-size: 15px;
+        padding: 14px 18px;
+        padding-right: 45px;
+        border-radius: 10px;
+        background-size: 18px;
+        background-position: right 15px center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        box-sizing: border-box;
+        display: block;
+        -webkit-appearance: none;
+        appearance: none;
       }
 
       /* 强制 option 元素不换行并正确显示 */
       .backup-select option {
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        padding: 10px 15px !important;
-        font-size: 15px !important;
-        line-height: normal !important;
-        max-width: 100% !important;
-        display: block !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 10px 15px;
+        font-size: 15px;
+        line-height: normal;
+        max-width: 100%;
+        display: block;
       }
 
       .backup-preview {
-        width: 100% !important;
-        max-width: 100% !important;
+        width: 100%;
+        max-width: 100%;
       }
 
       /* Toast 样式 */

@@ -30,6 +30,7 @@ import { getTimeCode } from '../../src/ui/scripts/time.js';
 import { getToolsCode } from '../../src/ui/scripts/tools.js';
 import { getUICode } from '../../src/ui/scripts/ui.js';
 import { getUtilsCode } from '../../src/ui/scripts/utils.js';
+import { createMainPage } from '../../src/ui/page.js';
 
 function assertParses(label, code) {
 	expect(typeof code).toBe('string');
@@ -68,6 +69,14 @@ describe('emitted script modules parse as valid JavaScript', () => {
 });
 
 describe('emitted script aggregators parse as valid JavaScript', () => {
+	it('keeps nested exported HTML from terminating the main page script tag', async () => {
+		const html = await (await createMainPage({ lazyLoad: false })).text();
+		const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
+		expect(scripts.length).toBeGreaterThan(0);
+		for (const [index, script] of scripts.entries()) {
+			if (script[1].trim()) {assertParses(`inline script ${index}`, script[1]);}
+		}
+	});
 	it('getScripts (full inline bundle)', () => {
 		assertParses('getScripts', getScripts());
 	});

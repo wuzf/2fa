@@ -3,6 +3,8 @@
  * 提供离线支持和缓存管理
  */
 
+import { createOfflinePage } from './offlinePage.js';
+
 /**
  * 生成 Service Worker 脚本
  * @returns {Response} Service Worker JavaScript 响应
@@ -40,6 +42,7 @@ const DB_NAME = '2fa-offline-db';
 const DB_VERSION = 1;
 const SW_VERSION = '${version}';
 const STORE_NAME = 'pending-operations';
+const OFFLINE_PAGE = ${JSON.stringify(createOfflinePage())};
 let syncPendingOperationsPromise = null;
 
 // 版本信息（用于调试）
@@ -470,7 +473,7 @@ self.addEventListener('fetch', event => {
             }
             // 缓存也没有，返回离线页面提示
             return new Response(
-              '<html><body><h1>离线模式</h1><p>无法连接到服务器，请检查网络连接。</p></body></html>',
+              OFFLINE_PAGE,
               {
                 status: 503,
                 statusText: 'Service Unavailable',

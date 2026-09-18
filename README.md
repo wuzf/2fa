@@ -8,7 +8,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
-**主要特性：** TOTP/HOTP 验证码自动生成 · 二维码扫描/图片识别/粘贴截图/拖拽图片添加密钥 · AES-GCM 256 位加密存储 · 从 Google Authenticator、Aegis、2FAS、Bitwarden 等应用批量导入 · 多格式导出（TXT/JSON/CSV/HTML/Google 迁移二维码） · 自动备份与还原 · WebDAV/S3/OneDrive/Google Drive 远程备份同步 · 设置面板（密码修改/同步设置） · 深色/浅色主题 · 响应式设计适配手机/平板/桌面
+**主要特性：** TOTP/HOTP 验证码自动生成 · 二维码扫描/图片识别/粘贴截图/拖拽图片添加密钥 · AES-GCM 256 位加密存储 · 从 Google Authenticator、Aegis、2FAS、Bitwarden 等应用批量导入 · 多格式导出（TXT/JSON/CSV/HTML/Google 迁移二维码） · 自动备份与还原 · WebDAV/S3/OneDrive/Google Drive 远程备份同步 · 账户安全/同步/偏好设置 · 浅色/深色/跟随系统主题 · Fluent 2 风格响应式界面
 
 ## 📸 截图预览
 
@@ -102,11 +102,11 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ### 日常使用
 
 - **复制验证码**：直接点击验证码数字
-- **管理密钥**：点击卡片右上角 **⋯** → 编辑 / 删除 / 查看二维码
+- **管理密钥**：点击卡片右上角 **⋯** → 查看二维码 / 复制 URI / 复制网页链接 / 编辑 / 删除
 - **搜索**：顶部搜索框按服务名或账户名实时搜索
 - **智能聚合**：默认按服务家族自动聚合，同一服务的多个账户归在一起，也可切换为全部平铺
 - **排序**：按添加时间或名称排序
-- **主题**：右下角 🌓 切换浅色/深色/跟随系统
+- **主题**：悬浮按钮 → **设置 → 偏好设置 → 主题模式**，选择浅色、深色或跟随系统
 
 ### 批量导入
 
@@ -157,6 +157,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 点击悬浮按钮 → **⚙️ 设置**：
 
 - **修改密码** — 更改管理密码
+- **主题模式** — 选择浅色、深色或跟随系统
+- **验证码交接动效** — 关闭或选择流转、翻牌、聚光动效
 - **登录有效期** — 自定义 JWT 过期时间
 - **默认导出格式** — 控制导出按钮默认格式，也用于新建备份文件和远程自动备份的文件扩展名
 - **备份保留数量** — 调整自动备份保留份数

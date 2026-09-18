@@ -5,6 +5,8 @@
 
 import { encryptData } from './encryption.js';
 import { createHtmlResponse } from './response.js';
+import { dialogIcon } from '../ui/dialogIcons.js';
+import { getStandaloneHead } from '../ui/standalone.js';
 
 const OAUTH_STATE_PREFIX = 'oauth_state_';
 const OAUTH_STATE_TTL_SECONDS = 10 * 60;
@@ -238,59 +240,24 @@ export function createOAuthPopupResponse(request, payload) {
 	const html = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(title)}</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f6f8fb;
-      color: #1f2937;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 24px;
-      box-sizing: border-box;
-    }
-    .card {
-      max-width: 420px;
-      width: 100%;
-      background: #fff;
-      border-radius: 16px;
-      padding: 24px;
-      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
-      text-align: center;
-    }
-    .icon {
-      font-size: 40px;
-      margin-bottom: 12px;
-    }
-    h1 {
-      margin: 0 0 12px;
-      font-size: 22px;
-    }
-    p {
-      margin: 0 0 18px;
-      line-height: 1.6;
-      color: #475569;
-    }
-    a {
-      color: #2563eb;
-      text-decoration: none;
-      font-weight: 600;
-    }
-  </style>
+  ${getStandaloneHead(
+		title,
+		`
+    .oauth-result { text-align: center; }
+    .oauth-result .page-icon { justify-content: center; color: var(--page-${appearance.color}); }
+    .oauth-result .page-description { overflow-wrap: anywhere; }
+    .oauth-result .page-actions { justify-content: center; }
+  `,
+	)}
 </head>
 <body>
-  <div class="card">
-    <div class="icon">${appearance.icon}</div>
-    <h1>${escapeHtml(title)}</h1>
-    <p>${escapeHtml(description)}</p>
-    <p>如果窗口没有自动关闭，请返回应用继续操作。</p>
-    <a href="${escapeHtml(appUrl)}">返回应用</a>
-  </div>
+  <main class="standalone-card oauth-result" aria-labelledby="oauth-title">
+    <div class="page-icon">${dialogIcon(appearance.icon)}</div>
+    <h1 class="page-title" id="oauth-title">${escapeHtml(title)}</h1>
+    <p class="page-description">${escapeHtml(description)}</p>
+    <p class="page-notice">如果窗口没有自动关闭，请返回应用继续操作。</p>
+    <div class="page-actions"><a class="page-button" href="${escapeHtml(appUrl)}">返回应用</a></div>
+  </main>
   <script>
     (function () {
       const payload = ${safeJson};
@@ -322,20 +289,23 @@ function resolvePopupAppearance(payload) {
 	switch (severity) {
 		case 'warning':
 			return {
-				icon: '⚠️',
+				icon: 'warning',
+				color: 'warning',
 				title: '授权成功，但连接测试失败',
 				httpStatus: 200,
 			};
 		case 'error':
 			return {
-				icon: '❌',
+				icon: 'error',
+				color: 'danger',
 				title: '授权失败',
 				httpStatus: 400,
 			};
 		case 'success':
 		default:
 			return {
-				icon: '✅',
+				icon: 'check',
+				color: 'success',
 				title: '授权成功',
 				httpStatus: 200,
 			};

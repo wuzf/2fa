@@ -10,6 +10,28 @@ import {
 import { encryptData } from '../../src/utils/encryption.js';
 
 describe('backup format HTML decoding', () => {
+	it('restores themed backups with special characters and all HOTP parameters', async () => {
+		const secret = {
+			id: 'hotp-backup',
+			name: '服务 <script> & "test"',
+			account: 'account<&>@example.test',
+			secret: 'JBSWY3DPEHPK3PXP',
+			type: 'HOTP',
+			digits: 8,
+			period: 60,
+			algorithm: 'SHA256',
+			counter: 42,
+		};
+		const { content } = await encodeBackupContent([secret], { format: 'html' });
+		expect(content.match(/<th>/g)).toHaveLength(9);
+		expect(content.match(/<script(?:\s|>)/g)).toHaveLength(2);
+		expect(content).toContain('<img src="data:image/svg+xml');
+		expect(decodeBackupContent(content, 'html', { strict: true }).secrets[0]).toMatchObject(secret);
+		const { id: _id, ...tableFields } = secret;
+		const tableOnly = content.replace(/<script id="__2fa_backup_data__"[\s\S]*?<\/script>/i, '');
+		expect(decodeBackupContent(tableOnly, 'html', { strict: true }).secrets[0]).toMatchObject(tableFields);
+	});
+
 	it('restores legacy frontend HTML exports without embedded JSON', () => {
 		const legacyHtml = `<!DOCTYPE html>
 <html lang="zh-CN">

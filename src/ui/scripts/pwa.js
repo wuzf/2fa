@@ -171,7 +171,7 @@ export function getPWACode() {
       }
 
       section.style.display = '';
-      btn.textContent = '📱 安装到桌面';
+      btn.textContent = '安装到桌面';
 
       if (deferredPrompt) {
         btn.disabled = false;
@@ -191,7 +191,7 @@ export function getPWACode() {
 
       if (btn) {
         btn.disabled = true;
-        btn.textContent = '⏳ 安装中…';
+        btn.textContent = '安装中…';
       }
 
       try {

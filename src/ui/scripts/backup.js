@@ -89,7 +89,7 @@ export function getBackupCode() {
       }
       status.style.display = message ? 'block' : 'none';
       status.textContent = message || '';
-      status.style.color = isError ? '#dc2626' : 'var(--text-secondary)';
+      status.style.color = isError ? 'var(--dialog-danger)' : 'var(--text-secondary)';
     }
 
     function resetRestoreUploadInput() {
@@ -258,7 +258,7 @@ export function getBackupCode() {
         console.error('加载备份列表失败:', error);
 
         if (!append) {
-          backupSelectElement.innerHTML = '<option value="">加载备份列表失败: ' + error.message + '</option>';
+          backupSelectElement.innerHTML = '<option value="">加载备份列表失败: ' + escapeHTML(error.message) + '</option>';
           backupSelectElement.disabled = true;
           resetBackupSelection();
         } else {
@@ -465,32 +465,32 @@ export function getBackupCode() {
             : (isPartialBackup ? '该备份不完整，无法保证数据完整性。' : '');
         const emptyBackupMessage = isEmptyBackup ? '该备份不包含可恢复的密钥，已禁止恢复当前数据。' : '';
         const previewSummary =
-          '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px;">' +
-            '<div style="padding: 10px 12px; border-radius: 8px; background: var(--bg-secondary);">' +
-              '<div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">备份格式</div>' +
-              '<div style="font-weight: 600; color: var(--text-primary);">' + escapeHTML(formatLabel) + '</div>' +
+          '<dl class="dialog-backup-summary">' +
+            '<div>' +
+              '<dt>备份格式</dt>' +
+              '<dd>' + escapeHTML(formatLabel) + '</dd>' +
             '</div>' +
-            '<div style="padding: 10px 12px; border-radius: 8px; background: var(--bg-secondary);">' +
-              '<div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">备份条目</div>' +
-              '<div style="font-weight: 600; color: var(--text-primary);">' + (data.count || 0) + ' 个</div>' +
+            '<div>' +
+              '<dt>备份条目</dt>' +
+              '<dd>' + (data.count || 0) + ' 个</dd>' +
             '</div>' +
-            '<div style="padding: 10px 12px; border-radius: 8px; background: var(--bg-secondary);">' +
-              '<div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">存储状态</div>' +
-              '<div style="font-weight: 600; color: var(--text-primary);">' + encryptedLabel + '</div>' +
+            '<div>' +
+              '<dt>存储状态</dt>' +
+              '<dd>' + encryptedLabel + '</dd>' +
             '</div>' +
-            '<div style="padding: 10px 12px; border-radius: 8px; background: var(--bg-secondary);">' +
-              '<div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">恢复来源</div>' +
-              '<div style="font-weight: 600; color: var(--text-primary);">' + escapeHTML(sourceLabel) + '</div>' +
+            '<div>' +
+              '<dt>恢复来源</dt>' +
+              '<dd>' + escapeHTML(sourceLabel) + '</dd>' +
             '</div>' +
-          '</div>';
+          '</dl>';
         const previewWarning = isPartialBackup
-          ? '<div style="margin-bottom: 14px; padding: 12px 14px; border-radius: 8px; border: 1px solid #f59e0b; background: #fff7ed; color: #9a3412;">' +
-              '⚠️ ' + escapeHTML(warningMessage) +
+          ? '<div class="dialog-warning" role="status">' +
+              dialogIcon('warning') + ' ' + escapeHTML(warningMessage) +
             '</div>'
           : '';
         const previewEmptyWarning = isEmptyBackup
-          ? '<div style="margin-bottom: 14px; padding: 12px 14px; border-radius: 8px; border: 1px solid #f97316; background: #fff7ed; color: #9a3412;">' +
-              '⚠️ ' + escapeHTML(emptyBackupMessage) +
+          ? '<div class="dialog-warning" role="status">' +
+              dialogIcon('warning') + ' ' + escapeHTML(emptyBackupMessage) +
             '</div>'
           : '';
 
@@ -512,9 +512,9 @@ export function getBackupCode() {
               '<table class="backup-table">' +
                 '<thead>' +
                   '<tr>' +
-                    '<th>🔐 服务名称</th>' +
-                    '<th>👤 账户信息</th>' +
-                    '<th>🔢 类型</th>' +
+                    '<th>服务名称</th>' +
+                    '<th>账户信息</th>' +
+                    '<th>类型</th>' +
                   '</tr>' +
                 '</thead>' +
                 '<tbody>' +
@@ -544,7 +544,7 @@ export function getBackupCode() {
           exportBackupBtn.disabled = true;
           exportBackupBtn.title = '当前备份预览加载失败，无法导出';
         }
-        previewContent.innerHTML = '<div class="no-backups">加载备份预览失败: ' + error.message + '</div>';
+        previewContent.innerHTML = '<div class="no-backups">加载备份预览失败: ' + escapeHTML(error.message) + '</div>';
       }
     }
 

@@ -269,7 +269,7 @@ export function getImportUICode() {
         // 重置导入按钮
         const executeBtn = document.getElementById('executeImportBtn');
         executeBtn.disabled = true;
-        executeBtn.textContent = '📥 导入';
+        executeBtn.textContent = '导入';
         // 隐藏文件信息徽章
         const badge = document.getElementById('fileInfoBadge');
         if (badge) badge.style.display = 'none';
@@ -310,7 +310,7 @@ export function getImportUICode() {
         // 重置导入按钮
         const executeBtn = document.getElementById('executeImportBtn');
         executeBtn.disabled = true;
-        executeBtn.textContent = '📥 导入';
+        executeBtn.textContent = '导入';
         // 清空预览数据数组
         importPreviewData = [];
         resetImportRetryState();

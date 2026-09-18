@@ -8,6 +8,8 @@ import { getBaseStyles } from './base.js';
 import { getComponentStyles } from './components.js';
 import { getModalStyles } from './modals.js';
 import { getResponsiveStyles } from './responsive.js';
+import { getDialogStyles } from './dialogs.js';
+import { getWorkspaceStyles } from './workspace.js';
 
 /**
  * 获取完整的样式内容
@@ -17,6 +19,6 @@ export function getStyles() {
 	return `
   <style>
 ${getVariables()}
-${getBaseStyles()}${getComponentStyles()}${getModalStyles()}${getResponsiveStyles()}  </style>
+${getBaseStyles()}${getComponentStyles()}${getModalStyles()}${getResponsiveStyles()}${getWorkspaceStyles()}${getDialogStyles()}  </style>
 </head>`;
 }

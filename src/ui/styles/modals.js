@@ -1927,9 +1927,9 @@ export function getModalStyles() {
 
     .import-progress-bar {
       width: 100%;
-      height: 10px;
+      height: var(--progress-height);
       background: var(--progress-bg);
-      border-radius: 999px;
+      border-radius: 0;
       overflow: hidden;
       margin-bottom: 10px;
     }

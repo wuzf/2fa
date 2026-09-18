@@ -3,6 +3,9 @@
  * 包含 OTPAuth、JSON、CSV、HTML 等标准格式导出
  */
 
+import { getStandaloneHead } from '../../standalone.js';
+import { getBackupDocumentStyles } from '../../styles/backupDocument.js';
+
 /**
  * 获取标准格式导出代码
  * @returns {string} JavaScript 代码
@@ -337,28 +340,22 @@ export function getStandardFormatsCode() {
         '          <td>' + secret.period + '</td>\\n' +
         '          <td>' + escapeHTML(secret.algorithm) + '</td>\\n' +
         '          <td>' + secret.counter + '</td>\\n' +
+        '          <td class="qr-cell qr-cell-placeholder">未嵌入</td>\\n' +
         '        </tr>\\n'
       ).join('');
 
       const htmlContent = '<!DOCTYPE html>\\n' +
         '<html lang="zh-CN">\\n' +
         '<head>\\n' +
-        '  <meta charset="UTF-8">\\n' +
-        '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\\n' +
+        ${JSON.stringify(getStandaloneHead('2FA 密钥备份', getBackupDocumentStyles())).replace(/</g, '\\u003c')} +
         '  <meta name="2fa-backup-meta" content="skippedInvalidCount=0">\\n' +
-        '  <title>2FA Backup</title>\\n' +
-        '  <style>\\n' +
-        '    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; color: #1f2937; background: #f8fafc; }\\n' +
-        '    table { width: 100%; border-collapse: collapse; margin-top: 24px; background: #fff; }\\n' +
-        '    th, td { border: 1px solid #cbd5e1; padding: 10px 12px; text-align: left; vertical-align: top; }\\n' +
-        '    th { background: #e2e8f0; }\\n' +
-        '    code { word-break: break-all; }\\n' +
-        '  </style>\\n' +
         '</head>\\n' +
         '<body data-skipped-invalid-count="0">\\n' +
-        '  <h1>2FA 备份</h1>\\n' +
+        '  <main class="backup-document"><header class="document-header"><h1>2FA 密钥备份</h1><div class="meta">\\n' +
         '  <p>创建时间: ' + escapeHTML(exportTimestamp) + '</p>\\n' +
         '  <p>备份数量: ' + normalizedSecrets.length + '</p>\\n' +
+        '  </div></header>\\n' +
+        '  <div class="table-scroll" role="region" aria-label="备份密钥表格" tabindex="0">\\n' +
         '  <table data-skipped-invalid-count="0">\\n' +
         '    <thead>\\n' +
         '      <tr>\\n' +
@@ -370,13 +367,15 @@ export function getStandardFormatsCode() {
         '        <th>周期(秒)</th>\\n' +
         '        <th>算法</th>\\n' +
         '        <th>计数器</th>\\n' +
+        '        <th>二维码</th>\\n' +
         '      </tr>\\n' +
         '    </thead>\\n' +
         '    <tbody>\\n' +
                rowsHtml +
         '    </tbody>\\n' +
         '  </table>\\n' +
-        '  <script id="__2fa_backup_data__" type="application/json">' + embeddedPayload + '</script>\\n' +
+        '  </div></main>\\n' +
+        '  <script id="__2fa_backup_data__" type="application/json">' + embeddedPayload + '<' + '/script>\\n' +
         '</body>\\n' +
         '</html>';
 

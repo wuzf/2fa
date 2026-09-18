@@ -80,28 +80,28 @@ export function getKeyCheckerToolCode() {
       const resultSection = document.getElementById('keyCheckResult');
 
       let html = '<div style="display: flex; align-items: center; margin-bottom: 15px;">' +
-        '<span style="font-size: 24px; margin-right: 10px;">' + (result.isValid ? '✅' : '❌') + '</span>' +
-        '<span style="font-size: 18px; font-weight: 600; color: ' + (result.isValid ? '#28a745' : '#e74c3c') + ';">' + (result.isValid ? '密钥有效' : '密钥无效') + '</span>' +
+        '<span style="font-size: var(--dialog-section-size); margin-right: 10px;">' + dialogIcon(result.isValid ? 'check' : 'error') + '</span>' +
+        '<span style="font-size: var(--dialog-section-size); font-weight: 600; color: ' + (result.isValid ? 'var(--dialog-success)' : 'var(--dialog-danger)') + ';">' + (result.isValid ? '密钥有效' : '密钥无效') + '</span>' +
         '</div>' +
         '<div style="margin-bottom: 15px;">' +
         '<div style="display: flex; justify-content: space-between; margin-bottom: 8px;">' +
         '<span style="font-weight: 600;">长度:</span>' +
-        '<span style="color: ' + (result.lengthValid ? '#28a745' : '#e74c3c') + ';">' + result.length + ' 字符 ' + (result.lengthValid ? '(符合要求)' : '(不符合要求)') + '</span>' +
+        '<span style="color: ' + (result.lengthValid ? 'var(--dialog-success)' : 'var(--dialog-danger)') + ';">' + result.length + ' 字符 ' + (result.lengthValid ? '(符合要求)' : '(不符合要求)') + '</span>' +
         '</div>' +
         '<div style="display: flex; justify-content: space-between; margin-bottom: 8px;">' +
         '<span style="font-weight: 600;">字符集:</span>' +
-        '<span style="color: ' + (result.charsetValid ? '#28a745' : '#e74c3c') + ';">' + (result.charsetValid ? '符合Base32规范' : '包含非法字符') + '</span>' +
+        '<span style="color: ' + (result.charsetValid ? 'var(--dialog-success)' : 'var(--dialog-danger)') + ';">' + (result.charsetValid ? '符合Base32规范' : '包含非法字符') + '</span>' +
         '</div>' +
         '<div style="display: flex; justify-content: space-between;">' +
         '<span style="font-weight: 600;">填充:</span>' +
-        '<span style="color: ' + (result.paddingValid ? '#28a745' : '#e74c3c') + ';">' + (result.paddingValid ? '填充正确' : '填充错误') + '</span>' +
+        '<span style="color: ' + (result.paddingValid ? 'var(--dialog-success)' : 'var(--dialog-danger)') + ';">' + (result.paddingValid ? '填充正确' : '填充错误') + '</span>' +
         '</div>' +
         '</div>';
 
       if (!result.isValid && result.suggestions.length > 0) {
-        html += '<div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 6px;">' +
-          '<div style="font-weight: 600; margin-bottom: 8px; color: #856404;">改进建议:</div>' +
-          '<div style="font-size: 13px; color: #856404;">' +
+        html += '<div style="margin-top: 15px; padding: 10px; background: var(--dialog-warning-bg); border-radius: 6px;">' +
+          '<div style="font-weight: 600; margin-bottom: 8px; color: var(--dialog-warning);">改进建议:</div>' +
+          '<div style="font-size: var(--dialog-caption-size); color: var(--dialog-warning);">' +
           result.suggestions.map(suggestion => '• ' + suggestion).join('<br>') +
           '</div>' +
           '</div>';

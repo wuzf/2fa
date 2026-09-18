@@ -35,7 +35,7 @@ export async function handleGenerateOTP(secret, request = null) {
 	// 动态导入（减少初始加载）
 	const { validateBase32, validateOTPParams } = await import('../../utils/validation.js');
 	const { generateOTP } = await import('../../otp/generator.js');
-	const { createQuickOtpPage, calculateRemainingTime } = await import('../../ui/quickOtp.js');
+	const { createQuickOtpPage, createOtpEntryPage, calculateRemainingTime } = await import('../../ui/quickOtp.js');
 
 	if (!secret) {
 		// 如果没有密钥，根据 Accept 头返回友好页面或纯文本使用说明
@@ -44,59 +44,7 @@ export async function handleGenerateOTP(secret, request = null) {
 		const wantsHtml = accept.includes('text/html');
 
 		if (wantsHtml) {
-			// 浏览器访问：渲染极简引导页（无登录态可用），引导用户输入密钥跳到 /otp/{secret}
-			const html = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>2FA OTP 生成 - 访客模式</title>
-<style>
-  :root { color-scheme: light dark; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; background: #f5f7fa; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
-  .card { background: #fff; border-radius: 12px; padding: 32px 28px; box-shadow: 0 8px 32px rgba(0,0,0,.08); max-width: 420px; width: 100%; }
-  h1 { margin: 0 0 8px; font-size: 22px; }
-  p { color: #5a6268; margin: 0 0 20px; line-height: 1.6; font-size: 14px; }
-  label { display: block; font-size: 14px; margin-bottom: 6px; color: #2d3748; font-weight: 500; }
-  input { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e0; border-radius: 6px; font-size: 15px; font-family: ui-monospace, SFMono-Regular, monospace; box-sizing: border-box; }
-  input:focus { outline: none; border-color: #2196f3; box-shadow: 0 0 0 3px rgba(33,150,243,.15); }
-  button { margin-top: 16px; width: 100%; padding: 11px; background: #2196f3; color: #fff; border: 0; border-radius: 6px; font-size: 15px; cursor: pointer; }
-  button:hover { background: #1976d2; }
-  .back { display: block; text-align: center; margin-top: 14px; font-size: 13px; color: #5a6268; text-decoration: none; }
-  .back:hover { color: #2196f3; }
-  @media (prefers-color-scheme: dark) {
-    body { background: #1a202c; }
-    .card { background: #2d3748; }
-    h1 { color: #e2e8f0; }
-    p { color: #a0aec0; }
-    label { color: #e2e8f0; }
-    input { background: #1a202c; color: #e2e8f0; border-color: #4a5568; }
-    .back { color: #a0aec0; }
-  }
-</style>
-</head>
-<body>
-  <main class="card">
-    <h1>🔐 OTP 生成（访客模式）</h1>
-    <p>无需登录，输入 Base32 密钥即可在线生成 TOTP 验证码。</p>
-    <form onsubmit="event.preventDefault(); var s=document.getElementById('s').value.trim().replace(/\\s+/g,''); if(s) location.href='${origin}/otp/'+encodeURIComponent(s);">
-      <label for="s">Base32 密钥</label>
-      <input id="s" name="secret" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="例如 JBSWY3DPEHPK3PXP" required>
-      <button type="submit">生成 OTP</button>
-    </form>
-    <a class="back" href="/">← 返回登录页</a>
-  </main>
-</body>
-</html>`;
-			return new Response(html, {
-				status: 200,
-				headers: {
-					'Content-Type': 'text/html; charset=utf-8',
-					'Cache-Control': 'public, max-age=300',
-					Vary: 'Accept',
-					'X-Content-Type-Options': 'nosniff',
-				},
-			});
+			return createOtpEntryPage();
 		}
 
 		// 非浏览器（curl / API 调用）保留原有 400 + 文本说明
@@ -135,7 +83,7 @@ export async function handleGenerateOTP(secret, request = null) {
 
 		if (request) {
 			const url = new URL(request.url);
-			type = url.searchParams.get('type') || 'TOTP';
+			type = (url.searchParams.get('type') || 'TOTP').toUpperCase();
 			digits = parseInt(url.searchParams.get('digits')) || 6;
 			period = parseInt(url.searchParams.get('period')) || 30;
 			algorithm = url.searchParams.get('algorithm') || 'SHA1';
@@ -159,11 +107,12 @@ export async function handleGenerateOTP(secret, request = null) {
 		}
 
 		// 默认返回漂亮的HTML页面
-		const remainingTime = type === 'TOTP' ? calculateRemainingTime(period) : 0;
+		const remainingTime = type === 'TOTP' ? calculateRemainingTime(period, loadTime) : 0;
 		return createQuickOtpPage(otp, {
 			period,
 			remainingTime,
 			type,
+			counter,
 		});
 	} catch (error) {
 		const logger = getLogger(null);

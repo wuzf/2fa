@@ -5,6 +5,8 @@
 import QRCode from 'qrcode/lib/core/qrcode.js';
 import SvgRenderer from 'qrcode/lib/renderer/svg-tag.js';
 
+import { getStandaloneHead } from '../ui/standalone.js';
+import { getBackupDocumentStyles } from '../ui/styles/backupDocument.js';
 import { decryptData, encryptData } from './encryption.js';
 import { DEFAULT_EXPORT_FORMAT } from './settings.js';
 import { validateBase32 } from './validation.js';
@@ -817,32 +819,23 @@ async function buildHTMLContent(payload, options = {}) {
 	return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  ${getStandaloneHead('2FA 密钥备份', getBackupDocumentStyles())}
   <meta name="generator" content="2FA Backup">
   <meta name="${HTML_BACKUP_META_NAME}" content="skippedInvalidCount=${skippedInvalidCount}">
-  <title>2FA Backup</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; color: #1f2937; background: #f8fafc; }
-    h1 { margin-bottom: 8px; }
-    p { margin: 6px 0; color: #475569; }
-    table { width: 100%; border-collapse: collapse; margin-top: 24px; background: #ffffff; }
-    th, td { border: 1px solid #cbd5e1; padding: 10px 12px; text-align: left; vertical-align: top; }
-    th { background: #e2e8f0; }
-    code { word-break: break-all; }
-    .qr-cell { text-align: center; }
-    .qr-cell img { width: 96px; height: 96px; display: block; margin: 0 auto; }
-    .qr-cell-placeholder { color: #64748b; font-size: 12px; }
-    .partial-warning { margin-top: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid #f59e0b; background: #fff7ed; color: #9a3412; }
-  </style>
 </head>
 <body data-skipped-invalid-count="${skippedInvalidCount}">
-  <h1>2FA 备份</h1>
+  <main class="backup-document">
+  <header class="document-header">
+  <h1>2FA 密钥备份</h1>
+  <div class="meta">
   <p>创建时间: ${escapeHtml(payload.timestamp)}</p>
   <p>备份数量: ${payload.count}</p>
   <p>格式: ${formatLabel}</p>
   <p>${escapeHtml(qrDescription)}</p>
+  </div>
   ${partialWarning ? `<p class="partial-warning">${escapeHtml(partialWarning)}</p>` : ''}
+  </header>
+  <div class="table-scroll" role="region" aria-label="备份密钥表格" tabindex="0">
   <table data-skipped-invalid-count="${skippedInvalidCount}">
     <thead>
       <tr>
@@ -861,6 +854,8 @@ async function buildHTMLContent(payload, options = {}) {
 ${rows}
     </tbody>
   </table>
+  </div>
+  </main>
   <script id="${HTML_BACKUP_JSON_ID}" type="application/json">${embeddedJson}</script>
 </body>
 </html>`;
@@ -1125,9 +1120,12 @@ function extractHtmlTableRows(content) {
 }
 
 function normalizeHtmlTableCell(value) {
-	return decodeHtmlEntities(String(value || ''))
-		.replace(/<br\s*\/?>/gi, '\n')
-		.replace(/<[^>]*>/g, ' ')
+	// Strip real markup before decoding entities so literal <...> in account labels survives.
+	return decodeHtmlEntities(
+		String(value || '')
+			.replace(/<br\s*\/?>/gi, '\n')
+			.replace(/<[^>]*>/g, ' '),
+	)
 		.replace(/\u00A0/g, ' ')
 		.replace(/[ \t\f\v]+/g, ' ')
 		.replace(/\r?\n\s*/g, '\n')

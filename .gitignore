@@ -175,3 +175,6 @@ dist
 CLAUDE.md
 .claude/
 *.stackdump
+
+# Local review notes
+/docs/reviews/

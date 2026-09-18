@@ -10,6 +10,17 @@
 export function getUICode() {
 	return `    // ========== UI 交互模块 ==========
 
+    // Browsers can retain :focus-visible when a keyboard-focused button is
+    // clicked again. Track input changes without blurring the current control.
+    document.addEventListener('pointerdown', function() {
+      document.documentElement.setAttribute('data-card-input', 'pointer');
+    }, true);
+    document.addEventListener('keydown', function(event) {
+      if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+        document.documentElement.removeAttribute('data-card-input');
+      }
+    }, true);
+
     // Toast 提示相关变量
     let toastTimeout = null;
     let isToastVisible = false;
@@ -35,7 +46,8 @@ export function getUICode() {
       }
 
       // 更新内容
-      iconElement.textContent = icon;
+      const feedbackIcon = icon === '✅' ? 'check' : icon === '❌' ? 'error' : icon === '⚠️' ? 'warning' : 'info';
+      iconElement.innerHTML = dialogIcon(feedbackIcon);
       messageElement.textContent = message;
 
       // 如果toast已经显示，先隐藏再显示，确保动画效果
@@ -175,6 +187,7 @@ export function getUICode() {
       const overlay = document.getElementById('menuOverlay');
 
       mainBtn.classList.add('active');
+      mainBtn.setAttribute('aria-expanded', 'true');
       submenu.classList.add('show');
       overlay.classList.add('show');
 
@@ -193,6 +206,7 @@ export function getUICode() {
       const overlay = document.getElementById('menuOverlay');
 
       mainBtn.classList.remove('active');
+      mainBtn.setAttribute('aria-expanded', 'false');
       submenu.classList.remove('show');
       overlay.classList.remove('show');
     }
@@ -280,7 +294,7 @@ export function getUICode() {
       const maxX = Math.max(margin, vw - w - margin);
       const maxY = Math.max(margin, vh - h - margin);
       const clampedX = Math.min(Math.max(x, margin), maxX);
-      let clampedY = Math.min(Math.max(y, margin), maxY);
+      const clampedY = Math.min(Math.max(y, margin), maxY);
       const headerControls = document.querySelector('.search-action-row');
       if (headerControls) {
         const controlsRect = headerControls.getBoundingClientRect();
@@ -289,7 +303,21 @@ export function getUICode() {
           clampedX + w > controlsRect.left - margin &&
           clampedY < controlsRect.bottom + margin &&
           clampedY + h > controlsRect.top - margin;
-        if (overlapsHeader) clampedY = maxY;
+        if (overlapsHeader) {
+          // Move only as far as needed to clear the controls; never reset to the bottom.
+          const candidates = [
+            { x: clampedX, y: controlsRect.bottom + margin },
+            { x: clampedX, y: controlsRect.top - h - margin },
+            { x: controlsRect.left - w - margin, y: clampedY },
+            { x: controlsRect.right + margin, y: clampedY }
+          ].filter(pos => pos.x >= margin && pos.x <= maxX && pos.y >= margin && pos.y <= maxY);
+          if (candidates.length) {
+            return candidates.reduce((nearest, pos) =>
+              Math.hypot(pos.x - clampedX, pos.y - clampedY) < Math.hypot(nearest.x - clampedX, nearest.y - clampedY)
+                ? pos : nearest
+            );
+          }
+        }
       }
       return {
         x: clampedX,

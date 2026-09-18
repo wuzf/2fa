@@ -8,7 +8,7 @@ A two-factor authentication key management system built on Cloudflare Workers. F
 
 **[中文文档](README.md)**
 
-**Key Features:** TOTP/HOTP code auto-generation · QR code scanning/image recognition/paste screenshot/drag & drop image to add keys · AES-GCM 256-bit encrypted storage · Bulk import from Google Authenticator, Aegis, 2FAS, Bitwarden, etc. · Multi-format export (TXT/JSON/CSV/HTML/Google migration QR codes) · Auto backup & restore · WebDAV/S3/OneDrive/Google Drive remote backup sync · Settings panel (password change/sync settings) · Dark/Light theme · Responsive design for mobile/tablet/desktop
+**Key Features:** TOTP/HOTP code auto-generation · QR code scanning/image recognition/paste screenshot/drag & drop image to add keys · AES-GCM 256-bit encrypted storage · Bulk import from Google Authenticator, Aegis, 2FAS, Bitwarden, etc. · Multi-format export (TXT/JSON/CSV/HTML/Google migration QR codes) · Auto backup & restore · WebDAV/S3/OneDrive/Google Drive remote backup sync · Security/sync/preference settings · Light/dark/follow-system themes · Fluent 2-inspired responsive UI
 
 ## 📸 Screenshots
 
@@ -102,11 +102,11 @@ Click the **➕** floating button in the bottom right:
 ### Daily Use
 
 - **Copy Code**: Click the code digits directly
-- **Manage Keys**: Click **⋯** on the top right of a card → Edit / Delete / View QR Code
+- **Manage Keys**: Click **⋯** on the top right of a card → View QR Code / Copy URI / Copy page link / Edit / Delete
 - **Search**: Real-time search by service name or account name in the top search bar
 - **Smart grouping**: Automatically group related services and multiple accounts, with an option to switch back to a flat list
 - **Sort**: Sort by add time or name
-- **Theme**: Toggle light/dark/follow system with 🌓 in the bottom right
+- **Theme**: Floating action button → **Settings → Preferences → Theme Mode**, then choose light, dark, or follow system
 
 ### Bulk Import
 
@@ -157,6 +157,8 @@ Detailed setup steps: [Cloud Drive Setup](docs/CLOUD_DRIVE_SETUP.md) (currently 
 Click the floating button → **⚙️ Settings**:
 
 - **Change Password** — Change the admin password
+- **Theme Mode** — Choose light, dark, or follow system
+- **Code Transition Animation** — Disable animations or choose flow, flip, or spotlight
 - **Login Validity** — Customize JWT expiration time
 - **Default Export Format** — Controls the default export choice and the extension used for newly created backups and remote auto-backups
 - **Backup Retention Count** — Adjust auto backup retention count

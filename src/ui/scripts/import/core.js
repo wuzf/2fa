@@ -54,8 +54,8 @@ export function getPreviewImportCode() {
           if (meta.digits && meta.digits !== 6) displayInfo += ' [' + meta.digits + '位]';
 
           item.innerHTML =
-            '<div class="service-name">🔒 ' + displayInfo + '</div>' +
-            '<div class="account-name">' + (account || '(需要密码解密)') + '</div>';
+            '<div class="service-name">' + dialogIcon('lock') + ' ' + escapeHTML(displayInfo) + '</div>' +
+            '<div class="account-name">' + escapeHTML(account || '(需要密码解密)') + '</div>';
 
           previewList.appendChild(item);
 
@@ -70,21 +70,20 @@ export function getPreviewImportCode() {
         });
 
         const statsDiv = document.createElement('div');
-        statsDiv.style.cssText = 'margin: 15px 0; padding: 15px; background: var(--bg-secondary); border-radius: 6px; font-size: 14px; color: var(--text-primary);';
+        statsDiv.className = 'dialog-encrypted-import';
         statsDiv.innerHTML =
-          '<strong>🔐 FreeOTP 加密备份</strong><br>' +
-          '<span style="color: var(--text-secondary);">检测到 ' + tokenCount + ' 个加密密钥</span><br><br>' +
-          '<div style="display: flex; gap: 10px; align-items: center;">' +
-          '<input type="password" id="freeotpPassword" placeholder="输入备份密码" ' +
-          'style="flex: 1; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary);">' +
-          '<button onclick="decryptAndPreviewFreeOTP()" class="btn btn-primary" style="padding: 8px 16px;">解密</button>' +
+          '<strong>FreeOTP 加密备份</strong>' +
+          '<p>检测到 ' + tokenCount + ' 个加密密钥</p>' +
+          '<div class="dialog-decrypt-controls">' +
+          '<input type="password" id="freeotpPassword" placeholder="输入备份密码" aria-label="备份密码">' +
+          '<button type="button" onclick="decryptAndPreviewFreeOTP()" class="btn btn-primary">解密</button>' +
           '</div>';
 
         previewList.insertBefore(statsDiv, previewList.firstChild);
         updateImportStats(validCount, 0, 0);
         previewDiv.style.display = 'block';
         executeBtn.disabled = true;
-        executeBtn.textContent = '🔒 需要先解密';
+        executeBtn.textContent = '需要先解密';
         return;
       }
 
@@ -93,20 +92,19 @@ export function getPreviewImportCode() {
         totpAuthBackupData = text;
 
         const statsDiv = document.createElement('div');
-        statsDiv.className = 'import-stats-header';
+        statsDiv.className = 'dialog-encrypted-import';
         statsDiv.innerHTML =
-          '<strong>🔐 TOTP Authenticator 加密备份</strong><br>' +
-          '<span style="color: var(--text-secondary);">检测到加密的 TOTP Authenticator 备份</span><br><br>' +
-          '<div style="display: flex; gap: 10px; align-items: center;">' +
-          '<input type="password" id="totpAuthPassword" placeholder="输入备份密码" ' +
-          'style="flex: 1; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary);">' +
-          '<button onclick="decryptAndPreviewTOTPAuth()" class="btn btn-primary" style="padding: 8px 16px;">解密</button>' +
+          '<strong>TOTP Authenticator 加密备份</strong>' +
+          '<p>检测到加密的 TOTP Authenticator 备份</p>' +
+          '<div class="dialog-decrypt-controls">' +
+          '<input type="password" id="totpAuthPassword" placeholder="输入备份密码" aria-label="备份密码">' +
+          '<button type="button" onclick="decryptAndPreviewTOTPAuth()" class="btn btn-primary">解密</button>' +
           '</div>';
 
         previewList.appendChild(statsDiv);
         previewDiv.style.display = 'block';
         executeBtn.disabled = true;
-        executeBtn.textContent = '🔒 需要先解密';
+        executeBtn.textContent = '需要先解密';
         return;
       }
 
@@ -193,7 +191,7 @@ export function getPreviewImportCode() {
             if (isDeleted) {
               item.className += ' skipped';
               item.innerHTML =
-                '<div class="service-name">⏭️ ' + (issuer || '未知服务') + '</div>' +
+                '<div class="service-name">' + dialogIcon('info') + ' ' + escapeHTML(issuer || '未知服务') + '</div>' +
                 '<div class="account-name">已删除条目，跳过导入</div>';
               previewList.appendChild(item);
               skippedCount++;
@@ -230,8 +228,8 @@ export function getPreviewImportCode() {
                 if (algorithm !== 'SHA1') displayInfo += ' [' + algorithm + ']';
 
                 item.innerHTML =
-                  '<div class="service-name">✅ ' + displayInfo + '</div>' +
-                  '<div class="account-name">' + (account || '(无账户)') + '</div>';
+                  '<div class="service-name">' + dialogIcon('check') + ' ' + escapeHTML(displayInfo) + '</div>' +
+                  '<div class="account-name">' + escapeHTML(account || '(无账户)') + '</div>';
 
                 importPreviewData.push({
                   serviceName: serviceName,
@@ -259,8 +257,8 @@ export function getPreviewImportCode() {
         } catch (error) {
           item.className += ' invalid';
           item.innerHTML =
-            '<div class="service-name">❌ 第' + (index + 1) + '行</div>' +
-            '<div class="error-msg">' + error.message + '</div>';
+            '<div class="service-name">' + dialogIcon('error') + ' 第' + (index + 1) + '行</div>' +
+            '<div class="error-msg">' + escapeHTML(error.message) + '</div>';
 
           importPreviewData.push({
             line: index + 1,
@@ -276,7 +274,7 @@ export function getPreviewImportCode() {
 
       updateImportStats(validCount, invalidCount, skippedCount);
       previewDiv.style.display = 'block';
-      executeBtn.textContent = '📥 导入';
+      executeBtn.textContent = '导入';
       executeBtn.disabled = validCount === 0;
     }
 `;
@@ -466,7 +464,7 @@ export function getExecuteImportCode() {
           const aggregateProcessed = pendingImportPriorProcessedItems;
           showCenterToast('⚠️', '本轮已处理 ' + processedValidItems + ' 条（累计成功 ' + aggregateSuccess + '，累计失败 ' + aggregateFail + '），剩余 ' + remainingRetryItems.length + ' 条待继续：' + error.message);
           executeBtn.disabled = false;
-          executeBtn.textContent = remainingRetryItems.length > 0 ? '📥 继续导入剩余项' : '📥 导入';
+          executeBtn.textContent = remainingRetryItems.length > 0 ? '继续导入剩余项' : '导入';
           updateImportProgress({
             title: '部分导入成功',
             message: '已处理 ' + aggregateProcessed + ' / ' + originalTotalItems + '，剩余 ' + remainingRetryItems.length + ' 条待继续',
@@ -487,7 +485,7 @@ export function getExecuteImportCode() {
         }
         showCenterToast('❌', '导入失败：' + error.message);
         executeBtn.disabled = false;
-        executeBtn.textContent = isRetryingPendingItems ? '📥 继续导入剩余项' : '📥 导入';
+        executeBtn.textContent = isRetryingPendingItems ? '继续导入剩余项' : '导入';
         return;
       }
 

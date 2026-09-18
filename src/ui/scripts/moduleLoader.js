@@ -122,32 +122,11 @@ export function getModuleLoaderCode() {
       if (!toast) {
         toast = document.createElement('div');
         toast.id = 'loadingToast';
-        toast.style.cssText = \`
-          position: fixed;
-          top: 20px;
-          left: 50%;
-          transform: translateX(-50%);
-          background: #2196F3;
-          color: white;
-          padding: 12px 24px;
-          border-radius: 8px;
-          font-size: 14px;
-          z-index: 10001;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        \`;
-
+        toast.className = 'dialog-toast';
+        toast.setAttribute('role', 'status');
         const spinner = document.createElement('div');
-        spinner.style.cssText = \`
-          width: 16px;
-          height: 16px;
-          border: 2px solid rgba(255,255,255,0.3);
-          border-top-color: white;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-        \`;
+        spinner.className = 'dialog-spinner';
+        spinner.setAttribute('aria-hidden', 'true');
         toast.appendChild(spinner);
 
         const text = document.createElement('span');

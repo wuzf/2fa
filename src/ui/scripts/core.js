@@ -1,4 +1,4 @@
-﻿/**
+import { dialogIcon } from '../dialogIcons.js'; /**
  * Core 核心业务逻辑模块
  * 包含密钥管理、OTP生成、二维码、备份等所有核心功能
  */
@@ -276,6 +276,9 @@ export function getCoreCode() {
     function createSecretCard(secret) {
       const logoUrl = getServiceLogo(secret.name);
       const isHOTP = secret.type && secret.type.toUpperCase() === 'HOTP';
+      // These values are used in both text content and quoted tooltip attributes.
+      const nameHTML = escapeHTML(secret.name).replace(/"/g, '&quot;');
+      const accountHTML = escapeHTML(secret.account || '').replace(/"/g, '&quot;');
 
       return '<div class="secret-card" onclick="copyOTPFromCard(event, &quot;' + secret.id + '&quot;)" title="点击卡片复制验证码">' +
         // TOTP 显示进度条，HOTP 不显示
@@ -288,38 +291,39 @@ export function getCoreCode() {
           '<div class="secret-info">' +
             '<div class="service-icon">' +
               (logoUrl ?
-                '<img src="' + logoUrl + '" alt="' + secret.name + '" style="width: 30px; height: 30px; object-fit: contain; border-radius: 6px;" onerror="this.style.display=&quot;none&quot;; this.nextElementSibling.style.display=&quot;block&quot;;">' +
-                '<span style="display: none;">' + secret.name.charAt(0).toUpperCase() + '</span>' :
-                '<span>' + secret.name.charAt(0).toUpperCase() + '</span>'
+                '<img src="' + logoUrl + '" alt="' + nameHTML + '" style="width: 30px; height: 30px; object-fit: contain; border-radius: 6px;" onerror="this.style.display=&quot;none&quot;; this.nextElementSibling.style.display=&quot;block&quot;;">' +
+                '<span style="display: none;">' + escapeHTML(secret.name.charAt(0).toUpperCase()) + '</span>' :
+                '<span>' + escapeHTML(secret.name.charAt(0).toUpperCase()) + '</span>'
               ) +
             '</div>' +
             '<div class="secret-text">' +
-            '<h3>' + secret.name + (isHOTP ? ' <span style="font-size: 11px; color: var(--text-tertiary); font-weight: 500;">[HOTP]</span>' : '') + '</h3>' +
-            (secret.account ? '<p>' + secret.account + '</p>' : '') +
+            '<h3><span class="secret-name" title="' + nameHTML + '">' + nameHTML + '</span>' + (isHOTP ? '<span class="secret-type">[HOTP]</span>' : '') + '</h3>' +
+            (secret.account ? '<p title="' + accountHTML + '">' + accountHTML + '</p>' : '') +
             (isHOTP ? '<p id="counter-' + secret.id + '" style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">计数器: ' + (secret.counter ?? 0) + '</p>' : '') +
             '</div>' +
           '</div>' +
-          '<div class="card-menu" onclick="event.stopPropagation(); toggleCardMenu(&quot;' + secret.id + '&quot;)">' +
-            '<div class="menu-dots">⋮</div>' +
+          '<div class="card-menu" title="">' +
+            '<button type="button" class="card-menu-trigger" title="账户操作" aria-label="账户操作" aria-expanded="false" aria-controls="menu-' + secret.id + '" onclick="event.stopPropagation(); toggleCardMenu(&quot;' + secret.id + '&quot;)"><span class="menu-dots" aria-hidden="true">⋮</span></button>' +
             '<div class="card-menu-dropdown" id="menu-' + secret.id + '">' +
-              '<div class="menu-item" onclick="event.stopPropagation(); showQRCode(&quot;' + secret.id + '&quot;); closeAllCardMenus();">二维码</div>' +
-              '<div class="menu-item" onclick="event.stopPropagation(); copyOTPAuthURL(&quot;' + secret.id + '&quot;); closeAllCardMenus();">复制链接</div>' +
-              '<div class="menu-item" onclick="event.stopPropagation(); editSecret(&quot;' + secret.id + '&quot;); closeAllCardMenus();">编辑</div>' +
-              '<div class="menu-item menu-item-danger" onclick="event.stopPropagation(); deleteSecret(&quot;' + secret.id + '&quot;); closeAllCardMenus();">删除</div>' +
+              '<button type="button" class="menu-item" title="显示验证器二维码" onclick="event.stopPropagation(); showQRCode(&quot;' + secret.id + '&quot;); closeAllCardMenus();">二维码</button>' +
+              '<button type="button" class="menu-item" title="用于导入验证器的 otpauth:// 配置" onclick="event.stopPropagation(); copyOTPAuthURL(&quot;' + secret.id + '&quot;); closeAllCardMenus();">复制 URI</button>' +
+              '<button type="button" class="menu-item" title="在浏览器中打开并查看验证码" onclick="event.stopPropagation(); copyOTPPageURL(&quot;' + secret.id + '&quot;); closeAllCardMenus();">复制链接</button>' +
+              '<button type="button" class="menu-item" title="编辑密钥" onclick="event.stopPropagation(); editSecret(&quot;' + secret.id + '&quot;); closeAllCardMenus();">编辑</button>' +
+              '<button type="button" class="menu-item menu-item-danger" title="删除密钥" onclick="event.stopPropagation(); deleteSecret(&quot;' + secret.id + '&quot;); closeAllCardMenus();">删除</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
         '<div class="otp-preview">' +
           '<div class="otp-main">' +
             '<div class="otp-code-container">' +
-              '<div class="otp-code" id="otp-' + secret.id + '" onclick="event.stopPropagation(); copyOTP(&quot;' + secret.id + '&quot;)" title="点击复制验证码">------</div>' +
+              '<button type="button" class="otp-code" id="otp-' + secret.id + '" onclick="event.stopPropagation(); copyOTP(&quot;' + secret.id + '&quot;)" title="点击复制验证码" aria-label="复制当前验证码">------</button>' +
             '</div>' +
             // HOTP 不显示"下一个"验证码（因为不是时间基准）
             (isHOTP ? '' :
-              '<div class="otp-next-container" onclick="event.stopPropagation(); copyNextOTP(&quot;' + secret.id + '&quot;)" title="点击复制下一个验证码">' +
-                '<div class="otp-next-label">下一个</div>' +
-                '<div class="otp-next-code" id="next-otp-' + secret.id + '">------</div>' +
-              '</div>'
+              '<button type="button" class="otp-next-container" onclick="event.stopPropagation(); copyNextOTP(&quot;' + secret.id + '&quot;)" title="点击复制下一个验证码">' +
+                '<span class="otp-next-label">下一个</span>' +
+                '<span class="otp-next-code" id="next-otp-' + secret.id + '">------</span>' +
+              '</button>'
             ) +
           '</div>' +
         '</div>' +
@@ -378,10 +382,10 @@ export function getCoreCode() {
         secretsList.innerHTML = '';
         secretsList.style.display = 'none';
         emptyState.innerHTML =
-          '<div class="icon">🔍</div>' +
+          '<div class="icon" aria-hidden="true">${dialogIcon('search')}</div>' +
           '<h3>未找到匹配的密钥</h3>' +
           '<p>尝试使用不同的关键字搜索</p>' +
-          '<button style="margin-top: 15px; padding: 8px 16px; background: #3498db; color: white; border: none; border-radius: 6px; cursor: pointer;" onclick="clearSearch()">清除搜索</button>';
+          '<button type="button" class="workspace-action" onclick="clearSearch()">清除搜索</button>';
         emptyState.style.display = 'block';
         return;
       }
@@ -391,13 +395,10 @@ export function getCoreCode() {
         secretsList.innerHTML = '';
         secretsList.style.display = 'none';
         emptyState.innerHTML =
-          '<div class="icon">🔑</div>' +
+          '<div class="icon" aria-hidden="true">${dialogIcon('key')}</div>' +
           '<h3>还没有密钥</h3>' +
-          '<p>点击上方按钮添加您的第一个2FA密钥</p>' +
-          '<div style="margin-top: 20px; font-size: 12px; color: #95a5a6;">' +
-          '快捷键：Ctrl+D 调试模式 | Ctrl+R 刷新验证码<br>' +
-          '数据存储：Cloudflare Workers KV' +
-          '</div>';
+          '<p>添加账户的两步验证密钥，在这里获取验证码</p>' +
+          '<button type="button" class="workspace-action" onclick="showAddModal()">添加密钥</button>';
         emptyState.style.display = 'block';
         return;
       }
@@ -738,7 +739,7 @@ export function getCoreCode() {
         /^[0-9]+$/.test(value);
     }
 
-    // 复制OTP链接（otpauth://格式）
+    // 复制验证器配置 URI（otpauth:// 格式，用于导入验证器）
     async function copyOTPAuthURL(secretId) {
       const secret = secrets.find(s => s.id === secretId);
       if (!secret) {
@@ -789,10 +790,42 @@ export function getCoreCode() {
 
         // 复制到剪贴板
         await navigator.clipboard.writeText(otpauthURL);
-        showCenterToast('🔗', secret.name + ' 链接已复制到剪贴板');
+        showCenterToast('🔗', secret.name + ' 验证器 URI 已复制到剪贴板');
       } catch (err) {
-        console.error('复制链接失败:', err);
-        showCenterToast('❌', '复制链接失败: ' + err.message);
+        console.error('复制验证器 URI 失败:', err);
+        showCenterToast('❌', '复制验证器 URI 失败: ' + err.message);
+      }
+    }
+
+    // 复制当前站点的验证码页面链接，保留影响 OTP 生成的非默认参数。
+    async function copyOTPPageURL(secretId) {
+      const secret = secrets.find(s => s.id === secretId);
+      if (!secret) {
+        showCenterToast('❌', '未找到密钥');
+        return;
+      }
+
+      try {
+        const url = new URL('/otp/' + encodeURIComponent(secret.secret.toUpperCase()), window.location.origin);
+        const type = (secret.type || 'TOTP').toUpperCase();
+        const digits = Number(secret.digits) || 6;
+        const algorithm = (secret.algorithm || 'SHA1').toUpperCase();
+
+        if (type === 'HOTP') {
+          url.searchParams.set('type', 'HOTP');
+          url.searchParams.set('counter', String(secret.counter ?? 0));
+        } else {
+          const period = Number(secret.period) || 30;
+          if (period !== 30) url.searchParams.set('period', String(period));
+        }
+        if (digits !== 6) url.searchParams.set('digits', String(digits));
+        if (algorithm !== 'SHA1') url.searchParams.set('algorithm', algorithm);
+
+        await navigator.clipboard.writeText(url.toString());
+        showCenterToast('🔗', secret.name + ' 验证码链接已复制到剪贴板');
+      } catch (err) {
+        console.error('复制验证码链接失败:', err);
+        showCenterToast('❌', '复制验证码链接失败: ' + err.message);
       }
     }
 
@@ -804,23 +837,116 @@ export function getCoreCode() {
       document.querySelectorAll('.card-menu-dropdown').forEach(menu => {
         if (menu.id !== 'menu-' + secretId) {
           menu.classList.remove('show');
+          updateCardMenuTrigger(menu);
         }
       });
       
       dropdown.classList.toggle('show');
+      updateCardMenuTrigger(dropdown);
+      if (dropdown.classList.contains('show')) {
+        const firstAction = getEnabledCardMenuActions(dropdown)[0];
+        if (firstAction) firstAction.focus();
+      }
+    }
+
+    function updateCardMenuTrigger(menu) {
+      const trigger = document.querySelector('[aria-controls="' + menu.id + '"]');
+      if (trigger) trigger.setAttribute('aria-expanded', String(menu.classList.contains('show')));
     }
     
     function closeAllCardMenus() {
       document.querySelectorAll('.card-menu-dropdown').forEach(menu => {
         menu.classList.remove('show');
+        updateCardMenuTrigger(menu);
       });
+    }
+
+    function isVisibleCardElement(element) {
+      if (!element || element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.display !== 'none' &&
+        style.visibility !== 'hidden' && style.visibility !== 'collapse';
+    }
+
+    function getEnabledCardMenuActions(menu) {
+      return Array.from(menu.querySelectorAll('.menu-item')).filter(action =>
+        !action.disabled && action.getAttribute('aria-disabled') !== 'true' && isVisibleCardElement(action)
+      );
+    }
+
+    // Use rendered positions so navigation follows responsive grids and service groups.
+    function getAdjacentSecretCard(card, key) {
+      const origin = card.getBoundingClientRect();
+      const horizontal = key === 'ArrowLeft' || key === 'ArrowRight';
+      let nearest = null;
+      let nearestDistance = Infinity;
+      let nearestOffset = Infinity;
+
+      document.querySelectorAll('.secret-card').forEach(candidate => {
+        if (candidate === card || !isVisibleCardElement(candidate)) return;
+        const rect = candidate.getBoundingClientRect();
+        // Left/right stay in the current row; up/down can cross group boundaries.
+        if (horizontal && Math.min(origin.bottom, rect.bottom) <= Math.max(origin.top, rect.top)) return;
+        const distance = key === 'ArrowLeft' ? origin.left - rect.right :
+          key === 'ArrowRight' ? rect.left - origin.right :
+          key === 'ArrowUp' ? origin.top - rect.bottom : rect.top - origin.bottom;
+        if (distance < -1) return;
+        const offset = horizontal
+          ? Math.abs((rect.top + rect.bottom) - (origin.top + origin.bottom))
+          : Math.abs((rect.left + rect.right) - (origin.left + origin.right));
+        if (distance < nearestDistance - 1 || (Math.abs(distance - nearestDistance) <= 1 && offset < nearestOffset)) {
+          nearest = candidate;
+          nearestDistance = distance;
+          nearestOffset = offset;
+        }
+      });
+      return nearest;
+    }
+
+    function handleCardArrowKey(event) {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.isComposing ||
+          !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return false;
+      const target = event.target;
+      if (!target || typeof target.closest !== 'function' ||
+          target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]')) return false;
+
+      const card = target.closest('.secret-card');
+      if (!isVisibleCardElement(card)) return false;
+      const menuItem = target.closest('.menu-item');
+      const menu = menuItem && menuItem.closest('.card-menu-dropdown.show');
+      const control = target.closest('.otp-code, .otp-next-container, .card-menu-trigger');
+      if (!menu && !control) return false;
+
+      // Consume the boundary arrows too, keeping keyboard navigation from scrolling the page.
+      event.preventDefault();
+      if (menu && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+        const actions = getEnabledCardMenuActions(menu);
+        const index = actions.indexOf(menuItem);
+        const nextIndex = event.key === 'ArrowDown' ? (index + 1) % actions.length :
+          (index < 0 ? actions.length - 1 : (index + actions.length - 1) % actions.length);
+        if (actions[nextIndex]) actions[nextIndex].focus();
+        return true;
+      }
+
+      const nextCard = getAdjacentSecretCard(card, event.key);
+      const selector = menu || control.classList.contains('card-menu-trigger') ? '.card-menu-trigger' :
+        control.classList.contains('otp-next-container') ? '.otp-next-container' : '.otp-code';
+      closeAllCardMenus();
+      if (nextCard || menu) {
+        const destination = nextCard || card;
+        let nextControl = destination.querySelector(selector);
+        if (!nextControl || nextControl.disabled || !isVisibleCardElement(nextControl)) {
+          nextControl = destination.querySelector('.otp-code');
+        }
+        if (nextControl && !nextControl.disabled && isVisibleCardElement(nextControl)) nextControl.focus();
+      }
+      return true;
     }
 
     document.addEventListener('click', function(event) {
       if (!event.target.closest('.card-menu')) {
-        document.querySelectorAll('.card-menu-dropdown').forEach(menu => {
-          menu.classList.remove('show');
-        });
+        closeAllCardMenus();
       }
     });
 
@@ -1078,7 +1204,15 @@ export function getCoreCode() {
 
     // 键盘快捷键
     document.addEventListener('keydown', function(e) {
+      if (handleCardArrowKey(e)) return;
       if (e.key === 'Escape') {
+        const openCardMenu = document.querySelector('.card-menu-dropdown.show');
+        if (openCardMenu) {
+          const trigger = document.querySelector('[aria-controls="' + openCardMenu.id + '"]');
+          closeAllCardMenus();
+          if (trigger) trigger.focus();
+          return;
+        }
         hideSecretModal();
         hideQRModal();
         hideQRScanner();
@@ -1090,25 +1224,8 @@ export function getCoreCode() {
         debugMode = !debugMode;
         console.log('Debug mode ' + (debugMode ? 'enabled' : 'disabled'));
         
-        const debugInfo = document.createElement('div');
-        debugInfo.style.cssText = 
-          'position: fixed;' +
-          'top: 20px;' +
-          'right: 20px;' +
-          'background: ' + (debugMode ? '#27ae60' : '#e74c3c') + ';' +
-          'color: white;' +
-          'padding: 10px 15px;' +
-          'border-radius: 6px;' +
-          'z-index: 9999;' +
-          'font-size: 14px;';
-        debugInfo.textContent = '调试模式: ' + (debugMode ? '开启' : '关闭');
-        document.body.appendChild(debugInfo);
-        
-        setTimeout(() => {
-          if (debugInfo.parentNode) {
-            debugInfo.parentNode.removeChild(debugInfo);
-          }
-        }, 2000);
+        showCenterToast('ℹ️', '调试模式: ' + (debugMode ? '开启' : '关闭'));
+
       }
       
       if (e.ctrlKey && e.key === 'r') {
@@ -1122,25 +1239,8 @@ export function getCoreCode() {
           });
         }
         
-        const refreshInfo = document.createElement('div');
-        refreshInfo.style.cssText = 
-          'position: fixed;' +
-          'top: 20px;' +
-          'right: 20px;' +
-          'background: #3498db;' +
-          'color: white;' +
-          'padding: 10px 15px;' +
-          'border-radius: 6px;' +
-          'z-index: 9999;' +
-          'font-size: 14px;';
-        refreshInfo.textContent = '已手动刷新所有验证码';
-        document.body.appendChild(refreshInfo);
-        
-        setTimeout(() => {
-          if (refreshInfo.parentNode) {
-            refreshInfo.parentNode.removeChild(refreshInfo);
-          }
-        }, 2000);
+        showCenterToast('ℹ️', '已手动刷新所有验证码');
+
       }
     });
 
