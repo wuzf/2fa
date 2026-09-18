@@ -8,6 +8,7 @@
 - [时间校准 API](#时间校准-api)
 - [OTP 生成 API](#otp-生成-api)
 - [备份管理 API](#备份管理-api)
+- [WebDAV 与 S3 同步 API](#webdav-与-s3-同步-api)
 - [云盘同步 API](#云盘同步-api)
 - [首次设置与系统设置 API](#首次设置与系统设置-api)
 - [认证 API](#认证-api)
@@ -127,41 +128,53 @@ Set-Cookie: auth_token=<NEW_JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-A
 
 ## 端点列表
 
-| 端点                                               | 方法   | 认证 | 限流    | 描述                         |
-| -------------------------------------------------- | ------ | ---- | ------- | ---------------------------- |
-| `/api/setup`                                       | POST   | ❌   | 5/min   | 首次设置                     |
-| [/api/time](#获取服务端时间)                       | GET    | ❌   | -       | 获取 Worker Unix 毫秒时间    |
-| [/api/secrets](#获取所有密钥)                      | GET    | ✅   | 60/min  | 获取所有密钥                 |
-| [/api/secrets](#添加新密钥)                        | POST   | ✅   | 60/min  | 添加新密钥                   |
-| [/api/secrets/{id}](#更新密钥)                     | PUT    | ✅   | 60/min  | 更新指定密钥                 |
-| [/api/secrets/{id}](#删除密钥)                     | DELETE | ✅   | 60/min  | 删除指定密钥                 |
-| [/api/secrets/{id}/counter](#递增-hotp-计数器)     | POST   | ✅   | -       | 递增 HOTP 计数器             |
-| [/api/secrets/counters/compact](#压实-hotp-计数器) | POST   | ✅   | -       | 回滚前压实 HOTP 计数器       |
-| [/api/secrets/batch](#批量添加密钥)                | POST   | ✅   | 20/5m   | 批量添加密钥                 |
-| [/api/secrets/export](#批量导出密钥)               | POST   | ✅   | 10/min  | 导出标准 TXT/JSON/CSV/HTML   |
-| [/api/backup](#手动触发备份)                       | POST   | ✅   | 5/min   | 手动触发备份                 |
-| [/api/backup](#获取备份列表)                       | GET    | ✅   | 30/min  | 获取备份列表                 |
-| [/api/backup/export/{backupKey}](#导出备份)        | GET    | ✅   | 10/min  | 导出指定备份                 |
-| [/api/backup/restore](#恢复备份)                   | POST   | ✅   | 5/min   | 恢复或预览指定备份           |
-| `/api/change-password`                             | POST   | ✅   | 10/min  | 修改密码                     |
-| `/api/settings`                                    | GET    | ✅   | -       | 获取系统设置                 |
-| `/api/settings`                                    | POST   | ✅   | 10/min  | 保存系统设置                 |
-| `/api/onedrive/config`                             | GET    | ✅   | 30/min  | 获取 OneDrive 目标           |
-| `/api/onedrive/config`                             | POST   | ✅   | 10/min  | 保存 OneDrive 目标           |
-| `/api/onedrive/config?id={id}`                     | DELETE | ✅   | 10/min  | 删除 OneDrive 目标           |
-| `/api/onedrive/toggle`                             | POST   | ✅   | 10/min  | 启用或禁用 OneDrive 目标     |
-| `/api/onedrive/oauth/start`                        | POST   | ✅   | 10/min  | 启动 OneDrive OAuth          |
-| `/api/onedrive/oauth/callback`                     | GET    | ❌   | -       | OneDrive OAuth 回调          |
-| `/api/gdrive/config`                               | GET    | ✅   | 30/min  | 获取 Google Drive 目标       |
-| `/api/gdrive/config`                               | POST   | ✅   | 10/min  | 保存 Google Drive 目标       |
-| `/api/gdrive/config?id={id}`                       | DELETE | ✅   | 10/min  | 删除 Google Drive 目标       |
-| `/api/gdrive/toggle`                               | POST   | ✅   | 10/min  | 启用或禁用 Google Drive 目标 |
-| `/api/gdrive/oauth/start`                          | POST   | ✅   | 10/min  | 启动 Google Drive OAuth      |
-| `/api/gdrive/oauth/callback`                       | GET    | ❌   | -       | Google Drive OAuth 回调      |
-| [/api/login](#获取认证-token)                      | POST   | ❌   | 5/min   | 用户登录                     |
-| [/api/logout](#退出登录)                           | POST   | ❌   | 10/min  | 退出登录（清除 Cookie）      |
-| [/api/refresh-token](#token-刷新)                  | POST   | ✅   | -       | 刷新 Token                   |
-| [/otp/{secret}](#otp-生成)                         | GET    | ❌   | 100/min | 公开 OTP 生成                |
+限流列表示当前应用代码实际调用的限流规则；`-` 表示没有显式调用应用限流，不代表每个端点都有独立配额。共享计数方式见 [Rate Limiting](#rate-limiting)。
+
+| 端点                                               | 方法   | 认证 | 限流   | 描述                         |
+| -------------------------------------------------- | ------ | ---- | ------ | ---------------------------- |
+| `/api/setup`                                       | POST   | ❌   | 5/min  | 首次设置                     |
+| [/api/time](#获取服务端时间)                       | GET    | ❌   | -      | 获取 Worker Unix 毫秒时间    |
+| [/api/secrets](#获取所有密钥)                      | GET    | ✅   | -      | 获取所有密钥                 |
+| [/api/secrets](#添加新密钥)                        | POST   | ✅   | -      | 添加新密钥                   |
+| [/api/secrets/{id}](#更新密钥)                     | PUT    | ✅   | -      | 更新指定密钥                 |
+| [/api/secrets/{id}](#删除密钥)                     | DELETE | ✅   | 10/min | 删除指定密钥                 |
+| [/api/secrets/{id}/counter](#递增-hotp-计数器)     | POST   | ✅   | -      | 递增 HOTP 计数器             |
+| [/api/secrets/counters/compact](#压实-hotp-计数器) | POST   | ✅   | -      | 回滚前压实 HOTP 计数器       |
+| [/api/secrets/batch](#批量添加密钥)                | POST   | ✅   | 20/5m  | 批量添加密钥                 |
+| [/api/secrets/export](#批量导出密钥)               | POST   | ✅   | 10/min | 导出标准 TXT/JSON/CSV/HTML   |
+| [/api/backup](#手动触发备份)                       | POST   | ✅   | 10/min | 手动触发备份                 |
+| [/api/backup](#获取备份列表)                       | GET    | ✅   | -      | 获取备份列表                 |
+| [/api/backup/export/{backupKey}](#导出备份)        | GET    | ✅   | -      | 导出指定备份                 |
+| [/api/backup/restore](#恢复备份)                   | POST   | ✅   | -      | 恢复或预览指定备份           |
+| `/api/change-password`                             | POST   | ✅   | 10/min | 修改密码                     |
+| `/api/settings`                                    | GET    | ✅   | -      | 获取系统设置                 |
+| `/api/settings`                                    | POST   | ✅   | 10/min | 保存系统设置                 |
+| `/api/webdav/config`                               | GET    | ✅   | -      | 获取 WebDAV 目标             |
+| `/api/webdav/config`                               | POST   | ✅   | 10/min | 新增或更新 WebDAV 目标       |
+| `/api/webdav/config?id={id}`                       | DELETE | ✅   | 10/min | 删除 WebDAV 目标             |
+| `/api/webdav/test`                                 | POST   | ✅   | 10/min | 测试 WebDAV 连接和写入       |
+| `/api/webdav/toggle`                               | POST   | ✅   | 10/min | 启用或禁用 WebDAV 目标       |
+| `/api/s3/config`                                   | GET    | ✅   | -      | 获取 S3 目标                 |
+| `/api/s3/config`                                   | POST   | ✅   | 10/min | 新增或更新 S3 目标           |
+| `/api/s3/config?id={id}`                           | DELETE | ✅   | 10/min | 删除 S3 目标                 |
+| `/api/s3/test`                                     | POST   | ✅   | 10/min | 测试 S3 连接和写入           |
+| `/api/s3/toggle`                                   | POST   | ✅   | 10/min | 启用或禁用 S3 目标           |
+| `/api/onedrive/config`                             | GET    | ✅   | -      | 获取 OneDrive 目标           |
+| `/api/onedrive/config`                             | POST   | ✅   | 10/min | 保存 OneDrive 目标           |
+| `/api/onedrive/config?id={id}`                     | DELETE | ✅   | 10/min | 删除 OneDrive 目标           |
+| `/api/onedrive/toggle`                             | POST   | ✅   | 10/min | 启用或禁用 OneDrive 目标     |
+| `/api/onedrive/oauth/start`                        | POST   | ✅   | 10/min | 启动 OneDrive OAuth          |
+| `/api/onedrive/oauth/callback`                     | GET    | ❌   | -      | OneDrive OAuth 回调          |
+| `/api/gdrive/config`                               | GET    | ✅   | -      | 获取 Google Drive 目标       |
+| `/api/gdrive/config`                               | POST   | ✅   | 10/min | 保存 Google Drive 目标       |
+| `/api/gdrive/config?id={id}`                       | DELETE | ✅   | 10/min | 删除 Google Drive 目标       |
+| `/api/gdrive/toggle`                               | POST   | ✅   | 10/min | 启用或禁用 Google Drive 目标 |
+| `/api/gdrive/oauth/start`                          | POST   | ✅   | 10/min | 启动 Google Drive OAuth      |
+| `/api/gdrive/oauth/callback`                       | GET    | ❌   | -      | Google Drive OAuth 回调      |
+| [/api/login](#获取认证-token)                      | POST   | ❌   | 5/min  | 用户登录                     |
+| [/api/logout](#退出登录)                           | POST   | ❌   | 10/min | 退出登录（清除 Cookie）      |
+| [/api/refresh-token](#token-刷新)                  | POST   | ✅   | -      | 刷新 Token                   |
+| [/otp/{secret}](#生成-otp)                         | GET    | ❌   | -      | 公开 OTP 生成                |
 
 ---
 
@@ -678,7 +691,9 @@ Content-Disposition: attachment; filename="2FA-secrets-data-2026-04-17.json"
 	"message": "您的请求次数过多，请在 60 秒后重试",
 	"retryAfter": 60,
 	"limit": 10,
-	"remaining": 0
+	"remaining": 0,
+	"resetAt": "2026-04-17T10:31:00.000Z",
+	"algorithm": "sliding-window"
 }
 ```
 
@@ -1139,6 +1154,179 @@ KV 备份恢复:
 	"timestamp": "2025-10-24T10:30:00.000Z"
 }
 ```
+
+---
+
+## WebDAV 与 S3 同步 API
+
+两类服务均支持多个备份目标，所有端点都需要认证。配置存储在 KV；配置了 `ENCRYPTION_KEY` 时加密保存，否则保存响应会返回 `encrypted: false` 和 `warning`。
+
+### 获取 WebDAV 或 S3 目标列表
+
+**端点**: `GET /api/webdav/config` 或 `GET /api/s3/config`
+
+**WebDAV 成功响应** (200 OK):
+
+```json
+{
+	"destinations": [
+		{
+			"id": "550e8400-e29b-41d4-a716-446655440000",
+			"name": "WebDAV 备份",
+			"enabled": true,
+			"config": {
+				"url": "https://dav.example.com",
+				"username": "backup-user",
+				"password": "",
+				"hasPassword": true,
+				"path": "/2FA-Backups"
+			},
+			"status": { "lastSuccess": null, "lastError": null },
+			"createdAt": "2026-09-16T00:00:00.000Z"
+		}
+	],
+	"count": 1,
+	"maxAllowed": 5
+}
+```
+
+S3 返回相同的外层结构，各目标的 `config` 为：
+
+```json
+{
+	"endpoint": "https://s3.example.com",
+	"bucket": "2fa-backups",
+	"region": "auto",
+	"accessKeyId": "example-access-key",
+	"secretAccessKey": "",
+	"hasSecretKey": true,
+	"prefix": "2fa/"
+}
+```
+
+密码和 Secret Access Key 不会返回明文，客户端通过 `hasPassword` / `hasSecretKey` 判断是否已保存。`status` 为最近备份推送结果；`maxAllowed: 5` 用于界面提示，当前 WebDAV/S3 保存 API 未强制校验目标数量上限。
+
+### 保存 WebDAV 目标
+
+**端点**: `POST /api/webdav/config`
+
+**请求体**:
+
+```json
+{
+	"name": "WebDAV 备份",
+	"url": "https://dav.example.com",
+	"username": "backup-user",
+	"password": "example-app-password",
+	"path": "/2FA-Backups"
+}
+```
+
+- 新增时省略 `id`；更新时附加目标 `id`，仍需提交 `name`、`url`、`username`。
+- `name` 最多 30 个字符，`url` 必须使用 HTTPS。
+- 首次保存必须提供 `password`；更新时省略或传空字符串会保留已保存的密码。
+- `path` 默认 `/`，保存时规范化为以 `/` 开头的目录路径。
+
+**成功响应** (200 OK，已配置加密密钥的示例):
+
+```json
+{
+	"success": true,
+	"message": "WebDAV 配置已保存",
+	"id": "550e8400-e29b-41d4-a716-446655440000",
+	"encrypted": true
+}
+```
+
+### 保存 S3 目标
+
+**端点**: `POST /api/s3/config`
+
+**请求体**:
+
+```json
+{
+	"name": "S3 备份",
+	"endpoint": "https://s3.example.com",
+	"bucket": "2fa-backups",
+	"region": "auto",
+	"accessKeyId": "example-access-key",
+	"secretAccessKey": "example-secret-key",
+	"prefix": "2fa/"
+}
+```
+
+- 新增时省略 `id`；更新时附加目标 `id`，仍需提交 `name`、`endpoint`、`bucket`、`accessKeyId`。
+- `name` 最多 30 个字符，`endpoint` 必须使用 HTTPS。
+- 首次保存必须提供 `secretAccessKey`；更新时省略或传空字符串会保留已保存的密钥。
+- `region` 默认 `auto`；`prefix` 默认空字符串，非空前缀会规范化为无前导 `/`、以 `/` 结尾的路径。
+- 成功响应结构与 WebDAV 相同，`message` 为 `S3 配置已保存`。
+
+两类服务的新增目标默认启用；更新配置保留原有启用状态。保存接口不执行连接测试。
+
+### 测试 WebDAV 或 S3 连接
+
+**端点**: `POST /api/webdav/test` 或 `POST /api/s3/test`
+
+请求体与对应保存接口相同，必填配置字段也相同。可以携带 `id` 并将密码或 Secret Access Key 留空，以使用该目标已保存的凭证；仅提交 `id` 不足以完成测试。测试不会保存配置，但会向远端写入测试文件，当前实现不会自动删除该文件。
+
+**WebDAV 成功响应** (200 OK):
+
+```json
+{
+	"success": true,
+	"message": "连接成功，已验证写入权限（测试文件：.2fa-webdav-test.txt）",
+	"method": "PROPFIND"
+}
+```
+
+`method` 为实际连接探测成功的方法。S3 成功响应没有 `method` 字段，`message` 中的测试文件为 `<prefix>.2fa-s3-test.txt`。连接或写入测试失败返回 400，例如：
+
+```json
+{
+	"success": false,
+	"message": "写入测试失败：没有写入权限，请检查 Access Key 权限"
+}
+```
+
+### 切换 WebDAV 或 S3 启用状态
+
+**端点**: `POST /api/webdav/toggle` 或 `POST /api/s3/toggle`
+
+**请求体**:
+
+```json
+{
+	"id": "550e8400-e29b-41d4-a716-446655440000",
+	"enabled": false
+}
+```
+
+**成功响应** (200 OK):
+
+```json
+{
+	"success": true,
+	"message": "已禁用"
+}
+```
+
+`enabled` 必须为布尔值；传 `true` 时成功消息为 `已启用`。目标不存在时返回 404。
+
+### 删除 WebDAV 或 S3 目标
+
+**端点**: `DELETE /api/webdav/config?id={id}` 或 `DELETE /api/s3/config?id={id}`
+
+通过查询参数指定目标，不需要请求体。成功返回 200，例如：
+
+```json
+{
+	"success": true,
+	"message": "WebDAV 配置已删除"
+}
+```
+
+S3 的成功消息为 `S3 配置已删除`。缺少 `id` 返回 400，目标不存在返回 404。保存、删除、测试、切换接口均使用 `sensitive` 限流（10 次 / 分钟），共享计数方式见 [Rate Limiting](#rate-limiting)。
 
 ---
 
@@ -1678,9 +1866,12 @@ Cache-Control: no-store
 ```json
 {
 	"error": "请求过于频繁",
-	"message": "您的请求过于频繁，请稍后再试",
+	"message": "您的请求次数过多，请在 30 秒后重试",
 	"retryAfter": 30,
-	"timestamp": "2025-10-24T10:30:00.000Z"
+	"limit": 10,
+	"remaining": 0,
+	"resetAt": "2026-01-01T00:00:30.000Z",
+	"algorithm": "sliding-window"
 }
 ```
 
@@ -1701,36 +1892,39 @@ Cache-Control: no-store
 
 ### 限流策略
 
-所有 API 端点都有限流保护，防止滥用和 DDoS 攻击。
+当前由各处理函数显式调用限流，并未在路由入口统一限流。实际调用的规则如下：
 
-| 端点类别                             | 限流规则 | 窗口时间 | 预设名称    |
-| ------------------------------------ | -------- | -------- | ----------- |
-| **登录** (`/api/login`)              | 5 次     | 1 分钟   | `login`     |
-| **退出登录** (`/api/logout`)         | 10 次    | 1 分钟   | `sensitive` |
-| **标准 API** (`/api/secrets` CRUD)   | 30 次    | 1 分钟   | `api`       |
-| **敏感操作** (删除、导出)            | 10 次    | 1 分钟   | `sensitive` |
-| **批量操作** (`/api/secrets/batch`)  | 20 次    | 5 分钟   | `bulk`      |
-| **批量导出** (`/api/secrets/export`) | 10 次    | 1 分钟   | `sensitive` |
-| **OTP 生成** (`/otp/*`)              | 100 次   | 1 分钟   | `global`    |
-| **备份管理** (`/api/backup`)         | 5 次     | 1 分钟   | -           |
-| **备份查询** (`/api/backup`)         | 30 次    | 1 分钟   | `api`       |
-| **首次设置** (`/api/setup`)          | 5 次     | 1 分钟   | `login`     |
+| 操作                                                       | 限流规则 | 窗口时间 | 预设名称    |
+| ---------------------------------------------------------- | -------- | -------- | ----------- |
+| 登录、首次设置                                             | 5 次     | 1 分钟   | `login`     |
+| 退出登录、修改密码、保存系统设置                           | 10 次    | 1 分钟   | `sensitive` |
+| 删除密钥、手动触发备份                                     | 10 次    | 1 分钟   | `sensitive` |
+| WebDAV/S3 保存、删除、连接测试、切换启用状态               | 10 次    | 1 分钟   | `sensitive` |
+| OneDrive/Google Drive 保存、删除、切换启用状态、启动 OAuth | 10 次    | 1 分钟   | `sensitive` |
+| 批量添加密钥 (`POST /api/secrets/batch`)                   | 20 次    | 5 分钟   | `bulk`      |
+| 批量导出密钥 (`POST /api/secrets/export`)                  | 10 次    | 1 分钟   | `sensitive` |
+
+除批量导出使用 `export:<IP>` 外，上表操作均直接使用客户端 IP 作为键，共享 `ratelimit:v2:<IP>` 记录。因此表中数字是处理当前请求时使用的阈值，并非各接口互相独立的配额；不同操作可能相互影响。
+
+密钥读取/新增/更新、HOTP 计数器操作、备份列表/导出/恢复、系统设置和云盘配置读取、时间校准、Token 刷新、OAuth 回调、Favicon 代理以及公开 OTP 生成，当前没有显式应用限流。`api`（30 次 / 分钟）和 `global`（100 次 / 分钟）虽然定义在预设中，但当前路由未使用这些预设。
 
 ### 限流响应头
 
-所有 API 响应都包含限流信息头：
+登录和首次设置的成功响应包含以下三个响应头。由限流器生成的 429 响应还包含 `Retry-After` 和 `X-RateLimit-Algorithm`；其他响应不保证携带限流头。
 
 ```http
-X-RateLimit-Limit: 60
-X-RateLimit-Remaining: 45
-X-RateLimit-Reset: 1729765860
+X-RateLimit-Limit: 5
+X-RateLimit-Remaining: 4
+X-RateLimit-Reset: 1767225630000
 ```
 
-| Header                  | 说明                            |
-| ----------------------- | ------------------------------- |
-| `X-RateLimit-Limit`     | 窗口时间内的最大请求数          |
-| `X-RateLimit-Remaining` | 窗口时间内剩余请求数            |
-| `X-RateLimit-Reset`     | 限流窗口重置时间（Unix 时间戳） |
+| Header                  | 说明                                                           |
+| ----------------------- | -------------------------------------------------------------- |
+| `X-RateLimit-Limit`     | 窗口时间内的最大请求数                                         |
+| `X-RateLimit-Remaining` | 窗口时间内剩余请求数                                           |
+| `X-RateLimit-Reset`     | 最早一条记录离开当前窗口的时间（Unix 毫秒时间戳）              |
+| `X-RateLimit-Algorithm` | 使用的算法，当前为 `sliding-window`；在限流器的 429 响应中返回 |
+| `Retry-After`           | 建议等待的秒数；在限流器的 429 响应中返回                      |
 
 ### 超过限流
 
@@ -1740,17 +1934,21 @@ X-RateLimit-Reset: 1729765860
 HTTP/1.1 429 Too Many Requests
 Content-Type: application/json
 Retry-After: 30
-X-RateLimit-Limit: 60
+X-RateLimit-Limit: 10
 X-RateLimit-Remaining: 0
-X-RateLimit-Reset: 1729765860
+X-RateLimit-Reset: 1767225630000
+X-RateLimit-Algorithm: sliding-window
 ```
 
 ```json
 {
 	"error": "请求过于频繁",
-	"message": "您的请求过于频繁，请稍后再试",
+	"message": "您的请求次数过多，请在 30 秒后重试",
 	"retryAfter": 30,
-	"timestamp": "2025-10-24T10:30:00.000Z"
+	"limit": 10,
+	"remaining": 0,
+	"resetAt": "2026-01-01T00:00:30.000Z",
+	"algorithm": "sliding-window"
 }
 ```
 
@@ -1778,7 +1976,7 @@ X-RateLimit-Reset: 1729765860
 **实现说明**:
 
 - 基于 Cloudflare KV 存储限流状态
-- 使用客户端 IP 地址作为限流键（来自 `CF-Connecting-IP` header）
+- 客户端 IP 优先取 `CF-Connecting-IP`，其次为 `X-Real-IP`、`X-Forwarded-For` 的首项；缺失时使用 `unknown`。除批量导出带 `export:` 前缀外，其余已接入限流的操作共享该 IP 的记录
 - KV 自动过期机制确保窗口状态自动清理
 - 限流检查失败时采用 "fail open" 策略（允许请求通过，不影响正常用户）
 
@@ -1956,7 +2154,8 @@ if login_response.ok:
 
 - [架构文档](ARCHITECTURE.md) - 了解系统设计
 - [部署指南](DEPLOYMENT.md) - 部署和配置
-- [功能文档](features/) - 各功能详解
+- [文档中心](README.md) - 功能与开发文档索引
+- [云盘备份配置](CLOUD_DRIVE_SETUP.md) - OneDrive 和 Google Drive OAuth 配置
 
 ---
 

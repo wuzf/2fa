@@ -38,6 +38,8 @@
 
 ### 模块化设计
 
+以下列出主要模块，完整文件清单以 `src/` 目录为准。OTP 的 HMAC 和 Base32 实现在 `otp/generator.js`，数据加密使用 `utils/encryption.js`，密码哈希及 JWT 使用 `utils/auth.js`；加密运算调用 Web Crypto API。
+
 ```
 src/
 ├── worker.js              # 🎯 Worker入口点（fetch + scheduled 处理）
@@ -67,10 +69,17 @@ src/
 │   ├── scripts/          # 📜 前端 JavaScript 模块
 │   │   ├── index.js     # 模块集成入口
 │   │   ├── state.js     # 全局状态管理
+│   │   ├── time.js      # 时间校准
 │   │   ├── auth.js      # 认证逻辑
-│   │   ├── core.js      # 核心业务逻辑（~106KB）
+│   │   ├── otp.js       # OTP 计算、倒计时与交接动效
+│   │   ├── ui.js        # 主题与弹窗交互
+│   │   ├── search.js    # 搜索和显示控制
+│   │   ├── settings.js  # 设置面板
+│   │   ├── core.js      # 核心业务逻辑
+│   │   ├── serviceAggregation.js # 服务分组
 │   │   ├── utils.js     # 工具函数
-│   │   └── pwa.js       # PWA 功能
+│   │   ├── pwa.js       # PWA 功能
+│   │   └── moduleLoader.js # 懒加载模块入口
 │   └── styles/           # 🎨 前端 CSS 模块
 │       ├── index.js     # 样式集成入口
 │       ├── variables.js # 主题变量与切换过渡
@@ -87,7 +96,6 @@ src/
     ├── auth.js           # 🔑 JWT 认证（PBKDF2, HttpOnly Cookie）
     ├── backup.js         # 💾 智能备份（事件驱动 + 并发合并 + 自动清理）
     ├── constants.js      # 📋 常量定义
-    ├── crypto.js         # 🔐 加密工具（HMAC-SHA1/256）
     ├── encryption.js     # 🔒 AES-GCM 256 位加密
     ├── logger.js         # 📝 结构化日志
     ├── monitoring.js     # 📊 错误追踪与性能监控
@@ -244,23 +252,28 @@ const otp = binary % 1000000;
 - `setupPage.js` - 首次设置页面
 - `manifest.js` - PWA Manifest
 - `serviceworker.js` - Service Worker（缓存策略）
-- `scripts/` - 前端JavaScript模块（5个模块）
+- `scripts/` - 核心交互脚本和按需加载的导入、导出、备份、二维码及工具模块
 - `styles/` - 主题变量、基础组件、响应式布局及 Fluent 2 页面样式
 
 **前端 JavaScript 模块加载顺序**:
 
-1. `state.js` - 全局变量
-2. `auth.js` - 认证函数
-3. `core.js` - 核心业务逻辑（最大模块，~106KB）
-4. `utils.js` - 辅助函数
-5. `pwa.js` - PWA 功能
+1. `utils.js`、`state.js`、`time.js` - 通用函数、全局状态和校准时间
+2. `auth.js`、`otp.js` - 认证和验证码计算/刷新
+3. `ui.js`、`search.js`、`settings.js` - 页面交互、显示控制和设置
+4. `core.js`、`serviceAggregation.js` - 密钥业务流程和服务分组
+5. `pwa.js`、`moduleLoader.js`、`versionCheck.js` - PWA、按需模块和版本检查
+
+导入、导出、备份、二维码、Google 迁移和工具代码由 `moduleLoader.js` 按需加载；传统完整模式则由 `scripts/index.js` 按依赖顺序一次性拼接。
 
 **Service Worker 缓存策略**:
 
-- **静态资源** (/, manifest, icons): Cache First
-- **CDN 库** (jsQR, qrcode): Cache First with CORS
-- **API 请求**: Network Only（永不缓存）
-- 缓存名: `2fa-v2`
+- **主页** (`/`): Network First；网络失败时返回缓存，缓存也不存在时返回离线页
+- **Favicon 代理**: Cache First
+- **CDN 库** (jsQR, qrcode): 缓存命中后后台更新，首次请求使用 CORS 获取并缓存
+- **API 请求**（Favicon 代理除外）: 请求网络，不缓存响应；支持的密钥写操作遇到网络错误时进入离线同步队列，其他 API 返回错误
+- **其他同源资源**: Network Only；网络错误时返回 503，无 Service Worker 缓存回退
+- **其他外部资源**: Network Only；网络错误时返回空 404，无 Service Worker 缓存回退
+- 缓存名由部署版本生成：`2fa-cache-${SW_VERSION}`
 
 **页面结构**:
 
@@ -314,9 +327,7 @@ const otp = binary % 1000000;
 
 **预设**:
 
-- API请求: 60次/分钟
-- 登录尝试: 5次/分钟
-- OTP生成: 100次/分钟
+`RATE_LIMIT_PRESETS` 提供可复用配置，只有调用限流逻辑的处理器才应用相应限制，不能把预设视为所有端点的默认限额。各端点实际配置见 [API 参考的速率限制说明](API_REFERENCE.md#rate-limiting)。
 
 #### 验证模块 (`utils/validation.js`)
 
@@ -708,7 +719,7 @@ function migrateSecrets(secrets) {
 
 ### 测试框架
 
-本项目使用 [Vitest](https://vitest.dev/) 作为测试框架，共有 598 个测试用例。
+本项目使用 [Vitest](https://vitest.dev/) 作为测试框架。测试数量会随功能增长，以 `npm test` 的当次输出为准，避免在文档中维护易过期的固定数字。
 
 ### 运行测试
 

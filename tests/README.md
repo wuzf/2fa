@@ -3,8 +3,8 @@
 ## 🎯 快速开始
 
 ```bash
-# 运行所有测试
-npm test
+# 一次性运行所有测试，适合提交前检查和 CI
+npm test -- --run
 
 # 观察模式（自动重跑）
 npm run test:watch
@@ -12,288 +12,75 @@ npm run test:watch
 # 交互式 UI
 npm run test:ui
 
-# 生成覆盖率报告
-npm run test:coverage
+# 生成覆盖率报告并退出
+npm run test:coverage -- --run
+
+# 仅运行主题切换回归测试
+npx vitest run tests/ui/theme-transition.test.js
 ```
 
-## 📊 当前状态
+## 📊 测试结果与验证范围
 
-✅ **598 个测试全部通过**
+测试数量、通过/跳过情况以当次运行输出为准；覆盖率以 `npm run test:coverage -- --run` 生成的报告为准。本文不维护固定的覆盖率百分比，也不把历史测试结果作为当前状态。
 
-| 模块                        | 测试数  | 覆盖率      | 状态   |
-| --------------------------- | ------- | ----------- | ------ |
-| OTP Generator               | 45      | 59%         | ✅     |
-| Encryption                  | 25      | 74%         | ✅     |
-| JWT Authentication          | 52      | 核心算法    | ✅     |
-| Data Validation             | 68      | **100%** 🏆 | ✅     |
-| Rate Limiting               | 54      | **96%** 🔥  | ✅     |
-| API Secrets                 | 31      | 44%         | ✅     |
-| Response Utils              | 35      | **100%** 🏆 | ✅     |
-| Crypto (E2EE)               | 66      | **97%** 🔥  | ✅     |
-| Security (安全配置)         | 47      | **98%** 🔥  | ✅     |
-| Router Handler (路由处理器) | 51      | **100%** 🏆 | ✅     |
-| Backup (备份系统)           | 55      | **98%** 🔥  | ✅     |
-| **Logger (日志系统)**       | **69**  | **96%** 🔥  | **✅** |
-| **总计**                    | **598** | **~55%**    | **✅** |
+部分测试包含耗时上限断言，用于在测试环境中发现明显退化。它们不是生产环境延迟、浏览器帧率或可用性承诺；评估性能时应记录设备、运行环境、输入规模及实际测量结果。
 
-## 🔑 核心功能测试
+Vitest 默认使用 Node 环境。前端测试会执行生成脚本、构造模拟 DOM 或检查生成的 HTML/CSS；通过这些测试不等于已经完成真实浏览器的动画、摄像头、PWA 安装或第三方云服务验收。
 
-### OTP 生成算法
+## 🔑 功能与回归覆盖
 
-- ✅ **RFC 6238 (TOTP)**: 18 个官方测试向量
-  - SHA1, SHA256, SHA512 算法
-  - 6 个时间点（1970-2603年）
-- ✅ **RFC 4226 (HOTP)**: 10 个官方测试向量
-- ✅ **Base32 解码**: RFC 4648 标准
-- ✅ **功能测试**: 默认参数、时间窗口、前导零
-- ✅ **性能测试**: < 100ms 单次，< 1s 并发 100 次
+以下列出主要场景及对应测试入口；完整清单以测试目录为准。
 
-### 加密/解密 (AES-GCM 256位)
+| 范围             | 主要验证内容                                                                    | 测试入口                                                                                                                                                                                                                                                                                                           |
+| ---------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| OTP 算法         | RFC 6238 的 SHA1/SHA256/SHA512 向量、RFC 4226 HOTP 向量、Base32、参数和周期边界 | [generator.test.js](otp/generator.test.js)                                                                                                                                                                                                                                                                         |
+| 数据加密         | AES-GCM 往返、错误密钥、篡改、IV 随机性、中文和加密配置缺失                     | [encryption.test.js](utils/encryption.test.js)                                                                                                                                                                                                                                                                     |
+| 认证             | 密码哈希、JWT 与 Cookie；真实认证模块的设置、登录、刷新、登出和限流集成         | [auth.test.js](utils/auth.test.js)、[auth.integration.test.js](utils/auth.integration.test.js)                                                                                                                                                                                                                     |
+| 校验、响应与安全 | Base32/OTP 参数、标准响应、同源检查、CORS 和安全头                              | [validation.test.js](utils/validation.test.js)、[response.test.js](utils/response.test.js)、[security.test.js](utils/security.test.js)                                                                                                                                                                             |
+| 请求限流         | 默认滑动窗口、固定窗口兼容路径、窗口边界、客户端识别、拒绝响应和 KV 错误处理    | [rateLimit.test.js](utils/rateLimit.test.js)、[rateLimitSlidingWindow.test.js](utils/rateLimitSlidingWindow.test.js)                                                                                                                                                                                               |
+| 密钥与 HOTP      | CRUD、批量导入、计数器推进与冲突、离线同步约束                                  | [secrets.test.js](api/secrets.test.js)、[hotp-counter.test.js](api/hotp-counter.test.js)、[hotp-offline-sync-contract.test.js](scripts/hotp-offline-sync-contract.test.js)                                                                                                                                         |
+| 备份与恢复       | 事件触发、并发合并、补偿备份、加密、保留数量与备份格式                          | [backup.test.js](utils/backup.test.js)、[backup.test.js](api/backup.test.js)、[backup-format.test.js](utils/backup-format.test.js)                                                                                                                                                                                 |
+| 云同步           | WebDAV/S3/OneDrive/Google Drive 配置与请求行为、OAuth、编辑触发同步             | [api/](api/)、[utils/](utils/)、[edit-triggers-sync.test.js](integration/edit-triggers-sync.test.js)                                                                                                                                                                                                               |
+| 导入导出         | 格式识别、CSV 字段转义、URI/HOTP 参数往返、Unicode 二维码与迁移预览             | [import-code.test.js](scripts/import-code.test.js)、[uri-export-roundtrip.test.js](ui/uri-export-roundtrip.test.js)、[qr-text-encoding.test.js](ui/qr-text-encoding.test.js)                                                                                                                                       |
+| 前端交互         | 键盘导航、服务分组、偏好自动保存、主题连续反向切换与视口筛选                    | [card-keyboard-navigation.test.js](scripts/card-keyboard-navigation.test.js)、[smart-aggregation-rendering.integration.test.js](scripts/smart-aggregation-rendering.integration.test.js)、[preferences-autosave.test.js](ui/preferences-autosave.test.js)、[theme-transition.test.js](ui/theme-transition.test.js) |
+| OTP 页面与调度   | 时间校准、批量刷新、动效清理、复制、公开 TOTP 过期处理和 HOTP 固定计数器        | [otp-time-sync.test.js](scripts/otp-time-sync.test.js)、[otp-promotion-scheduler.test.js](scripts/otp-promotion-scheduler.test.js)、[quick-otp.test.js](ui/quick-otp.test.js)                                                                                                                                      |
+| PWA 与脚本输出   | 离线主页回退、队列保留、生成脚本可解析性                                        | [serviceworker-offline.test.js](ui/serviceworker-offline.test.js)、[hotp-offline-sync-contract.test.js](scripts/hotp-offline-sync-contract.test.js)、[emitted-scripts-parse.test.js](scripts/emitted-scripts-parse.test.js)                                                                                        |
+| 部署与升级       | 部署配置、发布构建及原地同步保护                                                | [deploy-config.test.js](scripts/deploy-config.test.js)、[build-release-code.test.js](scripts/build-release-code.test.js)、[sync-upstream.test.js](scripts/sync-upstream.test.js)                                                                                                                                   |
+| 日志与监控       | 日志过滤、脱敏、请求记录、计时和错误监控                                        | [logger.test.js](utils/logger.test.js)、[monitoring.test.js](utils/monitoring.test.js)                                                                                                                                                                                                                             |
 
-- ✅ **基础功能**: 简单/复杂对象加密往返
-- ✅ **安全特性**: 错误密钥拒绝、篡改检测、IV 随机性
-- ✅ **数据支持**: 中文、Emoji、特殊字符、大型数据
-- ✅ **边界条件**: 空对象、深度嵌套、null 处理
-- ✅ **性能测试**: < 100ms 加密/解密
-
-### JWT 认证 (PBKDF2 + HMAC-SHA256)
-
-- ✅ **密码强度验证**: 长度、大小写、数字、特殊字符
-- ✅ **PBKDF2 哈希**: 100,000 迭代、随机盐、SHA-256
-- ✅ **密码验证**: 正确密码接受、错误密码拒绝、格式验证
-- ✅ **JWT 生成**: HS256 签名、Base64URL 编码、过期时间
-- ✅ **JWT 验证**: 签名验证、过期检查、格式验证、篡改检测
-- ✅ **Cookie 处理**: HttpOnly、Secure、SameSite=Strict
-- ✅ **路径认证**: requiresAuth 逻辑测试
-- ✅ **性能测试**: PBKDF2 < 500ms、JWT 操作 < 50ms
-- ✅ **安全特性**: 盐值随机性、时间戳唯一性、多语言支持
-
-### 数据验证 (Base32/OTP/密钥) - 🏆 100% 覆盖率
-
-- ✅ **Base32 验证**: 格式验证、字符集检查、长度验证
-- ✅ **密钥强度评估**: 弱密钥警告、中等密钥建议、强密钥通过
-- ✅ **位长度计算**: 正确计算 Base32 编码的位数 (每8字符=40位)
-- ✅ **密钥数据验证**: 服务名称、账户、密钥完整性检查
-- ✅ **OTP 参数验证**: 类型、位数、周期、算法、计数器
-- ✅ **密钥对象创建**: UUID 生成、标准化、类型转换
-- ✅ **辅助功能**: 排序、去重检测
-- ✅ **边界条件**: 空值、超长字符串、特殊字符、中文支持
-- ✅ **性能测试**: 1000 次验证 < 100ms
-
-### Rate Limiting (DDoS 防护) - 🔥 96% 覆盖率
-
-- ✅ **Fixed Window Counter 算法**: 固定窗口计数器实现
-- ✅ **请求计数**: 首次请求、多次请求、超限拒绝
-- ✅ **窗口管理**: 窗口过期重置、独立客户端计数
-- ✅ **安全特性**: Fail Open 策略（KV 错误时允许请求）
-- ✅ **限流响应**: 429 状态码、Retry-After 头、X-RateLimit-\* 头
-- ✅ **客户端识别**: IP 提取（CF-Connecting-IP/X-Real-IP/X-Forwarded-For）
-- ✅ **Token 识别**: Authorization 头提取、组合模式
-- ✅ **预设配置**: login、loginStrict、api、sensitive、bulk、global
-- ✅ **中间件模式**: withRateLimit 包装器
-- ✅ **性能测试**: 100 次检查 < 1s、并发请求处理
-- ✅ **边界条件**: 极长 key、特殊字符、极短窗口
-
-### API Secrets (密钥管理) - 44% 覆盖率
-
-- ✅ **handleGetSecrets**: 获取密钥列表、解密、排序、错误处理
-- ✅ **handleAddSecret**: 添加密钥、数据验证、重复检测、弱密钥警告
-- ✅ **handleUpdateSecret**: 更新密钥、重复检测、保留ID和时间戳
-- ✅ **handleDeleteSecret**: 删除密钥、验证存在性、不影响其他密钥
-- ✅ **handleBatchAddSecrets**: 批量导入、跳过无效/重复密钥、结果统计
-- ✅ **handleGenerateOTP**: 生成6/8位OTP、支持参数、JSON/HTML响应
-- ✅ **集成测试**: 完整CRUD流程、数据加密透明性、多密钥管理
-- ✅ **验证测试**: 空名称拒绝、无效Base32拒绝、无效OTP参数拒绝
-- ✅ **重复检测**: 相同名称+账户拒绝、不同账户允许
-- ✅ **加密存储**: AES-GCM 256位、自动加密/解密、格式验证(v1:IV:data)
-
-### Response Utils (响应工具) - 🏆 100% 覆盖率
-
-- ✅ **createJsonResponse**: 创建JSON响应、状态码、安全头、CORS头
-- ✅ **createErrorResponse**: 标准错误响应、ISO 8601时间戳、错误详情
-- ✅ **createSuccessResponse**: 成功响应封装、统一格式、数据包装
-- ✅ **createHtmlResponse**: HTML响应、字符集、安全头集成
-- ✅ **安全头集成**: X-Frame-Options、X-Content-Type-Options、Referrer-Policy
-- ✅ **CORS处理**: 动态origin验证、向后兼容模式、自定义头优先
-- ✅ **边界条件**: 大数据对象、极长消息、特殊字符、Unicode支持
-- ✅ **性能测试**: 1000次响应创建 < 100ms
-
-### Crypto (端到端加密 E2EE) - 🔥 97% 覆盖率
-
-- ✅ **deriveKey**: PBKDF2-SHA256 密钥派生，100,000 迭代，盐值验证
-- ✅ **encryptData**: AES-256-GCM 加密，随机 IV/Salt，时间戳生成
-- ✅ **decryptData**: AES-GCM 解密，错误密码拒绝，篡改检测
-- ✅ **verifyMasterPassword**: 主密码验证，错误处理
-- ✅ **isEncrypted**: 加密数据识别，格式验证
-- ✅ **evaluatePasswordStrength**: 密码强度评分（弱/中等/强），多规则检查
-- ✅ **安全特性**: 密钥不可导出、随机盐值/IV、篡改保护
-- ✅ **集成测试**: 完整加密/解密流程、密码更改、多用户并发
-- ✅ **性能测试**: PBKDF2 < 1s，加密/解密 < 1.5s
-- ✅ **边界条件**: 极长密码、特殊字符、Unicode、空对象
-
-### Security (安全配置) - 🔥 98% 覆盖率
-
-- ✅ **getAllowedOrigin**: 同源检测、协议匹配、localhost特殊处理
-- ✅ **isOriginAllowed**: Host比对、跨域策略、端口处理
-- ✅ **getSecurityHeaders**: 完整安全头、可选CORS、可选CSP、可选凭据
-- ✅ **getCorsPreflightHeaders**: 预检响应头、方法/头允许、凭据支持
-- ✅ **isPreflightRequest**: OPTIONS识别、Access-Control-Request-Method检查
-- ✅ **createPreflightResponse**: 204/403响应、完整预检头、CORS错误处理
-- ✅ **mergeSecurityHeaders**: 头合并策略、优先级处理、选项传递
-- ✅ **getCSPPolicy**: CSP策略字符串、CDN白名单、指令完整性
-- ✅ **集成测试**: 完整同源流程、预检流程、跨域拒绝场景
-- ✅ **边界条件**: 空Host、畸形URL、IPv6、端口处理
-- ✅ **性能测试**: 1000次调用 < 100ms
-
-### Router Handler (路由处理器) - 🏆 100% 覆盖率
-
-- ✅ **首次设置流程**: 设置页面渲染、完成后重定向、API请求处理
-- ✅ **认证检查**: verifyAuth集成、401响应、503错误（未配置KV、未设置密码）
-- ✅ **静态资源路由**: 主页面、PWA manifest、Service Worker、图标文件
-- ✅ **登录和Token刷新**: handleLogin集成、handleRefreshToken集成
-- ✅ **API路由分发**: CRUD操作（GET/POST/PUT/DELETE）、方法验证、404处理
-  - `/api/secrets` - 密钥列表和添加
-  - `/api/secrets/batch` - 批量导入
-  - `/api/secrets/{id}` - 更新和删除
-  - `/api/backup` - 备份创建和获取
-  - `/api/backup/restore` - 恢复备份
-  - `/api/backup/export/{key}` - 导出备份
-- ✅ **OTP生成路由**: `/otp`使用说明、`/otp/{secret}`生成、查询参数传递
-- ✅ **404和错误处理**: 未知路径404、异常捕获500、错误日志记录
-- ✅ **CORS处理**: 预检请求识别、204响应、非预检返回null
-- ✅ **集成测试**: 完整CRUD流程、备份流程、公开OTP路由
-- ✅ **边界条件**: 无KV环境、极长路径、特殊字符、查询参数
-- ✅ **性能测试**: 100次路由匹配 < 500ms
-
-### Backup (备份系统) - 🔥 98% 覆盖率
-
-- ✅ **BackupManager**: 构造函数初始化、状态管理、单例模式
-- ✅ **防抖机制**: shouldBackup检查、5分钟防抖间隔、首次立即执行
-- ✅ **执行备份**: executeBackup核心逻辑、加密/明文备份、备份数据结构
-- ✅ **事件驱动**: triggerBackup触发、immediate立即模式、防抖调度
-- ✅ **延迟备份**: setTimeout调度、取消待处理备份、延迟执行验证
-- ✅ **备份文件名**: 生成格式（backup_YYYY-MM-DD_HH-MM-SS.json）、时间戳唯一性
-- ✅ **自动清理**: \_cleanupOldBackupsAsync、保留最新100个、按文件名排序
-- ✅ **状态跟踪**: lastBackupTime、getTimeSinceLastBackup、backupInProgress标志
-- ✅ **取消机制**: cancelPendingBackup、清理timeout、状态重置
-- ✅ **工厂函数**: getBackupManager单例、env隔离、实例复用
-- ✅ **快捷方法**: triggerBackup包装、executeImmediateBackup立即执行
-- ✅ **集成测试**: 完整备份流程、加密对比、防抖混合场景
-- ✅ **性能监控**: recordMetric集成、错误不影响备份
-- ✅ **错误监控**: captureError集成、监控系统异常处理
-- ✅ **边界条件**: 极大数量密钥、空列表、特殊字符、KV错误处理
-- ✅ **性能测试**: 备份 < 1s、防抖检查1000次 < 10ms
-
-### Logger (日志系统) - 🔥 96% 覆盖率
-
-- ✅ **LogLevel 枚举**: 5 个日志级别（DEBUG < INFO < WARN < ERROR < FATAL）、递增验证
-- ✅ **Logger 类构造**: 默认配置、自定义配置、enableConsole 默认 true
-- ✅ **消息格式化**: 基本日志、附加数据、错误信息、上下文、图标验证
-- ✅ **头部清理**: 敏感头部脱敏（authorization/cookie/x-api-key）、保留非敏感头
-- ✅ **控制台输出**: DEBUG→console.debug、INFO→console.log、WARN→console.warn、ERROR/FATAL→console.error
-- ✅ **远程日志**: enableRemote 开关、POST 发送、fetch 失败容错
-- ✅ **日志方法**: debug/info/warn/error/fatal、日志级别过滤、错误对象支持
-- ✅ **子 Logger**: child() 创建、上下文继承、上下文覆盖
-- ✅ **配置管理**: setMinLevel 动态调整、setRemoteLogging 启用/禁用
-- ✅ **单例模式**: getLogger 工厂函数、环境变量配置（LOG_LEVEL/ENVIRONMENT）
-- ✅ **快捷方法**: log.debug/info/warn/error/fatal 全局快捷方式
-- ✅ **性能计时**: PerformanceTimer 类、checkpoint 检查点、end 完成计时、cancel 取消
-- ✅ **请求日志**: createRequestLogger 中间件、logRequest 记录请求、logResponse 记录响应
-- ✅ **状态码分类**: 2xx→info、4xx→warn、5xx→error、请求失败→error
-- ✅ **集成测试**: 完整请求流程、上下文层级、性能与日志集成
-- ✅ **边界条件**: 空消息、null数据、undefined、特殊字符、极长消息、循环引用
-- ✅ **性能测试**: 1000 条日志 < 1s、100 个子 Logger < 100ms
-
-## 🐛 已修复的 Bug
-
-### Bug #1: 大时间戳精度错误
-
-- **症状**: 时间戳 > 2^32 时 OTP 计算错误
-- **原因**: 64 位 counter 未正确拆分为高/低 32 位
-- **修复**: 正确实现大端序 64 位整数编码
-- **测试**: 通过 2603 年的 RFC 测试向量
+`auth.test.js` 包含认证函数副本的单元测试；验证生产模块的集成行为时，应同时查看直接导入实现的 `auth.integration.test.js`。
 
 ## 📁 测试文件结构
 
-```
+```text
 tests/
-├── api/
-│   └── secrets.test.js          # API 密钥管理测试 (31 个)
-├── otp/
-│   └── generator.test.js        # OTP 算法测试 (45 个)
-├── router/
-│   └── handler.test.js          # 路由处理器测试 (51 个) 🏆 100% 覆盖率
-└── utils/
-    ├── encryption.test.js       # 加密功能测试 (25 个)
-    ├── auth.test.js             # JWT 认证测试 (52 个)
-    ├── validation.test.js       # 数据验证测试 (68 个) 🏆 100% 覆盖率
-    ├── rateLimit.test.js        # Rate Limiting 测试 (54 个) 🔥 96% 覆盖率
-    ├── response.test.js         # Response 工具测试 (35 个) 🏆 100% 覆盖率
-    ├── crypto.test.js           # Crypto E2EE 测试 (66 个) 🔥 97% 覆盖率
-    ├── security.test.js         # Security 安全测试 (47 个) 🔥 98% 覆盖率
-    ├── backup.test.js           # Backup 备份测试 (55 个) 🔥 98% 覆盖率
-    └── logger.test.js           # Logger 日志测试 (69 个) 🔥 96% 覆盖率
+├── api/          # 密钥、备份、设置及云同步 API
+├── integration/  # 跨模块集成场景
+├── otp/          # TOTP/HOTP 算法与测试向量
+├── router/       # 路由和认证边界
+├── scripts/      # 前端脚本、调度、导入导出和交互
+├── ui/           # 页面生成、样式、PWA 与回归测试
+├── utils/        # 加密、认证、备份、限流等工具
+├── fixtures/     # 导入导出和同步测试样例
+└── setup.js      # Vitest 公共测试环境
 ```
 
 ## 📈 覆盖率详情
 
-```bash
-npm run test:coverage
-```
+覆盖率报告生成在 `coverage/` 目录，可用浏览器打开 `coverage/index.html`。当前 [vitest.config.js](../vitest.config.js) 使用 V8 provider，统计 `src/**/*.js`，排除 `src/ui/**`、`src/worker.js` 和测试文件。因此报告中的覆盖率不代表页面交互或 Worker 入口已经完整验证。
 
-覆盖率报告会生成在 `coverage/` 目录，使用浏览器打开 `coverage/index.html` 查看详细报告。
+## 💡 编写和维护测试
 
-## 🚀 下一步
+1. 在对应目录创建 `.test.js` 文件，使用 Vitest 的 `describe` 和 `it`。
+2. 优先执行实际模块或生成脚本，围绕用户可观察的行为和明确失败条件编写断言。
+3. 使用虚拟密钥、模拟存储和请求替身；第三方实连验证另行记录环境与范围。
+4. 新增或修复功能时先运行相关测试，再按影响范围运行完整套件。
 
-### 高优先级
-
-- [x] 数据验证测试 (validation.js) - ✅ **已完成 68 个测试，100% 覆盖率** 🏆
-- [x] JWT 认证测试 (auth.js) - ✅ **已完成 52 个测试**
-- [x] Rate Limiting 测试 (rateLimit.js) - ✅ **已完成 54 个测试，96% 覆盖率** 🔥
-- [x] API Secrets 测试 (secrets.js) - ✅ **已完成 31 个测试，44% 覆盖率**
-- [x] 响应工具测试 (response.js) - ✅ **已完成 35 个测试，100% 覆盖率** 🏆
-- [x] Crypto E2EE 测试 (crypto.js) - ✅ **已完成 66 个测试，97% 覆盖率** 🔥
-- [x] Security 安全测试 (security.js) - ✅ **已完成 47 个测试，98% 覆盖率** 🔥
-- [x] Router Handler 路由测试 (handler.js) - ✅ **已完成 51 个测试，100% 覆盖率** 🏆
-- [x] Backup 备份系统测试 (backup.js) - ✅ **已完成 55 个测试，98% 覆盖率** 🔥
-- [x] Logger 日志系统测试 (logger.js) - ✅ **已完成 69 个测试，96% 覆盖率** 🔥
-
-### 中优先级
-
-- [ ] 监控工具测试 (monitoring.js)
-- [ ] API 备份功能测试 (handleBackupSecrets/GetBackups/ExportBackup/RestoreBackup)
-
-### 长期
-
-- [ ] E2E 测试 (Playwright)
-- [ ] 性能基准测试
-
-## 💡 编写新测试
-
-1. 在 `tests/` 目录创建对应的测试文件
-2. 使用 Vitest 的 `describe` 和 `it`
-3. 参考现有测试的结构
-
-示例:
-
-```javascript
-import { describe, it, expect } from 'vitest';
-
-describe('My Module', () => {
-	it('应该正确处理输入', () => {
-		expect(myFunction('test')).toBe('expected');
-	});
-});
-```
-
-## 🔬 测试工具
-
-- **Vitest**: 快速、现代的测试框架
-- **@vitest/ui**: 交互式测试界面
-- **@vitest/coverage-v8**: V8 引擎覆盖率
+后续继续补充真实浏览器端到端覆盖，并为 OTP 批量刷新、主题切换和大规模导入导出保留可重复的性能测量。
 
 ## 📚 参考
 
+- [开发指南](../docs/DEVELOPMENT.md)
 - [Vitest 文档](https://vitest.dev/)
 - [RFC 6238 - TOTP](https://tools.ietf.org/html/rfc6238)
 - [RFC 4226 - HOTP](https://tools.ietf.org/html/rfc4226)
