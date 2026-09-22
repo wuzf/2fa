@@ -274,4 +274,34 @@ describe('Settings API', () => {
 			expect(env.SECRETS_KV.store.has('settings')).toBe(false);
 		});
 	});
+
+	describe('handleSaveSettings - language validation', () => {
+		it.each(['auto', 'zh-TW', 'zh-CN', 'en'])('accepts %s', async (lang) => {
+			const resp = await handleSaveSettings(createMockRequest({ language: lang }), env);
+			const data = await resp.json();
+
+			expect(resp.status).toBe(200);
+			expect(data.success).toBe(true);
+			expect(data.settings.language).toBe(lang);
+
+			const stored = JSON.parse(await env.SECRETS_KV.get('settings'));
+			expect(stored.language).toBe(lang);
+		});
+
+		it('rejects unsupported languages', async () => {
+			const resp = await handleSaveSettings(createMockRequest({ language: 'fr' }), env);
+			const data = await resp.json();
+
+			expect(resp.status).toBe(400);
+			expect(data.message).toBe('语言偏好仅支持：auto, zh-TW, zh-CN, en');
+		});
+
+		it('rejects non-string values', async () => {
+			const resp = await handleSaveSettings(createMockRequest({ language: 123 }), env);
+			const data = await resp.json();
+
+			expect(resp.status).toBe(400);
+			expect(data.message).toBe('语言偏好必须是字符串');
+		});
+	});
 });

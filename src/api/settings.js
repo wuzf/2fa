@@ -6,7 +6,15 @@ import { createJsonResponse, createErrorResponse } from '../utils/response.js';
 import { getLogger } from '../utils/logger.js';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../utils/rateLimit.js';
 import { ValidationError, errorToResponse, logError } from '../utils/errors.js';
-import { DEFAULT_SETTINGS, getSettings, KV_SETTINGS_KEY, sanitizeDefaultExportFormat, VALID_EXPORT_FORMATS } from '../utils/settings.js';
+import {
+	DEFAULT_SETTINGS,
+	getSettings,
+	KV_SETTINGS_KEY,
+	sanitizeDefaultExportFormat,
+	sanitizeLanguage,
+	VALID_EXPORT_FORMATS,
+	VALID_LANGUAGES,
+} from '../utils/settings.js';
 
 const SETTINGS_VALIDATORS = {
 	jwtExpiryDays: (value) => {
@@ -42,6 +50,18 @@ const SETTINGS_VALIDATORS = {
 		const normalized = value.trim().toLowerCase();
 		if (!VALID_EXPORT_FORMATS.includes(normalized)) {
 			return `默认导出格式仅支持：${VALID_EXPORT_FORMATS.join(', ')}`;
+		}
+
+		return null;
+	},
+	language: (value) => {
+		if (typeof value !== 'string') {
+			return '语言偏好必须是字符串';
+		}
+
+		const normalized = value.trim();
+		if (!VALID_LANGUAGES.includes(normalized)) {
+			return `语言偏好仅支持：${VALID_LANGUAGES.join(', ')}`;
 		}
 
 		return null;
@@ -110,6 +130,8 @@ export async function handleSaveSettings(request, env) {
 
 			if (key === 'defaultExportFormat') {
 				updated[key] = sanitizeDefaultExportFormat(value);
+			} else if (key === 'language') {
+				updated[key] = sanitizeLanguage(value);
 			} else {
 				updated[key] = Number(value);
 			}

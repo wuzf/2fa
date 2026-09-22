@@ -152,6 +152,12 @@ export function getCoreCode() {
 
     // 页面加载时获取密钥列表
     document.addEventListener('DOMContentLoaded', function() {
+        if (typeof initLanguage === 'function') {
+          initLanguage();
+        }
+        if (typeof applyTranslations === 'function') {
+          applyTranslations();
+        }
         initializeTrustedClock();
         // 先检查认证状态
         if (checkAuth()) {
@@ -280,7 +286,25 @@ export function getCoreCode() {
       const nameHTML = escapeHTML(secret.name).replace(/"/g, '&quot;');
       const accountHTML = escapeHTML(secret.account || '').replace(/"/g, '&quot;');
 
-      return '<div class="secret-card" onclick="copyOTPFromCard(event, &quot;' + secret.id + '&quot;)" title="点击卡片复制验证码">' +
+      const cardCopyTooltip = (typeof t === 'function' ? t('cardCopyTooltip') : null) || '点击卡片复制验证码';
+      const cardMenuTriggerTitle = (typeof t === 'function' ? t('cardMenuTriggerTitle') : null) || '账户操作';
+      const cardMenuQRCode = (typeof t === 'function' ? t('cardMenuQRCode') : null) || '二维码';
+      const cardMenuQRCodeTitle = (typeof t === 'function' ? t('cardMenuQRCodeTitle') : null) || '显示验证器二维码';
+      const cardMenuCopyURI = (typeof t === 'function' ? t('cardMenuCopyURI') : null) || '复制 URI';
+      const cardMenuCopyURITitle = (typeof t === 'function' ? t('cardMenuCopyURITitle') : null) || '用于导入验证器的 otpauth:// 配置';
+      const cardMenuCopyLink = (typeof t === 'function' ? t('cardMenuCopyLink') : null) || '复制链接';
+      const cardMenuCopyLinkTitle = (typeof t === 'function' ? t('cardMenuCopyLinkTitle') : null) || '在浏览器中打开并查看验证码';
+      const cardMenuEdit = (typeof t === 'function' ? t('cardMenuEdit') : null) || '编辑';
+      const cardMenuEditTitle = (typeof t === 'function' ? t('cardMenuEditTitle') : null) || '编辑密钥';
+      const cardMenuDelete = (typeof t === 'function' ? t('cardMenuDelete') : null) || '删除';
+      const cardMenuDeleteTitle = (typeof t === 'function' ? t('cardMenuDeleteTitle') : null) || '删除密钥';
+      const copyOtpBtnTitle = (typeof t === 'function' ? t('copyOtpBtnTitle') : null) || '点击复制验证码';
+      const copyOtpBtnAriaLabel = (typeof t === 'function' ? t('copyOtpBtnAriaLabel') : null) || '复制当前验证码';
+      const otpNextLabel = (typeof t === 'function' ? t('otpNextLabel') : null) || '下一个';
+      const copyNextOtpBtnTitle = (typeof t === 'function' ? t('copyNextOtpBtnTitle') : null) || '点击复制下一个验证码';
+      const counterLabel = (typeof t === 'function' ? t('counterLabel') : null) || '计数器: ';
+
+      return '<div class="secret-card" onclick="copyOTPFromCard(event, &quot;' + secret.id + '&quot;)" title="' + cardCopyTooltip + '">' +
         // TOTP 显示进度条，HOTP 不显示
         (isHOTP ? '' :
           '<div class="progress-top">' +
@@ -299,29 +323,29 @@ export function getCoreCode() {
             '<div class="secret-text">' +
             '<h3><span class="secret-name" title="' + nameHTML + '">' + nameHTML + '</span>' + (isHOTP ? '<span class="secret-type">[HOTP]</span>' : '') + '</h3>' +
             (secret.account ? '<p title="' + accountHTML + '">' + accountHTML + '</p>' : '') +
-            (isHOTP ? '<p id="counter-' + secret.id + '" style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">计数器: ' + (secret.counter ?? 0) + '</p>' : '') +
+            (isHOTP ? '<p id="counter-' + secret.id + '" style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">' + counterLabel + (secret.counter ?? 0) + '</p>' : '') +
             '</div>' +
           '</div>' +
           '<div class="card-menu" title="">' +
-            '<button type="button" class="card-menu-trigger" title="账户操作" aria-label="账户操作" aria-expanded="false" aria-controls="menu-' + secret.id + '" onclick="event.stopPropagation(); toggleCardMenu(&quot;' + secret.id + '&quot;)"><span class="menu-dots" aria-hidden="true">⋮</span></button>' +
+            '<button type="button" class="card-menu-trigger" title="' + cardMenuTriggerTitle + '" aria-label="' + cardMenuTriggerTitle + '" aria-expanded="false" aria-controls="menu-' + secret.id + '" onclick="event.stopPropagation(); toggleCardMenu(&quot;' + secret.id + '&quot;)"><span class="menu-dots" aria-hidden="true">⋮</span></button>' +
             '<div class="card-menu-dropdown" id="menu-' + secret.id + '">' +
-              '<button type="button" class="menu-item" title="显示验证器二维码" onclick="event.stopPropagation(); showQRCode(&quot;' + secret.id + '&quot;); closeAllCardMenus();">二维码</button>' +
-              '<button type="button" class="menu-item" title="用于导入验证器的 otpauth:// 配置" onclick="event.stopPropagation(); copyOTPAuthURL(&quot;' + secret.id + '&quot;); closeAllCardMenus();">复制 URI</button>' +
-              '<button type="button" class="menu-item" title="在浏览器中打开并查看验证码" onclick="event.stopPropagation(); copyOTPPageURL(&quot;' + secret.id + '&quot;); closeAllCardMenus();">复制链接</button>' +
-              '<button type="button" class="menu-item" title="编辑密钥" onclick="event.stopPropagation(); editSecret(&quot;' + secret.id + '&quot;); closeAllCardMenus();">编辑</button>' +
-              '<button type="button" class="menu-item menu-item-danger" title="删除密钥" onclick="event.stopPropagation(); deleteSecret(&quot;' + secret.id + '&quot;); closeAllCardMenus();">删除</button>' +
+              '<button type="button" class="menu-item" title="' + cardMenuQRCodeTitle + '" onclick="event.stopPropagation(); showQRCode(&quot;' + secret.id + '&quot;); closeAllCardMenus();">' + cardMenuQRCode + '</button>' +
+              '<button type="button" class="menu-item" title="' + cardMenuCopyURITitle + '" onclick="event.stopPropagation(); copyOTPAuthURL(&quot;' + secret.id + '&quot;); closeAllCardMenus();">' + cardMenuCopyURI + '</button>' +
+              '<button type="button" class="menu-item" title="' + cardMenuCopyLinkTitle + '" onclick="event.stopPropagation(); copyOTPPageURL(&quot;' + secret.id + '&quot;); closeAllCardMenus();">' + cardMenuCopyLink + '</button>' +
+              '<button type="button" class="menu-item" title="' + cardMenuEditTitle + '" onclick="event.stopPropagation(); editSecret(&quot;' + secret.id + '&quot;); closeAllCardMenus();">' + cardMenuEdit + '</button>' +
+              '<button type="button" class="menu-item menu-item-danger" title="' + cardMenuDeleteTitle + '" onclick="event.stopPropagation(); deleteSecret(&quot;' + secret.id + '&quot;); closeAllCardMenus();">' + cardMenuDelete + '</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
         '<div class="otp-preview">' +
           '<div class="otp-main">' +
             '<div class="otp-code-container">' +
-              '<button type="button" class="otp-code" id="otp-' + secret.id + '" onclick="event.stopPropagation(); copyOTP(&quot;' + secret.id + '&quot;)" title="点击复制验证码" aria-label="复制当前验证码">------</button>' +
+              '<button type="button" class="otp-code" id="otp-' + secret.id + '" onclick="event.stopPropagation(); copyOTP(&quot;' + secret.id + '&quot;)" title="' + copyOtpBtnTitle + '" aria-label="' + copyOtpBtnAriaLabel + '">------</button>' +
             '</div>' +
             // HOTP 不显示"下一个"验证码（因为不是时间基准）
             (isHOTP ? '' :
-              '<button type="button" class="otp-next-container" onclick="event.stopPropagation(); copyNextOTP(&quot;' + secret.id + '&quot;)" title="点击复制下一个验证码">' +
-                '<span class="otp-next-label">下一个</span>' +
+              '<button type="button" class="otp-next-container" onclick="event.stopPropagation(); copyNextOTP(&quot;' + secret.id + '&quot;)" title="' + copyNextOtpBtnTitle + '">' +
+                '<span class="otp-next-label">' + otpNextLabel + '</span>' +
                 '<span class="otp-next-code" id="next-otp-' + secret.id + '">------</span>' +
               '</button>'
             ) +
@@ -335,10 +359,10 @@ export function getCoreCode() {
       const hasFilteredCount = Boolean(currentSearchQuery) && group.matchedCount !== group.totalCount;
       const countText = hasFilteredCount
         ? group.matchedCount + ' / ' + group.totalCount
-        : group.totalCount + ' 个';
+        : (typeof t === 'function' ? t('groupCountText', { count: group.totalCount }) : group.totalCount + ' 个');
       const countLabel = hasFilteredCount
-        ? '匹配 ' + group.matchedCount + ' 个，共 ' + group.totalCount + ' 个'
-        : '共 ' + group.totalCount + ' 个';
+        ? (typeof t === 'function' ? t('groupMatchedCountLabel', { matched: group.matchedCount, total: group.totalCount }) : '匹配 ' + group.matchedCount + ' 个，共 ' + group.totalCount + ' 个')
+        : (typeof t === 'function' ? t('groupCountLabel', { count: group.totalCount }) : '共 ' + group.totalCount + ' 个');
 
       return '<section class="service-group" aria-labelledby="' + headingId + '">' +
         '<div class="service-group-header">' +

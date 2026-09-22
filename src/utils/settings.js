@@ -5,11 +5,14 @@
 export const KV_SETTINGS_KEY = 'settings';
 export const DEFAULT_EXPORT_FORMAT = 'json';
 export const VALID_EXPORT_FORMATS = ['txt', 'json', 'csv', 'html'];
+export const VALID_LANGUAGES = ['auto', 'zh-TW', 'zh-CN', 'en'];
+export const DEFAULT_LANGUAGE = 'auto';
 
 export const DEFAULT_SETTINGS = {
 	jwtExpiryDays: 30,
 	maxBackups: 100,
 	defaultExportFormat: DEFAULT_EXPORT_FORMAT,
+	language: DEFAULT_LANGUAGE,
 };
 
 export function sanitizeDefaultExportFormat(value) {
@@ -21,6 +24,15 @@ export function sanitizeDefaultExportFormat(value) {
 	return VALID_EXPORT_FORMATS.includes(normalized) ? normalized : DEFAULT_EXPORT_FORMAT;
 }
 
+export function sanitizeLanguage(value) {
+	if (typeof value !== 'string') {
+		return DEFAULT_LANGUAGE;
+	}
+
+	const normalized = value.trim();
+	return VALID_LANGUAGES.includes(normalized) ? normalized : DEFAULT_LANGUAGE;
+}
+
 function buildInvalidSettingsError(message) {
 	return new Error(`设置数据已损坏：${message}`);
 }
@@ -30,6 +42,7 @@ function buildSanitizedSettings(parsed = {}) {
 		...DEFAULT_SETTINGS,
 		...parsed,
 		defaultExportFormat: sanitizeDefaultExportFormat(parsed.defaultExportFormat),
+		language: sanitizeLanguage(parsed.language),
 	};
 }
 

@@ -6,9 +6,9 @@ A two-factor authentication key management system built on Cloudflare Workers. F
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
-**[中文文档](README.md)**
+**[简体中文](README.md)** · **[繁體中文](README_TC.md)**
 
-**Key Features:** TOTP/HOTP code auto-generation · QR code scanning/image recognition/paste screenshot/drag & drop image to add keys · AES-GCM 256-bit encrypted storage · Bulk import from Google Authenticator, Aegis, 2FAS, Bitwarden, etc. · Multi-format export (TXT/JSON/CSV/HTML/Google migration QR codes) · Auto backup & restore · WebDAV/S3/OneDrive/Google Drive remote backup sync · Security/sync/preference settings · Light/dark/follow-system themes · Fluent 2-inspired responsive UI
+**Key Features:** TOTP/HOTP code auto-generation · QR code scanning/image recognition/paste screenshot/drag & drop image to add keys · AES-GCM 256-bit encrypted storage · Bulk import from Google Authenticator, Aegis, 2FAS, Bitwarden, etc. · Multi-format export (TXT/JSON/CSV/HTML/Google migration QR codes) · Auto backup & restore · WebDAV/S3/OneDrive/Google Drive remote backup sync · Security/sync/preference settings · Multi-language support (Simplified Chinese / Traditional Chinese / English, with auto-detection) · Light/dark/follow-system themes · Fluent 2-inspired responsive UI
 
 ## 📸 Screenshots
 

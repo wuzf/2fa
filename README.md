@@ -2,13 +2,13 @@
 
 基于 Cloudflare Workers 的两步验证密钥管理系统。免费部署、全球加速、支持 PWA 离线使用。
 
-**[English](README_EN.md)**
+**[繁體中文](README_TC.md)** · **[English](README_EN.md)**
 
 ![Version](https://img.shields.io/badge/version-1.9.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
-**主要特性：** TOTP/HOTP 验证码自动生成 · 二维码扫描/图片识别/粘贴截图/拖拽图片添加密钥 · AES-GCM 256 位加密存储 · 从 Google Authenticator、Aegis、2FAS、Bitwarden 等应用批量导入 · 多格式导出（TXT/JSON/CSV/HTML/Google 迁移二维码） · 自动备份与还原 · WebDAV/S3/OneDrive/Google Drive 远程备份同步 · 账户安全/同步/偏好设置 · 浅色/深色/跟随系统主题 · Fluent 2 风格响应式界面
+**主要特性：** TOTP/HOTP 验证码自动生成 · 二维码扫描/图片识别/粘贴截图/拖拽图片添加密钥 · AES-GCM 256 位加密存储 · 从 Google Authenticator、Aegis、2FAS、Bitwarden 等应用批量导入 · 多格式导出（TXT/JSON/CSV/HTML/Google 迁移二维码） · 自动备份与还原 · WebDAV/S3/OneDrive/Google Drive 远程备份同步 · 账户安全/同步/偏好设置 · 多语言支持（简体中文 / 繁體中文 / English，跟随系统自动检测） · 浅色/深色/跟随系统主题 · Fluent 2 风格响应式界面
 
 ## 📸 截图预览
 

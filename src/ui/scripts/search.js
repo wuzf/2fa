@@ -360,7 +360,7 @@ export function getSearchCode() {
         if (metadata.totalCount >= 2) {
           searchableFamilyNames.set(key, resolveServiceGroupName(metadata).toLowerCase());
         } else {
-          searchableFamilyNames.set(key, '其他服务');
+          searchableFamilyNames.set(key, ((typeof t === 'function' ? t('otherServices') : null) || '其他服务').toLowerCase());
         }
       });
 
@@ -376,13 +376,13 @@ export function getSearchCode() {
       const foundCount = filteredSecrets.length;
 
       if (foundCount === 0) {
-        searchStats.textContent = '未找到匹配的密钥';
+        searchStats.textContent = (typeof t === 'function' ? t('searchNoMatch') : null) || '未找到匹配的密钥';
         searchStats.style.color = '#e74c3c';
       } else if (foundCount === totalCount) {
-        searchStats.textContent = '显示所有 ' + totalCount + ' 个密钥';
+        searchStats.textContent = (typeof t === 'function' ? t('searchShowAll', { count: totalCount }) : null) || ('显示所有 ' + totalCount + ' 个密钥');
         searchStats.style.color = '#27ae60';
       } else {
-        searchStats.textContent = '找到 ' + foundCount + ' 个匹配密钥（共 ' + totalCount + ' 个）';
+        searchStats.textContent = (typeof t === 'function' ? t('searchFoundCount', { found: foundCount, total: totalCount }) : null) || ('找到 ' + foundCount + ' 个匹配密钥（共 ' + totalCount + ' 个）');
         searchStats.style.color = '#3498db';
       }
       await renderFilteredSecrets();
@@ -426,28 +426,28 @@ export function getSearchCode() {
           return sortedSecrets.sort((a, b) => {
             const nameA = (a.name || '').toLowerCase();
             const nameB = (b.name || '').toLowerCase();
-            return nameA.localeCompare(nameB, 'zh-CN');
+            return typeof compareI18nStrings === 'function' ? compareI18nStrings(nameA, nameB) : nameA.localeCompare(nameB, 'zh-CN');
           });
 
         case 'name-desc':
           return sortedSecrets.sort((a, b) => {
             const nameA = (a.name || '').toLowerCase();
             const nameB = (b.name || '').toLowerCase();
-            return nameB.localeCompare(nameA, 'zh-CN');
+            return typeof compareI18nStrings === 'function' ? compareI18nStrings(nameB, nameA) : nameB.localeCompare(nameA, 'zh-CN');
           });
 
         case 'account-asc':
           return sortedSecrets.sort((a, b) => {
             const accountA = (a.account || '').toLowerCase();
             const accountB = (b.account || '').toLowerCase();
-            return accountA.localeCompare(accountB, 'zh-CN');
+            return typeof compareI18nStrings === 'function' ? compareI18nStrings(accountA, accountB) : accountA.localeCompare(accountB, 'zh-CN');
           });
 
         case 'account-desc':
           return sortedSecrets.sort((a, b) => {
             const accountA = (a.account || '').toLowerCase();
             const accountB = (b.account || '').toLowerCase();
-            return accountB.localeCompare(accountA, 'zh-CN');
+            return typeof compareI18nStrings === 'function' ? compareI18nStrings(accountB, accountA) : accountB.localeCompare(accountA, 'zh-CN');
           });
 
         case 'oldest-first':
