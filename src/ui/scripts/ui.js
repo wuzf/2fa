@@ -156,13 +156,38 @@ export function getUICode() {
       enableBodyScroll();
     }
 
+    function syncSecretDialogTranslations() {
+      const title = document.getElementById('modalTitle');
+      const titleKey = editingId ? 'editSecretTitle' : 'addSecretTitle';
+      title.setAttribute('data-i18n', titleKey);
+      title.textContent = typeof t === 'function' ? t(titleKey) : (editingId ? '编辑密钥' : '添加新密钥');
+
+      const submitBtn = document.getElementById('submitBtn');
+      const submitKey = submitBtn.disabled ? 'saving' : (editingId ? 'update' : 'save');
+      submitBtn.setAttribute('data-i18n', submitKey);
+      submitBtn.textContent = typeof t === 'function' ? t(submitKey)
+        : (submitBtn.disabled ? '保存中...' : (editingId ? '更新' : '保存'));
+      syncSecretAdvancedInfo();
+    }
+
+    function syncSecretAdvancedInfo() {
+      const advancedInfo = document.getElementById('advancedInfo');
+      const typeSelect = document.getElementById('secretType');
+      if (!advancedInfo || !typeSelect) return;
+      const isHOTP = typeSelect.value === 'HOTP';
+      const key = isHOTP ? 'secretAdvancedHotpHelp' : 'secretAdvancedHelp';
+      advancedInfo.setAttribute('data-i18n', key);
+      advancedInfo.textContent = typeof t === 'function' ? t(key)
+        : (isHOTP ? 'HOTP使用计数器基准，每次生成后计数器自动递增'
+          : '大多数2FA应用使用默认设置：TOTP、6位、30秒、SHA1算法');
+    }
+
     function showAddModal() {
       showModal('secretModal', () => {
         editingId = null;
-        document.getElementById('modalTitle').textContent = '添加新密钥';
-        document.getElementById('submitBtn').textContent = '保存';
         document.getElementById('secretForm').reset();
         document.getElementById('secretId').value = '';
+        syncSecretDialogTranslations();
       });
     }
 
@@ -263,12 +288,12 @@ export function getUICode() {
       const periodGroup = document.getElementById('periodGroup');
       const algorithmGroup = document.getElementById('algorithmGroup');
       const counterRow = document.getElementById('counterRow');
-      const advancedInfo = document.getElementById('advancedInfo');
       const digitsSelect = document.getElementById('secretDigits');
       const periodSelect = document.getElementById('secretPeriod');
       const algorithmSelect = document.getElementById('secretAlgorithm');
 
       const selectedType = typeSelect.value;
+      syncSecretAdvancedInfo();
 
       switch (selectedType) {
         case 'HOTP':
@@ -277,7 +302,6 @@ export function getUICode() {
           periodGroup.style.display = 'none';
           algorithmGroup.style.display = 'block';
           counterRow.style.display = 'block';
-          advancedInfo.textContent = 'HOTP使用计数器基准，每次生成后计数器自动递增';
           break;
 
         case 'TOTP':
@@ -287,7 +311,6 @@ export function getUICode() {
           periodGroup.style.display = 'block';
           algorithmGroup.style.display = 'block';
           counterRow.style.display = 'none';
-          advancedInfo.textContent = '大多数2FA应用使用默认设置：TOTP、6位、30秒、SHA1算法';
           break;
       }
     }

@@ -177,6 +177,8 @@ export function getAuthCode() {
         const data = await response.json();
 
         if (response.ok && data.success) {
+          if (typeof resetLanguagePreferenceSync === 'function') resetLanguagePreferenceSync();
+          if (typeof syncLanguagePreferenceAfterAuth === 'function') void syncLanguagePreferenceAfterAuth();
           // 登录成功 - token 已通过 HttpOnly Cookie 自动设置
           hideLoginModal();
 
@@ -221,6 +223,7 @@ export function getAuthCode() {
 
     // 处理未授权响应
     function handleUnauthorized() {
+      if (typeof resetLanguagePreferenceSync === 'function') resetLanguagePreferenceSync();
       clearAuthToken();
 
       // 清除缓存的密钥数据（安全考虑）
@@ -263,6 +266,7 @@ export function getAuthCode() {
 
     // 退出登录
     async function logout() {
+      if (typeof resetLanguagePreferenceSync === 'function') resetLanguagePreferenceSync();
       let serverSuccess = false;
       let serverErrorMessage = '';
 

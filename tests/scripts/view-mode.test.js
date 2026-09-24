@@ -53,7 +53,7 @@ function createHarness(savedValue, savedGroupSortValue, savedSortValue, savedFla
 	);
 	const groupSortOnly = [{ hidden: false }, { hidden: false }];
 	const flatSortOnly = [sortOptions[2], sortOptions[3]];
-	const sortModeLabel = { textContent: '' };
+	const sortModeLabel = { ...createOption({}), textContent: '' };
 	const sortSelect = { value: 'oldest-first' };
 	const trigger = { focus: vi.fn() };
 	const dropdown = {

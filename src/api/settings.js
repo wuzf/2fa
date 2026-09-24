@@ -7,7 +7,6 @@ import { getLogger } from '../utils/logger.js';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../utils/rateLimit.js';
 import { ValidationError, errorToResponse, logError } from '../utils/errors.js';
 import {
-	DEFAULT_SETTINGS,
 	getSettings,
 	KV_SETTINGS_KEY,
 	sanitizeDefaultExportFormat,
@@ -85,6 +84,7 @@ export async function handleGetSettings(request, env) {
 	try {
 		const settings = await getSettings(env, {
 			onInvalid: createSettingsFallbackHandler(logger, '设置数据已损坏，已回退默认配置'),
+			omitUnsetLanguage: true,
 		});
 		return createJsonResponse(settings, 200, request);
 	} catch (error) {
@@ -115,6 +115,7 @@ export async function handleSaveSettings(request, env) {
 		const body = await request.json();
 		const current = await getSettings(env, {
 			onInvalid: createSettingsFallbackHandler(logger, '设置数据已损坏，保存时将使用默认配置覆盖'),
+			omitUnsetLanguage: true,
 		});
 
 		const updated = { ...current };
@@ -145,7 +146,7 @@ export async function handleSaveSettings(request, env) {
 			{
 				success: true,
 				message: '设置已保存',
-				settings: { ...DEFAULT_SETTINGS, ...updated },
+				settings: updated,
 			},
 			200,
 			request,

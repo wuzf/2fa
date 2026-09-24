@@ -37,18 +37,23 @@ function buildInvalidSettingsError(message) {
 	return new Error(`设置数据已损坏：${message}`);
 }
 
-function buildSanitizedSettings(parsed = {}) {
-	return {
+function buildSanitizedSettings(parsed = {}, options = {}) {
+	const settings = {
 		...DEFAULT_SETTINGS,
 		...parsed,
 		defaultExportFormat: sanitizeDefaultExportFormat(parsed.defaultExportFormat),
 		language: sanitizeLanguage(parsed.language),
 	};
+	// Preference clients must distinguish an unset language from an explicit auto choice.
+	if (options.omitUnsetLanguage && (typeof parsed.language !== 'string' || !VALID_LANGUAGES.includes(parsed.language.trim()))) {
+		delete settings.language;
+	}
+	return settings;
 }
 
 export async function getSettings(env, options = {}) {
 	if (!env?.SECRETS_KV) {
-		return { ...DEFAULT_SETTINGS };
+		return buildSanitizedSettings({}, options);
 	}
 
 	let raw;
@@ -59,7 +64,7 @@ export async function getSettings(env, options = {}) {
 	}
 
 	if (!raw) {
-		return { ...DEFAULT_SETTINGS };
+		return buildSanitizedSettings({}, options);
 	}
 
 	let parsed;
@@ -67,15 +72,15 @@ export async function getSettings(env, options = {}) {
 		parsed = JSON.parse(raw);
 	} catch (error) {
 		options.onInvalid?.(buildInvalidSettingsError(error.message));
-		return { ...DEFAULT_SETTINGS };
+		return buildSanitizedSettings({}, options);
 	}
 
 	if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
 		options.onInvalid?.(buildInvalidSettingsError('根对象必须是 JSON 对象'));
-		return { ...DEFAULT_SETTINGS };
+		return buildSanitizedSettings({}, options);
 	}
 
-	return buildSanitizedSettings(parsed);
+	return buildSanitizedSettings(parsed, options);
 }
 
 export async function getDefaultExportFormat(env, options = {}) {

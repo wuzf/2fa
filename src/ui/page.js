@@ -517,41 +517,41 @@ function getHTMLBody() {
   <div id="restoreModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="restoreModalTitle">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 id="restoreModalTitle">还原配置</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideRestoreModal()">${dialogIcon('close')}</button>
+        <h2 id="restoreModalTitle" data-i18n="restoreModalTitle">还原配置</h2>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-i18n-aria-label="close" onclick="hideRestoreModal()">${dialogIcon('close')}</button>
       </div>
       
       <div class="restore-instructions">
-        <p>从备份中选择一个配置进行还原：</p>
-        <p>
-          警告：还原操作将覆盖当前所有密钥，请谨慎操作！
+        <p data-i18n="restoreInstructions">从备份中选择一个配置进行还原：</p>
+        <p data-i18n="restoreOverwriteWarning">
+          警告：还原操作将覆盖当前所有密钥，且无法撤销。
         </p>
       </div>
       
       <div class="restore-content">
         <div class="backup-list-container">
-          <label class="backup-list-header" for="backupSelect">选择备份文件</label>
+          <label class="backup-list-header" for="backupSelect" data-i18n="restoreSelectLabel">选择备份文件</label>
           <div class="backup-select-wrapper">
             <select id="backupSelect" class="backup-select" onchange="selectBackupFromDropdown()">
-              <option value="">请选择备份文件...</option>
+              <option value="" data-i18n="restoreSelectPlaceholder">请选择备份文件...</option>
             </select>
           </div>
           <div class="backup-actions">
-            <button type="button" class="btn btn-outline" onclick="loadBackupList()">刷新</button>
-            <button type="button" class="btn btn-outline" onclick="exportSelectedBackup()" id="exportBackupBtn" disabled>导出备份</button>
+            <button type="button" class="btn btn-outline" onclick="loadBackupList()" data-i18n="restoreRefresh">刷新</button>
+            <button type="button" class="btn btn-outline" onclick="exportSelectedBackup()" id="exportBackupBtn" data-i18n="restoreExport" disabled>导出备份</button>
             <input type="file" id="restoreBackupFileInput" accept=".txt,.csv,.json,.html" style="display: none;" onchange="handleRestoreBackupFile(event)">
-            <button type="button" class="btn btn-outline" onclick="document.getElementById('restoreBackupFileInput').click()">上传备份文件</button>
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('restoreBackupFileInput').click()" data-i18n="restoreUpload">上传备份文件</button>
           </div>
           <div id="restoreUploadStatus" style="display: none; margin-top: 8px; font-size: var(--dialog-caption-size); color: var(--text-secondary);"></div>
           <div class="backup-pagination" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px;">
             <span id="backupListStatus" style="font-size: var(--dialog-caption-size); color: var(--text-secondary);"></span>
-            <button type="button" class="btn btn-outline" id="backupLoadMoreBtn" onclick="loadMoreBackupList()" style="display: none;">加载更多</button>
+            <button type="button" class="btn btn-outline" id="backupLoadMoreBtn" onclick="loadMoreBackupList()" style="display: none;" data-i18n="restoreLoadMore">加载更多</button>
           </div>
         </div>
         
         <div class="restore-preview" id="restorePreview" style="display: none;">
           <div class="preview-header">
-            <span>备份预览</span>
+            <span data-i18n="restorePreviewTitle">备份预览</span>
           </div>
           <div id="backupPreviewContent" class="backup-preview-content">
             <!-- 备份内容预览将在这里显示 -->
@@ -560,8 +560,8 @@ function getHTMLBody() {
       </div>
       
       <div class="modal-actions">
-        <button type="button" class="btn btn-outline" onclick="hideRestoreModal()">取消</button>
-        <button type="button" class="btn btn-danger" onclick="confirmRestore()" id="confirmRestoreBtn" disabled>确认还原</button>
+        <button type="button" class="btn btn-outline" onclick="hideRestoreModal()" data-i18n="cancel">取消</button>
+        <button type="button" class="btn btn-danger" onclick="confirmRestore()" id="confirmRestoreBtn" data-i18n="restoreConfirm" disabled>确认还原</button>
       </div>
     </div>
   </div>
@@ -1221,15 +1221,15 @@ function getHTMLBody() {
               <div class="theme-options">
                 <label class="theme-option">
                   <input type="radio" name="settingsTheme" value="light" onchange="applyThemeFromSettings('light')" />
-                  <span class="theme-option-label" data-i18n="themeLight">${dialogIcon('sun')} 浅色模式</span>
+                  <span class="theme-option-label">${dialogIcon('sun')} <span data-i18n="themeLight">浅色模式</span></span>
                 </label>
                 <label class="theme-option">
                   <input type="radio" name="settingsTheme" value="dark" onchange="applyThemeFromSettings('dark')" />
-                  <span class="theme-option-label" data-i18n="themeDark">${dialogIcon('moon')} 深色模式</span>
+                  <span class="theme-option-label">${dialogIcon('moon')} <span data-i18n="themeDark">深色模式</span></span>
                 </label>
                 <label class="theme-option">
                   <input type="radio" name="settingsTheme" value="auto" onchange="applyThemeFromSettings('auto')" />
-                  <span class="theme-option-label" data-i18n="themeAuto">${dialogIcon('screen')} 跟随系统</span>
+                  <span class="theme-option-label">${dialogIcon('screen')} <span data-i18n="themeAuto">跟随系统</span></span>
                 </label>
               </div>
             </div>

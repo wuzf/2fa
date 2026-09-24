@@ -16,6 +16,11 @@ export function getSettingsCode() {
     let preferencesLoadRequestId = 0;
     let defaultExportFormatChangeVersion = 0;
     let defaultExportFormatSaveRequestId = 0;
+    let languageChangeVersion = 0;
+    let pendingLanguageSaves = 0;
+    let languageLoadRequestId = 0;
+    let languagePreferenceSynced = false;
+    let languageSyncPromise = null;
     let preferenceSaveQueue = Promise.resolve();
     const NUMERIC_PREFERENCE_SAVE_DELAY = 500;
     const numericPreferences = {
@@ -283,6 +288,53 @@ export function getSettingsCode() {
       }
     }
 
+    function beginLanguagePreferenceLoad() {
+      return {
+        requestId: ++languageLoadRequestId,
+        version: pendingLanguageSaves > 0 ? null : languageChangeVersion
+      };
+    }
+
+    // Both startup and the preferences panel use this guard: a late response
+    // must not replace a newer load, a user's choice, or an in-flight save.
+    function applyServerLanguagePreference(data, load) {
+      if (load.requestId !== languageLoadRequestId) return;
+      languagePreferenceSynced = true;
+      if (load.version !== languageChangeVersion || pendingLanguageSaves > 0) return;
+      if (data.language && typeof setLanguage === 'function') {
+        setLanguage(data.language);
+      }
+    }
+
+    function resetLanguagePreferenceSync() {
+      languageLoadRequestId += 1;
+      languagePreferenceSynced = false;
+      languageSyncPromise = null;
+    }
+
+    // Called only after the server confirms authentication. Keep it separate
+    // from the settings panel so a fresh browser restores its saved language.
+    function syncLanguagePreferenceAfterAuth() {
+      if (languagePreferenceSynced) return Promise.resolve();
+      if (languageSyncPromise) return languageSyncPromise;
+      const load = beginLanguagePreferenceLoad();
+      const syncing = (async () => {
+        try {
+          const response = await authenticatedFetch('/api/settings');
+          if (response.ok) {
+            applyServerLanguagePreference(await response.json(), load);
+          }
+        } catch {
+          // Keep the local language usable offline; a later load can retry.
+        }
+      })();
+      languageSyncPromise = syncing;
+      void syncing.then(() => {
+        if (languageSyncPromise === syncing) languageSyncPromise = null;
+      });
+      return syncing;
+    }
+
     /**
      * 加载偏好设置
      */
@@ -290,6 +342,7 @@ export function getSettingsCode() {
       // 主题模式
       const requestId = ++preferencesLoadRequestId;
       const formatVersionAtStart = defaultExportFormatChangeVersion;
+      const languageLoad = beginLanguagePreferenceLoad();
       const numericVersionsAtStart = {};
       Object.keys(numericPreferences).forEach(key => {
         const state = numericPreferences[key];
@@ -332,12 +385,7 @@ export function getSettingsCode() {
             formatSelect.value = data.defaultExportFormat;
             localStorage.setItem('defaultExportFormat', data.defaultExportFormat);
           }
-          if (langSelect && data.language) {
-            langSelect.value = data.language;
-            if (typeof setLanguage === 'function') {
-              setLanguage(data.language);
-            }
-          }
+          applyServerLanguagePreference(data, languageLoad);
           Object.keys(numericPreferences).forEach(key => {
             const state = numericPreferences[key];
             const input = document.getElementById(state.inputId);
@@ -415,9 +463,11 @@ export function getSettingsCode() {
      * @param {string} selectedLang - 选中的语言代码
      */
     async function saveLanguagePreference(selectedLang) {
+      languageChangeVersion += 1;
       if (typeof setLanguage === 'function') {
         setLanguage(selectedLang);
       }
+      pendingLanguageSaves += 1;
       try {
         const resp = await enqueuePreferenceSave(() => authenticatedFetch('/api/settings', {
           method: 'POST',
@@ -433,6 +483,8 @@ export function getSettingsCode() {
         }
       } catch (e) {
         // 静默网络异常或保持当前界面语言
+      } finally {
+        pendingLanguageSaves -= 1;
       }
     }
 

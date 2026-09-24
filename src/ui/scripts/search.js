@@ -109,7 +109,9 @@ export function getSearchCode() {
 
       const sortModeLabel = document.getElementById('sortModeLabel');
       if (sortModeLabel) {
-        sortModeLabel.textContent = isGrouped ? '组内排序' : '列表排序';
+        const labelKey = isGrouped ? 'sortModeLabel' : 'sortModeFlatLabel';
+        sortModeLabel.setAttribute('data-i18n', labelKey);
+        sortModeLabel.textContent = typeof t === 'function' ? t(labelKey) : (isGrouped ? '组内排序' : '列表排序');
       }
       scheduleSortMenuPlacementUpdate();
     }
@@ -360,7 +362,7 @@ export function getSearchCode() {
         if (metadata.totalCount >= 2) {
           searchableFamilyNames.set(key, resolveServiceGroupName(metadata).toLowerCase());
         } else {
-          searchableFamilyNames.set(key, ((typeof t === 'function' ? t('otherServices') : null) || '其他服务').toLowerCase());
+          searchableFamilyNames.set(key, getOtherServiceGroupName().toLowerCase());
         }
       });
 

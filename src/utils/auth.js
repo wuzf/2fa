@@ -7,6 +7,7 @@ import { createErrorResponse } from './response.js';
 import { checkRateLimit, createRateLimitResponse, getClientIdentifier, RATE_LIMIT_PRESETS } from './rateLimit.js';
 import { getAllowedOrigin, getSecurityHeaders } from './security.js';
 import { getLogger } from './logger.js';
+import { getSettings, KV_SETTINGS_KEY, sanitizeLanguage, VALID_LANGUAGES } from './settings.js';
 import {
 	ValidationError,
 	AuthenticationError,
@@ -28,7 +29,6 @@ const COOKIE_NAME = 'auth_token';
 // KV 存储键
 const KV_USER_PASSWORD_KEY = 'user_password';
 const KV_SETUP_COMPLETED_KEY = 'setup_completed';
-const KV_SETTINGS_KEY = 'settings';
 
 /**
  * 获取 JWT 过期天数（从 KV settings 读取）
@@ -567,7 +567,7 @@ export async function handleFirstTimeSetup(request, env) {
 			return createRateLimitResponse(rateLimitInfo, request);
 		}
 
-		const { password, confirmPassword } = await request.json();
+		const { password, confirmPassword, language } = await request.json();
 
 		// 验证密码
 		if (!password || !confirmPassword) {
@@ -600,8 +600,22 @@ export async function handleFirstTimeSetup(request, env) {
 			});
 		}
 
+		if (language !== undefined && (typeof language !== 'string' || !VALID_LANGUAGES.includes(language.trim()))) {
+			throw new ValidationError('无效的语言设置', {
+				field: 'language',
+				allowedValues: VALID_LANGUAGES,
+			});
+		}
+
 		// 加密密码（内部会再次验证密码强度）
 		const passwordHash = await hashPassword(password);
+
+		// 先保存语言，确保设置写入失败时仍可重试首次设置；旧客户端不修改已有偏好。
+		if (language !== undefined) {
+			const settings = await getSettings(env, { omitUnsetLanguage: true });
+			settings.language = sanitizeLanguage(language);
+			await env.SECRETS_KV.put(KV_SETTINGS_KEY, JSON.stringify(settings));
+		}
 
 		// 存储到 KV
 		await env.SECRETS_KV.put(KV_USER_PASSWORD_KEY, passwordHash);

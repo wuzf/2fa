@@ -142,6 +142,7 @@ export async function createSetupPage() {
   <script>
     const I18N = ${JSON.stringify(setupLocales)};
     let currentLang = 'zh-CN';
+    let setupLanguagePreference = 'auto';
 
     function t(key) {
       return (I18N[currentLang] && I18N[currentLang][key]) || (I18N['zh-CN'] && I18N['zh-CN'][key]) || key;
@@ -215,6 +216,7 @@ export async function createSetupPage() {
 
     function changeSetupLanguage(lang) {
       if (!I18N[lang]) return;
+      setupLanguagePreference = lang;
       try {
         localStorage.setItem('language', lang);
       } catch (e) {}
@@ -227,15 +229,16 @@ export async function createSetupPage() {
         const saved = localStorage.getItem('language');
         if (saved && I18N[saved]) {
           lang = saved;
+          setupLanguagePreference = saved;
         } else {
           const nav = (navigator.languages && navigator.languages[0]) || navigator.language || '';
-          if (/^zh\b/i.test(nav)) {
+          if (/^zh\\b/i.test(nav)) {
             if (/-(tw|hk|mo|hant)/i.test(nav)) {
               lang = 'zh-TW';
             } else {
               lang = 'zh-CN';
             }
-          } else if (/^en\b/i.test(nav)) {
+          } else if (/^en\\b/i.test(nav)) {
             lang = 'en';
           }
         }
@@ -368,7 +371,8 @@ export async function createSetupPage() {
           },
           body: JSON.stringify({
             password: password,
-            confirmPassword: confirmPassword
+            confirmPassword: confirmPassword,
+            language: setupLanguagePreference
           })
         });
 

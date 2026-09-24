@@ -1498,6 +1498,7 @@ OneDrive 和 Google Drive 使用同一套目标管理模型:
 
 - `password`: 新管理员密码
 - `confirmPassword`: 确认密码，必须与 `password` 完全一致
+- `language`: 可选，初始化时保存的语言偏好，支持 `auto`、`zh-CN`、`zh-TW`、`en`；`auto` 表示跟随浏览器语言
 
 **密码规则**:
 
@@ -1646,7 +1647,7 @@ Set-Cookie: auth_token=<JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-Age=2
 
 **认证**: ✅ 需要
 
-**描述**: 获取当前系统设置。若设置不存在或已损坏，服务端会自动回退到默认值。
+**描述**: 获取当前系统设置。若设置不存在或已损坏，服务端会自动回退到默认值；尚未设置的语言偏好不返回 `language` 字段，以保留客户端已有的语言选择。
 
 **成功响应** (200 OK):
 
@@ -1663,6 +1664,7 @@ Set-Cookie: auth_token=<JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-Age=2
 - `jwtExpiryDays`: JWT 登录有效期，范围 `1~365`
 - `maxBackups`: 自动备份保留数量，范围 `0~1000`；`0` 表示不限制
 - `defaultExportFormat`: 默认导出格式，支持 `txt`、`json`、`csv`、`html`
+- `language`: 已保存的语言偏好，支持 `auto`、`zh-CN`、`zh-TW`、`en`。字段缺失表示尚未设置，与明确保存的 `auto` 不同
 
 **错误响应**:
 
@@ -1700,6 +1702,7 @@ Set-Cookie: auth_token=<JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-Age=2
 
 - 可只提交任意一个字段进行局部更新
 - `defaultExportFormat` 不仅影响导出按钮默认选项，也会影响新创建备份文件和远程自动备份的扩展名
+- `language` 支持 `auto`、`zh-CN`、`zh-TW`、`en`；保存其他字段不会将尚未设置的语言变为 `auto`
 
 **成功响应** (200 OK):
 

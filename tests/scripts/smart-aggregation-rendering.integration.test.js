@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { getCoreCode } from '../../src/ui/scripts/core.js';
+import { getI18nCode } from '../../src/ui/scripts/i18n.js';
 import { getSearchCode } from '../../src/ui/scripts/search.js';
 import { getServiceAggregationCode } from '../../src/ui/scripts/serviceAggregation.js';
 import { getStateCode } from '../../src/ui/scripts/state.js';
@@ -450,6 +451,7 @@ function createHarness(initialStorage = {}, overrides = {}) {
     function hideQRScanner() {}
     function hideImportModal() {}
     function showCenterToast() {}
+    ${overrides.i18n ? getI18nCode() : ''}
     ${getStateCode()}
     ${getCoreCode()}
     ${getServiceAggregationCode()}
@@ -460,7 +462,9 @@ function createHarness(initialStorage = {}, overrides = {}) {
       initSortDropdownOutsideClose,
       copyNextOTP,
       copyOTP,
+      renderSecrets,
       renderFilteredSecrets,
+      ${overrides.i18n ? 'setLanguage,' : ''}
       restoreGroupSortPreference,
       restoreSortPreference,
       restoreViewModePreference,
@@ -755,5 +759,56 @@ describe('smart aggregation rendering integration', () => {
 		expect(api.getOTPIntervalIds()).toEqual([]);
 		expect(clearInterval).toHaveBeenCalledTimes(TEST_SECRETS.length);
 		expect(document.getElementById('secretsList').innerHTML).toBe('');
+	});
+});
+
+describe('translated empty states', () => {
+	it('keeps an empty vault translated after loading and changing languages', async () => {
+		const { api, document } = createHarness({ language: 'en' }, { i18n: true });
+		api.setSecrets([]);
+		await api.renderSecrets();
+
+		const emptyState = document.getElementById('emptyState');
+		expect(emptyState.querySelector('h3').textContent).toBe('No Keys Yet');
+		expect(emptyState.querySelector('p').textContent).toBe('Add your two-factor authentication keys to generate verification codes here');
+		expect(emptyState.querySelector('button').textContent).toBe('Add Key');
+		expect(emptyState.querySelector('button').getAttribute('onclick')).toBe('showAddModal()');
+
+		api.setLanguage('zh-TW');
+		expect(emptyState.querySelector('h3').textContent).toBe('尚無金鑰');
+		expect(emptyState.querySelector('p').textContent).toBe('新增帳號的雙重驗證金鑰，在此獲取驗證碼');
+		expect(emptyState.querySelector('button').textContent).toBe('新增金鑰');
+
+		await api.renderSecrets();
+		expect(emptyState.querySelector('h3').textContent).toBe('尚無金鑰');
+		api.setLanguage('zh-CN');
+		expect(emptyState.querySelector('h3').textContent).toBe('还没有密钥');
+		expect(emptyState.querySelector('button').textContent).toBe('添加密钥');
+	});
+
+	it('translates unmatched search results and preserves the query when switching languages', async () => {
+		const { api, document } = createHarness({ language: 'en' }, { i18n: true });
+		api.setSecrets(TEST_SECRETS);
+		document.getElementById('searchInput').value = 'not-present';
+		await api.filterSecrets('not-present');
+
+		const emptyState = document.getElementById('emptyState');
+		expect(emptyState.querySelector('h3').textContent).toBe('No matching keys found');
+		expect(emptyState.querySelector('p').textContent).toBe('Try searching with different keywords');
+		expect(emptyState.querySelector('button').textContent).toBe('Clear search');
+		expect(emptyState.querySelector('button').getAttribute('onclick')).toBe('clearSearch()');
+
+		api.setLanguage('zh-TW');
+		expect(emptyState.querySelector('h3').textContent).toBe('未找到相符的金鑰');
+		expect(emptyState.querySelector('p').textContent).toBe('嘗試使用不同的關鍵字搜尋');
+		expect(emptyState.querySelector('button').textContent).toBe('清除搜尋');
+		expect(document.getElementById('searchInput').value).toBe('not-present');
+		expect(document.getElementById('secretsList').style.display).toBe('none');
+
+		document.getElementById('searchInput').value = '';
+		api.setSecrets([]);
+		await api.filterSecrets('');
+		expect(emptyState.querySelector('h3').textContent).toBe('尚無金鑰');
+		expect(emptyState.querySelector('button').getAttribute('onclick')).toBe('showAddModal()');
 	});
 });

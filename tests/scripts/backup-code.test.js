@@ -19,12 +19,12 @@ describe('backup module code generation', () => {
 		expect(code).toContain("'html': 'HTML'");
 	});
 
-  it('shows the stored backup format in the restore UI', () => {
-    const code = getBackupCode();
+	it('shows the stored backup format in the restore UI', () => {
+		const code = getBackupCode();
 
-    expect(code).toContain('function getBackupStoredFormat(backup)');
-    expect(code).toContain('const formatLabel = getBackupExportFormatLabel(getBackupStoredFormat(backup));');
-		expect(code).toContain("option.title = new Date(backup.created).toLocaleString('zh-CN') + ' | ' + formatLabel;");
+		expect(code).toContain('function getBackupStoredFormat(backup)');
+		expect(code).toContain('const formatLabel = getBackupExportFormatLabel(getBackupStoredFormat(backup));');
+		expect(code).toContain("option.title = formatI18nDate(backup.created) + ' | ' + formatLabel;");
 		expect(code).toContain('const previewSummary =');
 	});
 
@@ -32,7 +32,7 @@ describe('backup module code generation', () => {
 		const code = getBackupCode();
 
 		expect(code).toContain('const BACKUP_LIST_PAGE_SIZE = 50;');
-		expect(code).toContain("const params = new URLSearchParams({ limit: String(BACKUP_LIST_PAGE_SIZE) });");
+		expect(code).toContain('const params = new URLSearchParams({ limit: String(BACKUP_LIST_PAGE_SIZE) });');
 		expect(code).toContain('async function loadMoreBackupList()');
 		expect(code).not.toContain('/api/backup?limit=all');
 	});
@@ -42,27 +42,29 @@ describe('backup module code generation', () => {
 
 		expect(code).toContain('const isEmptyBackup = !isPartialBackup && !hasSecrets && Number(data.count || 0) === 0;');
 		expect(code).toContain('const emptyBackupMessage = isEmptyBackup ?');
-    expect(code).toContain('confirmRestoreBtn.disabled = isPartialBackup || isEmptyBackup;');
-  });
+		expect(code).toContain('confirmRestoreBtn.disabled = isPartialBackup || isEmptyBackup;');
+	});
 
-  it('escapes previewed secret fields before injecting restore rows into the DOM', () => {
-    const code = getBackupCode();
+	it('escapes previewed secret fields before injecting restore rows into the DOM', () => {
+		const code = getBackupCode();
 
-    expect(code).toContain("'<td class=\"service-name\">' + escapeHTML(secret.name || '') + '</td>'");
-    expect(code).toContain("'<td class=\"account-info\">' + escapeHTML(secret.account || secret.service || '无账户信息') + '</td>'");
-  });
+		expect(code).toContain("'<td class=\"service-name\">' + escapeHTML(secret.name || '') + '</td>'");
+		expect(code).toContain(
+			"'<td class=\"account-info\">' + escapeHTML(secret.account || secret.service || t('restoreNoAccount')) + '</td>'",
+		);
+	});
 
-  it('ignores stale preview responses when the user switches backups quickly', () => {
-    const code = getBackupCode();
+	it('ignores stale preview responses when the user switches backups quickly', () => {
+		const code = getBackupCode();
 
-    expect(code).toContain('let backupPreviewRequestToken = 0;');
+		expect(code).toContain('let backupPreviewRequestToken = 0;');
 		expect(code).toContain('function isActiveBackupPreviewRequest(backup, requestToken)');
 		expect(code).toContain('if (!isActiveBackupPreviewRequest(backup, requestToken)) {');
 	});
 
-  it('ignores stale uploaded-file read failures when the user switches backups quickly', () => {
-    const code = getBackupCode();
+	it('ignores stale uploaded-file read failures when the user switches backups quickly', () => {
+		const code = getBackupCode();
 
-    expect(code).toMatch(/catch \(error\) \{\s+if \(requestToken !== backupPreviewRequestToken\) \{\s+return;\s+\}/);
-  });
+		expect(code).toMatch(/catch \(error\) \{\s+if \(requestToken !== backupPreviewRequestToken\) \{\s+return;\s+\}/);
+	});
 });

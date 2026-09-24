@@ -215,6 +215,7 @@ export function getCoreCode() {
         const loadedSecrets = await response.json();
         if (loadGeneration !== secretLoadGeneration) return;
         secrets = loadedSecrets;
+        if (typeof syncLanguagePreferenceAfterAuth === 'function') void syncLanguagePreferenceAfterAuth();
 
         // 成功获取数据后，保存到 localStorage 作为缓存
         cacheSecretsLocally();
@@ -407,9 +408,12 @@ export function getCoreCode() {
         secretsList.style.display = 'none';
         emptyState.innerHTML =
           '<div class="icon" aria-hidden="true">${dialogIcon('search')}</div>' +
-          '<h3>未找到匹配的密钥</h3>' +
-          '<p>尝试使用不同的关键字搜索</p>' +
-          '<button type="button" class="workspace-action" onclick="clearSearch()">清除搜索</button>';
+          '<h3 data-i18n="searchNoMatch">未找到匹配的密钥</h3>' +
+          '<p data-i18n="searchNoMatchDesc">尝试使用不同的关键字搜索</p>' +
+          '<button type="button" class="workspace-action" data-i18n="searchClearAriaLabel" onclick="clearSearch()">清除搜索</button>';
+        if (typeof applyTranslations === 'function') {
+          applyTranslations(emptyState);
+        }
         emptyState.style.display = 'block';
         return;
       }
@@ -420,9 +424,12 @@ export function getCoreCode() {
         secretsList.style.display = 'none';
         emptyState.innerHTML =
           '<div class="icon" aria-hidden="true">${dialogIcon('key')}</div>' +
-          '<h3>还没有密钥</h3>' +
-          '<p>添加账户的两步验证密钥，在这里获取验证码</p>' +
-          '<button type="button" class="workspace-action" onclick="showAddModal()">添加密钥</button>';
+          '<h3 data-i18n="emptyTitle">还没有密钥</h3>' +
+          '<p data-i18n="emptyDesc">添加账户的两步验证密钥，在这里获取验证码</p>' +
+          '<button type="button" class="workspace-action" data-i18n="emptyAddBtn" onclick="showAddModal()">添加密钥</button>';
+        if (typeof applyTranslations === 'function') {
+          applyTranslations(emptyState);
+        }
         emptyState.style.display = 'block';
         return;
       }
@@ -981,8 +988,6 @@ export function getCoreCode() {
       if (!secret) return;
       
       editingId = id;
-      document.getElementById('modalTitle').textContent = '编辑密钥';
-      document.getElementById('submitBtn').textContent = '更新';
       document.getElementById('secretId').value = id;
       document.getElementById('secretName').value = secret.name;
       document.getElementById('secretService').value = secret.account || '';
@@ -1011,6 +1016,7 @@ export function getCoreCode() {
         toggleAdvancedOptions();
       }
       
+      syncSecretDialogTranslations();
       const modal = document.getElementById('secretModal');
       modal.style.display = 'flex';
       setTimeout(() => modal.classList.add('show'), 10);
@@ -1139,9 +1145,8 @@ export function getCoreCode() {
       }
 
       const submitBtn = document.getElementById('submitBtn');
-      const originalText = submitBtn.textContent;
-      submitBtn.textContent = '保存中...';
       submitBtn.disabled = true;
+      syncSecretDialogTranslations();
 
       // 🔒 关键修复：使用队列确保保存操作串行执行，避免并发覆盖
       // 当快速连续编辑多个密钥时，后端的读-修改-写操作会产生race condition
@@ -1214,14 +1219,14 @@ export function getCoreCode() {
           console.error('❌ [保存队列] 保存失败:', error);
           showCenterToast('❌', '保存失败：' + error.message);
         } finally {
-          submitBtn.textContent = originalText;
           submitBtn.disabled = false;
+          syncSecretDialogTranslations();
         }
       }).catch(err => {
         // 队列执行失败的最终兜底
         console.error('❌ [保存队列] 队列执行错误:', err);
-        submitBtn.textContent = originalText;
         submitBtn.disabled = false;
+        syncSecretDialogTranslations();
       });
     }
 

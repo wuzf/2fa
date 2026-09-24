@@ -310,9 +310,13 @@ export function getServiceAggregationCode() {
       return identity;
     }
 
+    function getOtherServiceGroupName() {
+      return typeof t === 'function' ? t('otherServices') : '其他服务';
+    }
+
     function humanizeFamilyDomain(domain) {
       const brand = String(domain || '').split('.')[0].replace(/[-_]+/g, ' ').trim();
-      if (!brand) return '其他服务';
+      if (!brand) return getOtherServiceGroupName();
       return brand.charAt(0).toLocaleUpperCase() + brand.slice(1);
     }
 
@@ -329,7 +333,7 @@ export function getServiceAggregationCode() {
         return humanizeFamilyDomain(metadata.domain);
       }
 
-      return metadata.originalNames[0] || '其他服务';
+      return metadata.originalNames[0] || getOtherServiceGroupName();
     }
 
     function isServiceGroupMetadataCacheValid(cached, allSecrets) {
@@ -392,7 +396,7 @@ export function getServiceAggregationCode() {
       const groupedFamilies = new Map();
       const otherGroup = {
         key: OTHER_SERVICE_GROUP_KEY,
-        name: '其他服务',
+        name: getOtherServiceGroupName(),
         items: [],
         matchedCount: 0,
         totalCount: 0,

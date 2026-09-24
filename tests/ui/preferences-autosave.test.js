@@ -1,7 +1,9 @@
 import { createContext, runInContext } from 'node:vm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMainPage } from '../../src/ui/page.js';
+import { getI18nCode } from '../../src/ui/scripts/i18n.js';
 import { getSettingsCode } from '../../src/ui/scripts/settings.js';
+import { handleGetSettings } from '../../src/api/settings.js';
 
 const html = await (await createMainPage()).text();
 const reply = (data, ok = true) => ({ ok, json: async () => data });
@@ -43,7 +45,12 @@ function createHarness({ settings = { jwtExpiryDays: 30, maxBackups: 100, defaul
 	});
 	const storage = new Map();
 	const context = createContext({
-		document: { getElementById: (id) => elements.get(id), querySelectorAll: () => [] },
+		document: {
+			documentElement: { setAttribute: vi.fn() },
+			getElementById: (id) => elements.get(id),
+			querySelectorAll: () => [],
+		},
+		navigator: { language: 'zh-CN' },
 		localStorage: { getItem: (key) => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) },
 		authenticatedFetch: fetch,
 		getOTPAnimationMode: () => 'none',
@@ -51,11 +58,12 @@ function createHarness({ settings = { jwtExpiryDays: 30, maxBackups: 100, defaul
 		setTimeout,
 		clearTimeout,
 	});
-	runInContext(getSettingsCode(), context);
+	runInContext(getI18nCode() + getSettingsCode(), context);
 	const event = (id, name) => runInContext(elements.get(id).attributes[name], context);
 	return {
 		api: context,
 		settings,
+		storage,
 		fetch,
 		elements,
 		input(id, value) {
@@ -279,5 +287,79 @@ describe('numeric preference autosave', () => {
 		expect(reloaded.elements.get('settingsJwtExpiryDays').value).toBe('120');
 		expect(reloaded.elements.get('settingsMaxBackups').value).toBe('0');
 		expect(reloaded.posts()).toEqual([]);
+	});
+});
+
+describe('language preference loading', () => {
+	it('preserves a setup language stored only in this browser when the server has no language preference', async () => {
+		const env = { SECRETS_KV: { get: async () => JSON.stringify({ maxBackups: 50 }) }, LOG_LEVEL: 'ERROR' };
+		const h = createHarness({
+			fetchImpl: () => handleGetSettings({ method: 'GET', headers: new Headers() }, env),
+		});
+		h.api.setLanguage('en');
+		await h.api.loadPreferences();
+		expect(h.api.getLanguage()).toBe('en');
+		expect(h.elements.get('settingsLanguage').value).toBe('en');
+		expect(h.storage.get('language')).toBe('en');
+		expect(h.elements.get('settingsMaxBackups').value).toBe('50');
+	});
+
+	it('applies an explicitly saved auto preference even when this browser previously selected English', async () => {
+		const env = { SECRETS_KV: { get: async () => JSON.stringify({ language: 'auto' }) }, LOG_LEVEL: 'ERROR' };
+		const h = createHarness({
+			fetchImpl: () => handleGetSettings({ method: 'GET', headers: new Headers() }, env),
+		});
+		h.api.setLanguage('en');
+		await h.api.loadPreferences();
+		expect(h.api.getLanguagePreference()).toBe('auto');
+		expect(h.api.getLanguage()).toBe('zh-CN');
+		expect(h.elements.get('settingsLanguage').value).toBe('auto');
+	});
+
+	it('applies the saved server language when there are no local edits', async () => {
+		const h = createHarness({ settings: { language: 'zh-TW' } });
+		await h.api.loadPreferences();
+		expect(h.api.getLanguage()).toBe('zh-TW');
+		expect(h.elements.get('settingsLanguage').value).toBe('zh-TW');
+		expect(h.storage.get('language')).toBe('zh-TW');
+	});
+
+	it('keeps a newly saved language when an earlier preference load returns late', async () => {
+		const load = deferred();
+		const h = createHarness({
+			settings: { language: 'auto' },
+			fetchImpl: (_url, options, settings) => {
+				if (options?.method !== 'POST') {
+					return load.promise;
+				}
+				Object.assign(settings, JSON.parse(options.body));
+				return reply({ success: true, settings: { ...settings } });
+			},
+		});
+		const loading = h.api.loadPreferences();
+		await h.api.saveLanguagePreference('en');
+		load.resolve(reply({ language: 'auto' }));
+		await loading;
+		expect(h.settings.language).toBe('en');
+		expect(h.api.getLanguage()).toBe('en');
+		expect(h.elements.get('settingsLanguage').value).toBe('en');
+		expect(h.storage.get('language')).toBe('en');
+	});
+
+	it('ignores a preference load started while a language save is pending', async () => {
+		const load = deferred();
+		const save = deferred();
+		const h = createHarness({
+			fetchImpl: (_url, options) => (options?.method === 'POST' ? save.promise : load.promise),
+		});
+		const saving = h.api.saveLanguagePreference('en');
+		const loading = h.api.loadPreferences();
+		save.resolve(reply({ success: true, settings: { language: 'en' } }));
+		await saving;
+		load.resolve(reply({ language: 'auto' }));
+		await loading;
+		expect(h.api.getLanguage()).toBe('en');
+		expect(h.elements.get('settingsLanguage').value).toBe('en');
+		expect(h.storage.get('language')).toBe('en');
 	});
 });
