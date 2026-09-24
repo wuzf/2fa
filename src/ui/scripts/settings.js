@@ -313,7 +313,13 @@ export function getSettingsCode() {
         formatSelect.value = localDefaultFormat;
       }
 
-      // 导出偏好格式、登录有效期和备份保留数量（从服务器读取）
+      const langSelect = document.getElementById('settingsLanguage');
+      const localLanguage = (typeof getLanguagePreference === 'function' ? getLanguagePreference() : (typeof localStorage !== 'undefined' ? localStorage.getItem('language') : null)) || 'auto';
+      if (langSelect) {
+        langSelect.value = localLanguage;
+      }
+
+      // 导出偏好格式、语言偏好、登录有效期和备份保留数量（从服务器读取）
       try {
         const resp = await authenticatedFetch('/api/settings');
         if (resp.ok) {
@@ -325,6 +331,12 @@ export function getSettingsCode() {
           if (formatSelect && data.defaultExportFormat && defaultExportFormatChangeVersion === formatVersionAtStart) {
             formatSelect.value = data.defaultExportFormat;
             localStorage.setItem('defaultExportFormat', data.defaultExportFormat);
+          }
+          if (langSelect && data.language) {
+            langSelect.value = data.language;
+            if (typeof setLanguage === 'function') {
+              setLanguage(data.language);
+            }
           }
           Object.keys(numericPreferences).forEach(key => {
             const state = numericPreferences[key];
@@ -395,6 +407,32 @@ export function getSettingsCode() {
           return;
         }
         showCenterToast('❌', '网络错误，请稍后重试');
+      }
+    }
+
+    /**
+     * 保存界面语言偏好
+     * @param {string} selectedLang - 选中的语言代码
+     */
+    async function saveLanguagePreference(selectedLang) {
+      if (typeof setLanguage === 'function') {
+        setLanguage(selectedLang);
+      }
+      try {
+        const resp = await enqueuePreferenceSave(() => authenticatedFetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ language: selectedLang }),
+        }));
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+          const msg = (typeof t === 'function' ? t('languageSaved') : null) || '语言偏好已保存';
+          if (typeof showCenterToast === 'function') {
+            showCenterToast('✅', msg);
+          }
+        }
+      } catch (e) {
+        // 静默网络异常或保持当前界面语言
       }
     }
 

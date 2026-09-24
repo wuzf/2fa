@@ -16,6 +16,7 @@ import { getBackupCode } from '../../src/ui/scripts/backup.js';
 import { getCoreCode } from '../../src/ui/scripts/core.js';
 import { getExportCode } from '../../src/ui/scripts/export.js';
 import { getGoogleMigrationCode } from '../../src/ui/scripts/googleMigration.js';
+import { getI18nCode } from '../../src/ui/scripts/i18n.js';
 import { getImportCode } from '../../src/ui/scripts/import/index.js';
 import { getCoreScripts, getModuleCode, getScripts } from '../../src/ui/scripts/index.js';
 import { getModuleLoaderCode } from '../../src/ui/scripts/moduleLoader.js';
@@ -45,6 +46,7 @@ function assertParses(label, code) {
 
 describe('emitted script modules parse as valid JavaScript', () => {
 	it.each([
+		['i18n', getI18nCode],
 		['state', getStateCode],
 		['time', getTimeCode],
 		['auth', getAuthCode],

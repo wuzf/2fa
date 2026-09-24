@@ -1,4 +1,4 @@
-﻿/**
+/**
  * UI页面生成模块 - 完整版本
  * 包含所有原版功能：搜索、导入导出、二维码、编辑删除等
  * 支持代码分割和懒加载优化
@@ -84,7 +84,7 @@ function getHTMLStart() {
   <!-- Security -->
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
 
-  <!-- Theme Initialization - Must run before CSS to prevent FOUC -->
+  <!-- Theme & Language Initialization - Must run before CSS to prevent FOUC -->
   <script>
     (function() {
       try {
@@ -94,6 +94,16 @@ function getHTMLStart() {
         // 设置主题：dark 强制深色，light 强制浅色，auto 跟随系统
         const dataTheme = (theme === 'dark' || (theme === 'auto' && prefersDark)) ? 'dark' : 'light';
         document.documentElement.setAttribute('data-theme', dataTheme);
+
+        let lang = localStorage.getItem('language') || 'auto';
+        if (lang === 'auto') {
+          const navLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
+          if (navLang.startsWith('zh-tw') || navLang.startsWith('zh-hk') || navLang.startsWith('zh-mo') || navLang.includes('hant')) lang = 'zh-TW';
+          else if (navLang.startsWith('zh')) lang = 'zh-CN';
+          else if (navLang.startsWith('en')) lang = 'en';
+          else lang = 'zh-CN';
+        }
+        document.documentElement.setAttribute('lang', lang);
       } catch (e) {
         // Fallback to light theme if localStorage access fails
         document.documentElement.setAttribute('data-theme', 'light');
@@ -145,12 +155,13 @@ function getHTMLBody() {
       >
         <div class="clock-warning-message">
           <span class="clock-warning-icon" aria-hidden="true">${dialogIcon('warning')}</span>
-          <span id="clockWarningText" class="clock-warning-text">本地时间可能不准确，验证码可能无效。</span>
+          <span id="clockWarningText" class="clock-warning-text" data-i18n="clockWarningText">本地时间可能不准确，验证码可能无效。</span>
         </div>
         <button
           type="button"
           id="clockSyncRetryButton"
           class="clock-sync-retry-button"
+          data-i18n="clockSyncRetryButton"
           onclick="retryClockSync()"
         >重新校时</button>
       </div>
@@ -170,6 +181,7 @@ function getHTMLBody() {
                    name="search-query"
                    class="search-input"
                    placeholder="搜索服务或账户名称"
+                   data-i18n-placeholder="searchInputPlaceholder"
                    oninput="scheduleSecretFilter(this.value)"
                    autocomplete="off"
                    autocorrect="off"
@@ -177,50 +189,51 @@ function getHTMLBody() {
                    spellcheck="false"
                    role="searchbox"
                    aria-label="搜索2FA密钥"
+                   data-i18n-aria-label="searchInputAriaLabel"
                    data-form-type="other"
                    data-lpignore="true"
                    data-1p-ignore="true"
                    data-bwignore="true"
                    readonly
                    onfocus="this.removeAttribute('readonly')">
-            <button class="search-clear" aria-label="清除搜索" id="searchClear" onclick="clearSearch()" style="display: none;">${dialogIcon('close')}</button>
+            <button class="search-clear" aria-label="清除搜索" data-i18n-aria-label="searchClearAriaLabel" id="searchClear" onclick="clearSearch()" style="display: none;">${dialogIcon('close')}</button>
       </div>
           <div class="sort-controls">
             <details class="sort-dropdown" id="sortDropdown">
-              <summary class="sort-trigger" aria-label="显示与排序" title="显示与排序">
+              <summary class="sort-trigger" aria-label="显示与排序" title="显示与排序" data-i18n-aria-label="sortTriggerLabel" data-i18n-title="sortTriggerLabel">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M3 6h18"></path>
                   <path d="M6 12h12"></path>
                   <path d="M10 18h4"></path>
                 </svg>
-                <span class="sort-trigger-label">显示与排序</span>
+                <span class="sort-trigger-label" data-i18n="sortTriggerLabel">显示与排序</span>
               </summary>
               <div class="sort-menu" aria-label="显示与排序选项">
                 <div class="sort-menu-section">
-                  <div class="sort-menu-label" id="viewModeLabel">显示方式</div>
+                  <div class="sort-menu-label" id="viewModeLabel" data-i18n="viewModeLabel">显示方式</div>
                   <div class="view-mode-segmented" role="group" aria-labelledby="viewModeLabel">
-                    <button type="button" class="view-mode-option active" data-view-mode="grouped" aria-pressed="true" onclick="selectViewMode('grouped')">智能聚合</button>
-                    <button type="button" class="view-mode-option" data-view-mode="flat" aria-pressed="false" onclick="selectViewMode('flat')">全部平铺</button>
+                    <button type="button" class="view-mode-option active" data-view-mode="grouped" aria-pressed="true" data-i18n="viewModeGrouped" onclick="selectViewMode('grouped')">智能聚合</button>
+                    <button type="button" class="view-mode-option" data-view-mode="flat" aria-pressed="false" data-i18n="viewModeFlat" onclick="selectViewMode('flat')">全部平铺</button>
                   </div>
                 </div>
                 <div class="sort-menu-divider"></div>
                 <div class="sort-menu-section group-sort-only" id="groupSortSection">
-                  <div class="sort-menu-label" id="groupSortLabel">聚合分组</div>
+                  <div class="sort-menu-label" id="groupSortLabel" data-i18n="groupSortLabel">聚合分组</div>
                   <div class="view-mode-segmented" role="group" aria-labelledby="groupSortLabel">
-                    <button type="button" class="group-sort-option active" data-group-sort="name-asc" aria-pressed="true" onclick="selectGroupSort('name-asc')">名称 A-Z</button>
-                    <button type="button" class="group-sort-option" data-group-sort="name-desc" aria-pressed="false" onclick="selectGroupSort('name-desc')">名称 Z-A</button>
+                    <button type="button" class="group-sort-option active" data-group-sort="name-asc" aria-pressed="true" data-i18n="groupSortNameAsc" onclick="selectGroupSort('name-asc')">名称 A-Z</button>
+                    <button type="button" class="group-sort-option" data-group-sort="name-desc" aria-pressed="false" data-i18n="groupSortNameDesc" onclick="selectGroupSort('name-desc')">名称 Z-A</button>
                   </div>
                 </div>
                 <div class="sort-menu-divider group-sort-only"></div>
                 <div class="sort-menu-section">
-                  <div class="sort-menu-label" id="sortModeLabel">组内排序</div>
+                  <div class="sort-menu-label" data-i18n="sortModeLabel" id="sortModeLabel">组内排序</div>
                   <div class="sort-options" role="group" aria-labelledby="sortModeLabel">
-                    <button type="button" aria-pressed="true" class="sort-option active" data-sort="oldest-first" onclick="selectSort('oldest-first')">最早添加</button>
-                    <button type="button" aria-pressed="false" class="sort-option" data-sort="newest-first" onclick="selectSort('newest-first')">最晚添加</button>
-                    <button type="button" aria-pressed="false" class="sort-option flat-sort-only" data-sort="name-asc" onclick="selectSort('name-asc')">服务名称 A-Z</button>
-                    <button type="button" aria-pressed="false" class="sort-option flat-sort-only" data-sort="name-desc" onclick="selectSort('name-desc')">服务名称 Z-A</button>
-                    <button type="button" aria-pressed="false" class="sort-option" data-sort="account-asc" onclick="selectSort('account-asc')">账户名称 A-Z</button>
-                    <button type="button" aria-pressed="false" class="sort-option" data-sort="account-desc" onclick="selectSort('account-desc')">账户名称 Z-A</button>
+                    <button type="button" aria-pressed="true" class="sort-option active" data-sort="oldest-first" data-i18n="sortOldestFirst" onclick="selectSort('oldest-first')">最早添加</button>
+                    <button type="button" aria-pressed="false" class="sort-option" data-sort="newest-first" data-i18n="sortNewestFirst" onclick="selectSort('newest-first')">最晚添加</button>
+                    <button type="button" aria-pressed="false" class="sort-option flat-sort-only" data-sort="name-asc" data-i18n="sortServiceNameAsc" onclick="selectSort('name-asc')">服务名称 A-Z</button>
+                    <button type="button" aria-pressed="false" class="sort-option flat-sort-only" data-sort="name-desc" data-i18n="sortServiceNameDesc" onclick="selectSort('name-desc')">服务名称 Z-A</button>
+                    <button type="button" aria-pressed="false" class="sort-option" data-sort="account-asc" data-i18n="sortAccountNameAsc" onclick="selectSort('account-asc')">账户名称 A-Z</button>
+                    <button type="button" aria-pressed="false" class="sort-option" data-sort="account-desc" data-i18n="sortAccountNameDesc" onclick="selectSort('account-desc')">账户名称 Z-A</button>
                   </div>
                 </div>
               </div>
@@ -243,7 +256,7 @@ function getHTMLBody() {
       <div class="menu-overlay" id="menuOverlay" onclick="closeActionMenu()"></div>
       
       <div id="loading" class="loading">
-        <div>正在加载密钥...</div>
+        <div data-i18n="loadingSecrets">正在加载密钥...</div>
       </div>
       
       <div id="secretsList" class="secrets-list" style="display: none;">
@@ -252,9 +265,9 @@ function getHTMLBody() {
       
       <div id="emptyState" class="empty-state" style="display: none;">
         <div class="icon" aria-hidden="true">${dialogIcon('key')}</div>
-        <h3>还没有密钥</h3>
-        <p>添加账户的两步验证密钥，在这里获取验证码</p>
-<button type="button" class="workspace-action" onclick="showAddModal()">添加密钥</button>
+        <h3 data-i18n="emptyTitle">还没有密钥</h3>
+        <p data-i18n="emptyDesc">添加账户的两步验证密钥，在这里获取验证码</p>
+<button type="button" class="workspace-action" data-i18n="emptyAddBtn" onclick="showAddModal()">添加密钥</button>
       </div>
     </div>
   </div>
@@ -311,7 +324,7 @@ function getHTMLBody() {
   <div id="secretModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 id="modalTitle">添加新密钥</h2>
+        <h2 id="modalTitle" data-i18n="addSecretTitle">添加新密钥</h2>
         <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideSecretModal()">${dialogIcon('close')}</button>
       </div>
       
@@ -319,18 +332,18 @@ function getHTMLBody() {
         <input type="hidden" id="secretId" value="">
 
         <div class="form-group">
-          <label for="secretName">服务名称 *</label>
-          <input type="text" id="secretName" required placeholder="例如：GitHub, Google, Microsoft" autocomplete="off">
+          <label for="secretName" data-i18n="secretNameLabel">服务名称 *</label>
+          <input type="text" id="secretName" required placeholder="例如：GitHub, Google, Microsoft" data-i18n-placeholder="secretNamePlaceholder" autocomplete="off">
         </div>
 
         <div class="form-group">
-          <label for="secretService">账户名称</label>
-          <input type="text" id="secretService" placeholder="例如：your@email.com 或 用户名" autocomplete="off">
+          <label for="secretService" data-i18n="secretServiceLabel">账户名称</label>
+          <input type="text" id="secretService" placeholder="例如：your@email.com 或 用户名" data-i18n-placeholder="secretServicePlaceholder" autocomplete="off">
         </div>
 
         <div class="form-group">
-          <label for="secretKey">密钥 (Base32) *</label>
-          <input type="text" id="secretKey" required placeholder="输入16位或更长的Base32密钥" autocomplete="off">
+          <label for="secretKey" data-i18n="secretKeyLabel">密钥 (Base32) *</label>
+          <input type="text" id="secretKey" required placeholder="输入16位或更长的Base32密钥" data-i18n-placeholder="secretKeyPlaceholder" autocomplete="off">
         </div>
         
         <!-- 高级参数区域 -->
@@ -338,32 +351,32 @@ function getHTMLBody() {
           <div class="section-header">
             <label>
               <input type="checkbox" id="showAdvanced" onchange="toggleAdvancedOptions()"> 
-              高级设置 (可选)
+              <span data-i18n="advancedOptionsLabel">高级设置 (可选)</span>
             </label>
           </div>
           
           <div id="advancedOptions" class="advanced-options" style="display: none;">
             <div class="form-row">
               <div class="form-group-small">
-                <label for="secretType">类型</label>
+                <label for="secretType" data-i18n="secretTypeLabel">类型</label>
                 <select id="secretType" onchange="updateAdvancedOptionsForType()">
-                  <option value="TOTP" selected>TOTP (时间基准)</option>
-                  <option value="HOTP">HOTP (计数器基准)</option>
+                  <option value="TOTP" selected data-i18n="secretTypeTotp">TOTP (时间基准)</option>
+                  <option value="HOTP" data-i18n="secretTypeHotp">HOTP (计数器基准)</option>
                 </select>
               </div>
               
               <div class="form-group-small" id="digitsGroup">
-                <label for="secretDigits">位数</label>
+                <label for="secretDigits" data-i18n="secretDigitsLabel">位数</label>
                 <select id="secretDigits">
-                  <option value="6" selected>6位</option>
-                  <option value="8">8位</option>
+                  <option value="6" selected data-i18n="digitsSix">6位</option>
+                  <option value="8" data-i18n="digitsEight">8位</option>
                 </select>
               </div>
             </div>
             
             <div class="form-row">
               <div class="form-group-small" id="periodGroup">
-                <label for="secretPeriod">周期(秒)</label>
+                <label for="secretPeriod" data-i18n="secretPeriodLabel">周期(秒)</label>
                 <select id="secretPeriod">
                   <option value="30" selected>30秒</option>
                   <option value="60">60秒</option>
@@ -372,7 +385,7 @@ function getHTMLBody() {
               </div>
               
               <div class="form-group-small" id="algorithmGroup">
-                <label for="secretAlgorithm">算法</label>
+                <label for="secretAlgorithm" data-i18n="secretAlgorithmLabel">算法</label>
                 <select id="secretAlgorithm">
                   <option value="SHA1" selected>SHA1</option>
                   <option value="SHA256">SHA256</option>
@@ -383,20 +396,20 @@ function getHTMLBody() {
             
             <div class="form-row" id="counterRow" style="display: none;">
               <div class="form-group-small" id="counterGroup">
-                <label for="secretCounter">计数器</label>
-                <input type="number" id="secretCounter" value="0" min="0" max="9007199254740991" step="1" placeholder="初始计数器值" autocomplete="off">
+                <label for="secretCounter" data-i18n="secretCounterLabel">计数器</label>
+                <input type="number" id="secretCounter" value="0" min="0" max="9007199254740991" step="1" placeholder="初始计数器值" data-i18n-placeholder="secretCounterPlaceholder" autocomplete="off">
               </div>
             </div>
             
-            <div class="advanced-info" id="advancedInfo">
+            <div class="advanced-info" id="advancedInfo" data-i18n="secretAdvancedHelp">
               大多数2FA应用使用默认设置：TOTP、6位、30秒、SHA1算法
             </div>
           </div>
         </div>
         
         <div class="form-actions">
-          <button type="button" class="btn btn-secondary" onclick="hideSecretModal()">取消</button>
-          <button type="submit" class="btn btn-primary" id="submitBtn">保存</button>
+          <button type="button" class="btn btn-secondary" onclick="hideSecretModal()" data-i18n="cancel">取消</button>
+          <button type="submit" class="btn btn-primary" id="submitBtn" data-i18n="save">保存</button>
         </div>
       </form>
     </div>
@@ -1090,51 +1103,51 @@ function getHTMLBody() {
   <div id="settingsModal" class="modal fab-modal-lg" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
     <div class="modal-content settings-modal-content">
       <div class="modal-header">
-        <h2 id="settingsModalTitle">设置</h2>
+        <h2 id="settingsModalTitle" data-i18n="settingsTitle">设置</h2>
         <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideSettingsModal()">${dialogIcon('close')}</button>
       </div>
       <div class="settings-layout">
         <div class="settings-tabs">
           <button type="button" class="settings-tab active" data-tab="security" onclick="switchSettingsTab('security')">
             <span class="settings-tab-icon">${dialogIcon('lock')}</span>
-            <span class="settings-tab-text">账户安全</span>
+            <span class="settings-tab-text" data-i18n="settingsTabSecurity">账户安全</span>
           </button>
           <button type="button" class="settings-tab" data-tab="sync" onclick="switchSettingsTab('sync')">
             <span class="settings-tab-icon">${dialogIcon('cloud')}</span>
-            <span class="settings-tab-text">同步设置</span>
+            <span class="settings-tab-text" data-i18n="settingsTabSync">同步设置</span>
           </button>
           <button type="button" class="settings-tab" data-tab="preferences" onclick="switchSettingsTab('preferences')">
             <span class="settings-tab-icon">${dialogIcon('sliders')}</span>
-            <span class="settings-tab-text">偏好设置</span>
+            <span class="settings-tab-text" data-i18n="settingsTabPreferences">偏好设置</span>
           </button>
         </div>
         <div class="settings-content">
           <!-- 账户安全面板 -->
           <div class="settings-panel active" data-panel="security">
             <div class="settings-section">
-              <h3 class="settings-section-title">修改密码</h3>
+              <h3 class="settings-section-title" data-i18n="changePasswordTitle">修改密码</h3>
               <div class="settings-form">
                 <div class="settings-field">
-                  <label for="settingsCurrentPassword">当前密码</label>
-                  <input type="password" id="settingsCurrentPassword" placeholder="请输入当前密码" autocomplete="current-password" />
+                  <label for="settingsCurrentPassword" data-i18n="currentPasswordLabel">当前密码</label>
+                  <input type="password" id="settingsCurrentPassword" placeholder="请输入当前密码" data-i18n-placeholder="currentPasswordPlaceholder" autocomplete="current-password" />
                 </div>
                 <div class="settings-field">
-                  <label for="settingsNewPassword">新密码</label>
-                  <input type="password" id="settingsNewPassword" placeholder="请输入新密码" autocomplete="new-password" />
+                  <label for="settingsNewPassword" data-i18n="newPasswordLabel">新密码</label>
+                  <input type="password" id="settingsNewPassword" placeholder="请输入新密码" data-i18n-placeholder="newPasswordPlaceholder" autocomplete="new-password" />
                 </div>
                 <div class="settings-field">
-                  <label for="settingsConfirmPassword">确认新密码</label>
-                  <input type="password" id="settingsConfirmPassword" placeholder="请再次输入新密码" autocomplete="new-password" />
+                  <label for="settingsConfirmPassword" data-i18n="confirmPasswordLabel">确认新密码</label>
+                  <input type="password" id="settingsConfirmPassword" placeholder="请再次输入新密码" data-i18n-placeholder="confirmPasswordPlaceholder" autocomplete="new-password" />
                 </div>
                 <div id="changePasswordResult" class="change-password-result" style="display: none;"></div>
-                <button class="btn btn-primary" id="changePasswordBtn" onclick="changePassword()" style="width: 100%;">修改密码</button>
+                <button class="btn btn-primary" id="changePasswordBtn" onclick="changePassword()" style="width: 100%;" data-i18n="changePasswordBtn">修改密码</button>
               </div>
             </div>
             <div class="settings-divider"></div>
             <div class="settings-section">
-              <h3 class="settings-section-title">退出登录</h3>
-              <p class="settings-desc">退出当前账户，需要重新输入密码登录。</p>
-              <button class="btn btn-danger" onclick="logout()" style="width: 100%;">退出登录</button>
+              <h3 class="settings-section-title" data-i18n="logoutTitle">退出登录</h3>
+              <p class="settings-desc" data-i18n="logoutDesc">退出当前账户，需要重新输入密码登录。</p>
+              <button class="btn btn-danger" onclick="logout()" style="width: 100%;" data-i18n="logoutBtn">退出登录</button>
             </div>
           </div>
 
@@ -1204,21 +1217,31 @@ function getHTMLBody() {
           <!-- 偏好设置面板 -->
           <div class="settings-panel" data-panel="preferences">
             <div class="settings-section">
-              <h3 class="settings-section-title">主题模式</h3>
+              <h3 class="settings-section-title" data-i18n="themeTitle">主题模式</h3>
               <div class="theme-options">
                 <label class="theme-option">
                   <input type="radio" name="settingsTheme" value="light" onchange="applyThemeFromSettings('light')" />
-                  <span class="theme-option-label">${dialogIcon('sun')} 浅色模式</span>
+                  <span class="theme-option-label" data-i18n="themeLight">${dialogIcon('sun')} 浅色模式</span>
                 </label>
                 <label class="theme-option">
                   <input type="radio" name="settingsTheme" value="dark" onchange="applyThemeFromSettings('dark')" />
-                  <span class="theme-option-label">${dialogIcon('moon')} 深色模式</span>
+                  <span class="theme-option-label" data-i18n="themeDark">${dialogIcon('moon')} 深色模式</span>
                 </label>
                 <label class="theme-option">
                   <input type="radio" name="settingsTheme" value="auto" onchange="applyThemeFromSettings('auto')" />
-                  <span class="theme-option-label">${dialogIcon('screen')} 跟随系统</span>
+                  <span class="theme-option-label" data-i18n="themeAuto">${dialogIcon('screen')} 跟随系统</span>
                 </label>
               </div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
+              <h3 class="settings-section-title" id="settingsLanguageTitle" data-i18n="languageTitle">界面语言</h3>
+              <select id="settingsLanguage" class="settings-select" aria-labelledby="settingsLanguageTitle" onchange="saveLanguagePreference(this.value)">
+                <option value="auto">跟随系统 (Auto)</option>
+                <option value="zh-TW">繁體中文</option>
+                <option value="zh-CN">简体中文</option>
+                <option value="en">English</option>
+              </select>
             </div>
             <div class="settings-divider"></div>
             <div class="settings-section">
@@ -1270,7 +1293,7 @@ function getHTMLBody() {
           </div>
         </div>
       </div>
-      <div class="settings-modal-actions"><button type="button" class="btn btn-primary" onclick="hideSettingsModal()">完成</button></div>
+      <div class="settings-modal-actions"><button type="button" class="btn btn-primary" data-i18n="completed" onclick="hideSettingsModal()">完成</button></div>
     </div>
   </div>
 
@@ -1593,20 +1616,20 @@ function getHTMLBody() {
   <!-- 登录模态框 -->
   <div id="loginModal" class="modal login-modal" role="dialog" aria-modal="true" aria-labelledby="loginModalTitle">
     <div class="modal-content login-modal-content">
-      <h2 class="login-modal-title" id="loginModalTitle">身份验证</h2>
+      <h2 class="login-modal-title" id="loginModalTitle" data-i18n="loginModalTitle">身份验证</h2>
       <p class="login-modal-description">
-        请输入密码以管理密钥<br>
-        <small class="login-modal-hint">或点击"取消"使用 OTP 生成功能</small>
+        <span data-i18n="loginModalDesc">请输入密码以管理密钥</span><br>
+        <small class="login-modal-hint" data-i18n="loginModalCancelHint">或点击"取消"使用 OTP 生成功能</small>
       </p>
       <div id="loginInsecureWarning" class="login-insecure-warning" style="display: none;">
-        <strong>当前正通过 HTTP 访问</strong>
-        浏览器无法在 HTTP 下保存登录状态，登录后仍会反复要求输入密码。请将地址栏中的 http:// 改为 https:// 后重新访问。
+        <strong data-i18n="loginInsecureTitle">当前正通过 HTTP 访问</strong>
+        <span data-i18n="loginInsecureDesc">浏览器无法在 HTTP 下保存登录状态，登录后仍会反复要求输入密码。请将地址栏中的 http:// 改为 https:// 后重新访问。</span>
       </div>
       <form id="loginForm" onsubmit="event.preventDefault(); handleLoginSubmit(); return false;" autocomplete="on">
       <div class="form-group">
-        <label for="loginToken">密码</label>
+        <label for="loginToken" data-i18n="loginPasswordLabel">密码</label>
         <div class="login-password-wrapper">
-          <input type="password" id="loginToken" placeholder="请输入您的密码" autocomplete="current-password" name="password">
+          <input type="password" id="loginToken" placeholder="请输入您的密码" data-i18n-placeholder="loginPasswordPlaceholder" autocomplete="current-password" name="password">
           <button
             type="button"
             id="loginPasswordToggle"
@@ -1640,16 +1663,16 @@ function getHTMLBody() {
             </svg>
           </button>
         </div>
-        <div class="login-modal-hint">
+        <div class="login-modal-hint" data-i18n="loginHint">
           提示：输入您设置的密码
         </div>
       </div>
       <div id="loginError" class="login-modal-error" role="alert" aria-live="polite"></div>
       <div class="button-group login-modal-actions">
-        <button type="button" onclick="window.location.href='/otp'" class="btn btn-secondary login-modal-cancel-btn">
+        <button type="button" onclick="window.location.href='/otp'" class="btn btn-secondary login-modal-cancel-btn" data-i18n="cancel">
           取消
         </button>
-        <button type="submit" class="btn btn-primary login-modal-submit-btn">
+        <button type="submit" class="btn btn-primary login-modal-submit-btn" data-i18n="loginSubmitBtn">
           登录
         </button>
       </div>
@@ -1695,31 +1718,31 @@ function getHTMLBody() {
     <div class="action-submenu" id="actionSubmenu">
       <button type="button" class="submenu-item" onclick="showQRScanner(); closeActionMenu();">
         <span class="item-icon">${dialogIcon('qr')}</span>
-        <span class="item-text">扫二维码</span>
+        <span class="item-text" data-i18n="fabScanQR">扫二维码</span>
       </button>
       <button type="button" class="submenu-item" onclick="showAddModal(); closeActionMenu();">
         <span class="item-icon">${dialogIcon('plus')}</span>
-        <span class="item-text">手动添加</span>
+        <span class="item-text" data-i18n="fabAddSecret">手动添加</span>
       </button>
       <button type="button" class="submenu-item" onclick="showImportModal(); closeActionMenu();">
         <span class="item-icon">${dialogIcon('import')}</span>
-        <span class="item-text">批量导入</span>
+        <span class="item-text" data-i18n="fabImport">批量导入</span>
       </button>
       <button type="button" class="submenu-item" onclick="exportAllSecrets(); closeActionMenu();">
         <span class="item-icon">${dialogIcon('export')}</span>
-        <span class="item-text">批量导出</span>
+        <span class="item-text" data-i18n="fabExport">批量导出</span>
       </button>
       <button type="button" class="submenu-item" onclick="showRestoreModal(); closeActionMenu();">
         <span class="item-icon">${dialogIcon('restore')}</span>
-        <span class="item-text">还原配置</span>
+        <span class="item-text" data-i18n="fabBackup">还原配置</span>
       </button>
       <button type="button" class="submenu-item" onclick="showToolsModal(); closeActionMenu();">
         <span class="item-icon">${dialogIcon('toolbox')}</span>
-        <span class="item-text">实用工具</span>
+        <span class="item-text" data-i18n="fabTools">实用工具</span>
       </button>
       <button type="button" class="submenu-item" onclick="showSettingsModal(); closeActionMenu();">
         <span class="item-icon">${dialogIcon('settings')}</span>
-        <span class="item-text">系统设置</span>
+        <span class="item-text" data-i18n="fabSettings">系统设置</span>
       </button>
     </div>
   </div>

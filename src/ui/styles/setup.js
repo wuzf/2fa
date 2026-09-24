@@ -58,8 +58,22 @@ export function getSetupStyles() {
       box-shadow: var(--setup-shadow);
     }
     .setup-header { text-align: left; margin-bottom: 24px; }
-    .setup-icon { display: flex; color: var(--setup-brand); margin-bottom: 12px; }
+    .setup-header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .setup-icon { display: flex; color: var(--setup-brand); }
     .setup-icon .dialog-icon { width: 24px; height: 24px; }
+    .setup-lang-select {
+      background: var(--setup-surface);
+      color: var(--setup-muted);
+      border: 1px solid var(--setup-stroke);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      line-height: 16px;
+      outline: none;
+      cursor: pointer;
+    }
+    .setup-lang-select:hover { color: var(--setup-text); border-color: var(--setup-brand); }
+    .setup-lang-select:focus { border-color: var(--setup-brand); box-shadow: inset 0 0 0 1px var(--setup-brand); }
     .setup-title { font-size: 20px; font-weight: 600; line-height: 28px; margin-bottom: 8px; }
     .setup-description { color: var(--setup-muted); }
     .security-notice, .insecure-warning, .error-message, .success-message {
