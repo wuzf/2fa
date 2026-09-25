@@ -954,8 +954,8 @@ npx wrangler kv key get "secrets" --namespace-id=your-namespace-id
 **生产环境监控**:
 
 ```bash
-# 查看 Worker 实时日志
-npx wrangler tail --env production
+# 查看 Worker 实时日志（不带 --env 即生产环境，也就是 wrangler.toml 的顶层配置；开发环境加 --env development）
+npx wrangler tail
 
 # 检查密钥配置
 npx wrangler secret list

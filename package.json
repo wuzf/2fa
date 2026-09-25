@@ -9,7 +9,7 @@
     "deploy:git": "node scripts/deploy.js --git",
     "deploy:package": "node scripts/deploy.js --package",
     "deploy:dev": "node scripts/deploy.js --env development",
-    "deploy:direct": "wrangler deploy",
+    "deploy:direct": "node scripts/deploy.js",
     "dev": "wrangler dev --env development",
     "start": "wrangler dev --env development",
     "build": "node scripts/build-release.js",
@@ -55,6 +55,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^15.3.0",
     "prettier": "^3.4.2",
+    "smol-toml": "^1.8.0",
     "vitest": "^4.0.5",
     "wrangler": "^4.78.0"
   },

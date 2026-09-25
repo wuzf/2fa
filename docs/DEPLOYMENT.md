@@ -21,6 +21,7 @@
 
 > 项目 `wrangler.toml` 已显式声明 `SECRETS_KV`，Wrangler 会在首次部署时自动创建所需 KV 并在后续部署中复用，无需手动创建。
 > 如果您在 Cloudflare Dashboard 中手动配置 Git 构建命令，**部署命令请使用 `npm run deploy`，不要直接写 `npx wrangler deploy`**，以保留项目的版本注入流程。
+> 在 Workers Builds 中构建时，`npm run deploy` 按 Cloudflare 提供的实际 Worker 名称（环境变量 `WRANGLER_CI_OVERRIDE_NAME`）查找已有 KV。即使 Dashboard 中的 Worker 名与 `wrangler.toml` 的 `name` 不同，也不会绑定到同一账户里按配置名创建的其他部署的 KV。
 
 ### 第 2 步：（强烈推荐）配置加密密钥
 
@@ -90,6 +91,8 @@ npx wrangler kv namespace create SECRETS_KV --preview  # 预览环境，输出 p
 
 编辑 `wrangler.toml`，填入上一步输出的 ID：
 
+部署脚本始终保留目标环境中明确填写的 `SECRETS_KV.id`。未填写时，只复用与当前 Worker 和环境名称精确匹配的唯一账户库；匹配到多个库或无法读取列表时会停止，要求先明确绑定，不会按模糊名称或列表顺序选择。开发环境的 KV 绑定独立配置，不继承生产环境 ID。
+
 ```toml
 [[kv_namespaces]]
 binding = "SECRETS_KV"
@@ -119,6 +122,8 @@ npm run deploy
 ```
 
 部署成功后会输出 Worker URL。访问该 URL，按照页面提示设置管理密码即可（密码要求同上）。
+
+部署脚本不修改 `wrangler.toml`：注入版本号和补全 KV ID 后的配置写入被 Git 忽略的临时文件 `wrangler.deploy.<进程号>.tmp.toml`，部署结束后自动删除。部署被强制中断时如有残留，可直接删除该文件。
 
 ---
 
@@ -204,7 +209,7 @@ CORS 采用动态同源策略：仅允许与当前请求 Host 同源的来源（
 
 1. 访问 Worker URL，首次自动跳转到 `/setup`，设置密码后能正常登录
 2. 添加一条测试密钥，验证码正常刷新；退出重新登录后数据仍在（KV 读写正常）
-3. 配置了 `ENCRYPTION_KEY` 的部署：在 Dashboard → **KV** 中查看 `secrets` 键，值应以 `__ENCRYPTED__` 开头
+3. 配置了 `ENCRYPTION_KEY` 的部署：在 Dashboard → **KV** 中查看 `secrets` 键，值应以 `v1:` 开头
 4. 建议定期通过 **批量导出** 保存备份，并实际演练一次备份恢复流程
 
 ---

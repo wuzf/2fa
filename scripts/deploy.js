@@ -12,27 +12,32 @@
  *   node scripts/deploy.js                  # 使用时间戳版本
  *   node scripts/deploy.js --git            # 使用 git commit 版本
  *   node scripts/deploy.js --package        # 使用 package.json 版本
- *   node scripts/deploy.js --env production # 部署到生产环境
+ *   node scripts/deploy.js --env development # 部署到 wrangler.toml 中的 [env.development] 环境
+ *   不带 --env 时部署顶层配置，即生产环境；也可以用 CLOUDFLARE_ENV 选择环境，--env 优先
+ *
+ * wrangler.toml 全程只读：注入版本和补全 KV id 后的配置写入项目根目录的临时文件
+ * （wrangler.deploy.<pid>.tmp.toml，已被 .gitignore 忽略），通过 --config 交给 Wrangler，结束后删除。
+ * 临时文件与 wrangler.toml 同目录，main、assets 等相对路径的基准不变。部署中途按 Ctrl+C 或进程被杀时，
+ * 最多残留这个被忽略的临时文件，wrangler.toml 不会停在改过的状态。
  */
 
-import { execSync } from 'child_process';
-import { readFileSync, writeFileSync } from 'fs';
-import { dirname, join } from 'path';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, rmSync, writeFileSync } from 'fs';
+import { basename, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
-import { extractWorkerName, injectKvNamespaceId, injectWorkerVersion } from './deploy-config.js';
+import { injectWorkerVersion } from './deploy-config.js';
+import { applyKvBinding, parseDeploymentArgs, readWorkerNameOverride, resolveKvBinding } from './deploy-namespace.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const args = process.argv.slice(2);
-const versionStrategy = args.includes('--git') ? '--git' :
-  args.includes('--package') ? '--package' :
-    '';
-
-const envIndex = args.indexOf('--env');
-const envName = envIndex !== -1 && args[envIndex + 1] ? args[envIndex + 1] : null;
+const { versionStrategy, envName: explicitEnvName } = parseDeploymentArgs(args);
+// Match Wrangler's environment selection before resolving any storage binding.
+const envName = explicitEnvName || process.env.CLOUDFLARE_ENV || null;
 const envArg = envName ? `--env ${envName}` : '';
+const wranglerCli = fileURLToPath(import.meta.resolve('wrangler'));
 
 console.log('');
 console.log('🚀 ========================================');
@@ -41,137 +46,103 @@ console.log('========================================');
 console.log('');
 
 try {
-  const version = generateVersion(versionStrategy);
-  const wranglerPath = join(__dirname, '..', 'wrangler.toml');
-  const originalConfig = readFileSync(wranglerPath, 'utf-8');
+	const version = generateVersion(versionStrategy);
+	const projectRoot = join(__dirname, '..');
+	const wranglerPath = join(projectRoot, 'wrangler.toml');
+	// 每个进程独立的文件名，避免同时部署两个环境时互相覆盖
+	const deployConfigPath = join(projectRoot, `wrangler.deploy.${process.pid}.tmp.toml`);
+	const originalConfig = readFileSync(wranglerPath, 'utf-8');
 
-  console.log(`   ✅ 版本号: ${version}`);
-  console.log('');
+	console.log(`   ✅ 版本号: ${version}`);
+	console.log('');
 
-  console.log('📝 Step 2: 注入版本到配置...');
+	console.log('📝 Step 2: 注入版本到配置...');
 
-  let modifiedConfig = injectWorkerVersion(originalConfig, version);
+	let modifiedConfig = injectWorkerVersion(originalConfig, version);
 
-  console.log(`   ✅ 已注入版本: ${version}`);
-  console.log('');
+	console.log(`   ✅ 已注入版本: ${version}`);
+	console.log('');
 
-  // Step 2.5: 自动检测并绑定已有 KV namespace，防止重复创建
-  console.log('🔍 Step 2.5: 检测已有 KV namespace...');
-  const workerName = extractWorkerName(modifiedConfig, envName);
-  const existingKv = findExistingKvId(workerName, envName);
-  if (existingKv) {
-    modifiedConfig = injectKvNamespaceId(modifiedConfig, existingKv.id, envName);
-    console.log(`   ✅ 复用已有 KV: ${existingKv.title} (${existingKv.id})`);
-  } else {
-    console.log('   ℹ️ 未检测到已有 KV，将由 Wrangler 自动创建');
-  }
-  console.log('');
+	// Step 2.5: 自动检测并绑定已有 KV namespace，防止重复创建
+	console.log('🔍 Step 2.5: 检测已有 KV namespace...');
+	// Cloudflare Workers Builds 部署到所连接的 Worker，其名称可能与配置文件中的 name 不同
+	const workerNameOverride = readWorkerNameOverride();
+	if (workerNameOverride !== undefined) {
+		console.log(`   ℹ️ 按 Cloudflare 提供的实际 Worker 名称查找: ${workerNameOverride}`);
+	}
+	const binding = await resolveKvBinding(
+		modifiedConfig,
+		envName,
+		() =>
+			JSON.parse(
+				execFileSync(
+					process.execPath,
+					[wranglerCli, 'kv', 'namespace', 'list', '--config', wranglerPath, ...(envName ? ['--env', envName] : [])],
+					{ encoding: 'utf-8', cwd: projectRoot, stdio: ['pipe', 'pipe', 'pipe'] },
+				),
+			),
+		{ workerNameOverride },
+	);
+	if (binding.kind === 'configured') {
+		console.log('   ✅ 保留配置中明确指定的 SECRETS_KV');
+	} else if (binding.kind === 'existing') {
+		modifiedConfig = applyKvBinding(modifiedConfig, envName, binding);
+		console.log(`   ✅ 复用唯一匹配的 KV: ${binding.title}`);
+	} else {
+		console.log('   ℹ️ 未找到当前 Worker 的明确匹配 KV，将由 Wrangler 按绑定创建');
+	}
+	console.log('');
 
-  writeFileSync(wranglerPath, modifiedConfig, 'utf-8');
+	console.log('🚀 Step 3: 部署到 Cloudflare Workers...');
+	console.log(`   命令: npx wrangler deploy --config ${basename(deployConfigPath)} ${envArg}`.trim());
+	console.log('   （wrangler.toml 保持不变，修改后的配置只写入上述临时文件）');
+	console.log('');
 
-  console.log('🚀 Step 3: 部署到 Cloudflare Workers...');
-  console.log(`   命令: npx wrangler deploy ${envArg}`.trim());
-  console.log('');
+	try {
+		// 写入放在 try 内：写入失败留下的半截文件同样会在 finally 中删除
+		writeFileSync(deployConfigPath, modifiedConfig, 'utf-8');
+		execFileSync(process.execPath, [wranglerCli, 'deploy', '--config', deployConfigPath, ...(envName ? ['--env', envName] : [])], {
+			stdio: 'inherit',
+			encoding: 'utf-8',
+			cwd: projectRoot,
+		});
 
-  try {
-    execSync(`npx wrangler deploy ${envArg}`.trim(), {
-      stdio: 'inherit',
-      encoding: 'utf-8',
-    });
-
-    console.log('');
-    console.log('✅ ========================================');
-    console.log('   部署成功！');
-    console.log('========================================');
-    console.log('');
-    console.log(`📦 版本: ${version}`);
-    console.log(`🌐 环境: ${envArg || '生产环境 (production)'}`);
-    console.log('');
-  } catch (deployError) {
-    console.error('');
-    console.error('❌ ========================================');
-    console.error('   部署失败');
-    console.error('========================================');
-    console.error('');
-    throw deployError;
-  } finally {
-    console.log('🔄 Step 4: 恢复配置文件...');
-    writeFileSync(wranglerPath, originalConfig, 'utf-8');
-    console.log('   ✅ 配置已恢复');
-    console.log('');
-  }
+		console.log('');
+		console.log('✅ ========================================');
+		console.log('   部署成功！');
+		console.log('========================================');
+		console.log('');
+		console.log(`📦 版本: ${version}`);
+		console.log(`🌐 环境: ${envArg || '生产环境 (production)'}`);
+		console.log('');
+	} catch (deployError) {
+		console.error('');
+		console.error('❌ ========================================');
+		console.error('   部署失败');
+		console.error('========================================');
+		console.error('');
+		throw deployError;
+	} finally {
+		console.log('🧹 Step 4: 删除临时部署配置...');
+		rmSync(deployConfigPath, { force: true });
+		console.log('   ✅ 已删除，wrangler.toml 未被修改');
+		console.log('');
+	}
 } catch (error) {
-  console.error('');
-  console.error('❌ 部署流程失败:');
-  console.error('   ', error.message);
-  console.error('');
-  process.exit(1);
+	console.error('');
+	console.error('❌ 部署流程失败:');
+	console.error('   ', error.message);
+	console.error('');
+	process.exit(1);
 }
 
 function generateVersion(versionStrategyArg) {
-  console.log('📦 Step 1: 生成 Service Worker 版本号...');
-  const versionCmd = `node ${join(__dirname, 'generate-version.js')} ${versionStrategyArg} --verbose`;
-  return execSync(versionCmd, { encoding: 'utf-8' }).trim().split('\n')[0];
-}
-
-function findExistingKvId(workerName, envName = null) {
-  if (!workerName) return null;
-
-  let namespaces;
-  try {
-    const output = execSync('npx wrangler kv namespace list', {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    namespaces = JSON.parse(output);
-  } catch {
-    return null;
-  }
-  if (!namespaces.length) return null;
-
-  // 短名映射：开发环境常缩写为 dev / prod
-  const ENV_ALIASES = { development: 'dev', production: 'prod' };
-  const envAlias = envName ? (ENV_ALIASES[envName] || envName) : null;
-
-  // 推断 base 名（去除可能的 env 后缀）：worker "2fa-dev" + envAlias "dev" → base "2fa"
-  const stripSuffix = (name, suffix) =>
-    suffix && name.endsWith(`-${suffix}`) ? name.slice(0, -(suffix.length + 1)) : name;
-  const baseName = envAlias ? stripSuffix(workerName, envAlias) : workerName;
-
-  // 候选 title 列表，越靠前越优先
-  const candidates = [];
-  if (envName) {
-    candidates.push(
-      `${workerName}-secrets-kv`,                // 2fa-dev-secrets-kv
-      `${workerName}-SECRETS_KV`,
-      `${baseName}-secrets-kv-${envAlias}`,      // 2fa-secrets-kv-dev  ← 当前命名
-      `${baseName}-secrets-kv-${envName}`,       // 2fa-secrets-kv-development
-      `${envAlias}-${baseName}-SECRETS_KV`,
-      `${envName}-${baseName}-SECRETS_KV`,
-      `${envName}-SECRETS_KV`,                   // development-SECRETS_KV（旧命名）
-    );
-  } else {
-    candidates.push(
-      `${workerName}-secrets-kv`,                // 2fa-secrets-kv  ← 当前命名
-      `${workerName}-SECRETS_KV`,
-      'SECRETS_KV',
-      workerName,
-    );
-  }
-
-  for (const title of candidates) {
-    const match = namespaces.find(ns => ns.title === title);
-    if (match) return { id: match.id, title: match.title };
-  }
-
-  // env 部署只走精确匹配，避免误把生产 KV 命中给 dev
-  if (envName) return null;
-
-  // 顶层部署的 fuzzy 兜底（保持原有兼容性）
-  const fuzzy =
-    namespaces.find(ns => ns.title.includes('SECRETS_KV')) ||
-    namespaces.find(ns => ns.title.includes('secrets-kv')) ||
-    (namespaces.length === 1 ? namespaces[0] : null);
-
-  return fuzzy ? { id: fuzzy.id, title: fuzzy.title } : null;
+	console.log('📦 Step 1: 生成 Service Worker 版本号...');
+	return execFileSync(
+		process.execPath,
+		[join(__dirname, 'generate-version.js'), ...(versionStrategyArg ? [versionStrategyArg] : []), '--verbose'],
+		{ encoding: 'utf-8', cwd: join(__dirname, '..') },
+	)
+		.trim()
+		.split('\n')[0];
 }

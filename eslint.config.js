@@ -97,6 +97,15 @@ export default [
 		},
 	},
 	{
+		files: ['scripts/**/*.js'],
+		languageOptions: {
+			globals: {
+				process: 'readonly',
+				Buffer: 'readonly',
+			},
+		},
+	},
+	{
 		ignores: ['node_modules/**', 'dist/**', 'coverage/**', '*.min.js', '.wrangler/**'],
 	},
 ];
