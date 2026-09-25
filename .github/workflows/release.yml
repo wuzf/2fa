@@ -1,0 +1,64 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+# One group per tag: GitHub keeps only one pending run per group, so a shared
+# group would cancel intermediate versions when several tags are pushed at once.
+# Runs for the same tag still queue behind each other. Parallel runs for
+# different tags reconcile the latest-release mark in scripts/publish-release.js.
+concurrency:
+  group: publish-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Validate release tag
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected a stable version tag such as v1.10.0"
+            exit 1
+          fi
+
+      - name: Checkout tagged source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # scripts/release.js runs these same lint, test, and build commands before creating the tag.
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test -- --run
+
+      - name: Build Worker release assets
+        run: npm run build
+
+      - name: Publish notes and assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publish-release.js --tag "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"

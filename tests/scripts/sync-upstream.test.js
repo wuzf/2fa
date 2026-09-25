@@ -273,7 +273,9 @@ afterEach(() => {
 	}
 });
 
-describe('Sync Upstream compatibility using real Git repositories', () => {
+// Each test drives several real Git commands, which can take well over the default
+// 10 seconds on a busy Windows machine.
+describe('Sync Upstream compatibility using real Git repositories', { timeout: 60000 }, () => {
 	it.skipIf(!hasRsync).each([
 		['legacy workflow with compatibility repair', legacyWorkflow, true],
 		['current workflow without compatibility repair', currentWorkflow, false],
