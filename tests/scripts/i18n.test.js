@@ -3,10 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { LOCALES } from '../../src/ui/locales/index.js';
 import { getI18nCode } from '../../src/ui/scripts/i18n.js';
 
-function createI18nHarness({ navLang = 'zh-CN', savedLang = null } = {}) {
+function createI18nHarness({ navLang = 'zh-CN', savedLang = null, sharedStorage = null } = {}) {
 	const elements = [];
 	const listeners = {};
-	const storage = {};
+	const storage = sharedStorage || {};
+	const storageWrites = [];
 	if (savedLang) {
 		storage.language = savedLang;
 	}
@@ -51,6 +52,7 @@ function createI18nHarness({ navLang = 'zh-CN', savedLang = null } = {}) {
 		localStorage: {
 			getItem: (key) => storage[key] || null,
 			setItem: (key, val) => {
+				storageWrites.push([key, String(val)]);
 				storage[key] = String(val);
 			},
 		},
@@ -63,6 +65,8 @@ function createI18nHarness({ navLang = 'zh-CN', savedLang = null } = {}) {
 	return {
 		context,
 		storage,
+		storageWrites,
+		listeners,
 		document,
 		addElement: (attrs = {}) => {
 			const el = {
@@ -167,6 +171,45 @@ describe('client i18n runtime engine', () => {
 		h.context.setLanguage('zh-TW');
 		expect(h.storage.language).toBe('zh-TW');
 		expect(h.context.getLanguage()).toBe('zh-TW');
+		expect(h.storageWrites).toEqual([['language', 'zh-TW']]);
+	});
+
+	it('applies rapid changes from another tab without writing stale preferences back to shared storage', () => {
+		const sharedStorage = { language: 'zh-CN' };
+		const source = createI18nHarness({ sharedStorage });
+		const receiver = createI18nHarness({ sharedStorage });
+		for (const language of ['en', 'zh-TW', 'zh-CN', 'en']) {
+			source.context.setLanguage(language);
+		}
+		expect(source.storageWrites).toHaveLength(4);
+		// A delayed event must use the latest storage value rather than its older payload.
+		receiver.listeners.storage({ key: 'language', newValue: 'zh-TW' });
+		expect(receiver.context.getLanguage()).toBe('en');
+		expect(receiver.document.documentElement.lang).toBe('en');
+		expect(receiver.storageWrites).toEqual([]);
+		// Simulate a stale localStorage snapshot in a different browser process.
+		const readLatest = receiver.context.localStorage.getItem;
+		receiver.context.localStorage.getItem = () => 'zh-CN';
+		receiver.listeners.storage({ key: 'language', newValue: 'zh-CN' });
+		expect(sharedStorage.language).toBe('en');
+		expect(receiver.storageWrites).toEqual([]);
+		receiver.context.localStorage.getItem = readLatest;
+		receiver.listeners.storage({ key: 'language', newValue: 'en' });
+		expect(receiver.context.getLanguage()).toBe('en');
+		expect(source.context.getLanguage()).toBe('en');
+		expect(receiver.storageWrites).toEqual([]);
+	});
+
+	it('handles cleared storage and unrelated storage events without persisting an implicit preference', () => {
+		const h = createI18nHarness({ navLang: 'en-US', savedLang: 'zh-TW' });
+		h.listeners.storage({ key: 'theme', newValue: 'dark' });
+		expect(h.context.getLanguage()).toBe('zh-TW');
+		delete h.storage.language;
+		h.listeners.storage({ key: null });
+		expect(h.context.getLanguagePreference()).toBe('auto');
+		expect(h.context.getLanguage()).toBe('en');
+		expect(h.storage).not.toHaveProperty('language');
+		expect(h.storageWrites).toEqual([]);
 	});
 
 	it('formats dates according to selected language', () => {

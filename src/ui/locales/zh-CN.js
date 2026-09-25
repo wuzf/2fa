@@ -259,6 +259,9 @@ export const zhCN = {
 	restorePlaintext: '明文',
 	restorePartialWarning: '该备份不完整，已跳过 {count} 条无效密钥。无法保证数据完整，已禁止恢复或导出。',
 	restoreEmptyWarning: '该备份不包含可恢复的密钥，已禁止恢复当前数据。',
+	restoreUnsupportedNotice: '有 {count} 个账户的 OTP 参数不受支持。恢复后它们会原样保留在服务器上，但网页不会显示。',
+	restoreCompletedWithUnsupported:
+		'还原成功！恢复了 {count} 个密钥，其中 {unsupported} 个的 OTP 参数不受支持，已保留在服务器上，但网页不会显示。',
 	restoreFormatLabel: '备份格式',
 	restoreCountLabel: '备份条目',
 	restoreStorageLabel: '存储状态',

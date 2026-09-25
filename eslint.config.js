@@ -83,6 +83,11 @@ export default [
 		},
 	},
 	{
+		// JSON import attributes are bundled away for the browser/Worker targets.
+		files: ['src/shared/locales/index.js'],
+		languageOptions: { ecmaVersion: 2025 },
+	},
+	{
 		files: ['tests/**/*.js'],
 		languageOptions: {
 			globals: {

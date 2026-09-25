@@ -261,6 +261,10 @@ export const en = {
 	restorePartialWarning:
 		'This backup is incomplete; {count} invalid key(s) were skipped. Data integrity cannot be guaranteed. Restore and export are disabled.',
 	restoreEmptyWarning: 'This backup contains no recoverable keys. Restoring over current data is disabled.',
+	restoreUnsupportedNotice:
+		'{count} account(s) have unsupported OTP parameters. Restoring keeps them on the server unchanged, but the web app does not show them.',
+	restoreCompletedWithUnsupported:
+		'Restore successful! Restored {count} key(s); {unsupported} with unsupported OTP parameters are kept on the server but not shown in the web app.',
 	restoreFormatLabel: 'Backup Format',
 	restoreCountLabel: 'Backup Entries',
 	restoreStorageLabel: 'Storage Status',

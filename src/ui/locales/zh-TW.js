@@ -260,6 +260,9 @@ export const zhTW = {
 	restorePlaintext: '明文',
 	restorePartialWarning: '此備份不完整，已略過 {count} 筆無效金鑰。無法保證資料完整，已禁止還原或匯出。',
 	restoreEmptyWarning: '此備份不包含可還原的金鑰，已禁止覆蓋目前資料。',
+	restoreUnsupportedNotice: '有 {count} 個帳戶的 OTP 參數不受支援。還原後它們會原樣保留在伺服器上，但網頁不會顯示。',
+	restoreCompletedWithUnsupported:
+		'還原成功！已還原 {count} 個金鑰，其中 {unsupported} 個的 OTP 參數不受支援，已保留在伺服器上，但網頁不會顯示。',
 	restoreFormatLabel: '備份格式',
 	restoreCountLabel: '備份項目',
 	restoreStorageLabel: '儲存狀態',
