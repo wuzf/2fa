@@ -1,3 +1,4 @@
+import { getRequestLanguage } from '../utils/i18n.js';
 /**
  * OneDrive configuration and OAuth API endpoints.
  */
@@ -223,6 +224,7 @@ export async function handleStartOneDriveOAuth(request, env) {
 			provider: 'onedrive',
 			configId: body.id,
 			appOrigin: new URL(request.url).origin,
+			language: getRequestLanguage(request),
 		});
 		const authorizeUrl = buildOneDriveAuthorizeUrl(env, { redirectUri, state });
 
@@ -261,6 +263,7 @@ export async function handleOneDriveOAuthCallback(request, env) {
 				provider: 'onedrive',
 				id: configId,
 				appOrigin: oauthState.appOrigin,
+				language: oauthState.language,
 				message: errorDescription || errorCode,
 			});
 		}
@@ -281,6 +284,7 @@ export async function handleOneDriveOAuthCallback(request, env) {
 		const profile = await fetchOneDriveProfile(tokenData.accessToken);
 		const result = await completeOneDriveAuthorization(env, { id: configId, tokenData, profile });
 		const testResult = await testOneDriveConnectionById(env, configId);
+		const messageParts = [testResult.message, result.warning].filter(Boolean);
 
 		if (!testResult.success) {
 			return createOAuthPopupResponse(request, {
@@ -289,7 +293,9 @@ export async function handleOneDriveOAuthCallback(request, env) {
 				provider: 'onedrive',
 				id: configId,
 				appOrigin: oauthState.appOrigin,
-				message: result.warning ? `${testResult.message} ${result.warning}` : testResult.message,
+				language: oauthState.language,
+				message: messageParts.join(' '),
+				messageParts,
 			});
 		}
 
@@ -299,7 +305,9 @@ export async function handleOneDriveOAuthCallback(request, env) {
 			provider: 'onedrive',
 			id: configId,
 			appOrigin: oauthState.appOrigin,
-			message: result.warning ? `${testResult.message} ${result.warning}` : testResult.message,
+			language: oauthState.language,
+			message: messageParts.join(' '),
+			messageParts,
 		});
 	} catch (error) {
 		logger.error('处理 OneDrive OAuth 回调失败', { error: error.message }, error);
@@ -308,6 +316,7 @@ export async function handleOneDriveOAuthCallback(request, env) {
 			provider: 'onedrive',
 			id: configId || undefined,
 			appOrigin: oauthState?.appOrigin || statePreview?.appOrigin,
+			language: oauthState?.language || statePreview?.language,
 			message: error.message || 'OneDrive 授权失败',
 		});
 	}

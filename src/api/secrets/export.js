@@ -5,6 +5,7 @@
 import { buildDownloadContent, normalizeBackupSecrets } from '../../utils/backup-format.js';
 import { getLogger } from '../../utils/logger.js';
 import { createErrorResponse } from '../../utils/response.js';
+import { getRequestLanguage, normalizeLanguage } from '../../utils/i18n.js';
 import { checkRateLimit, createRateLimitResponse, getClientIdentifier, RATE_LIMIT_PRESETS } from '../../utils/rateLimit.js';
 
 const EXPORT_FORMATS = ['txt', 'json', 'csv', 'html'];
@@ -192,6 +193,7 @@ export async function handleExportSecrets(request, env) {
 		}
 
 		const timestamp = new Date().toISOString();
+		const language = body?.language === undefined ? getRequestLanguage(request) : normalizeLanguage(body.language) || 'en';
 		const secrets = normalizeBackupSecrets(body.secrets, timestamp, {
 			strict: true,
 		});
@@ -201,6 +203,7 @@ export async function handleExportSecrets(request, env) {
 			reason: 'export',
 			filenamePrefix: body?.filenamePrefix,
 			metadata: body?.metadata,
+			language,
 		});
 
 		logger.info('批量导出成功', {
@@ -215,10 +218,11 @@ export async function handleExportSecrets(request, env) {
 			status: 200,
 			headers: {
 				'Content-Type': download.contentType,
+				'Content-Language': language,
 				'Content-Disposition': `attachment; filename="${download.filename}"`,
 				'Access-Control-Allow-Origin': '*',
 				'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-				'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+				'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Language',
 			},
 		});
 	} catch (error) {

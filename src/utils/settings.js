@@ -1,3 +1,5 @@
+import { LANGUAGE_PREFERENCES } from '../shared/languages.js';
+
 /**
  * Shared settings helpers.
  */
@@ -5,7 +7,7 @@
 export const KV_SETTINGS_KEY = 'settings';
 export const DEFAULT_EXPORT_FORMAT = 'json';
 export const VALID_EXPORT_FORMATS = ['txt', 'json', 'csv', 'html'];
-export const VALID_LANGUAGES = ['auto', 'zh-TW', 'zh-CN', 'en'];
+export const VALID_LANGUAGES = LANGUAGE_PREFERENCES;
 export const DEFAULT_LANGUAGE = 'auto';
 
 export const DEFAULT_SETTINGS = {

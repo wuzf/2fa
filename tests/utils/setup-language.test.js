@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { LANGUAGE_PREFERENCES } from '../../src/shared/languages.js';
 import { checkIfSetupRequired, handleFirstTimeSetup } from '../../src/utils/auth.js';
 
 const SETUP_KEYS = ['user_password', 'jwt_secret', 'setup_completed', 'settings'];
@@ -37,7 +38,7 @@ function expectNoSetupWrites(env) {
 }
 
 describe('首次设置语言持久化', () => {
-	it.each(['auto', 'zh-CN', 'zh-TW', 'en', ' en '])('保存语言 %j，并保留已有其他设置', async (language) => {
+	it.each([...LANGUAGE_PREFERENCES, ' en '])('保存语言 %j，并保留已有其他设置', async (language) => {
 		const existing = {
 			jwtExpiryDays: 45,
 			maxBackups: 20,
@@ -56,17 +57,20 @@ describe('首次设置语言持久化', () => {
 		expect(await checkIfSetupRequired(env)).toBe(false);
 	});
 
-	it.each(['fr', 'EN', 'zh', '', '   ', null, false, 123, {}, [], ['en']])('拒绝非法语言 %j，且不写入密码和配置', async (language) => {
-		const settings = JSON.stringify({ maxBackups: 25, language: 'zh-TW' });
-		const env = createEnvironment({ settings });
+	it.each(['unsupported', 'EN', 'zh', '', '   ', null, false, 123, {}, [], ['en']])(
+		'拒绝非法语言 %j，且不写入密码和配置',
+		async (language) => {
+			const settings = JSON.stringify({ maxBackups: 25, language: 'zh-TW' });
+			const env = createEnvironment({ settings });
 
-		const response = await handleFirstTimeSetup(createSetupRequest({ language }), env);
+			const response = await handleFirstTimeSetup(createSetupRequest({ language }), env);
 
-		expect(response.status).toBe(400);
-		expectNoSetupWrites(env);
-		expect(await env.SECRETS_KV.get('settings')).toBe(settings);
-		expect(await checkIfSetupRequired(env)).toBe(true);
-	});
+			expect(response.status).toBe(400);
+			expectNoSetupWrites(env);
+			expect(await env.SECRETS_KV.get('settings')).toBe(settings);
+			expect(await checkIfSetupRequired(env)).toBe(true);
+		},
+	);
 
 	it.each([
 		{ password: '', confirmPassword: '' },

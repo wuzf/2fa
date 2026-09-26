@@ -8,13 +8,22 @@
  * - handleDeleteSecret: 删除密钥 (带 Rate Limiting)
  */
 
-import { saveSecretsToKV, getAllSecrets } from './shared.js';
+import { saveSecretsToKV, getAllSecrets, decodeSecretIdSegment } from './shared.js';
 import { deleteHOTPCounterState, generateHOTPGenerationHash } from './counter-state.js';
 import { getLogger } from '../../utils/logger.js';
 import { PerformanceTimer } from '../../utils/logger.js';
 import { getMonitoring, ErrorSeverity } from '../../utils/monitoring.js';
-import { validateRequest, addSecretSchema, checkDuplicateSecret, validateBase32 } from '../../utils/validation.js';
+import {
+	validateRequest,
+	addSecretSchema,
+	checkDuplicateSecret,
+	createEditSecretSchema,
+	findDuplicateSecret,
+	hasSameOtpParameters,
+	validateBase32,
+} from '../../utils/validation.js';
 import { createJsonResponse, createErrorResponse, createSuccessResponse } from '../../utils/response.js';
+import { getSecurityHeaders } from '../../utils/security.js';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../../utils/rateLimit.js';
 import {
 	ValidationError,
@@ -28,13 +37,29 @@ import {
 	logError,
 } from '../../utils/errors.js';
 
+function ensureNoStore(response, request) {
+	if (request) {
+		for (const name of [...response.headers.keys()]) {
+			if (name.startsWith('access-control-')) {
+				response.headers.delete(name);
+			}
+		}
+		for (const [name, value] of Object.entries(getSecurityHeaders(request))) {
+			response.headers.set(name, value);
+		}
+	}
+	response.headers.set('Cache-Control', 'no-store');
+	return response;
+}
+
 /**
  * 获取所有密钥列表
  *
  * @param {Object} env - Cloudflare Workers 环境对象
+ * @param {Request|null} request - HTTP 请求，用于生成安全响应头
  * @returns {Response} 密钥列表响应
  */
-export async function handleGetSecrets(env) {
+export async function handleGetSecrets(env, request = null) {
 	const logger = getLogger(env);
 	const timer = new PerformanceTimer('GetSecrets', logger);
 
@@ -44,7 +69,7 @@ export async function handleGetSecrets(env) {
 
 		timer.end({ count: secrets.length });
 
-		return createJsonResponse(secrets);
+		return createJsonResponse(secrets, 200, request, { 'Cache-Control': 'no-store' });
 	} catch (error) {
 		timer.cancel();
 
@@ -57,13 +82,13 @@ export async function handleGetSecrets(env) {
 		) {
 			logError(error, logger, { operation: 'handleGetSecrets' });
 			getMonitoring(env).getErrorMonitor().captureError(error, { operation: 'handleGetSecrets' }, ErrorSeverity.ERROR);
-			return errorToResponse(error);
+			return ensureNoStore(errorToResponse(error, request), request);
 		}
 
 		// 未知错误
 		logger.error('获取密钥列表失败', { operation: 'handleGetSecrets' }, error);
 		getMonitoring(env).getErrorMonitor().captureError(error, { operation: 'handleGetSecrets' }, ErrorSeverity.ERROR);
-		return createErrorResponse('获取密钥列表失败', `从存储中获取密钥时发生错误: ${error.message}`, 500);
+		return ensureNoStore(createErrorResponse('获取密钥列表失败', `从存储中获取密钥时发生错误: ${error.message}`, 500, request), request);
 	}
 }
 
@@ -89,13 +114,15 @@ export async function handleAddSecret(request, env, ctx) {
 		const existingSecrets = await getAllSecrets(env);
 
 		// 检查重复（服务名+账户+密钥都相同才视为重复）
-		const isDuplicate = checkDuplicateSecret(existingSecrets, secretData.name, secretData.account, secretData.secret);
+		const duplicate = findDuplicateSecret(existingSecrets, secretData.name, secretData.account, secretData.secret);
 
-		if (isDuplicate) {
+		if (duplicate) {
 			throw new ConflictError(`服务"${secretData.name}"${secretData.account ? ` (账户: ${secretData.account})` : ''} 已存在`, {
 				operation: 'addSecret',
 				name: secretData.name,
 				account: secretData.account,
+				// true: the existing record generates the same codes, so a replayed add has already been applied.
+				identical: hasSameOtpParameters(duplicate, secretData),
 			});
 		}
 
@@ -170,15 +197,12 @@ export async function handleUpdateSecret(request, env, ctx) {
 
 	try {
 		const url = new URL(request.url);
-		const secretId = url.pathname.split('/').pop();
+		const secretId = decodeSecretIdSegment(url.pathname.split('/').pop());
+		if (secretId === null) {
+			return createErrorResponse('无效路径', '路径中的密钥ID编码无效', 400, request);
+		}
 
-		// 🔍 使用验证中间件解析和验证请求
-		const secretData = await validateRequest(addSecretSchema)(request);
-		if (secretData instanceof Response) {
-			return secretData;
-		} // 验证失败
-
-		// 获取现有密钥
+		// 先读取现有记录：校验规则需要知道记录当前保存的周期
 		const existingSecrets = await getAllSecrets(env);
 
 		// 查找要更新的密钥
@@ -188,6 +212,12 @@ export async function handleUpdateSecret(request, env, ctx) {
 				operation: 'updateSecret',
 			});
 		}
+
+		// 🔍 使用验证中间件解析和验证请求（原样提交的非标准 TOTP 周期视为保留原值）
+		const secretData = await validateRequest(createEditSecretSchema(existingSecrets[secretIndex]))(request);
+		if (secretData instanceof Response) {
+			return secretData;
+		} // 验证失败
 
 		// 检查是否与其他密钥重复（排除自己，服务名+账户+密钥都相同才视为重复）
 		const isDuplicate = checkDuplicateSecret(existingSecrets, secretData.name, secretData.account, secretData.secret, secretIndex);
@@ -298,11 +328,14 @@ export async function handleDeleteSecret(request, env, ctx) {
 
 		if (!rateLimitInfo.allowed) {
 			logger.warn('删除密钥被限流', { clientIP, operation: 'handleDeleteSecret' });
-			return createRateLimitResponse(rateLimitInfo);
+			return createRateLimitResponse(rateLimitInfo, request);
 		}
 
 		const url = new URL(request.url);
-		const secretId = url.pathname.split('/').pop();
+		const secretId = decodeSecretIdSegment(url.pathname.split('/').pop());
+		if (secretId === null) {
+			return createErrorResponse('无效路径', '路径中的密钥ID编码无效', 400, request);
+		}
 
 		// 获取现有密钥
 		const existingSecrets = await getAllSecrets(env);
@@ -330,7 +363,7 @@ export async function handleDeleteSecret(request, env, ctx) {
 			name: deletedSecret.name,
 		});
 
-		return createSuccessResponse({ id: secretId }, '密钥删除成功');
+		return createSuccessResponse({ id: secretId }, '密钥删除成功', request);
 	} catch (error) {
 		// 如果是已知的错误类型，记录并转换
 		if (
@@ -342,12 +375,12 @@ export async function handleDeleteSecret(request, env, ctx) {
 		) {
 			logError(error, logger, { operation: 'handleDeleteSecret' });
 			getMonitoring(env).getErrorMonitor().captureError(error, { operation: 'handleDeleteSecret' }, ErrorSeverity.WARNING);
-			return errorToResponse(error);
+			return errorToResponse(error, request);
 		}
 
 		// 未知错误
 		logger.error('删除密钥失败', { operation: 'handleDeleteSecret', errorMessage: error.message }, error);
 		getMonitoring(env).getErrorMonitor().captureError(error, { operation: 'handleDeleteSecret' }, ErrorSeverity.ERROR);
-		return createErrorResponse('删除密钥失败', `删除密钥操作时发生内部错误`, 500);
+		return createErrorResponse('删除密钥失败', `删除密钥操作时发生内部错误`, 500, request);
 	}
 }

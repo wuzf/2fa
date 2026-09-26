@@ -24,7 +24,7 @@ describe('backup format HTML decoding', () => {
 		};
 		const { content } = await encodeBackupContent([secret], { format: 'html' });
 		expect(content.match(/<th>/g)).toHaveLength(9);
-		expect(content.match(/<script(?:\s|>)/g)).toHaveLength(2);
+		expect(content.match(/<script(?:\s|>)/g)).toHaveLength(3);
 		expect(content).toContain('<img src="data:image/svg+xml');
 		expect(decodeBackupContent(content, 'html', { strict: true }).secrets[0]).toMatchObject(secret);
 		const { id: _id, ...tableFields } = secret;
@@ -705,5 +705,310 @@ describe('encrypted formatted backup format fallback', () => {
 			name: 'Test',
 			secret: 'JBSWY3DPEHPK3PXP',
 		});
+	});
+});
+
+describe('restore validation of account parameters', () => {
+	const encryptionEnv = { ENCRYPTION_KEY: Buffer.from('12345678901234567890123456789012').toString('base64') };
+	const validSecret = {
+		id: 'valid-1',
+		name: 'GitHub',
+		account: 'user@example.com',
+		secret: 'JBSWY3DPEHPK3PXP',
+		type: 'TOTP',
+		digits: 6,
+		period: 30,
+		algorithm: 'SHA1',
+		counter: 0,
+	};
+	const names = (decoded) => decoded.secrets.map((secret) => secret.name);
+
+	it.each([
+		['5 digits', { digits: 5 }],
+		['a fractional digit count', { digits: 6.5 }],
+		['a non-numeric digit count', { digits: 'abc' }],
+		['the MD5 algorithm', { algorithm: 'MD5' }],
+		['a fractional TOTP period', { period: 30.5 }],
+		['a non-numeric TOTP period', { period: 'abc' }],
+		['an unsupported OTP type', { type: 'STEAM' }],
+		['a negative HOTP counter', { type: 'HOTP', counter: -1 }],
+		['an unsafe HOTP counter', { type: 'HOTP', counter: Number.MAX_SAFE_INTEGER + 1 }],
+	])('keeps a JSON entry with %s unchanged and lists it as unsupported instead of skipping it', (_label, override) => {
+		const unsupported = { ...validSecret, id: 'unsupported', ...override };
+		const content = JSON.stringify({ secrets: [validSecret, unsupported] });
+		const decoded = decodeBackupContent(content, 'json', { strict: true });
+
+		expect(decoded.secrets).toEqual([validSecret, unsupported]);
+		expect(decoded.count).toBe(2);
+		expect(decoded.skippedInvalidCount).toBe(0);
+		expect(decoded.rejectedSecrets).toBeUndefined();
+		expect(decoded.unsupportedSecrets).toEqual([{ entry: 2, name: 'GitHub', errors: [expect.any(String)] }]);
+	});
+
+	it('lists every unsupported parameter of an entry with its reason', () => {
+		const content = JSON.stringify({
+			secrets: [
+				validSecret,
+				{ ...validSecret, id: 'several', name: 'Several', digits: 5, algorithm: 'MD5', period: 'abc' },
+				{ ...validSecret, id: 'steam', name: 'Steam', type: 'STEAM' },
+				{ ...validSecret, id: 'negative', name: 'Negative counter', type: 'HOTP', counter: -1 },
+			],
+		});
+		const decoded = decodeBackupContent(content, 'json', { strict: true });
+
+		expect(names(decoded)).toEqual(['GitHub', 'Several', 'Steam', 'Negative counter']);
+		expect(decoded.skippedInvalidCount).toBe(0);
+		expect(decoded.unsupportedSecrets).toEqual([
+			{ entry: 2, name: 'Several', errors: ['验证码位数仅支持6位或8位', '哈希算法仅支持SHA1、SHA256或SHA512', 'TOTP周期必须是正整数'] },
+			{ entry: 3, name: 'Steam', errors: ['不支持的OTP类型，仅支持TOTP或HOTP'] },
+			{ entry: 4, name: 'Negative counter', errors: ['HOTP计数器必须是非负安全整数'] },
+		]);
+	});
+
+	it('skips structurally broken entries and keeps unsupported ones in the same backup', () => {
+		// Passes the Base32 check (8 characters) but has a single non-padding character.
+		const content = JSON.stringify({
+			secrets: [
+				validSecret,
+				{ ...validSecret, id: 'short', name: 'Short', secret: 'A=======', digits: 5 },
+				{ ...validSecret, id: 'five', name: 'Five digits', digits: 5 },
+			],
+		});
+		const decoded = decodeBackupContent(content, 'json', { strict: true });
+
+		expect(names(decoded)).toEqual(['GitHub', 'Five digits']);
+		expect(decoded.skippedInvalidCount).toBe(1);
+		// A skipped entry lists only its structural problems.
+		expect(decoded.rejectedSecrets).toEqual([{ entry: 2, name: 'Short', errors: ['缺少有效密钥'] }]);
+		expect(decoded.unsupportedSecrets).toEqual([{ entry: 3, name: 'Five digits', errors: ['验证码位数仅支持6位或8位'] }]);
+	});
+
+	it('treats a zero or blank digit count and period as the defaults in every format', async () => {
+		const json = decodeBackupContent(
+			JSON.stringify({
+				secrets: [
+					{ ...validSecret, id: 'zero', name: 'Zero', digits: 0, period: 0 },
+					{ ...validSecret, id: 'blank', name: 'Blank', digits: '', period: null },
+				],
+			}),
+			'json',
+			{ strict: true },
+		);
+		const txt = decodeBackupContent(
+			[
+				'otpauth://totp/Zero?secret=JBSWY3DPEHPK3PXP&issuer=Zero&digits=0&period=0',
+				'otpauth://totp/Blank?secret=JBSWY3DPEHPK3PXP&issuer=Blank&digits=&period=',
+			].join('\n'),
+			'txt',
+			{ strict: true },
+		);
+		const { content: csv } = await encodeBackupContent([validSecret], { format: 'csv' });
+		const csvDecoded = decodeBackupContent(`${csv}\n"Zero","","JBSWY3DPEHPK3PXP","TOTP",0,0,"SHA1",0`, 'csv', { strict: true });
+		const params = (decoded) => decoded.secrets.map(({ name, digits, period }) => ({ name, digits, period }));
+
+		expect(json.skippedInvalidCount).toBe(0);
+		expect(params(json)).toEqual([
+			{ name: 'Zero', digits: 6, period: 30 },
+			{ name: 'Blank', digits: 6, period: 30 },
+		]);
+		expect(params(txt)).toEqual(params(json));
+		expect(params(csvDecoded)[1]).toEqual({ name: 'Zero', digits: 6, period: 30 });
+	});
+
+	it('keeps entries the web UI accepts even where adding an account is stricter', async () => {
+		const accepted = [
+			{ ...validSecret, id: 'long-name', name: 'N'.repeat(62) },
+			{ ...validSecret, id: 'period-45', name: 'Period 45', period: 45 },
+			{ ...validSecret, id: 'period-15', name: 'Period 15', period: 15 },
+			{ ...validSecret, id: 'hotp-period-0', name: 'HOTP period 0', type: 'HOTP', period: 0, counter: 3 },
+			{ ...validSecret, id: 'totp-counter', name: 'Unused counter', counter: 'n/a' },
+		];
+		const decoded = decodeBackupContent(JSON.stringify({ secrets: accepted }), 'json', { strict: true });
+
+		expect(decoded.skippedInvalidCount).toBe(0);
+		expect(decoded.rejectedSecrets).toBeUndefined();
+		// A zero period is treated as not set, like the web UI does.
+		expect(decoded.secrets).toEqual(accepted.map((secret) => (secret.period === 0 ? { ...secret, period: 30 } : secret)));
+
+		const hyphenated = decodeBackupContent(JSON.stringify({ secrets: [{ ...validSecret, algorithm: 'sha-256' }] }), 'json', {
+			strict: true,
+		});
+		expect(hyphenated.secrets[0].algorithm).toBe('SHA256');
+
+		const { content: csv } = await encodeBackupContent(accepted.slice(0, 2), { format: 'csv' });
+		expect(decodeBackupContent(csv, 'csv', { strict: true }).secrets.map(({ name, period }) => ({ name, period }))).toEqual([
+			{ name: 'N'.repeat(62), period: 30 },
+			{ name: 'Period 45', period: 45 },
+		]);
+	});
+
+	it('keeps CSV and otpauth entries with unsupported parameters unchanged', async () => {
+		const { content: csv } = await encodeBackupContent([validSecret], { format: 'csv' });
+		const csvWithUnsupportedRows = [
+			csv,
+			'"Five digits","","JBSWY3DPEHPK3PXP","TOTP",5,30,"SHA1",0',
+			'"Unparsable digits","","JBSWY3DPEHPK3PXP","TOTP",abc,30,"SHA1",0',
+			'"Unknown algorithm","","JBSWY3DPEHPK3PXP","TOTP",6,30,"MD5",0',
+		].join('\n');
+		const decodedCsv = decodeBackupContent(csvWithUnsupportedRows, 'csv', { strict: true });
+
+		expect(names(decodedCsv)).toEqual(['GitHub', 'Five digits', 'Unparsable digits', 'Unknown algorithm']);
+		expect(decodedCsv.secrets.slice(1).map(({ digits, algorithm }) => ({ digits, algorithm }))).toEqual([
+			{ digits: 5, algorithm: 'SHA1' },
+			{ digits: 'abc', algorithm: 'SHA1' },
+			{ digits: 6, algorithm: 'MD5' },
+		]);
+		expect(decodedCsv.skippedInvalidCount).toBe(0);
+		expect(decodedCsv.unsupportedSecrets.map(({ entry }) => entry)).toEqual([2, 3, 4]);
+
+		const txt = [
+			'otpauth://totp/GitHub:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=GitHub',
+			'otpauth://totp/Seven?secret=JBSWY3DPEHPK3PXP&digits=7',
+			'otpauth://totp/Md5?secret=JBSWY3DPEHPK3PXP&algorithm=MD5',
+			'otpauth://steam/Steam?secret=JBSWY3DPEHPK3PXP',
+		].join('\n');
+		const decodedTxt = decodeBackupContent(txt, 'txt', { strict: true });
+
+		expect(decodedTxt.count).toBe(4);
+		expect(decodedTxt.secrets.slice(1).map(({ type, digits, algorithm }) => ({ type, digits, algorithm }))).toEqual([
+			{ type: 'TOTP', digits: 7, algorithm: 'SHA1' },
+			{ type: 'TOTP', digits: 6, algorithm: 'MD5' },
+			{ type: 'STEAM', digits: 6, algorithm: 'SHA1' },
+		]);
+		expect(decodedTxt.skippedInvalidCount).toBe(0);
+		expect(decodedTxt.unsupportedSecrets.map(({ entry }) => entry)).toEqual([2, 3, 4]);
+	});
+
+	it('keeps unsupported HTML entries from both the embedded JSON and the table fallback', async () => {
+		const { content } = await encodeBackupContent([validSecret, { ...validSecret, id: 'five', name: 'Five digits', digits: 5 }], {
+			format: 'html',
+		});
+		const tableOnly = content.replace(/<script id="__2fa_backup_data__"[\s\S]*?<\/script>/i, '');
+
+		for (const html of [content, tableOnly]) {
+			const decoded = decodeBackupContent(html, 'html', { strict: true });
+			expect(names(decoded)).toEqual(['GitHub', 'Five digits']);
+			expect(decoded.secrets[1].digits).toBe(5);
+			expect(decoded.skippedInvalidCount).toBe(0);
+			expect(decoded.unsupportedSecrets).toEqual([{ entry: 2, name: 'Five digits', errors: ['验证码位数仅支持6位或8位'] }]);
+		}
+	});
+
+	it('numbers entries by their position in the backup even when unreadable rows were dropped first', async () => {
+		const broken = { ...validSecret, id: 'broken', name: 'Broken', secret: 'MFRGGZDFMZTWQ2LK' };
+		const five = { ...validSecret, id: 'five', name: 'Five digits', digits: 5 };
+		const { content } = await encodeBackupContent([validSecret, broken, five], { format: 'html' });
+		// A damaged HTML backup: no embedded data block and an unreadable secret in the second row.
+		const tableOnly = content
+			.replace(/<script id="__2fa_backup_data__"[\s\S]*?<\/script>/i, '')
+			.replace(/otpauth:\/\/[^"'<>\s]+/gi, '')
+			.replace(/MFRGGZDFMZTWQ2LK/g, '!!!!!!!!');
+		const html = decodeBackupContent(tableOnly, 'html', { strict: true });
+
+		expect(names(html)).toEqual(['GitHub', 'Five digits']);
+		expect(html.skippedInvalidCount).toBe(1);
+		expect(html.unsupportedSecrets).toEqual([{ entry: 3, name: 'Five digits', errors: ['验证码位数仅支持6位或8位'] }]);
+		expect(html).not.toHaveProperty('entryNumbers');
+
+		const txt = decodeBackupContent(
+			[
+				'otpauth://totp/GitHub?secret=JBSWY3DPEHPK3PXP',
+				'not an otpauth url',
+				'otpauth://totp/Five?secret=JBSWY3DPEHPK3PXP&digits=5',
+			].join('\n'),
+			'txt',
+		);
+		expect(txt.unsupportedSecrets).toEqual([{ entry: 3, name: 'Five', errors: ['验证码位数仅支持6位或8位'] }]);
+		expect(txt).not.toHaveProperty('entryNumbers');
+	});
+
+	it('keeps defaults for omitted parameters and canonicalizes letter case', async () => {
+		const decodedJson = decodeBackupContent(JSON.stringify({ secrets: [{ name: 'Legacy', secret: 'JBSWY3DPEHPK3PXP' }] }), 'json', {
+			strict: true,
+		});
+		const { content: csv } = await encodeBackupContent([validSecret], { format: 'csv' });
+		const decodedCsv = decodeBackupContent(`${csv}\n"Lowercase","","MFRGGZDFMZTWQ2LK","hotp",,,"sha256",7`, 'csv', { strict: true });
+
+		expect(decodedJson.skippedInvalidCount).toBe(0);
+		expect(decodedJson.secrets[0]).toMatchObject({ type: 'TOTP', digits: 6, period: 30, algorithm: 'SHA1', counter: 0 });
+		expect(decodedCsv.skippedInvalidCount).toBe(0);
+		expect(decodedCsv.secrets[1]).toMatchObject({ type: 'HOTP', digits: 6, period: 30, algorithm: 'SHA256', counter: 7 });
+	});
+
+	it('keeps usable ids, stores legacy numeric ids as strings and replaces only missing, unsafe or duplicate ones', () => {
+		const content = JSON.stringify({
+			secrets: [
+				{ ...validSecret, id: 'same' },
+				{ ...validSecret, id: 7, name: 'Legacy numeric' },
+				{ ...validSecret, id: 0, name: 'Legacy zero' },
+				{ ...validSecret, id: 'same', name: 'Duplicate' },
+				{ ...validSecret, id: '7', name: 'Duplicate as string' },
+				{ ...validSecret, id: 'has space', name: 'Spaced' },
+				{ ...validSecret, id: '<b>&"\'\\', name: 'Markup' },
+				{ ...validSecret, id: -1, name: 'Negative' },
+				{ ...validSecret, id: 1.5, name: 'Fractional' },
+				{ ...validSecret, id: '', name: 'Empty' },
+				{ ...validSecret, id: undefined, name: 'Missing' },
+			],
+		});
+		const decoded = decodeBackupContent(content, 'json', { strict: true });
+		const ids = decoded.secrets.map((secret) => secret.id);
+
+		expect(decoded.skippedInvalidCount).toBe(0);
+		expect(names(decoded)).toEqual([
+			'GitHub',
+			'Legacy numeric',
+			'Legacy zero',
+			'Duplicate',
+			'Duplicate as string',
+			'Spaced',
+			'Markup',
+			'Negative',
+			'Fractional',
+			'Empty',
+			'Missing',
+		]);
+		expect(ids.slice(0, 3)).toEqual(['same', '7', '0']);
+		expect(ids.every((id) => typeof id === 'string')).toBe(true);
+		expect(new Set(ids).size).toBe(ids.length);
+		for (const id of ids.slice(3)) {
+			expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+		}
+	});
+
+	it('keeps unsupported entries of encrypted legacy and formatted backups without marking them partial', async () => {
+		const legacyContent = await encryptData(
+			{ timestamp: '2026-04-16T00:00:00.000Z', secrets: [validSecret, { ...validSecret, id: 'md5', algorithm: 'MD5' }] },
+			encryptionEnv,
+		);
+		const legacy = await decodeBackupEntry(legacyContent, encryptionEnv, {
+			backupKey: 'backup_2026-04-16_00-00-00-000-test.json',
+			strict: true,
+		});
+
+		expect(legacy.encrypted).toBe(true);
+		expect(legacy.count).toBe(2);
+		expect(legacy.partial).toBe(false);
+		expect(legacy.skippedInvalidCount).toBe(0);
+		expect(legacy.unsupportedSecrets).toEqual([{ entry: 2, name: 'GitHub', errors: ['哈希算法仅支持SHA1、SHA256或SHA512'] }]);
+
+		// One entry is skipped while creating the backup: that alone makes it partial.
+		const entry = await createBackupEntry(
+			[validSecret, { ...validSecret, id: 'blank', secret: '   ' }, { ...validSecret, id: 'five', digits: 5 }],
+			encryptionEnv,
+			{ format: 'csv', reason: 'scheduled', strict: false },
+		);
+		const formatted = await decodeBackupEntry(entry.backupContent, encryptionEnv, {
+			backupKey: entry.backupKey,
+			metadata: entry.metadata,
+			strict: true,
+		});
+
+		expect(entry.skippedInvalidCount).toBe(1);
+		expect(formatted.count).toBe(2);
+		expect(formatted.partial).toBe(true);
+		expect(formatted.skippedInvalidCount).toBe(1);
+		expect(formatted.rejectedSecrets).toBeUndefined();
+		expect(formatted.unsupportedSecrets.map(({ entry: number }) => number)).toEqual([2]);
 	});
 });

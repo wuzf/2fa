@@ -2,7 +2,7 @@
  * Advance a HOTP counter without accepting a full secret object from the client.
  */
 
-import { getAllSecrets, getSecretByIdWithHOTPState, saveSecretsToKV } from './shared.js';
+import { decodeSecretIdSegment, getAllSecrets, getSecretByIdWithHOTPState, saveSecretsToKV } from './shared.js';
 import { rotateHOTPCounterEpoch, saveHOTPCounterState } from './counter-state.js';
 import { getLogger } from '../../utils/logger.js';
 import { getMonitoring, ErrorSeverity } from '../../utils/monitoring.js';
@@ -20,9 +20,10 @@ import {
 	logError,
 } from '../../utils/errors.js';
 
+// Path: /api/secrets/{encodeURIComponent(id)}/counter. Returns null for malformed encoding.
 function getSecretId(request) {
 	const pathSegments = new URL(request.url).pathname.split('/');
-	return pathSegments.at(-2) || '';
+	return decodeSecretIdSegment(pathSegments.at(-2) || '');
 }
 
 function createCounterResult(secret, request) {
@@ -53,6 +54,9 @@ export async function handleAdvanceHOTPCounter(request, env, _ctx) {
 		}
 
 		const secretId = getSecretId(request);
+		if (secretId === null) {
+			return createErrorResponse('无效路径', '路径中的密钥ID编码无效', 400, request);
+		}
 		if (!secretId) {
 			throw new ValidationError('密钥ID不能为空', { operation: 'advanceHOTPCounter' });
 		}

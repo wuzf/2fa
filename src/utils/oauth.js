@@ -1,3 +1,4 @@
+import { SUPPORTED_LANGUAGES, normalizeLanguage } from '../shared/languages.js';
 /**
  * OAuth utilities for cloud backup providers.
  * Handles one-time state storage/validation, provider persistence helpers, and popup callback responses.
@@ -6,7 +7,8 @@
 import { encryptData } from './encryption.js';
 import { createHtmlResponse } from './response.js';
 import { dialogIcon } from '../ui/dialogIcons.js';
-import { getStandaloneHead } from '../ui/standalone.js';
+import { getStandaloneHead, getStandaloneI18nScript, getStandaloneLanguageSelect, getStandaloneText } from '../ui/standalone.js';
+import { getRequestLanguage, translateServerMessage } from './i18n.js';
 
 const OAUTH_STATE_PREFIX = 'oauth_state_';
 const OAUTH_STATE_TTL_SECONDS = 10 * 60;
@@ -223,7 +225,20 @@ export function extractOAuthProviderError(data, fallbackMessage, translateError)
  * @returns {Response} HTML response
  */
 export function createOAuthPopupResponse(request, payload) {
-	const { appOrigin, ...messageData } = payload || {};
+	const { appOrigin, language: requestedLanguage, messageParts, ...messageData } = payload || {};
+	const language = requestedLanguage ? normalizeLanguage(requestedLanguage) || 'en' : getRequestLanguage(request, 'en');
+	const t = (key) => getStandaloneText(language, key);
+	const originalMessages = Array.isArray(messageParts)
+		? messageParts.filter((message) => typeof message === 'string' && message)
+		: [payload.message];
+	const translateDescription = (lang) =>
+		originalMessages
+			.filter(Boolean)
+			.map((message) => translateServerMessage(message, lang))
+			.join(' ');
+	if (messageData.message) {
+		messageData.message = translateDescription(language);
+	}
 	const messagePayload = {
 		type: 'cloudBackupAuthComplete',
 		...messageData,
@@ -234,11 +249,22 @@ export function createOAuthPopupResponse(request, payload) {
 	const safeTargetOrigin = serializeForInlineScript(targetOrigin);
 	const appUrl = `${targetOrigin}/`;
 	const appearance = resolvePopupAppearance(payload);
-	const title = payload.title || appearance.title;
-	const description = payload.message || (payload.success ? '云盘授权已完成。' : '云盘授权未完成。');
+	const title = payload.title ? translateServerMessage(payload.title, language) : t(appearance.titleKey);
+	const description = messageData.message || t(payload.success ? 'oauthSuccess' : 'oauthError');
+	const translations = Object.fromEntries(
+		SUPPORTED_LANGUAGES.map((lang) => [
+			lang,
+			{
+				oauthResultTitle: payload.title ? translateServerMessage(payload.title, lang) : getStandaloneText(lang, appearance.titleKey),
+				oauthResultDescription: payload.message
+					? translateDescription(lang)
+					: getStandaloneText(lang, payload.success ? 'oauthSuccess' : 'oauthError'),
+			},
+		]),
+	);
 
 	const html = `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${language}">
 <head>
   ${getStandaloneHead(
 		title,
@@ -252,12 +278,14 @@ export function createOAuthPopupResponse(request, payload) {
 </head>
 <body>
   <main class="standalone-card oauth-result" aria-labelledby="oauth-title">
+    <div class="standalone-language-row">${getStandaloneLanguageSelect(language)}</div>
     <div class="page-icon">${dialogIcon(appearance.icon)}</div>
-    <h1 class="page-title" id="oauth-title">${escapeHtml(title)}</h1>
-    <p class="page-description">${escapeHtml(description)}</p>
-    <p class="page-notice">如果窗口没有自动关闭，请返回应用继续操作。</p>
-    <div class="page-actions"><a class="page-button" href="${escapeHtml(appUrl)}">返回应用</a></div>
+    <h1 class="page-title" id="oauth-title" data-standalone-i18n="oauthResultTitle">${escapeHtml(title)}</h1>
+    <p class="page-description" data-standalone-i18n="oauthResultDescription">${escapeHtml(description)}</p>
+    <p class="page-notice" data-standalone-i18n="oauthReturnNotice">${t('oauthReturnNotice')}</p>
+    <div class="page-actions"><a class="page-button" href="${escapeHtml(appUrl)}" data-standalone-i18n="oauthReturn">${t('oauthReturn')}</a></div>
   </main>
+  <script>${getStandaloneI18nScript({ language, titleKey: 'oauthResultTitle', preferServerLanguage: !!requestedLanguage, translations })}</script>
   <script>
     (function () {
       const payload = ${safeJson};
@@ -276,7 +304,9 @@ export function createOAuthPopupResponse(request, payload) {
 </body>
 </html>`;
 
-	return createHtmlResponse(html, appearance.httpStatus, request);
+	const response = createHtmlResponse(html, appearance.httpStatus, request);
+	response.headers.set('Content-Language', language);
+	return response;
 }
 
 function escapeHtml(value) {
@@ -291,14 +321,14 @@ function resolvePopupAppearance(payload) {
 			return {
 				icon: 'warning',
 				color: 'warning',
-				title: '授权成功，但连接测试失败',
+				titleKey: 'oauthWarningTitle',
 				httpStatus: 200,
 			};
 		case 'error':
 			return {
 				icon: 'error',
 				color: 'danger',
-				title: '授权失败',
+				titleKey: 'oauthErrorTitle',
 				httpStatus: 400,
 			};
 		case 'success':
@@ -306,7 +336,7 @@ function resolvePopupAppearance(payload) {
 			return {
 				icon: 'check',
 				color: 'success',
-				title: '授权成功',
+				titleKey: 'oauthSuccessTitle',
 				httpStatus: 200,
 			};
 	}
@@ -335,6 +365,7 @@ function createOAuthStatePreviewPayload(payload, createdAt) {
 		provider: payload.provider || '',
 		configId: payload.configId || '',
 		appOrigin: normalizeOrigin(payload.appOrigin),
+		...(payload.language ? { language: payload.language } : {}),
 		createdAt,
 	};
 }

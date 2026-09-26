@@ -45,7 +45,7 @@ export async function handleGenerateOTP(secret, request = null) {
 		const wantsHtml = accept.includes('text/html');
 
 		if (wantsHtml) {
-			return createOtpEntryPage();
+			return createOtpEntryPage(request);
 		}
 
 		// 非浏览器（curl / API 调用）保留原有 400 + 文本说明
@@ -124,6 +124,7 @@ export async function handleGenerateOTP(secret, request = null) {
 
 		const remainingTime = type === 'TOTP' ? Math.max(0, (validUntil - serverTime) / 1000) : 0;
 		return createQuickOtpPage(otp, {
+			request,
 			period,
 			remainingTime,
 			type,

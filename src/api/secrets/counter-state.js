@@ -18,7 +18,7 @@ function isSafeCounter(counter) {
 	return Number.isSafeInteger(counter) && counter >= 0;
 }
 
-function normalizeGenerationParts(secret) {
+export function normalizeGenerationParts(secret) {
 	return {
 		secret: String(secret?.secret || '')
 			.replace(/\s+/g, '')

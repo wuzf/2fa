@@ -3,6 +3,8 @@
  * 提供一致的错误处理和响应格式
  */
 
+import { createJsonResponse } from './response.js';
+
 /**
  * 应用基础错误类
  * 所有自定义错误的基类
@@ -170,38 +172,30 @@ export function isOperationalError(error) {
  * @param {Request} request - 请求对象（可选）
  * @returns {Response} HTTP响应
  */
-export function errorToResponse(error, _request = null) {
-	// 导入 response 工具
-	// 注意：为避免循环依赖，这里内联实现
-	const getSecurityHeaders = () => {
-		return {
-			'Content-Type': 'application/json',
-			'X-Content-Type-Options': 'nosniff',
-			'Access-Control-Allow-Origin': '*',
-			'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-			'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-		};
-	};
-
+export function errorToResponse(error, request = null) {
+	// Preserve the legacy fallback headers for callers that do not have a Request.
+	const fallbackHeaders = request
+		? {}
+		: {
+				'X-Content-Type-Options': 'nosniff',
+				'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+				'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Language',
+			};
 	if (error instanceof AppError) {
-		return new Response(JSON.stringify(error.toJSON()), {
-			status: error.statusCode,
-			headers: getSecurityHeaders(),
-		});
+		return createJsonResponse(error.toJSON(), error.statusCode, request, fallbackHeaders);
 	}
 
 	// 未知错误 - 不暴露内部细节
-	return new Response(
-		JSON.stringify({
+	return createJsonResponse(
+		{
 			error: 'InternalServerError',
 			message: '服务器内部错误',
 			statusCode: 500,
 			timestamp: new Date().toISOString(),
-		}),
-		{
-			status: 500,
-			headers: getSecurityHeaders(),
 		},
+		500,
+		request,
+		fallbackHeaders,
 	);
 }
 

@@ -5,6 +5,7 @@
 
 import { createErrorResponse } from './response.js';
 import { LIMITS } from './constants.js';
+import { normalizeGenerationParts } from '../api/secrets/counter-state.js';
 
 // ==================== 验证中间件系统 ====================
 
@@ -145,6 +146,9 @@ export const addSecretSchema = new Schema({
 		message: '服务名称不能为空',
 		transform: (v) => v.trim(),
 		validator: (v) => {
+			if (!v.trim()) {
+				return '服务名称不能为空';
+			}
 			if (v.trim().length > 50) {
 				return `服务名称过长，最多支持50个字符（当前：${v.trim().length}）`;
 			}
@@ -239,6 +243,128 @@ export const advanceHOTPCounterSchema = new Schema({
 		validator: (v) => ['SHA1', 'SHA256', 'SHA512'].includes(v.toUpperCase()) || 'expectedAlgorithm仅支持SHA1、SHA256或SHA512',
 	},
 });
+
+const isOmittedField = (value) => value === undefined || value === null;
+
+/**
+ * Read a stored value the way the web UI does. Type and algorithm ignore letter case, and the
+ * algorithm also ignores the hyphen ("SHA-256"). Numbers may be stored as digit strings. A
+ * missing, empty or zero digit count or period means "not set".
+ * @returns {*} the value to use, or undefined when the stored record does not set the field
+ */
+function readStoredSecretField(field, value) {
+	if (isOmittedField(value)) {
+		return undefined;
+	}
+	if ((field === 'type' || field === 'algorithm') && typeof value === 'string') {
+		const upper = value.trim().toUpperCase();
+		return field === 'algorithm' ? upper.replace('-', '') : upper;
+	}
+	if (field === 'digits' || field === 'period' || field === 'counter') {
+		const number = typeof value === 'string' && /^\d+$/.test(value.trim()) ? Number(value.trim()) : value;
+		return field !== 'counter' && (number === 0 || number === '') ? undefined : number;
+	}
+	return value;
+}
+
+/**
+ * PUT is a partial update: an omitted (or null) optional field keeps the value stored in the
+ * record, and the merged record is then validated as a whole. Omitting a field is therefore the
+ * same as sending its stored value. A field the record does not set gets the add default.
+ *
+ * - account, type, digits and algorithm always keep the stored value.
+ * - period and counter keep it only while the type stays the same, because they belong to one
+ *   type: when the type changes, the add defaults apply (period 30, counter 0).
+ *   - TOTP keeps its period (a period that cannot be kept fails validation) but not the counter,
+ *     which TOTP records do not save.
+ *   - HOTP keeps its counter while the secret, digits and algorithm stay the same (otherwise an omitted
+ *     counter restarts at 0), and its period when that is a safe integer; otherwise the unused
+ *     period falls back to 30.
+ */
+function mergeStoredSecretFields(data, existingSecret) {
+	if (!data || typeof data !== 'object' || Array.isArray(data) || !existingSecret) {
+		return data;
+	}
+
+	const merged = { ...data };
+	const keep = (field, accept = () => true) => {
+		const stored = readStoredSecretField(field, existingSecret[field]);
+		if (isOmittedField(merged[field]) && stored !== undefined && accept(stored)) {
+			merged[field] = stored;
+		}
+	};
+	['account', 'type', 'digits', 'algorithm'].forEach((field) => keep(field));
+
+	const storedType = String(existingSecret.type || 'TOTP').toUpperCase();
+	const requestedType = typeof merged.type === 'string' ? merged.type.toUpperCase() : isOmittedField(merged.type) ? 'TOTP' : null;
+	if (requestedType === storedType && storedType === 'TOTP') {
+		keep('period');
+	}
+	if (requestedType === storedType && storedType === 'HOTP') {
+		// 省略的计数器只在生成参数（密钥、位数、算法）不变时沿用；换了参数就是新的计数序列，从 0 开始
+		const sameGeneration = JSON.stringify(normalizeGenerationParts(merged)) === JSON.stringify(normalizeGenerationParts(existingSecret));
+		if (sameGeneration) {
+			keep('counter');
+		} else if (isOmittedField(merged.counter)) {
+			merged.counter = 0;
+		}
+		keep('period', Number.isSafeInteger);
+	}
+
+	return merged;
+}
+
+class EditSecretSchema extends Schema {
+	constructor(definition, existingSecret) {
+		super(definition);
+		this.existingSecret = existingSecret;
+	}
+
+	validate(data) {
+		return super.validate(mergeStoredSecretFields(data, this.existingSecret));
+	}
+}
+
+/**
+ * 编辑已有密钥时的验证规则：与添加相同，只有两处不同。
+ *
+ * 1. 部分更新：省略（或为 null）的可选字段沿用记录当前保存的值，合并后的整条记录再按下面的规则校验，
+ *    见 mergeStoredSecretFields()。
+ * 2. 周期例外：从备份恢复的记录可能保存着 30、60、120 以外的周期；类型不变且原样提交（或省略）该周期时，
+ *    视为保留原值，以便修改其他字段：
+ *    - TOTP：现存周期须为正安全整数（周期参与生成验证码）；
+ *    - HOTP：现存周期为任意安全整数即可（HOTP 不使用周期，旧备份可能存为 0）。
+ *    其他周期值（包括把标准周期改成非标准值、同时切换类型）照常校验。
+ *
+ * @param {Object} existingSecret - 当前存储的记录
+ * @returns {Schema}
+ */
+export function createEditSecretSchema(existingSecret) {
+	const periodRules = addSecretSchema.definition.period;
+	const storedPeriod = existingSecret?.period;
+	const storedType = String(existingSecret?.type || 'TOTP').toUpperCase();
+	const storedPeriodIsKeepable =
+		Number.isSafeInteger(storedPeriod) && (storedType === 'HOTP' || (storedType === 'TOTP' && storedPeriod > 0));
+
+	return new EditSecretSchema(
+		{
+			...addSecretSchema.definition,
+			period: {
+				...periodRules,
+				validator: (value, data) => {
+					const result = periodRules.validator(value, data);
+					if (result === true) {
+						return true;
+					}
+					const requestedType = String(data?.type ?? 'TOTP').toUpperCase();
+					const keepsStoredPeriod = storedPeriodIsKeepable && requestedType === storedType && value === storedPeriod;
+					return keepsStoredPeriod || result;
+				},
+			},
+		},
+		existingSecret,
+	);
+}
 
 /**
  * 更新密钥的验证规则（与添加相同，但需要ID）
@@ -656,20 +782,20 @@ export function sortSecretsByName(secrets) {
 }
 
 /**
- * 检查密钥是否重复
+ * 查找重复的密钥记录
  * 只有当服务名+账户名+密钥都相同时才视为重复
  * @param {Array} secrets - 密钥数组
  * @param {string} name - 服务名称
  * @param {string} account - 账户名称
  * @param {string} secret - 密钥
  * @param {number} excludeIndex - 要排除的索引（用于更新时排除自己）
- * @returns {boolean} 是否存在重复
+ * @returns {Object|undefined} 重复的现有记录；没有时为 undefined
  */
-export function checkDuplicateSecret(secrets, name, account, secret = '', excludeIndex = -1) {
+export function findDuplicateSecret(secrets, name, account, secret = '', excludeIndex = -1) {
 	// 规范化密钥用于比较（移除空格，转大写）
 	const normalizedSecret = secret.replace(/\s+/g, '').toUpperCase();
 
-	return secrets.some((s, index) => {
+	return secrets.find((s, index) => {
 		if (index === excludeIndex) {
 			return false;
 		}
@@ -677,4 +803,32 @@ export function checkDuplicateSecret(secrets, name, account, secret = '', exclud
 		// 只有名称、账户、密钥都相同时才视为重复
 		return s.name === name && s.account === account && existingSecret === normalizedSecret;
 	});
+}
+
+/**
+ * 检查密钥是否重复，规则见 findDuplicateSecret()
+ * @returns {boolean} 是否存在重复
+ */
+export function checkDuplicateSecret(secrets, name, account, secret = '', excludeIndex = -1) {
+	return findDuplicateSecret(secrets, name, account, secret, excludeIndex) !== undefined;
+}
+
+/**
+ * Whether a stored record generates the same codes as a validated add request: type, digits
+ * and algorithm match, and for TOTP also the period. The HOTP counter is not compared.
+ * Stored values are read like the web UI reads them: a missing, empty or zero value means the
+ * default, and an unusable value (e.g. digits "abc") never matches.
+ * @param {Object} existing - stored record
+ * @param {Object} requested - request data validated by addSecretSchema
+ * @returns {boolean}
+ */
+export function hasSameOtpParameters(existing, requested) {
+	const type = String(existing?.type || 'TOTP').toUpperCase();
+	const digits = Number(existing?.digits || 6);
+	const algorithm = String(existing?.algorithm || 'SHA1')
+		.toUpperCase()
+		.replace('-', '');
+	const sameParameters = type === requested.type && digits === requested.digits && algorithm === requested.algorithm;
+
+	return sameParameters && (type !== 'TOTP' || Number(existing?.period || 30) === requested.period);
 }

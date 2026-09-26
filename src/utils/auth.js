@@ -4,6 +4,7 @@
  */
 
 import { createErrorResponse } from './response.js';
+import { getLanguageHeaders, localizeResponseData } from './i18n.js';
 import { checkRateLimit, createRateLimitResponse, getClientIdentifier, RATE_LIMIT_PRESETS } from './rateLimit.js';
 import { getAllowedOrigin, getSecurityHeaders } from './security.js';
 import { getLogger } from './logger.js';
@@ -643,17 +644,23 @@ export async function handleFirstTimeSetup(request, env) {
 		const securityHeaders = getSecurityHeaders(request);
 
 		return new Response(
-			JSON.stringify({
-				success: true,
-				message: '密码设置成功，已自动登录',
-				expiresAt: expiryDate.toISOString(),
-				expiresIn: `${jwtExpiryDays}天`,
-			}),
+			JSON.stringify(
+				localizeResponseData(
+					{
+						success: true,
+						message: '密码设置成功，已自动登录',
+						expiresAt: expiryDate.toISOString(),
+						expiresIn: `${jwtExpiryDays}天`,
+					},
+					request,
+				),
+			),
 			{
 				status: 200,
 				headers: {
 					...securityHeaders,
 					'Content-Type': 'application/json',
+					...getLanguageHeaders(request),
 					'Set-Cookie': createSetCookieHeader(jwtToken, jwtExpiryDays * 24 * 60 * 60),
 					'X-RateLimit-Limit': rateLimitInfo.limit.toString(),
 					'X-RateLimit-Remaining': rateLimitInfo.remaining.toString(),
@@ -762,18 +769,24 @@ export async function handleLogin(request, env) {
 		const securityHeaders = getSecurityHeaders(request);
 
 		return new Response(
-			JSON.stringify({
-				success: true,
-				message: '登录成功',
-				token: jwtToken, // 同时在响应 body 中返回 token（供测试和客户端使用）
-				expiresAt: expiryDate.toISOString(),
-				expiresIn: `${jwtExpiryDays}天`,
-			}),
+			JSON.stringify(
+				localizeResponseData(
+					{
+						success: true,
+						message: '登录成功',
+						token: jwtToken, // 同时在响应 body 中返回 token（供测试和客户端使用）
+						expiresAt: expiryDate.toISOString(),
+						expiresIn: `${jwtExpiryDays}天`,
+					},
+					request,
+				),
+			),
 			{
 				status: 200,
 				headers: {
 					...securityHeaders,
 					'Content-Type': 'application/json',
+					...getLanguageHeaders(request),
 					'Set-Cookie': createSetCookieHeader(jwtToken, jwtExpiryDays * 24 * 60 * 60),
 					'X-RateLimit-Limit': rateLimitInfo.limit.toString(),
 					'X-RateLimit-Remaining': rateLimitInfo.remaining.toString(),
@@ -870,18 +883,24 @@ export async function handleRefreshToken(request, env) {
 		const securityHeaders = getSecurityHeaders(request);
 
 		return new Response(
-			JSON.stringify({
-				success: true,
-				message: '令牌刷新成功',
-				token: newToken, // 同时在响应 body 中返回 token（供测试和客户端使用）
-				expiresAt: expiryDate.toISOString(),
-				expiresIn: `${jwtExpiryDays}天`,
-			}),
+			JSON.stringify(
+				localizeResponseData(
+					{
+						success: true,
+						message: '令牌刷新成功',
+						token: newToken, // 同时在响应 body 中返回 token（供测试和客户端使用）
+						expiresAt: expiryDate.toISOString(),
+						expiresIn: `${jwtExpiryDays}天`,
+					},
+					request,
+				),
+			),
 			{
 				status: 200,
 				headers: {
 					...securityHeaders, // 🔒 包含 CORS, CSP 等安全头
 					'Content-Type': 'application/json',
+					...getLanguageHeaders(request),
 					// 🍪 设置新的 HttpOnly Cookie
 					'Set-Cookie': createSetCookieHeader(newToken, jwtExpiryDays * 24 * 60 * 60),
 				},
@@ -934,15 +953,21 @@ export async function handleLogout(request, env) {
 	}
 
 	return new Response(
-		JSON.stringify({
-			success: true,
-			message: '已退出登录',
-		}),
+		JSON.stringify(
+			localizeResponseData(
+				{
+					success: true,
+					message: '已退出登录',
+				},
+				request,
+			),
+		),
 		{
 			status: 200,
 			headers: {
 				...getSecurityHeaders(request),
 				'Content-Type': 'application/json',
+				...getLanguageHeaders(request),
 				'Cache-Control': 'no-store',
 				'Set-Cookie': createClearCookieHeader(),
 			},

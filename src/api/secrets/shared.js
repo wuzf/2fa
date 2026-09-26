@@ -10,6 +10,24 @@ import { clearPendingDataHash, stageDataHash } from '../../utils/data-hash.js';
 import { overlayHOTPCounterStates, overlaySingleHOTPCounterState } from './counter-state.js';
 
 /**
+ * Decode a secret id taken from one request path segment.
+ *
+ * Clients encode the id with encodeURIComponent, so ids containing "/", "%", "?" or "#" reach
+ * the handler intact (URL parsing keeps "%2F" encoded, so routing is unaffected). The segment is
+ * decoded exactly once; ids without "%" are unchanged by decoding.
+ *
+ * @param {string} segment - raw path segment
+ * @returns {string|null} the id, or null when the segment is not valid percent-encoding
+ */
+export function decodeSecretIdSegment(segment) {
+	try {
+		return decodeURIComponent(String(segment ?? ''));
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Save secrets to KV and trigger event-driven backup.
  *
  * When a request context is available, non-immediate backups are scheduled

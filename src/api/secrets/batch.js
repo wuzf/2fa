@@ -43,7 +43,7 @@ export async function handleBatchAddSecrets(request, env, ctx) {
 				limit: rateLimitInfo.limit,
 				resetAt: rateLimitInfo.resetAt,
 			});
-			return createRateLimitResponse(rateLimitInfo);
+			return createRateLimitResponse(rateLimitInfo, request);
 		}
 
 		// 🔍 使用验证中间件解析和验证请求（仅验证顶层结构）

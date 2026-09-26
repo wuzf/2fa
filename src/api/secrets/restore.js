@@ -14,6 +14,7 @@ import {
 	parseBackupTimeFromKey,
 } from '../../utils/backup-format.js';
 import { createJsonResponse, createErrorResponse, createSuccessResponse } from '../../utils/response.js';
+import { getRequestLanguage } from '../../utils/i18n.js';
 import { ValidationError, NotFoundError, StorageError, CryptoError, errorToResponse, logError } from '../../utils/errors.js';
 import { LIMITS } from '../../utils/constants.js';
 
@@ -22,9 +23,71 @@ const MAX_RESTORE_CONTENT_BYTES = LIMITS.MAX_EXPORT_SIZE;
 const MAX_RESTORE_REQUEST_BYTES = MAX_RESTORE_CONTENT_BYTES * 2 + 64 * 1024;
 const MAX_RESTORE_CONTENT_SIZE_LABEL = '10 MB';
 
+const MAX_ENTRY_WARNING_LINES = 10;
+
 function buildIncompleteBackupMessage(decoded, actionLabel) {
 	const skippedInvalidCount = Number.parseInt(decoded?.skippedInvalidCount, 10) || 0;
 	return `该备份在创建或解析时已跳过 ${skippedInvalidCount} 条无效密钥，无法保证数据完整，已阻止${actionLabel}`;
+}
+
+/**
+ * One line per listed entry, e.g. "第 2 条（GitHub）：缺少有效密钥". Entries are numbered from 1
+ * in the order they appear in the backup. At most MAX_ENTRY_WARNING_LINES lines: when more
+ * entries are listed, the last line is "另有 N 条" for the entries not shown. An entry without
+ * a name is shown as "未命名", which the response localization translates like the reasons.
+ * @param {Array<{entry: number, name: string, errors: string[]}>} [items]
+ */
+function buildEntryWarnings(items) {
+	const entries = Array.isArray(items) ? items : [];
+	const shownCount = entries.length > MAX_ENTRY_WARNING_LINES ? MAX_ENTRY_WARNING_LINES - 1 : entries.length;
+	const warnings = entries.slice(0, shownCount).map(({ entry, name, errors }) => {
+		const reasons = errors.join('；');
+		return typeof name === 'string' && name.trim() ? `第 ${entry} 条（${name}）：${reasons}` : `第 ${entry} 条（未命名）：${reasons}`;
+	});
+	if (entries.length > shownCount) {
+		warnings.push(`另有 ${entries.length - shownCount} 条`);
+	}
+	return warnings;
+}
+
+function getUnsupportedEntryCount(decoded) {
+	return Array.isArray(decoded?.unsupportedSecrets) ? decoded.unsupportedSecrets.length : 0;
+}
+
+function createIncompleteBackupResponse(decoded, actionLabel, request) {
+	const warnings = buildEntryWarnings(decoded?.rejectedSecrets);
+	return createJsonResponse(
+		{
+			error: '备份不完整',
+			message: buildIncompleteBackupMessage(decoded, actionLabel),
+			...(warnings.length > 0 && { warnings }),
+			timestamp: new Date().toISOString(),
+		},
+		400,
+		request,
+	);
+}
+
+function logDecodedEntryIssues(logger, backupKey, decoded) {
+	const rejectedSecrets = Array.isArray(decoded?.rejectedSecrets) ? decoded.rejectedSecrets : [];
+	const unsupportedSecrets = Array.isArray(decoded?.unsupportedSecrets) ? decoded.unsupportedSecrets : [];
+	// Entry numbers and reasons only: service names are user data.
+	const summarize = (items) => items.slice(0, 5).map(({ entry, errors }) => ({ entry, errors }));
+
+	if (rejectedSecrets.length > 0) {
+		logger.warn('备份中有条目无法恢复，已按无效条目跳过', {
+			backupKey,
+			rejectedCount: rejectedSecrets.length,
+			rejected: summarize(rejectedSecrets),
+		});
+	}
+	if (unsupportedSecrets.length > 0) {
+		logger.info('备份中有条目的OTP参数不受支持，已按原样保留', {
+			backupKey,
+			unsupportedCount: unsupportedSecrets.length,
+			unsupported: summarize(unsupportedSecrets),
+		});
+	}
 }
 
 function parseContentLength(request) {
@@ -302,6 +365,7 @@ export async function handleExportBackup(request, env, backupKey) {
 		logger.info('📤 开始导出备份', { backupKey });
 
 		const url = new URL(request.url);
+		const language = getRequestLanguage(request);
 		const format = String(url.searchParams.get('format') || 'txt')
 			.trim()
 			.toLowerCase();
@@ -326,17 +390,19 @@ export async function handleExportBackup(request, env, backupKey) {
 			metadata: keyEntry?.metadata,
 			strict: true,
 		});
+		logDecodedEntryIssues(logger, backupKey, decoded);
 		if (decoded.partial) {
-			return createErrorResponse('备份不完整', buildIncompleteBackupMessage(decoded, '导出'), 400, request);
+			return createIncompleteBackupResponse(decoded, '导出', request);
 		}
 		const sortedSecrets = [...normalizeBackupSecrets(decoded.secrets, decoded.timestamp)].sort((a, b) =>
-			a.name.localeCompare(b.name, 'zh-CN', { sensitivity: 'base' }),
+			a.name.localeCompare(b.name, language, { sensitivity: 'base' }),
 		);
 		const download = await buildDownloadContent(sortedSecrets, format, {
 			format,
 			timestamp: decoded.timestamp,
 			reason: decoded.reason,
 			includeQRCodes: format === 'html',
+			language,
 		});
 		const dateMatch = backupKey.match(/backup_(\d{4}-\d{2}-\d{2})/);
 		const dateStr = dateMatch ? dateMatch[1] : new Date().toISOString().split('T')[0];
@@ -353,10 +419,11 @@ export async function handleExportBackup(request, env, backupKey) {
 			status: 200,
 			headers: {
 				'Content-Type': download.contentType,
+				'Content-Language': language,
 				'Content-Disposition': `attachment; filename="${filename}"`,
 				'Access-Control-Allow-Origin': '*',
 				'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-				'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+				'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Language',
 			},
 		});
 	} catch (error) {
@@ -407,27 +474,38 @@ export async function handleRestoreBackup(request, env, ctx) {
 		}
 
 		const { backupKey, backupContent, metadata, preview: isPreview, source } = restoreSource;
+		// The entry checks are the same for KV backups and uploaded files.
 		const decoded = await decodeBackupEntry(backupContent, env, {
 			backupKey,
 			metadata,
 			strict: true,
 		});
+		logDecodedEntryIssues(logger, backupKey, decoded);
+		const unsupportedCount = getUnsupportedEntryCount(decoded);
 
 		if (isPreview) {
 			const warningMessage = decoded.partial ? buildIncompleteBackupMessage(decoded, '恢复或导出') : null;
-			return createSuccessResponse({
-				message: '备份预览获取成功',
-				backupKey,
-				secrets: decoded.secrets,
-				count: decoded.count,
-				timestamp: decoded.timestamp,
-				encrypted: decoded.encrypted,
-				format: decoded.format,
-				source,
-				partial: decoded.partial === true,
-				skippedInvalidCount: decoded.skippedInvalidCount || 0,
-				warnings: warningMessage ? [warningMessage] : [],
-			});
+			return createSuccessResponse(
+				{
+					message: '备份预览获取成功',
+					backupKey,
+					secrets: decoded.secrets,
+					count: decoded.count,
+					timestamp: decoded.timestamp,
+					encrypted: decoded.encrypted,
+					format: decoded.format,
+					source,
+					partial: decoded.partial === true,
+					skippedInvalidCount: decoded.skippedInvalidCount || 0,
+					// Skipped entries: warnings[0] is the summary (the web UI shows it), per-entry reasons follow.
+					warnings: warningMessage ? [warningMessage, ...buildEntryWarnings(decoded.rejectedSecrets)] : [],
+					// Kept entries whose OTP parameters are unsupported: per-entry reasons only.
+					unsupportedCount,
+					unsupportedWarnings: buildEntryWarnings(decoded.unsupportedSecrets),
+				},
+				undefined,
+				request,
+			);
 		}
 
 		if (!decoded.secrets || !Array.isArray(decoded.secrets)) {
@@ -435,7 +513,7 @@ export async function handleRestoreBackup(request, env, ctx) {
 		}
 
 		if (decoded.partial) {
-			return createErrorResponse('备份不完整', buildIncompleteBackupMessage(decoded, '恢复'), 400, request);
+			return createIncompleteBackupResponse(decoded, '恢复', request);
 		}
 
 		if (decoded.secrets.length === 0) {
@@ -454,16 +532,21 @@ export async function handleRestoreBackup(request, env, ctx) {
 			format: decoded.format,
 		});
 
-		return createJsonResponse({
-			success: true,
-			message: `恢复备份成功，共恢复 ${decoded.secrets.length} 个密钥`,
-			backupKey,
-			count: decoded.secrets.length,
-			timestamp: decoded.timestamp || parseBackupTimeFromKey(backupKey),
-			sourceEncrypted: decoded.encrypted,
-			format: decoded.format,
-			source,
-		});
+		return createJsonResponse(
+			{
+				success: true,
+				message: `恢复备份成功，共恢复 ${decoded.secrets.length} 个密钥`,
+				backupKey,
+				count: decoded.secrets.length,
+				timestamp: decoded.timestamp || parseBackupTimeFromKey(backupKey),
+				sourceEncrypted: decoded.encrypted,
+				format: decoded.format,
+				source,
+				unsupportedCount,
+			},
+			200,
+			request,
+		);
 	} catch (error) {
 		if (
 			error instanceof NotFoundError ||

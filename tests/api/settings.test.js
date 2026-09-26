@@ -4,6 +4,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { LANGUAGE_PREFERENCES } from '../../src/shared/languages.js';
 import { handleGetSettings, handleSaveSettings } from '../../src/api/settings.js';
 
 class MockKV {
@@ -294,7 +295,7 @@ describe('Settings API', () => {
 			expect(data).not.toHaveProperty('language');
 		});
 
-		it.each(['auto', 'zh-TW', 'zh-CN', 'en'])('accepts %s', async (lang) => {
+		it.each(LANGUAGE_PREFERENCES)('accepts %s', async (lang) => {
 			const resp = await handleSaveSettings(createMockRequest({ language: lang }), env);
 			const data = await resp.json();
 
@@ -307,11 +308,11 @@ describe('Settings API', () => {
 		});
 
 		it('rejects unsupported languages', async () => {
-			const resp = await handleSaveSettings(createMockRequest({ language: 'fr' }), env);
+			const resp = await handleSaveSettings(createMockRequest({ language: 'unsupported' }), env);
 			const data = await resp.json();
 
 			expect(resp.status).toBe(400);
-			expect(data.message).toBe('语言偏好仅支持：auto, zh-TW, zh-CN, en');
+			expect(data.message).toBe(`语言偏好仅支持：${LANGUAGE_PREFERENCES.join(', ')}`);
 		});
 
 		it('rejects non-string values', async () => {

@@ -9,6 +9,7 @@ import {
   validateSecretData,
   validateOTPParams,
   addSecretSchema,
+  updateSecretSchema,
   createSecretObject,
   sortSecretsByName,
   checkDuplicateSecret
@@ -346,6 +347,22 @@ describe('Validation Utils', () => {
         counter: 999 // 应该被忽略
       });
       expect(result.valid).toBe(true);
+    });
+  });
+
+  describe('required service names at API write boundaries', () => {
+    it.each(['', '   ', '\t\n', '\u3000\u00a0'])('rejects a blank name %j in both add and update requests', (name) => {
+      for (const schema of [addSecretSchema, updateSecretSchema]) {
+        const result = schema.validate({ id: 'existing', name, secret: 'JBSWY3DPEHPK3PXP' });
+        expect(result.valid).toBe(false);
+        expect(result.errors).toContain('服务名称不能为空');
+      }
+    });
+
+    it('keeps normalizing surrounding whitespace in a usable name', () => {
+      const result = addSecretSchema.validate({ name: '\t GitHub \u3000', secret: 'JBSWY3DPEHPK3PXP' });
+      expect(result.valid).toBe(true);
+      expect(result.data.name).toBe('GitHub');
     });
   });
 

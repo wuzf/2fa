@@ -1,3 +1,4 @@
+import { getLanguageHeaders, localizeResponseData } from './i18n.js';
 import { getSecurityHeaders } from './security.js';
 import { getLogger } from './logger.js';
 
@@ -384,6 +385,7 @@ export function createRateLimitResponse(rateLimitInfo, request = null) {
 
 	let headers = {
 		'Content-Type': 'application/json',
+		...getLanguageHeaders(request),
 		'Retry-After': retryAfter.toString(),
 		'X-RateLimit-Limit': rateLimitInfo.limit.toString(),
 		'X-RateLimit-Remaining': rateLimitInfo.remaining.toString(),
@@ -405,15 +407,20 @@ export function createRateLimitResponse(rateLimitInfo, request = null) {
 	}
 
 	return new Response(
-		JSON.stringify({
-			error: '请求过于频繁',
-			message: `您的请求次数过多，请在 ${retryAfter} 秒后重试`,
-			retryAfter: retryAfter,
-			limit: rateLimitInfo.limit,
-			remaining: rateLimitInfo.remaining,
-			resetAt: new Date(rateLimitInfo.resetAt).toISOString(),
-			algorithm: rateLimitInfo.algorithm || 'sliding-window',
-		}),
+		JSON.stringify(
+			localizeResponseData(
+				{
+					error: '请求过于频繁',
+					message: `您的请求次数过多，请在 ${retryAfter} 秒后重试`,
+					retryAfter: retryAfter,
+					limit: rateLimitInfo.limit,
+					remaining: rateLimitInfo.remaining,
+					resetAt: new Date(rateLimitInfo.resetAt).toISOString(),
+					algorithm: rateLimitInfo.algorithm || 'sliding-window',
+				},
+				request,
+			),
+		),
 		{
 			status: 429,
 			headers,

@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import worker from '../../src/worker.js';
 import { handleBackupSecrets, handleGetBackups } from '../../src/api/secrets/backup.js';
 import { handleExportBackup, handleRestoreBackup } from '../../src/api/secrets/restore.js';
+import { handleExportSecrets } from '../../src/api/secrets/export.js';
 import { getAllSecrets, saveSecretsToKV } from '../../src/api/secrets/shared.js';
-import { encryptSecrets } from '../../src/utils/encryption.js';
-import { MAX_HTML_QR_EXPORT_SECRETS } from '../../src/utils/backup-format.js';
+import { decryptData, encryptSecrets } from '../../src/utils/encryption.js';
+import { MAX_HTML_QR_EXPORT_SECRETS, decodeBackupContent } from '../../src/utils/backup-format.js';
+import { BACKUP_DOCUMENT_LOCALES } from '../../src/utils/backup-locales.js';
 
 class MockKV {
 	constructor() {
@@ -261,6 +263,105 @@ describe('Backup format propagation', () => {
 		expect(previewData.data.format).toBe('html');
 		expect(previewData.data.count).toBe(2);
 		expect(normalizeSecretsForAssert(previewData.data.secrets)).toEqual(normalizeSecretsForAssert(createSecrets()));
+	});
+});
+
+// The only CSV header row that releases before multilingual backups can decode.
+const LEGACY_CSV_HEADER_ROW = '服务名称,账户信息,密钥,类型,位数,周期(秒),算法,计数器';
+// The embedded JSON block that every release reads first when restoring an HTML backup.
+const LEGACY_HTML_DATA_BLOCK = /<script[^>]*id=["']__2fa_backup_data__["'][^>]*type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/i;
+
+function createLanguageRequest(language, method = 'POST', url = 'https://example.com/api/backup', params = {}) {
+	const request = createMockRequest({}, method, url, params);
+	request.headers.set('X-Language', language);
+	return request;
+}
+
+async function readStoredBackupContent(env, backupKey) {
+	const decrypted = await decryptData(await env.SECRETS_KV.get(backupKey, 'text'), env);
+	expect(decrypted.type).toBe('formatted-backup');
+	return decrypted.content;
+}
+
+function decodeHtmlEntities(value) {
+	return value
+		.replace(/&lt;/g, '<')
+		.replace(/&gt;/g, '>')
+		.replace(/&quot;/g, '"')
+		.replace(/&#39;/g, "'")
+		.replace(/&amp;/g, '&');
+}
+
+describe('Stored backup portability across interface languages', () => {
+	it.each(['en', 'zh-TW', 'ja', 'de'])('keeps Simplified Chinese CSV headers for a manual backup requested in %s', async (language) => {
+		const env = createMockEnv();
+		const originalSecrets = createSecrets().map((secret, index) => (index === 0 ? { ...secret, period: 60 } : secret));
+		await env.SECRETS_KV.put('settings', JSON.stringify({ defaultExportFormat: 'csv' }));
+		await env.SECRETS_KV.put('secrets', await encryptSecrets(originalSecrets, env));
+
+		const response = await handleBackupSecrets(createLanguageRequest(language), env);
+		const data = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(data.format).toBe('csv');
+
+		const content = await readStoredBackupContent(env, data.backupKey);
+		expect(content.charCodeAt(0)).toBe(0xfeff);
+		expect(content.slice(1).split('\n')[0]).toBe(LEGACY_CSV_HEADER_ROW);
+		expect(normalizeSecretsForAssert(decodeBackupContent(content, 'csv', { strict: true }).secrets)).toEqual(
+			normalizeSecretsForAssert(originalSecrets),
+		);
+	});
+
+	it('localizes manual HTML backups while keeping the embedded JSON block older releases restore from', async () => {
+		const env = createMockEnv();
+		await env.SECRETS_KV.put('settings', JSON.stringify({ defaultExportFormat: 'html' }));
+		await env.SECRETS_KV.put('secrets', await encryptSecrets(createSecrets(), env));
+
+		const response = await handleBackupSecrets(createLanguageRequest('en'), env);
+		const data = await response.json();
+		const content = await readStoredBackupContent(env, data.backupKey);
+		const dataBlock = content.match(LEGACY_HTML_DATA_BLOCK);
+
+		expect(response.status).toBe(200);
+		expect(content).toContain('<html lang="en">');
+		expect(content).toContain(
+			`<th><span data-standalone-i18n="backupDocument_column0">${BACKUP_DOCUMENT_LOCALES.en.headers[0]}</span></th>`,
+		);
+		expect(dataBlock).not.toBeNull();
+		expect(normalizeSecretsForAssert(JSON.parse(decodeHtmlEntities(dataBlock[1].trim())).secrets)).toEqual(
+			normalizeSecretsForAssert(createSecrets()),
+		);
+	});
+
+	it('keeps both download endpoints localized', async () => {
+		const env = createMockEnv();
+		const englishHeaderRow = BACKUP_DOCUMENT_LOCALES.en.headers.join(',');
+		await env.SECRETS_KV.put('settings', JSON.stringify({ defaultExportFormat: 'csv' }));
+		await env.SECRETS_KV.put('secrets', await encryptSecrets(createSecrets(), env));
+
+		const backup = await (await handleBackupSecrets(createLanguageRequest('en'), env)).json();
+		const backupExport = await handleExportBackup(
+			createLanguageRequest('en', 'GET', `https://example.com/api/backup/export/${backup.backupKey}`, { format: 'csv' }),
+			env,
+			backup.backupKey,
+		);
+
+		expect(backupExport.status).toBe(200);
+		expect(backupExport.headers.get('Content-Language')).toBe('en');
+		expect(await backupExport.text()).toContain(englishHeaderRow);
+
+		const secretsExport = await handleExportSecrets(
+			new Request('https://example.com/api/secrets/export', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', 'X-Language': 'en' },
+				body: JSON.stringify({ format: 'csv', secrets: createSecrets() }),
+			}),
+			env,
+		);
+
+		expect(secretsExport.status).toBe(200);
+		expect(await secretsExport.text()).toContain(englishHeaderRow);
 	});
 });
 

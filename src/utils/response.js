@@ -9,6 +9,7 @@
  */
 
 import { getSecurityHeaders } from './security.js';
+import { getLanguageHeaders, localizeResponseData } from './i18n.js';
 
 // 性能优化：缓存默认 CORS headers，避免重复创建对象
 const DEFAULT_CORS_HEADERS = {
@@ -69,7 +70,30 @@ export function createJsonResponse(data, status = 200, request = null, additiona
 		}
 	}
 
-	return new Response(JSON.stringify(data), {
+	if (request) {
+		const languageHeaders = getLanguageHeaders(request);
+		headers['Content-Language'] = languageHeaders['Content-Language'];
+		const varyValues = [];
+		for (const name of Object.keys(headers)) {
+			if (name.toLowerCase() === 'vary') {
+				varyValues.push(headers[name]);
+				delete headers[name];
+			}
+		}
+		varyValues.push(languageHeaders.Vary);
+		const varyTokens = [
+			...new Set(
+				varyValues
+					.join(',')
+					.split(',')
+					.map((value) => value.trim())
+					.filter(Boolean),
+			),
+		];
+		headers.Vary = varyTokens.includes('*') ? '*' : varyTokens.join(', ');
+	}
+
+	return new Response(JSON.stringify(localizeResponseData(data, request)), {
 		status,
 		headers,
 	});
