@@ -19,7 +19,7 @@ describe('settings module code generation', () => {
 		expect(code).toContain('body: JSON.stringify({ defaultExportFormat: selectedFormat }),');
 		expect(code).toContain('if (requestId !== defaultExportFormatSaveRequestId) {');
 		expect(code).toContain('const savedFormat = (data.settings && data.settings.defaultExportFormat) || selectedFormat;');
-		expect(code).toContain('偏好格式已保存，批量导出和备份导出会优先使用该格式');
+		expect(code).toContain("t('defaultExportFormatSaved')");
 	});
 
 	it('loads and applies the local OTP animation preference through the OTP public API', () => {
@@ -43,10 +43,10 @@ describe('settings module code generation', () => {
 		const html = await response.text();
 		const select = html.match(/<select\b[^>]*\bid="settingsOTPAnimationMode"[^>]*>[\s\S]*?<\/select>/)?.[0];
 
-		expect(html).toContain('<h3 class="settings-section-title" id="settingsOTPAnimationTitle">验证码交接动效</h3>');
+		expect(html).toMatch(/<h3\b[^>]*id="settingsOTPAnimationTitle"[^>]*>验证码交接动效<\/h3>/);
 		expect(select).toBeTruthy();
 		expect(select).toContain('onchange="applyOTPAnimationFromSettings(this.value)"');
-		const options = [...select.matchAll(/<option\s+value="([^"]+)">([^<]+)<\/option>/g)].map((match) => ({
+		const options = [...select.matchAll(/<option\s+value="([^"]+)"[^>]*>([^<]+)<\/option>/g)].map((match) => ({
 			value: match[1],
 			label: match[2],
 		}));

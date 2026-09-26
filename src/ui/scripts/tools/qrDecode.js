@@ -12,6 +12,31 @@ export function getQRDecodeToolCode() {
     let decodeStream = null;
     let decodeInterval = null;
     let isDecodeScanning = false;
+    let _decodeCameraError = null;
+
+    function _newDecodeCameraError(key) {
+      const error = new Error(t(key));
+      error.i18nKey = key;
+      return error;
+    }
+
+    function _decodeCameraErrorText(error) {
+      const keys = {
+        NotAllowedError: 'toolCameraDenied',
+        NotFoundError: 'toolCameraMissing',
+        NotReadableError: 'toolCameraBusy',
+        OverconstrainedError: 'toolCameraConstraints'
+      };
+      if (keys[error.name]) return t(keys[error.name]);
+      return t('toolCameraStartError', { message: error.i18nKey ? t(error.i18nKey) : error.message });
+    }
+
+    function _refreshDecodeCameraTranslations() {
+      const status = document.getElementById('decodeScannerStatus');
+      if (status && status.style.display !== 'none') status.textContent = t('scannerStarting');
+      const message = document.getElementById('decodeErrorMessage');
+      if (message && _decodeCameraError) message.textContent = _decodeCameraErrorText(_decodeCameraError);
+    }
 
     function showQRDecodeModal() {
       showModal('qrDecodeModal', () => {
@@ -35,7 +60,8 @@ export function getQRDecodeToolCode() {
 
       container.style.display = 'block';
       error.style.display = 'none';
-      status.textContent = '正在启动摄像头...';
+      _decodeCameraError = null;
+      status.textContent = t('scannerStarting');
       status.style.display = 'block';
 
       startDecodeCamera();
@@ -57,19 +83,19 @@ export function getQRDecodeToolCode() {
             navigator.mediaDevices.getUserMedia = function(constraints) {
               const getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
               if (!getUserMedia) {
-                return Promise.reject(new Error('getUserMedia is not implemented in this browser'));
+                return Promise.reject(_newDecodeCameraError('toolCameraUnsupported'));
               }
               return new Promise((resolve, reject) => {
                 getUserMedia.call(navigator, constraints, resolve, reject);
               });
             };
           } else {
-            throw new Error('您的浏览器不支持摄像头功能，请使用现代浏览器');
+            throw _newDecodeCameraError('toolCameraUnsupported');
           }
         }
 
         if (!navigator.mediaDevices.getUserMedia) {
-          throw new Error('您的浏览器不支持摄像头功能，请使用现代浏览器');
+          throw _newDecodeCameraError('toolCameraUnsupported');
         }
 
         // iPad 特殊处理：检查设备类型和权限
@@ -156,7 +182,7 @@ export function getQRDecodeToolCode() {
         }
 
         if (!stream) {
-          throw new Error('无法获取摄像头访问权限');
+          throw _newDecodeCameraError('toolCameraAccess');
         }
 
         decodeStream = stream;
@@ -165,7 +191,7 @@ export function getQRDecodeToolCode() {
         // 等待视频加载并播放
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
-            reject(new Error('摄像头加载超时'));
+            reject(_newDecodeCameraError('toolCameraTimeout'));
           }, 10000);
 
           video.onloadedmetadata = () => {
@@ -177,7 +203,7 @@ export function getQRDecodeToolCode() {
 
           video.onerror = () => {
             clearTimeout(timeout);
-            reject(new Error('摄像头播放失败'));
+            reject(_newDecodeCameraError('toolCameraPlayback'));
           };
         });
 
@@ -193,19 +219,8 @@ export function getQRDecodeToolCode() {
         }, 500);
 
       } catch (err) {
-        let errorMsg = '摄像头启动失败: ' + err.message;
-
-        if (err.name === 'NotAllowedError') {
-          errorMsg = '摄像头权限被拒绝，请在浏览器设置中允许摄像头访问';
-        } else if (err.name === 'NotFoundError') {
-          errorMsg = '未找到摄像头设备，请确保设备连接正常';
-        } else if (err.name === 'NotReadableError') {
-          errorMsg = '摄像头被其他应用占用，请关闭其他摄像头应用';
-        } else if (err.name === 'OverconstrainedError') {
-          errorMsg = '摄像头不支持请求的配置，请尝试其他设备';
-        }
-
-        errorMessage.textContent = errorMsg;
+        _decodeCameraError = err;
+        errorMessage.textContent = _decodeCameraErrorText(err);
         error.style.display = 'block';
         status.style.display = 'none';
       }
@@ -277,7 +292,7 @@ export function getQRDecodeToolCode() {
       resultContent.textContent = qrCodeData;
       resultSection.style.display = 'block';
 
-      showCenterToast('✅', '二维码解析成功');
+      showCenterToast('✅', t('toolQrDecoded'));
     }
 
     function uploadImageForDecode() {
@@ -310,10 +325,10 @@ export function getQRDecodeToolCode() {
               if (code) {
                 processDecodeResult(code.data);
               } else {
-                showCenterToast('❌', '未在图片中找到二维码，请尝试其他图片');
+                showCenterToast('❌', t('toolQrNotFound'));
               }
             } else {
-              showCenterToast('❌', '二维码解析库未加载');
+              showCenterToast('❌', t('toolQrLibraryMissing'));
             }
           };
           img.src = e.target.result;
@@ -326,22 +341,22 @@ export function getQRDecodeToolCode() {
     async function copyDecodeResult() {
       const content = document.getElementById('decodeResultContent').textContent;
       if (!content) {
-        showCenterToast('❌', '没有可复制的内容');
+        showCenterToast('❌', t('toolNothingToCopy'));
         return;
       }
 
       try {
         await navigator.clipboard.writeText(content);
-        showCenterToast('✅', '内容已复制到剪贴板');
+        showCenterToast('✅', t('toolContentCopied'));
       } catch (error) {
-        showCenterToast('❌', '复制失败');
+        showCenterToast('❌', t('copyFailed'));
       }
     }
 
     async function generateDecodeQRCode() {
       const content = document.getElementById('decodeResultContent').textContent;
       if (!content) {
-        showCenterToast('❌', '没有可生成二维码的内容');
+        showCenterToast('❌', t('toolNoQrContent'));
         return;
       }
 
@@ -363,12 +378,12 @@ export function getQRDecodeToolCode() {
           document.getElementById('decodeQRSection').style.display = 'block';
         };
         qrImage.onerror = function() {
-          showCenterToast('❌', '二维码生成失败');
+          showCenterToast('❌', t('toolQrGenerateFailed'));
         };
 
       } catch (error) {
         console.error('二维码生成过程发生错误:', error);
-        showCenterToast('❌', '二维码生成失败: ' + error.message);
+        showCenterToast('❌', t('toolQrGenerateError', { message: error.message }));
       }
     }
 
@@ -388,16 +403,16 @@ export function getQRDecodeToolCode() {
         }
 
         if (!imageBlob) {
-          showCenterToast('❌', '剪贴板中没有图片，请先截图或复制图片');
+          showCenterToast('❌', t('toolClipboardNoImage'));
           return;
         }
 
         processImageBlobForDecode(imageBlob);
       } catch (error) {
         if (error.name === 'NotAllowedError') {
-          showCenterToast('❌', '请允许浏览器访问剪贴板');
+          showCenterToast('❌', t('toolClipboardDenied'));
         } else {
-          showCenterToast('❌', '读取剪贴板失败: ' + error.message);
+          showCenterToast('❌', t('toolClipboardError', { message: error.message }));
         }
       }
     }
@@ -428,7 +443,7 @@ export function getQRDecodeToolCode() {
             try { await ensureJsQR(); } catch (_) {}
           }
           if (typeof jsQR === 'undefined') {
-            showCenterToast('❌', '二维码解析库未加载');
+            showCenterToast('❌', t('toolQrLibraryMissing'));
             return;
           }
 
@@ -450,11 +465,11 @@ export function getQRDecodeToolCode() {
           if (qrCode) {
             processDecodeResult(qrCode);
           } else {
-            showCenterToast('❌', '未在图片中找到二维码，请尝试其他图片');
+            showCenterToast('❌', t('toolQrNotFound'));
           }
         };
         img.onerror = function() {
-          showCenterToast('❌', '图片加载失败');
+          showCenterToast('❌', t('toolImageLoadFailed'));
         };
         img.src = e.target.result;
       };
@@ -491,7 +506,7 @@ export function getQRDecodeToolCode() {
         if (files.length > 0 && files[0].type.startsWith('image/')) {
           processImageBlobForDecode(files[0]);
         } else {
-          showCenterToast('❌', '请拖入图片文件');
+          showCenterToast('❌', t('toolDropImage'));
         }
       });
 

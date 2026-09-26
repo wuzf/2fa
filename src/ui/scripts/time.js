@@ -2,13 +2,15 @@
  * Browser clock synchronization module.
  * Keeps TOTP generation aligned with the Worker clock without sending secrets.
  */
+import { getOfflineClockCode } from './offlineCache.js';
 
 /**
  * Get the browser clock synchronization code.
  * @returns {string} Clock synchronization JavaScript code
  */
 export function getTimeCode() {
-	return `    // ========== Trusted clock synchronization ==========
+	return `${getOfflineClockCode()}
+    // ========== Trusted clock synchronization ==========
     const CLOCK_SYNC_STORAGE_KEY = '2fa-clock-sync-v1';
     const CLOCK_SYNC_CACHE_VERSION = 2;
     const CLOCK_SYNC_SAMPLE_COUNT = 3;
@@ -17,7 +19,6 @@ export function getTimeCode() {
     const CLOCK_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
     const CLOCK_SYNC_STALE_MS = 24 * 60 * 60 * 1000;
     const CLOCK_SYNC_SAMPLE_WALL_DRIFT_TOLERANCE_MS = 1000;
-    const CLOCK_SYNC_CACHE_WALL_DRIFT_TOLERANCE_MS = 60 * 1000;
     const CLOCK_SYNC_MIN_SERVER_TIME_MS = Date.UTC(2000, 0, 1);
     const CLOCK_SYNC_MAX_SERVER_TIME_MS = Date.UTC(2100, 0, 1);
 
@@ -74,43 +75,19 @@ export function getTimeCode() {
           const raw = localStorage.getItem(CLOCK_SYNC_STORAGE_KEY);
           if (!raw) return;
 
-          const cached = JSON.parse(raw);
-          if (
-            cached.version !== CLOCK_SYNC_CACHE_VERSION ||
-            !Number.isFinite(cached.offsetMs) ||
-            !this.isValidServerTime(cached.syncedAtServerMs) ||
-            !this.isValidServerTime(cached.localWallAtSyncMs) ||
-            !this.isValidServerTime(cached.monotonicEpochAtSyncMs)
-          ) {
-            localStorage.removeItem(CLOCK_SYNC_STORAGE_KEY);
-            return;
-          }
-
-          const monotonicEpochNow = this.monotonicEpochNow();
-          const wallElapsedMs = Date.now() - cached.localWallAtSyncMs;
-          const monotonicElapsedMs = Number.isFinite(monotonicEpochNow)
-            ? monotonicEpochNow - cached.monotonicEpochAtSyncMs
-            : null;
-          if (
-            !Number.isFinite(monotonicElapsedMs) ||
-            Math.abs(wallElapsedMs - monotonicElapsedMs) > CLOCK_SYNC_CACHE_WALL_DRIFT_TOLERANCE_MS
-          ) {
-            localStorage.removeItem(CLOCK_SYNC_STORAGE_KEY);
-            return;
-          }
-
-          const estimatedServerNow = Date.now() + cached.offsetMs;
-          if (!this.isValidServerTime(estimatedServerNow) || estimatedServerNow - cached.syncedAtServerMs < -5 * 60 * 1000) {
+          const wallNow = Date.now();
+          const cached = parseOfflineClockCache(raw, wallNow, this.monotonicEpochNow());
+          if (!cached) {
             localStorage.removeItem(CLOCK_SYNC_STORAGE_KEY);
             return;
           }
 
           this.offsetMs = cached.offsetMs;
           this.syncedAtServerMs = cached.syncedAtServerMs;
-          this.rttMs = Number.isFinite(cached.rttMs) ? cached.rttMs : null;
+          this.rttMs = cached.rttMs;
           this.localWallAtSyncMs = cached.localWallAtSyncMs;
           this.monotonicEpochAtSyncMs = cached.monotonicEpochAtSyncMs;
-          this.establishAnchor(estimatedServerNow);
+          this.establishAnchor(wallNow + cached.offsetMs);
           this.status = 'cached';
           this.generation += 1;
         } catch (error) {
@@ -164,7 +141,7 @@ export function getTimeCode() {
           });
 
           if (!response.ok) {
-            throw new Error('时间接口返回状态 ' + response.status);
+            throw new Error(t('clockHttpError', { status: response.status }));
           }
           const data = await response.json();
           const monotonicEndMs = this.monotonicNow();
@@ -173,18 +150,18 @@ export function getTimeCode() {
           const wallElapsedMs = wallEndMs - wallStartMs;
 
           if (!Number.isFinite(rttMs) || rttMs < 0 || rttMs > CLOCK_SYNC_MAX_RTT_MS) {
-            throw new Error('时间同步网络延迟过高');
+            throw new Error(t('clockLatencyError'));
           }
           if (
             !Number.isFinite(wallElapsedMs) ||
             wallElapsedMs < 0 ||
             Math.abs(wallElapsedMs - rttMs) > CLOCK_SYNC_SAMPLE_WALL_DRIFT_TOLERANCE_MS
           ) {
-            throw new Error('时间同步期间设备时钟发生跳变');
+            throw new Error(t('clockJumpError'));
           }
 
           if (!data || !this.isValidServerTime(data.serverTimeMs)) {
-            throw new Error('时间接口返回了无效时间');
+            throw new Error(t('clockInvalidTime'));
           }
 
           const localMidpointMs = wallStartMs + rttMs / 2;
@@ -338,10 +315,11 @@ export function getTimeCode() {
       }
 
       formatAge(ageMs) {
-        if (!Number.isFinite(ageMs) || ageMs < 60 * 1000) return '刚刚';
-        if (ageMs < 60 * 60 * 1000) return Math.floor(ageMs / (60 * 1000)) + ' 分钟前';
-        if (ageMs < 24 * 60 * 60 * 1000) return Math.floor(ageMs / (60 * 60 * 1000)) + ' 小时前';
-        return Math.floor(ageMs / (24 * 60 * 60 * 1000)) + ' 天前';
+        if (!Number.isFinite(ageMs) || ageMs < 60 * 1000) return t('clockJustNow');
+        const format = new Intl.RelativeTimeFormat(typeof getLanguage === 'function' ? getLanguage() : 'en', { numeric: 'always' });
+        if (ageMs < 60 * 60 * 1000) return format.format(-Math.floor(ageMs / (60 * 1000)), 'minute');
+        if (ageMs < 24 * 60 * 60 * 1000) return format.format(-Math.floor(ageMs / (60 * 60 * 1000)), 'hour');
+        return format.format(-Math.floor(ageMs / (24 * 60 * 60 * 1000)), 'day');
       }
 
       renderStatus() {
@@ -360,14 +338,14 @@ export function getTimeCode() {
         if (!this.hasSettledSync) {
           message = '';
         } else if (this.status === 'local') {
-          message = '无法校准服务器时间，OTP 正在使用设备时间，可能不正确。';
+          message = t('clockUsingDeviceTime');
         } else if (this.status === 'cached') {
           const ageText = this.formatAge(ageMs);
           message = isStale
-            ? '正在使用 ' + ageText + ' 的时间校准缓存，OTP 可能不准确。'
-            : '正在使用上次时间校准（' + ageText + '）。如设备时间已调整，OTP 可能不准确；联网后将自动更新。';
+            ? t('clockStaleCache', { age: ageText })
+            : t('clockCachedTime', { age: ageText });
         } else if (isStale) {
-          message = '服务器时间已超过 24 小时未校准，OTP 可能不准确。';
+          message = t('clockStaleTime');
         }
 
         warning.hidden = !message;
@@ -407,6 +385,10 @@ export function getTimeCode() {
 
     const trustedClock = new TrustedClock();
 
+    function refreshClockLanguage() {
+      trustedClock.renderStatus();
+    }
+
     function getCorrectedNowMs() {
       return trustedClock.now();
     }
@@ -434,7 +416,7 @@ export function getTimeCode() {
     async function retryClockSync() {
       const success = await trustedClock.sync();
       if (typeof showCenterToast === 'function') {
-        showCenterToast(success ? '✓' : '!', success ? '时间校准成功' : '时间校准失败，请检查网络连接');
+        showCenterToast(success ? '✓' : '!', t(success ? 'clockSyncSuccess' : 'clockSyncFailed'));
       }
       return success;
     }

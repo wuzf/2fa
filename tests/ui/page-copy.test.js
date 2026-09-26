@@ -3,6 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { createMainPage } from '../../src/ui/page.js';
 
 describe('settings page copy', () => {
+	it('keeps account security settings without the removed device authorization entry', async () => {
+		const response = await createMainPage({ lazyLoad: false });
+		const html = await response.text();
+
+		expect(html).toContain('id="settingsCurrentPassword"');
+		expect(html).not.toContain('href="/devices"');
+		expect(html).not.toContain('浏览器扩展设备');
+		expect(html).not.toContain('管理扩展设备授权');
+	});
+
 	it('explains that the default export format also applies to newly created backups', async () => {
 		const response = await createMainPage({ lazyLoad: false });
 		const html = await response.text();

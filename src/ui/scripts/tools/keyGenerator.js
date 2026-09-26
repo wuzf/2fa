@@ -47,7 +47,7 @@ export function getKeyGeneratorToolCode() {
       const key = generateRandomBase32Key(currentKeyLength);
       document.getElementById('generatedKeyText').textContent = key;
       document.getElementById('keyResultSection').style.display = 'block';
-      showCenterToast('✅', '密钥生成成功');
+      showCenterToast('✅', t('toolKeyGenerated'));
     }
 
     function generateRandomBase32Key(length) {
@@ -62,15 +62,15 @@ export function getKeyGeneratorToolCode() {
     async function copyGeneratedKey() {
       const key = document.getElementById('generatedKeyText').textContent;
       if (!key) {
-        showCenterToast('❌', '没有可复制的密钥');
+        showCenterToast('❌', t('toolNoKeyToCopy'));
         return;
       }
 
       try {
         await navigator.clipboard.writeText(key);
-        showCenterToast('✅', '密钥已复制到剪贴板');
+        showCenterToast('✅', t('toolKeyCopied'));
       } catch (error) {
-        showCenterToast('❌', '复制失败');
+        showCenterToast('❌', t('copyFailed'));
       }
     }
 

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { getI18nCode } from '../../src/ui/scripts/i18n.js';
 import { getCoreCode } from '../../src/ui/scripts/core.js';
+import { getStateCode } from '../../src/ui/scripts/state.js';
 
 function createHarness() {
 	const nextOtpElement = { textContent: '370714' };
@@ -24,7 +26,9 @@ function createHarness() {
 		'navigator',
 		'console',
 		`
-      let secrets = [{ id: 'test', name: 'Test service', digits: 6 }];
+      ${getI18nCode()}
+      ${getStateCode()}
+      secrets = [{ id: 'test', name: 'Test service', digits: 6 }];
       let transitionActive = true;
       let transitionClearCount = 0;
       function isNextOTPTransitionActive() { return transitionActive; }

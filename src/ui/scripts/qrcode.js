@@ -2,17 +2,20 @@
  * 二维码模块
  * 包含所有二维码生成、扫描和处理功能
  */
+import { getTransferMessageLocalizerCode } from './transferMessages.js';
 
 /**
  * 获取二维码相关代码
  * @returns {string} 二维码 JavaScript 代码
  */
 export function getQRCodeCode() {
-	return `    // ========== 二维码功能模块 ==========
+	return `${getTransferMessageLocalizerCode('localizeQRCodeMessage')}    // ========== 二维码功能模块 ==========
 
     // 连续扫描模式状态
     let continuousScanMode = false;
     let continuousScanCount = 0;
+    let currentScannerErrorRenderer = null;
+    let currentModalQRErrorRenderer = null;
 
     // 切换连续扫描模式
     function toggleContinuousScan() {
@@ -38,6 +41,16 @@ export function getQRCodeCode() {
       document.getElementById('scanCountNum').textContent = continuousScanCount;
     }
 
+    function refreshQRCodeTranslations() {
+      if (currentModalQRErrorRenderer) currentModalQRErrorRenderer();
+      if (currentScannerErrorRenderer && document.getElementById('errorMessage')) {
+        document.getElementById('errorMessage').textContent = currentScannerErrorRenderer();
+      }
+      document.querySelectorAll('[data-i18n-alt]').forEach(image => {
+        image.alt = t(image.getAttribute('data-i18n-alt'));
+      });
+    }
+
     // 显示二维码
     function showQRCode(secretId) {
       console.log('showQRCode called with secretId:', secretId);
@@ -48,7 +61,11 @@ export function getQRCodeCode() {
       }
       console.log('Found secret:', secret.name);
 
-      const serviceName = secret.name.trim();
+      // The same label as the account card, also for older blank names.
+      const displayName = typeof getSecretDisplayName === 'function'
+        ? getSecretDisplayName(secret)
+        : (String(secret.name || '').trim() ? secret.name : t('transferUnnamed'));
+      const serviceName = displayName.trim();
       const accountName = secret.account ? secret.account.trim() : '';
 
       let label;
@@ -88,9 +105,8 @@ export function getQRCodeCode() {
       const scheme = type.toUpperCase() === 'HOTP' ? 'hotp' : 'totp';
       currentOTPAuthURL = 'otpauth://' + scheme + '/' + label + '?' + params.toString();
 
-      document.getElementById('qrTitle').textContent = secret.name + ' 二维码';
-      document.getElementById('qrSubtitle').textContent = secret.account ?
-        '账户: ' + secret.account : '扫描此二维码导入到其他2FA应用';
+      setTranslatedText(document.getElementById('qrTitle'), 'transferQRTitle', { name: displayName });
+      setTranslatedText(document.getElementById('qrSubtitle'), secret.account ? 'transferQRAccount' : 'transferQRImportHint', { account: secret.account });
 
       generateQRCodeForModal(currentOTPAuthURL);
       const modal = document.getElementById('qrModal');
@@ -101,6 +117,7 @@ export function getQRCodeCode() {
 
     // 为模态框生成二维码
     async function generateQRCodeForModal(text) {
+      currentModalQRErrorRenderer = null;
       const container = document.querySelector('.qr-code-container');
       container.innerHTML = '';
 
@@ -108,7 +125,7 @@ export function getQRCodeCode() {
       const loadingDiv = document.createElement('div');
       loadingDiv.className = 'dialog-qr-state';
       loadingDiv.setAttribute('role', 'status');
-      loadingDiv.textContent = '正在生成二维码...';
+      setTranslatedText(loadingDiv, 'transferGeneratingQR');
       container.appendChild(loadingDiv);
 
       try {
@@ -127,7 +144,8 @@ export function getQRCodeCode() {
         // 创建图片元素
         const img = document.createElement('img');
         img.src = qrDataURL;
-        img.alt = '2FA二维码';
+        img.alt = t('transferQRAlt');
+      img.setAttribute('data-i18n-alt', 'transferQRAlt');
         img.className = 'qr-code';
         img.style.cssText =
           'width: 200px;' +
@@ -148,19 +166,22 @@ export function getQRCodeCode() {
           container.innerHTML =
             '<div class="dialog-qr-state dialog-qr-error" role="status">' +
             dialogIcon('error') +
-            '<strong>二维码显示失败</strong>' +
-            '<span>请关闭弹窗后重试</span>' +
+            '<strong data-i18n="transferQRDisplayFailed">' + escapeHTML(t('transferQRDisplayFailed')) + '</strong>' +
+            '<span data-i18n="transferQRRetry">' + escapeHTML(t('transferQRRetry')) + '</span>' +
             '</div>';
         };
 
       } catch (error) {
         console.error('二维码生成过程发生错误:', error);
+        currentModalQRErrorRenderer = () => {
         container.innerHTML =
           '<div class="dialog-qr-state dialog-qr-error" role="status">' +
           dialogIcon('error') +
-          '<strong>二维码生成失败</strong>' +
-          '<span>' + escapeHTML(error.message || '请稍后重试') + '</span>' +
+          '<strong data-i18n="transferQRFailed">' + escapeHTML(t('transferQRFailed')) + '</strong>' +
+          '<span>' + escapeHTML(localizeQRCodeMessage(error.message) || t('transferRetryLater')) + '</span>' +
           '</div>';
+        };
+        currentModalQRErrorRenderer();
       }
     }
 
@@ -225,7 +246,7 @@ export function getQRCodeCode() {
 
       try {
         error.style.display = 'none';
-        status.textContent = '正在启动摄像头...';
+        setTranslatedText(status, 'scannerStarting');
         status.style.display = 'block';
 
         // 检查浏览器支持 - 增强iPad兼容性
@@ -237,19 +258,19 @@ export function getQRCodeCode() {
             navigator.mediaDevices.getUserMedia = function(constraints) {
               const getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
               if (!getUserMedia) {
-                return Promise.reject(new Error('getUserMedia is not implemented in this browser'));
+                return Promise.reject(new Error(t('transferCameraUnsupported')));
               }
               return new Promise((resolve, reject) => {
                 getUserMedia.call(navigator, constraints, resolve, reject);
               });
             };
           } else {
-            throw new Error('您的浏览器不支持摄像头功能，请使用现代浏览器');
+            throw new Error(t('transferCameraUnsupported'));
           }
         }
 
         if (!navigator.mediaDevices.getUserMedia) {
-          throw new Error('您的浏览器不支持摄像头功能，请使用现代浏览器');
+          throw new Error(t('transferCameraUnsupported'));
         }
 
         // iPad 特殊处理：检查设备类型和权限
@@ -339,7 +360,7 @@ export function getQRCodeCode() {
         }
 
         if (!stream) {
-          throw new Error('无法获取摄像头访问权限');
+          throw new Error(t('transferCameraAccess'));
         }
 
         scanStream = stream;
@@ -348,7 +369,7 @@ export function getQRCodeCode() {
         // 等待视频加载并播放
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
-            reject(new Error('摄像头加载超时'));
+            reject(new Error(t('transferCameraTimeout')));
           }, 10000);
 
           video.onloadedmetadata = () => {
@@ -363,11 +384,12 @@ export function getQRCodeCode() {
 
           video.onerror = () => {
             clearTimeout(timeout);
-            reject(new Error('摄像头播放失败'));
+            reject(new Error(t('transferCameraPlayback')));
           };
         });
 
         status.textContent = '';
+        status.removeAttribute('data-i18n');
         status.style.display = 'none';
         isScanning = true;
 
@@ -390,46 +412,46 @@ export function getQRCodeCode() {
         console.error('启动摄像头失败:', err);
         console.error('错误详情:', {
           name: err.name,
-          message: err.message,
+          message: localizeQRCodeMessage(err.message),
           userAgent: navigator.userAgent,
           isSecure: location.protocol === 'https:',
           mediaDevicesSupport: !!navigator.mediaDevices,
           getUserMediaSupport: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
         });
 
-        let errorMsg = '摄像头启动失败: ' + err.message;
+        let errorMsg = () => t('transferCameraFailed') + localizeQRCodeMessage(err.message);
 
         // iPad 特殊错误处理
         const isIPad = /iPad/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
         if (err.name === 'NotAllowedError') {
           if (isIPad) {
-            errorMsg = 'iPad 摄像头权限被拒绝。请在 Safari 设置中允许摄像头访问，或尝试在地址栏点击"aA"图标允许摄像头权限';
+            errorMsg = () => t('transferCameraDeniedIPad');
           } else {
-            errorMsg = '摄像头权限被拒绝，请在浏览器设置中允许摄像头访问';
+            errorMsg = () => t('transferCameraDenied');
           }
         } else if (err.name === 'NotFoundError') {
           if (isIPad) {
-            errorMsg = 'iPad 未找到摄像头设备，请确保在系统设置中允许浏览器访问摄像头';
+            errorMsg = () => t('transferCameraMissingIPad');
           } else {
-            errorMsg = '未找到摄像头设备，请确保设备连接正常';
+            errorMsg = () => t('transferCameraMissing');
           }
         } else if (err.name === 'NotReadableError') {
           if (isIPad) {
-            errorMsg = 'iPad 摄像头被其他应用占用，请关闭其他摄像头应用后重试';
+            errorMsg = () => t('transferCameraBusyIPad');
           } else {
-            errorMsg = '摄像头被其他应用占用，请关闭其他摄像头应用';
+            errorMsg = () => t('transferCameraBusy');
           }
         } else if (err.name === 'OverconstrainedError') {
           if (isIPad) {
-            errorMsg = 'iPad 摄像头不支持请求的配置，正在尝试兼容模式...';
+            errorMsg = () => t('transferCameraConfigIPad');
           } else {
-            errorMsg = '摄像头不支持请求的配置，请尝试其他设备';
+            errorMsg = () => t('transferCameraConfig');
           }
-        } else if (err.message.includes('getUserMedia is not implemented')) {
-          errorMsg = '您的浏览器版本过旧，请更新到最新版本的 Safari 或 Chrome';
+        } else if (localizeQRCodeMessage(err.message).includes('getUserMedia is not implemented')) {
+          errorMsg = () => t('transferBrowserOutdated');
         } else if (location.protocol !== 'https:') {
-          errorMsg = '摄像头功能需要HTTPS协议，请使用 https:// 访问';
+          errorMsg = () => t('transferCameraHTTPS');
         }
 
         showScannerError(errorMsg);
@@ -462,7 +484,8 @@ export function getQRCodeCode() {
       const status = document.getElementById('scannerStatus');
 
       status.style.display = 'none';
-      errorMessage.textContent = message;
+      currentScannerErrorRenderer = typeof message === 'function' ? message : () => message;
+      errorMessage.textContent = currentScannerErrorRenderer();
       error.style.display = 'block';
     }
 
@@ -503,7 +526,7 @@ export function getQRCodeCode() {
         }
       } else {
         // 视频还未准备好
-        status.textContent = '正在加载摄像头...';
+        setTranslatedText(status, 'transferCameraLoading');
       }
 
       // 继续扫描（提高频率到60fps）
@@ -549,7 +572,7 @@ export function getQRCodeCode() {
 
         // 检查是否是有效的 OTP Auth URL
         if (!qrCodeData.startsWith('otpauth://totp/') && !qrCodeData.startsWith('otpauth://hotp/')) {
-          showScannerError('这不是有效的2FA二维码');
+          showScannerError(() => t('transferInvalidQR'));
           return;
         }
 
@@ -558,9 +581,15 @@ export function getQRCodeCode() {
         const pathParts = url.pathname.substring(1).split(':');
         const params = new URLSearchParams(url.search);
 
-        // 对URL编码的部分进行解码
-        const issuer = decodeURIComponent(params.get('issuer') || (pathParts.length > 1 ? pathParts[0] : ''));
-        const account = decodeURIComponent(pathParts.length > 1 ? pathParts[1] : pathParts[0]);
+        // 对URL编码的部分进行解码。A literal % in an already decoded value stays as is.
+        const decodeLabel = value => {
+          try { return decodeURIComponent(value); } catch { return value; }
+        };
+        // The server trims names and rejects blank ones, so a blank issuer
+        // falls back to the label prefix and then to the account.
+        const issuer = decodeLabel(params.get('issuer') || '').trim() ||
+          (pathParts.length > 1 ? decodeLabel(pathParts[0]).trim() : '');
+        const account = decodeLabel(pathParts.length > 1 ? pathParts[1] : pathParts[0]);
         const secret = params.get('secret');
 
         // 解析类型和高级参数
@@ -576,7 +605,7 @@ export function getQRCodeCode() {
         const counter = parseInt(params.get('counter')) || 0;
 
         if (!secret) {
-          showScannerError('二维码中缺少密钥信息');
+          showScannerError(() => t('transferQRMissingSecret'));
           return;
         }
 
@@ -586,14 +615,14 @@ export function getQRCodeCode() {
 
       } catch (error) {
         console.error('解析二维码失败:', error);
-        showScannerError('解析二维码失败: ' + error.message);
+        showScannerError(() => t('transferQRParseFailed') + localizeQRCodeMessage(error.message));
       }
     }
 
     // 直接保存扫描到的密钥（不显示编辑界面）
     async function directSaveFromQR(issuer, account, secret, options = {}) {
       const newSecret = {
-        name: issuer || account || '未命名',
+        name: String(issuer || '').trim() || String(account || '').trim() || t('transferUnnamed'),
         account: account || '',
         secret: secret.toUpperCase(),
         type: options.type || 'TOTP',
@@ -604,7 +633,7 @@ export function getQRCodeCode() {
       };
 
       try {
-        showCenterToast('⏳', '正在保存...');
+        showCenterToast('⏳', t('saving'));
 
         const response = await authenticatedFetch('/api/secrets', {
           method: 'POST',
@@ -617,7 +646,7 @@ export function getQRCodeCode() {
         if (response.ok) {
           const result = await response.json();
           console.log('密钥保存成功:', result);
-          showCenterToast('✅', '密钥添加成功：' + newSecret.name);
+          showCenterToast('✅', t('transferKeyAdded') + newSecret.name);
           // 刷新密钥列表
           loadSecrets();
 
@@ -640,11 +669,11 @@ export function getQRCodeCode() {
           const errorText = await response.text();
           console.error('保存密钥失败:', response.status, errorText);
           // 解析错误信息，只显示简短提示
-          let errorMsg = '保存失败';
+          let errorMsg = t('transferSaveFailed');
           try {
             const errorJson = JSON.parse(errorText);
             if (response.status === 409) {
-              errorMsg = '"' + newSecret.name + '"已存在';
+              errorMsg = t('transferDuplicate', { name: newSecret.name });
             } else {
               errorMsg = errorJson.error || errorJson.message || errorText;
             }
@@ -659,7 +688,7 @@ export function getQRCodeCode() {
         }
       } catch (error) {
         console.error('保存密钥出错:', error);
-        showCenterToast('❌', '保存出错：' + error.message);
+        showCenterToast('❌', t('transferSaveError') + localizeQRCodeMessage(error.message));
         // 出错时也继续扫描（如果是连续模式）
         if (continuousScanMode && isScanning) {
           setTimeout(() => scanForQRCode(), 1000);
@@ -765,10 +794,10 @@ export function getQRCodeCode() {
                 hideQRScanner();
                 processScannedQRCode(code.data);
               } else {
-                showCenterToast('❌', '未在图片中找到二维码，请尝试其他图片');
+                showCenterToast('❌', t('transferNoQRImage'));
               }
             } else {
-              showCenterToast('❌', '二维码解析库未加载');
+              showCenterToast('❌', t('transferQRLibraryMissing'));
             }
           };
           img.src = e.target.result;
@@ -790,13 +819,13 @@ export function getQRCodeCode() {
 
       // 检查文件类型
       if (!file.type.startsWith('image/')) {
-        showScannerError('请选择图片文件（支持 JPG、PNG、GIF、WebP 等格式）');
+        showScannerError(() => t('transferImageRequired'));
         return;
       }
 
       // 检查文件大小（限制为10MB）
       if (file.size > 10 * 1024 * 1024) {
-        showScannerError('图片文件过大，请选择小于10MB的图片');
+        showScannerError(() => t('transferImageTooLarge'));
         return;
       }
 
@@ -805,7 +834,7 @@ export function getQRCodeCode() {
       const error = document.getElementById('scannerError');
       const originalText = status.textContent;
 
-      status.textContent = '正在分析图片...';
+      setTranslatedText(status, 'transferAnalyzingImage');
       status.style.display = 'block';
       status.style.color = 'var(--dialog-brand)';
       error.style.display = 'none';
@@ -831,15 +860,15 @@ export function getQRCodeCode() {
                 try { await ensureJsQR(); } catch (_) {}
               }
               if (typeof jsQR === 'undefined') {
-                throw new Error('二维码解析库未加载，请刷新页面重试');
+                throw new Error(t('transferQRLibraryRetry'));
               }
 
               // 创建 canvas 来处理图片（实际渲染与多分辨率回退在 helper 里完成）
-              status.textContent = '正在解析二维码...';
+              setTranslatedText(status, 'transferParsingQR');
               const qrCode = await tryDecodeQRFromImage(img);
 
               if (qrCode) {
-                status.textContent = '二维码解析成功！';
+                setTranslatedText(status, 'transferQRParsed');
                 status.style.color = 'var(--dialog-success)';
 
                 console.log('成功解析到二维码:', qrCode);
@@ -850,17 +879,17 @@ export function getQRCodeCode() {
                 }, 1000);
               } else {
                 console.log('未找到二维码');
-                showScannerError('未在图片中找到有效的二维码' + '\\n\\n' + '请确保：' + '\\n' + '• 图片清晰度足够' + '\\n' + '• 二维码完整可见' + '\\n' + '• 包含有效的2FA二维码');
+                showScannerError(() => t('transferNoValidQR') + '\\n\\n' + t('transferEnsure') + '\\n' + t('transferImageClear') + '\\n' + t('transferQRComplete') + '\\n' + t('transferQRValid'));
               }
             } catch (error) {
               console.error('图片处理失败:', error);
-              showScannerError('图片处理失败: ' + error.message);
+              showScannerError(() => t('transferImageProcessFailed') + localizeQRCodeMessage(error.message));
             }
           };
 
           img.onerror = function() {
             console.error('图片加载失败');
-            showScannerError('图片加载失败，请选择有效的图片文件' + '\\n' + '支持格式：JPG、PNG、GIF、WebP');
+            showScannerError(() => t('transferImageLoadInvalid') + '\\n' + t('transferImageFormats'));
           };
 
           // 设置图片源
@@ -868,19 +897,19 @@ export function getQRCodeCode() {
 
         } catch (error) {
           console.error('图片读取失败:', error);
-          showScannerError('图片读取失败: ' + error.message);
+          showScannerError(() => t('transferImageReadFailed') + localizeQRCodeMessage(error.message));
         }
       };
 
       reader.onerror = function() {
         console.error('FileReader读取失败');
-        showScannerError('文件读取失败，请重试');
+        showScannerError(() => t('transferFileReadRetry'));
       };
 
       reader.onprogress = function(e) {
         if (e.lengthComputable) {
           const percent = Math.round((e.loaded / e.total) * 100);
-          status.textContent = '正在加载图片... ' + percent + '%';
+          setTranslatedText(status, 'transferImageProgress', { percent });
         }
       };
 
@@ -908,16 +937,16 @@ export function getQRCodeCode() {
         }
 
         if (!imageBlob) {
-          showCenterToast('❌', '剪贴板中没有图片，请先截图或复制图片');
+          showCenterToast('❌', t('transferClipboardNoImage'));
           return;
         }
 
         processImageBlobForScan(imageBlob);
       } catch (error) {
         if (error.name === 'NotAllowedError') {
-          showCenterToast('❌', '请允许浏览器访问剪贴板');
+          showCenterToast('❌', t('transferClipboardPermission'));
         } else {
-          showCenterToast('❌', '读取剪贴板失败: ' + error.message);
+          showCenterToast('❌', t('transferClipboardFailed') + localizeQRCodeMessage(error.message));
         }
       }
     }
@@ -932,7 +961,7 @@ export function getQRCodeCode() {
             try { await ensureJsQR(); } catch (_) {}
           }
           if (typeof jsQR === 'undefined') {
-            showCenterToast('❌', '二维码解析库未加载');
+            showCenterToast('❌', t('transferQRLibraryMissing'));
             return;
           }
 
@@ -941,11 +970,11 @@ export function getQRCodeCode() {
           if (qrCode) {
             processScannedQRCode(qrCode);
           } else {
-            showCenterToast('❌', '未在图片中找到二维码，请尝试其他图片');
+            showCenterToast('❌', t('transferNoQRImage'));
           }
         };
         img.onerror = function() {
-          showCenterToast('❌', '图片加载失败');
+          showCenterToast('❌', t('transferImageLoadFailed'));
         };
         img.src = e.target.result;
       };
@@ -984,7 +1013,7 @@ export function getQRCodeCode() {
         if (files.length > 0 && files[0].type.startsWith('image/')) {
           processImageBlobForScan(files[0]);
         } else {
-          showCenterToast('❌', '请拖入图片文件');
+          showCenterToast('❌', t('transferDropImage'));
         }
       });
     }

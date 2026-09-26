@@ -13,6 +13,22 @@ export function getImportUICode() {
 
     // 导入预览数据
     let importPreviewData = [];
+    let lastImportStats = [0, 0, 0];
+    let importPreviewRenderers = [];
+    function formatImportPreviewName(name, type = 'totp', digits = 6, period = 30, algorithm = 'SHA1') {
+      let label = name || t('transferUnknownService');
+      if (String(type).toLowerCase() !== 'totp') label += ' [' + String(type).toUpperCase() + ']';
+      if (digits !== 6) label += t('transferDigitBadge', { digits });
+      if (period !== 30 && String(type).toLowerCase() === 'totp') label += ' [' + period + 's]';
+      if (algorithm !== 'SHA1') label += ' [' + algorithm + ']';
+      return label;
+    }
+    function setImportPreviewRenderer(element, render) {
+      const refresh = () => { element.innerHTML = render(); };
+      importPreviewRenderers.push(refresh);
+      refresh();
+    }
+    let lastImportProgress = null;
     let pendingImportRetryItems = null;
     // 续传累计状态：上一次分片导入中已完成部分的成功/失败计数及失败明细，
     // 让用户在多轮续传后仍能看到整批导入的真实汇总（含早先分片里服务端返回的失败项）
@@ -140,7 +156,7 @@ export function getImportUICode() {
       const isValidType = validExtensions.some(ext => fileName.endsWith(ext));
 
       if (!isValidType) {
-        showCenterToast('❌', '不支持的文件格式');
+        showCenterToast('❌', t('transferUnsupportedFile'));
         return;
       }
 
@@ -158,22 +174,23 @@ export function getImportUICode() {
         }, 100);
       };
       reader.onerror = function() {
-        showCenterToast('❌', '读取文件失败');
+        showCenterToast('❌', t('transferReadFileFailed'));
       };
       reader.readAsArrayBuffer(file);
     }
 
     // 更新导入统计信息（新的内联统计）
     function updateImportStats(validCount, invalidCount, skippedCount) {
+      lastImportStats = [validCount, invalidCount, skippedCount];
       const statValid = document.getElementById('statValid');
       const statInvalid = document.getElementById('statInvalid');
       const statTotal = document.getElementById('statTotal');
 
-      if (statValid) statValid.textContent = validCount + ' 有效';
-      if (statInvalid) statInvalid.textContent = invalidCount + ' 无效';
+      if (statValid) setTranslatedText(statValid, 'transferValidCount', { count: validCount });
+      if (statInvalid) setTranslatedText(statInvalid, 'transferInvalidCount', { count: invalidCount });
       if (statTotal) {
         const total = validCount + invalidCount + (skippedCount || 0);
-        statTotal.textContent = '共 ' + total + ' 条';
+        setTranslatedText(statTotal, 'transferTotalCount', { count: total });
       }
     }
 
@@ -196,16 +213,17 @@ export function getImportUICode() {
     }
 
     function resetImportProgress() {
+      lastImportProgress = null;
       setImportProgressVisible(false);
 
       const defaults = {
-        importProgressTitle: '导入进度',
+        importProgressTitle: t('transferImportProgress'),
         importProgressPercent: '0%',
-        importProgressStatus: '准备开始...',
+        importProgressStatus: t('transferPreparing'),
         importProgressDetail: '0 / 0',
-        importProgressChunk: '分片 0 / 0',
-        importProgressSuccess: '成功 0',
-        importProgressFail: '失败 0'
+        importProgressChunk: t('transferChunk', { index: 0, count: 0 }),
+        importProgressSuccess: t('transferSuccessCount', { count: 0 }),
+        importProgressFail: t('transferFailCount', { count: 0 })
       };
 
       Object.keys(defaults).forEach(function(id) {
@@ -227,6 +245,7 @@ export function getImportUICode() {
     }
 
     function updateImportProgress(state) {
+      lastImportProgress = state;
       const totalItems = Math.max(Number(state && state.totalItems) || 0, 0);
       const processedItems = Math.min(Math.max(Number(state && state.processedItems) || 0, 0), totalItems || 0);
       const successCount = Math.max(Number(state && state.successCount) || 0, 0);
@@ -246,14 +265,21 @@ export function getImportUICode() {
       const fail = document.getElementById('importProgressFail');
       const progressFill = document.getElementById('importProgressFill');
 
-      if (title) title.textContent = (state && state.title) || '导入进度';
+      if (title) setTranslatedText(title, state?.titleKey || 'transferImportProgress');
       if (percentEl) percentEl.textContent = percent + '%';
-      if (status) status.textContent = (state && state.message) || '正在导入...';
+      if (status) setTranslatedText(status, state?.messageKey || 'transferImporting', state?.messageParams || {});
       if (detail) detail.textContent = processedItems + ' / ' + totalItems;
-      if (chunk) chunk.textContent = '分片 ' + chunkIndex + ' / ' + chunkCount;
-      if (success) success.textContent = '成功 ' + successCount;
-      if (fail) fail.textContent = '失败 ' + failCount;
+      if (chunk) setTranslatedText(chunk, 'transferChunk', { index: chunkIndex, count: chunkCount });
+      if (success) setTranslatedText(success, 'transferSuccessCount', { count: successCount });
+      if (fail) setTranslatedText(fail, 'transferFailCount', { count: failCount });
       if (progressFill) progressFill.style.width = percent + '%';
+    }
+
+    function refreshImportTranslations() {
+      importPreviewRenderers.forEach(render => render());
+      updateImportStats(...lastImportStats);
+      if (lastImportProgress) updateImportProgress(lastImportProgress);
+      else resetImportProgress();
     }
 
     function showImportModal() {
@@ -269,7 +295,7 @@ export function getImportUICode() {
         // 重置导入按钮
         const executeBtn = document.getElementById('executeImportBtn');
         executeBtn.disabled = true;
-        executeBtn.textContent = '导入';
+        setTranslatedText(executeBtn, 'transferImport');
         // 隐藏文件信息徽章
         const badge = document.getElementById('fileInfoBadge');
         if (badge) badge.style.display = 'none';
@@ -310,7 +336,7 @@ export function getImportUICode() {
         // 重置导入按钮
         const executeBtn = document.getElementById('executeImportBtn');
         executeBtn.disabled = true;
-        executeBtn.textContent = '导入';
+        setTranslatedText(executeBtn, 'transferImport');
         // 清空预览数据数组
         importPreviewData = [];
         resetImportRetryState();

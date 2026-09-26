@@ -6,7 +6,9 @@ describe('backup module code generation', () => {
 	it('routes backup exports for every format through the backend export API', () => {
 		const code = getBackupCode();
 
-		expect(code).toContain("const exportUrl = '/api/backup/export/' + selectedBackup.key + '?format=' + format;");
+		expect(code).toContain(
+			"const exportUrl = '/api/backup/export/' + selectedBackup.key + '?format=' + format + '&language=' + encodeURIComponent(getLanguage());",
+		);
 		expect(code).not.toContain("if (format === 'html')");
 		expect(code).not.toContain('function exportBackupAsHTML()');
 	});
@@ -42,13 +44,13 @@ describe('backup module code generation', () => {
 
 		expect(code).toContain('const isEmptyBackup = !isPartialBackup && !hasSecrets && Number(data.count || 0) === 0;');
 		expect(code).toContain('const emptyBackupMessage = isEmptyBackup ?');
-		expect(code).toContain('confirmRestoreBtn.disabled = isPartialBackup || isEmptyBackup;');
+		expect(code).toContain('confirmRestoreBtn.disabled = isPartialBackup || isEmptyBackup || Boolean(issues && issues.warnings.length);');
 	});
 
 	it('escapes previewed secret fields before injecting restore rows into the DOM', () => {
 		const code = getBackupCode();
 
-		expect(code).toContain("'<td class=\"service-name\">' + escapeHTML(secret.name || '') + '</td>'");
+		expect(code).toContain("'<td class=\"service-name\">' + escapeHTML(backupSecretDisplayName(secret)) + '</td>'");
 		expect(code).toContain(
 			"'<td class=\"account-info\">' + escapeHTML(secret.account || secret.service || t('restoreNoAccount')) + '</td>'",
 		);

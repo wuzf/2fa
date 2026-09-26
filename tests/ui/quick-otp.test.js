@@ -112,7 +112,7 @@ describe('public OTP pages', () => {
 		const html = await response.text();
 		const h = runPage(html);
 		expect(response.status).toBe(200);
-		expect(html).toContain(`计数器：${counter}`);
+		expect(html).toContain(`Counter: ${counter}`);
 		expect(h.elements.has('progress')).toBe(false);
 		expect(h.elements.has('nextToken')).toBe(false);
 		expect(h.setInterval).not.toHaveBeenCalled();
@@ -125,7 +125,7 @@ describe('public OTP pages', () => {
 		}
 		expect(h.location.reload).not.toHaveBeenCalled();
 		expect(h.fetch).not.toHaveBeenCalled();
-		expect(h.elements.get('copied').textContent).toBe('验证码已复制');
+		expect(h.elements.get('copied').textContent).toBe('Code copied');
 	});
 
 	it('copies current and next codes separately and preserves leading zeroes', async () => {
@@ -133,7 +133,7 @@ describe('public OTP pages', () => {
 		await h.elements.get('token').listeners.click();
 		await h.elements.get('nextToken').listeners.click();
 		expect(h.writeText.mock.calls.map((args) => args[0])).toEqual(['123456', '001234']);
-		expect(h.elements.get('copied').textContent).toBe('下一个验证码已复制');
+		expect(h.elements.get('copied').textContent).toBe('Next code copied');
 		expect(h.fetch).not.toHaveBeenCalled();
 	});
 
@@ -141,7 +141,7 @@ describe('public OTP pages', () => {
 		const h = await totpHarness();
 		h.advance(1000);
 		h.tick();
-		expect(h.elements.get('countdown').textContent).toBe('1 秒后更新');
+		expect(h.elements.get('countdown').textContent).toBe('Updates in 1s');
 		h.advance(2000);
 		h.tick();
 		h.tick();
@@ -150,7 +150,14 @@ describe('public OTP pages', () => {
 		expect(h.elements.get('nextToken').disabled).toBe(false);
 		expect(h.fetch).toHaveBeenCalledTimes(1);
 		const url = new URL(h.fetch.mock.calls[0][0]);
-		expect(Object.fromEntries(url.searchParams)).toEqual({ digits: '6', period: '30', algorithm: 'SHA256', format: 'json', preview: '1' });
+		expect(Object.fromEntries(url.searchParams)).toEqual({
+			digits: '6',
+			period: '30',
+			algorithm: 'SHA256',
+			format: 'json',
+			preview: '1',
+			lang: 'en',
+		});
 		await h.respond({ token: '654321', nextToken: '345678', followingToken: '456789', period: 30, validUntil: 90000, serverTime: 60000 });
 		expect(h.elements.get('nextTokenValue').textContent).toBe('345678');
 		expect(h.elements.get('nextToken').disabled).toBe(false);
@@ -187,7 +194,7 @@ describe('public OTP pages', () => {
 		expect(h.elements.get('nextToken').disabled).toBe(true);
 		await h.respond({}, { ok: false });
 		expect(h.elements.get('retry').hidden).toBe(false);
-		expect(h.elements.get('refreshMessage').textContent).toContain('检查网络');
+		expect(h.elements.get('refreshMessage').textContent).toContain('Check your connection');
 		h.tick();
 		expect(h.fetch).toHaveBeenCalledTimes(1);
 		h.elements.get('retry').listeners.click();
@@ -294,7 +301,7 @@ describe('public OTP pages', () => {
 		const h = runPage(await createQuickOtpPage('755224', { type: 'HOTP' }).text());
 		h.writeText.mockRejectedValue(new Error('Permission denied'));
 		await h.elements.get('token').listeners.click();
-		expect(h.elements.get('copied').textContent).toContain('复制失败');
+		expect(h.elements.get('copied').textContent).toContain('Copy failed');
 		expect(h.elements.get('tokenValue').textContent).toBe('755224');
 		expect(h.location.reload).not.toHaveBeenCalled();
 	});
@@ -353,7 +360,7 @@ describe('public OTP pages', () => {
 		const event = { preventDefault: vi.fn() };
 		h.elements.get('otpEntryForm').listeners.submit(event);
 		expect(event.preventDefault).toHaveBeenCalledOnce();
-		expect(h.location.href).toBe('/otp/JBSWY3DPEHPK3PXP%3D%3D%3D%3D');
+		expect(h.location.href).toBe('/otp/JBSWY3DPEHPK3PXP%3D%3D%3D%3D?lang=en');
 	});
 
 	it('keeps JSON mode and plain-text usage responses compatible', async () => {

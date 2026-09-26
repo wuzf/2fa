@@ -1,3 +1,4 @@
+import { transferI18n } from '../helpers/transfer-i18n.js';
 import { createContext, runInContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import { getExportCode } from '../../src/ui/scripts/export.js';
@@ -8,6 +9,7 @@ import { getUtilsCode } from '../../src/ui/scripts/utils.js';
 
 function createHarness() {
 	const api = createContext({
+		...transferI18n(),
 		window: {},
 		URLSearchParams,
 		TextEncoder,

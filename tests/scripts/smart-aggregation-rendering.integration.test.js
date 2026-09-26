@@ -423,8 +423,7 @@ function createHarness(initialStorage = {}, overrides = {}) {
 	const page = createPageDocument();
 	const localStorage = createStorage(initialStorage);
 	const updateOTP = overrides.updateOTP ?? vi.fn(async () => {});
-	const updateOTPSecretsInBatch =
-		overrides.updateOTPSecretsInBatch ?? vi.fn(async () => {});
+	const updateOTPSecretsInBatch = overrides.updateOTPSecretsInBatch ?? vi.fn(async () => {});
 	const startOTPInterval = overrides.startOTPInterval ?? vi.fn();
 	const window = {
 		addEventListener: vi.fn(),
@@ -432,6 +431,7 @@ function createHarness(initialStorage = {}, overrides = {}) {
 		visualViewport: null,
 	};
 	const navigator = {
+		language: 'zh-CN',
 		clipboard: {
 			writeText: vi.fn(async () => {}),
 		},
@@ -451,7 +451,7 @@ function createHarness(initialStorage = {}, overrides = {}) {
     function hideQRScanner() {}
     function hideImportModal() {}
     function showCenterToast() {}
-    ${overrides.i18n ? getI18nCode() : ''}
+    ${getI18nCode()}
     ${getStateCode()}
     ${getCoreCode()}
     ${getServiceAggregationCode()}
@@ -602,10 +602,7 @@ describe('smart aggregation rendering integration', () => {
 			resolveBatch = resolve;
 		});
 		const updateOTPSecretsInBatch = vi.fn(() => batchPromise);
-		const { api, clearInterval, startOTPInterval } = createHarness(
-			{},
-			{ updateOTPSecretsInBatch },
-		);
+		const { api, clearInterval, startOTPInterval } = createHarness({}, { updateOTPSecretsInBatch });
 		const renderedSecrets = TEST_SECRETS.slice(0, 2);
 		api.setSecrets(renderedSecrets);
 		api.setOTPIntervals({ google: 101, gmail: 102 });
@@ -668,10 +665,7 @@ describe('smart aggregation rendering integration', () => {
 
 	it('keeps family-name search working after replacing an item with the same service name', async () => {
 		const { api, document } = createHarness();
-		const editedSecrets = [
-			secret('gmail', 'Gmail', 'before@example.com'),
-			secret('youtube', 'YouTube', 'video@example.com'),
-		];
+		const editedSecrets = [secret('gmail', 'Gmail', 'before@example.com'), secret('youtube', 'YouTube', 'video@example.com')];
 
 		api.setSecrets(editedSecrets);
 		await api.filterSecrets('google');
@@ -698,10 +692,7 @@ describe('smart aggregation rendering integration', () => {
 
 	it('searches the displayed other-services heading', async () => {
 		const { api, document } = createHarness();
-		api.setSecrets([
-			secret('github', 'GitHub', 'code@example.com'),
-			secret('discord', 'Discord', 'chat@example.com'),
-		]);
+		api.setSecrets([secret('github', 'GitHub', 'code@example.com'), secret('discord', 'Discord', 'chat@example.com')]);
 
 		await api.filterSecrets('其他服务');
 

@@ -88,7 +88,7 @@ export function getBase32ToolCode() {
     function encodeBase32() {
       const text = document.getElementById('plainTextInput').value.trim();
       if (!text) {
-        showCenterToast('❌', '请输入要编码的文本');
+        showCenterToast('❌', t('toolEncodeInput'));
         return;
       }
 
@@ -125,16 +125,16 @@ export function getBase32ToolCode() {
         const resultElement = document.getElementById('encodedResult');
         resultElement.textContent = result;
         resultElement.style.display = 'block';
-        showCenterToast('✅', 'Base32编码成功');
+        showCenterToast('✅', t('toolEncodeSuccess'));
       } catch (error) {
-        showCenterToast('❌', '编码失败：' + error.message);
+        showCenterToast('❌', t('toolEncodeError', { message: error.message }));
       }
     }
 
     function decodeBase32() {
       const base32Text = document.getElementById('base32TextInput').value.trim().toUpperCase();
       if (!base32Text) {
-        showCenterToast('❌', '请输入要解码的Base32文本');
+        showCenterToast('❌', t('toolDecodeInput'));
         return;
       }
 
@@ -144,7 +144,7 @@ export function getBase32ToolCode() {
 
         // 验证字符集
         if (!/^[A-Z2-7]+$/.test(cleaned)) {
-          throw new Error('包含无效的Base32字符');
+          throw new Error(t('toolBase32Invalid'));
         }
 
         let bits = 0;
@@ -157,7 +157,7 @@ export function getBase32ToolCode() {
           const value = base32Chars.indexOf(char);
 
           if (value === -1) {
-            throw new Error('无效的Base32字符：' + char);
+            throw new Error(t('toolBase32InvalidChar', { char }));
           }
 
           bits = (bits << 5) | value;
@@ -175,39 +175,39 @@ export function getBase32ToolCode() {
         const resultElement = document.getElementById('decodedResult');
         resultElement.textContent = result;
         resultElement.style.display = 'block';
-        showCenterToast('✅', 'Base32解码成功');
+        showCenterToast('✅', t('toolDecodeSuccess'));
       } catch (error) {
-        showCenterToast('❌', '解码失败：' + error.message);
+        showCenterToast('❌', t('toolDecodeError', { message: error.message }));
       }
     }
 
     async function copyEncodedText() {
       const text = document.getElementById('encodedResult').textContent;
       if (!text) {
-        showCenterToast('❌', '没有可复制的内容');
+        showCenterToast('❌', t('toolNothingToCopy'));
         return;
       }
 
       try {
         await navigator.clipboard.writeText(text);
-        showCenterToast('✅', '已复制编码结果');
+        showCenterToast('✅', t('toolEncodedCopied'));
       } catch (error) {
-        showCenterToast('❌', '复制失败');
+        showCenterToast('❌', t('copyFailed'));
       }
     }
 
     async function copyDecodedText() {
       const text = document.getElementById('decodedResult').textContent;
       if (!text) {
-        showCenterToast('❌', '没有可复制的内容');
+        showCenterToast('❌', t('toolNothingToCopy'));
         return;
       }
 
       try {
         await navigator.clipboard.writeText(text);
-        showCenterToast('✅', '已复制解码结果');
+        showCenterToast('✅', t('toolDecodedCopied'));
       } catch (error) {
-        showCenterToast('❌', '复制失败');
+        showCenterToast('❌', t('copyFailed'));
       }
     }
 

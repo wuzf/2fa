@@ -4,6 +4,7 @@ import { dialogIcon } from '../dialogIcons.js'; /**
  */
 
 import { SERVICE_LOGOS } from '../config/serviceLogos.js';
+import { getOfflineSecretsCode } from './offlineCache.js';
 
 /**
  * 获取 Core 相关代码
@@ -12,7 +13,8 @@ import { SERVICE_LOGOS } from '../config/serviceLogos.js';
 export function getCoreCode() {
 	const serviceLogosJSON = JSON.stringify(SERVICE_LOGOS, null, 2);
 
-	return `    // ========== Service Logos 配置 ==========
+	return `${getOfflineSecretsCode()}
+    // ========== Service Logos 配置 ==========
     // 服务名称到域名的映射数据（从 serviceLogos.js 导入）
     const SERVICE_LOGOS = ${serviceLogosJSON};
 
@@ -20,18 +22,53 @@ export function getCoreCode() {
     // 注意：逻辑只在客户端实现，服务器端的 serviceLogos.js 只是纯数据配置
     const hotpCopyLocks = new Map();
     const SECRETS_CACHE_KEY = '2fa-secrets-cache';
+    let secretsCacheWriteFailed = false;
+    let lastSecretsCacheTimestamp = 0;
+    let secretsSnapshotSession = null;
+    let secretsDisplaySession = null;
+    let secretsDisplayFingerprint = null;
+    let secretsDisplayPending = null;
+    let secretsReadInvalid = false;
+    const SECRETS_READ_TIMEOUT_MS = 8000;
 
     function cacheSecretsLocally() {
+      secretsSnapshotSession = secretSessionGeneration;
       try {
+        const timestamp = Math.max(Date.now(), lastSecretsCacheTimestamp + 1);
+        // The hidden count travels with the snapshot, so a page opened
+        // offline from it still reports the accounts it cannot show.
         localStorage.setItem(SECRETS_CACHE_KEY, JSON.stringify({
           data: secrets,
-          timestamp: Date.now()
+          timestamp,
+          hiddenCount: getHiddenSecretsCount()
         }));
+        lastSecretsCacheTimestamp = timestamp;
+        secretsCacheWriteFailed = false;
         return true;
       } catch (error) {
+        secretsCacheWriteFailed = true;
         console.warn('缓存数据失败:', error);
+        // A quota failure commonly leaves the previous snapshot untouched.
+        // Remove it so the next offline visit cannot resurrect deleted keys.
+        try {
+          localStorage.removeItem(SECRETS_CACHE_KEY);
+        } catch (removeError) {
+          console.warn('清除过期缓存失败:', removeError);
+        }
         return false;
       }
+    }
+
+    function commitSecretListChange(nextSecrets, sessionGeneration = secretSessionGeneration) {
+      if (!isSecretSessionCurrent(sessionGeneration)) return false;
+      // In-flight list reads started before this confirmed write must not
+      // replace the new local state or persist their older snapshot afterward.
+      secretLoadGeneration += 1;
+      secrets = nextSecrets;
+      secretsReadInvalid = false;
+      // Only confirmed server writes reach this point.
+      markSecretAccessVerified(sessionGeneration);
+      return cacheSecretsLocally();
     }
 
     function getHOTPGenerationSnapshot(secret) {
@@ -196,68 +233,248 @@ export function getCoreCode() {
         }, 500);
       });
 
-    // 加载密钥列表
-    async function loadSecrets() {
-      const loadGeneration = ++secretLoadGeneration;
+    // Validate records before using either a server response or a persisted
+    // snapshot. Keep legacy numeric IDs and omitted default OTP parameters.
+    // A record is rejected when its ID repeats one already accepted in ids.
+    function isUsableSecretRecord(item, ids) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+      const id = item.id;
+      if (!(typeof id === 'string' && id.length > 0) && !(Number.isSafeInteger(id) && id >= 0)) return false;
+      const key = String(id);
+      if (/[\\s"'<>&\\\\]/.test(key) || ids.has(key)) return false;
+      // Older imports could save blank names. Keep these accounts editable;
+      // the card supplies a display label without changing persisted data.
+      if (typeof item.name !== 'string' ||
+          (item.account != null && typeof item.account !== 'string') ||
+          typeof item.secret !== 'string' || !/^[A-Z2-7]+=*$/i.test(item.secret.replace(/\\s/g, '')) ||
+          item.secret.replace(/\\s/g, '').replace(/=+$/, '').length < 2) return false;
+      if (item.type != null && typeof item.type !== 'string') return false;
+      const type = String(item.type || 'TOTP').toUpperCase();
+      const period = Number(item.period || 30);
+      const algorithm = String(item.algorithm || 'SHA1').toUpperCase().replace('-', '');
+      const usable = ['TOTP', 'HOTP'].includes(type) && [6, 8].includes(Number(item.digits || 6)) &&
+        ['SHA1', 'SHA256', 'SHA512'].includes(algorithm) &&
+        (type === 'HOTP' ? Number.isSafeInteger(item.counter ?? 0) && (item.counter ?? 0) >= 0 :
+          Number.isSafeInteger(period) && period > 0);
+      if (usable) ids.add(key);
+      return usable;
+    }
+
+    // Local snapshots stay all-or-nothing: a damaged cache is never partially reused.
+    function isUsableSecretsSnapshot(value) {
+      if (!Array.isArray(value)) return false;
+      const ids = new Set();
+      return value.every(item => isUsableSecretRecord(item, ids));
+    }
+
+    // The server list is authoritative, so one malformed legacy record must not
+    // hide every other account. Unusable records are only left out of this
+    // page: every account write is a single-record or additive request that the
+    // server applies to its own stored list, so hidden records stay there.
+    function filterUsableServerSecrets(value) {
+      if (!Array.isArray(value)) return null;
+      const ids = new Set();
+      const usable = value.filter(item => isUsableSecretRecord(item, ids));
+      return { secrets: usable, hiddenCount: value.length - usable.length };
+    }
+
+    let hiddenSecretsNotice = null;
+    // Accounts the last server read left out of this session's list. Exports
+    // use the same list, so they report this count too.
+    let hiddenSecretsCount = { session: null, count: 0 };
+    function getHiddenSecretsCount() {
+      return isSecretSessionCurrent(hiddenSecretsCount.session) ? hiddenSecretsCount.count : 0;
+    }
+
+    // The hidden count saved with a local snapshot; parseOfflineSecretsCache
+    // (shared with the extension) reads only the accounts and their time.
+    function readCachedHiddenCount(raw) {
       try {
-        await ensureServerTimeSynchronized();
-        const response = await authenticatedFetch('/api/secrets');
+        const count = JSON.parse(raw).hiddenCount;
+        return Number.isSafeInteger(count) && count > 0 ? count : 0;
+      } catch {
+        return 0;
+      }
+    }
 
-        if (response.status === 401) {
-          handleUnauthorized();
-          return;
-        }
+    function announceHiddenSecrets(hiddenCount, sessionGeneration) {
+      hiddenSecretsCount = { session: sessionGeneration, count: hiddenCount || 0 };
+      if (!hiddenCount) {
+        hiddenSecretsNotice = null;
+        return;
+      }
+      // Repeated reads of the same list must not repeat the notice.
+      const notice = sessionGeneration + ':' + hiddenCount;
+      if (hiddenSecretsNotice === notice) return;
+      hiddenSecretsNotice = notice;
+      showCenterToast('⚠️', t('coreInvalidRecordsHidden', { count: hiddenCount }));
+    }
 
-        if (!response.ok) {
-          throw new Error('加载失败: ' + response.statusText);
-        }
+    function showSecretsReadFailure(messageKey) {
+      secretsDisplaySession = null;
+      secretsDisplayFingerprint = null;
+      secretsDisplayPending = null;
+      const loading = document.getElementById('loading');
+      const emptyState = document.getElementById('emptyState');
+      if (loading) loading.style.display = 'none';
+      if (!emptyState) return;
+      emptyState.innerHTML = '<h3 data-i18n="coreReadTitle"></h3><p></p>' +
+        '<button type="button" class="workspace-action" data-i18n="retry" onclick="loadSecrets()"></button>';
+      setTranslatedText(emptyState.querySelector('p'), messageKey);
+      applyTranslations(emptyState);
+      emptyState.style.display = 'block';
+    }
 
-        const loadedSecrets = await response.json();
-        if (loadGeneration !== secretLoadGeneration) return;
-        secrets = loadedSecrets;
-        if (typeof syncLanguagePreferenceAfterAuth === 'function') void syncLanguagePreferenceAfterAuth();
+    function discardInvalidSecretsSnapshot() {
+      secretsReadInvalid = true;
+      secretsSnapshotSession = null;
+      secretsDisplaySession = null;
+      secretsDisplayFingerprint = null;
+      secretsDisplayPending = null;
+      secretRenderGeneration += 1;
+      secrets = [];
+      filteredSecrets = [];
+      clearOTPIntervalsExcept([]);
+      if (typeof clearAllOTPAnimations === 'function') clearAllOTPAnimations();
+      if (typeof clearOTPWindowScheduler === 'function') clearOTPWindowScheduler();
+      const list = document.getElementById('secretsList');
+      if (list) { list.innerHTML = ''; list.style.display = 'none'; }
+      try { localStorage.removeItem(SECRETS_CACHE_KEY); } catch { /* Never reuse it in this page. */ }
+    }
 
-        // 成功获取数据后，保存到 localStorage 作为缓存
-        cacheSecretsLocally();
-
-        await renderSecrets();
-      } catch (error) {
-        if (loadGeneration !== secretLoadGeneration) return;
-        console.error('加载密钥失败:', error);
-
-        // 尝试从缓存中读取数据
-        try {
-          const cached = localStorage.getItem(SECRETS_CACHE_KEY);
-          if (cached) {
-            const { data, timestamp } = JSON.parse(cached);
-            secrets = data;
-
-            // 显示缓存数据
-            await renderSecrets();
-
-            // 提示用户正在使用缓存数据
-            const cacheTime = new Date(timestamp).toLocaleString('zh-CN');
-            showCenterToast('💾', '网络异常，显示缓存数据（' + cacheTime + '）');
-
-            console.log('使用缓存数据，缓存时间:', cacheTime);
-            return;
+    function renderLoadedSecretsIfChanged() {
+      const fingerprint = JSON.stringify(secrets);
+      if (secretsDisplaySession === secretSessionGeneration && secretsDisplayFingerprint === fingerprint) return Promise.resolve();
+      if (secretsDisplayPending && secretsDisplayPending.session === secretSessionGeneration &&
+          secretsDisplayPending.fingerprint === fingerprint) return secretsDisplayPending.promise;
+      const pending = { session: secretSessionGeneration, fingerprint, promise: null };
+      secretsDisplayPending = pending;
+      let rendering;
+      try { rendering = Promise.resolve(renderSecrets()); }
+      catch (error) { rendering = Promise.reject(error); }
+      pending.promise = rendering.then(() => {
+        if (secretsDisplayPending === pending) {
+          if (isSecretSessionCurrent(pending.session) && JSON.stringify(secrets) === fingerprint) {
+            secretsDisplaySession = pending.session;
+            secretsDisplayFingerprint = fingerprint;
           }
-        } catch (e) {
-          console.warn('读取缓存失败:', e);
+          secretsDisplayPending = null;
         }
+      }, error => {
+        if (secretsDisplayPending === pending) {
+          secretsDisplaySession = null;
+          secretsDisplayFingerprint = null;
+          secretsDisplayPending = null;
+        }
+        throw error;
+      });
+      return pending.promise;
+    }
 
-        // 既没有网络数据也没有缓存数据，显示空状态
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('emptyState').style.display = 'block';
+    // Show usable local accounts first. The timeout applies only to this read,
+    // including clock readiness, response headers, and the complete JSON body.
+    async function loadSecrets() {
+      const sessionGeneration = secretSessionGeneration;
+      if (!isSecretSessionCurrent(sessionGeneration)) return;
+      const loadGeneration = ++secretLoadGeneration;
+      const isCurrentLoad = () => isSecretSessionCurrent(sessionGeneration) && loadGeneration === secretLoadGeneration;
+      let localAvailable = false;
+      let cachedHiddenCount = null;
+      if (!secretsReadInvalid) {
+        if ((secretsSnapshotSession === sessionGeneration || secrets.length > 0) && isUsableSecretsSnapshot(secrets)) {
+          localAvailable = true;
+          secretsSnapshotSession = sessionGeneration;
+        } else if (!secretsCacheWriteFailed) {
+          try {
+            // Web caches must retain every account accepted by the online read.
+            const raw = localStorage.getItem(SECRETS_CACHE_KEY);
+            const cached = parseOfflineSecretsCache(raw, Infinity);
+            if (cached && isUsableSecretsSnapshot(cached.data)) {
+              secrets = cached.data;
+              secretsSnapshotSession = sessionGeneration;
+              localAvailable = true;
+              cachedHiddenCount = readCachedHiddenCount(raw);
+            }
+          } catch { /* Continue with the server when browser storage is unavailable. */ }
+        }
+      }
+      if (localAvailable) markSecretAccessVerified(sessionGeneration);
+      if (cachedHiddenCount !== null) announceHiddenSecrets(cachedHiddenCount, sessionGeneration);
+      const displaying = localAvailable ? renderLoadedSecretsIfChanged().catch(error => {
+        if (isCurrentLoad()) console.warn('显示本地账户失败:', error);
+      }) : Promise.resolve();
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        await displaying;
+        if (isCurrentLoad() && !localAvailable) showSecretsReadFailure('coreOfflineRead');
+        return;
+      }
+      const controller = new AbortController();
+      let timedOut = false;
+      let timeoutId;
+      const deadline = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+          reject(new Error(t('coreReadTimeout')));
+        }, SECRETS_READ_TIMEOUT_MS);
+      });
+      try {
+        const reading = (async () => {
+          await ensureServerTimeSynchronized();
+          if (!isCurrentLoad() || controller.signal.aborted) return null;
+          const response = await authenticatedFetch('/api/secrets', { signal: controller.signal });
+          if (!isCurrentLoad() || controller.signal.aborted) return null;
+          if (response.status === 401 || response.status === 403) {
+            handleUnauthorized(sessionGeneration);
+            return null;
+          }
+          if (!response.ok) throw new Error(t('coreReadUnavailable'));
+          markSecretAccessVerified(sessionGeneration);
+          let loadedSecrets;
+          try { loadedSecrets = await response.json(); }
+          catch (error) {
+            if (error && error.name === 'SyntaxError' && !controller.signal.aborted) {
+              throw Object.assign(new Error(t('coreInvalidData')), { invalidData: true });
+            }
+            throw error;
+          }
+          if (!isCurrentLoad() || controller.signal.aborted) return null;
+          const usable = filterUsableServerSecrets(loadedSecrets);
+          if (!usable) {
+            throw Object.assign(new Error(t('coreInvalidData')), { invalidData: true });
+          }
+          return usable;
+        })();
+        const loaded = await Promise.race([reading, deadline]);
+        clearTimeout(timeoutId);
+        if (!isCurrentLoad() || timedOut || loaded === null) return;
+        secrets = loaded.secrets;
+        secretsReadInvalid = false;
+        if (typeof syncLanguagePreferenceAfterAuth === 'function') void syncLanguagePreferenceAfterAuth();
+        announceHiddenSecrets(loaded.hiddenCount, sessionGeneration);
+        cacheSecretsLocally();
+        await renderLoadedSecretsIfChanged();
+      } catch (error) {
+        if (!isCurrentLoad()) return;
+        console.warn('读取账户未完成:', error);
+        if (error.invalidData) {
+          discardInvalidSecretsSnapshot();
+          showSecretsReadFailure('coreInvalidData');
+        } else if (!localAvailable) {
+          showSecretsReadFailure('coreConnectionFailed');
+        }
+      } finally {
+        clearTimeout(timeoutId);
       }
     }
 
     // 渲染密钥列表
     async function renderSecrets() {
+      if (secretReadsBlocked) return;
       filteredSecrets = [...secrets];
       const searchInput = document.getElementById('searchInput');
       if (searchInput && searchInput.value.trim()) {
-        filterSecrets(searchInput.value);
+        await filterSecrets(searchInput.value);
       } else {
         await renderFilteredSecrets();
       }
@@ -279,12 +496,20 @@ export function getCoreCode() {
       return colors[Math.abs(hash) % colors.length];
     }
 
+    // Older imports could save blank names. Everything that names an account
+    // uses the label its card shows, without changing the saved data.
+    function getSecretDisplayName(secret) {
+      const name = secret && typeof secret.name === 'string' ? secret.name : '';
+      return name.trim() ? name : t('transferUnnamed');
+    }
+
     // 创建密钥卡片
     function createSecretCard(secret) {
       const logoUrl = getServiceLogo(secret.name);
       const isHOTP = secret.type && secret.type.toUpperCase() === 'HOTP';
+      const displayName = getSecretDisplayName(secret);
       // These values are used in both text content and quoted tooltip attributes.
-      const nameHTML = escapeHTML(secret.name).replace(/"/g, '&quot;');
+      const nameHTML = escapeHTML(displayName).replace(/"/g, '&quot;');
       const accountHTML = escapeHTML(secret.account || '').replace(/"/g, '&quot;');
 
       const cardCopyTooltip = (typeof t === 'function' ? t('cardCopyTooltip') : null) || '点击卡片复制验证码';
@@ -317,8 +542,8 @@ export function getCoreCode() {
             '<div class="service-icon">' +
               (logoUrl ?
                 '<img src="' + logoUrl + '" alt="' + nameHTML + '" style="width: 30px; height: 30px; object-fit: contain; border-radius: 6px;" onerror="this.style.display=&quot;none&quot;; this.nextElementSibling.style.display=&quot;block&quot;;">' +
-                '<span style="display: none;">' + escapeHTML(secret.name.charAt(0).toUpperCase()) + '</span>' :
-                '<span>' + escapeHTML(secret.name.charAt(0).toUpperCase()) + '</span>'
+                '<span style="display: none;">' + escapeHTML(displayName.charAt(0).toUpperCase()) + '</span>' :
+                '<span>' + escapeHTML(displayName.charAt(0).toUpperCase()) + '</span>'
               ) +
             '</div>' +
             '<div class="secret-text">' +
@@ -385,6 +610,8 @@ export function getCoreCode() {
 
     // 渲染过滤后的密钥列表
     async function renderFilteredSecrets() {
+      if (secretReadsBlocked) return;
+      const sessionGeneration = secretSessionGeneration;
       const renderGeneration = ++secretRenderGeneration;
       const loading = document.getElementById('loading');
       const secretsList = document.getElementById('secretsList');
@@ -461,7 +688,7 @@ export function getCoreCode() {
         );
       }
 
-      if (renderGeneration !== secretRenderGeneration) return;
+      if (!isSecretSessionCurrent(sessionGeneration) || renderGeneration !== secretRenderGeneration) return;
 
       // 性能监控日志
       const perfEnd = performance.now();
@@ -497,6 +724,8 @@ export function getCoreCode() {
 
     // 复制OTP验证码
     async function copyOTP(secretId) {
+      const sessionGeneration = secretSessionGeneration;
+      if (!isSecretSessionCurrent(sessionGeneration)) return;
       // 关闭所有打开的卡片菜单
       closeAllCardMenus();
 
@@ -513,8 +742,10 @@ export function getCoreCode() {
 
       try {
         await navigator.clipboard.writeText(otpText);
+        if (!isSecretSessionCurrent(sessionGeneration)) return;
         showOTPCopyFeedback(secretId);
       } catch (err) {
+        if (!isSecretSessionCurrent(sessionGeneration)) return;
         const textArea = document.createElement('textarea');
         textArea.value = otpText;
         document.body.appendChild(textArea);
@@ -526,23 +757,28 @@ export function getCoreCode() {
     }
 
     function copyHOTPAndAdvanceCounter(secretId) {
-      const lockKey = String(secretId);
+      const sessionGeneration = secretSessionGeneration;
+      if (!isSecretSessionCurrent(sessionGeneration)) return Promise.resolve(false);
+      const lockKey = sessionGeneration + ':' + String(secretId);
       const existing = hotpCopyLocks.get(lockKey);
       if (existing) return existing;
 
       // 等待更早的编辑/删除完成后再读取并复制，保证验证码与随后推进的 counter 属于同一快照。
       const operation = saveQueue
-        .then(() => performHOTPCopyAndAdvance(secretId))
+        .then(() => isSecretSessionCurrent(sessionGeneration) ? performHOTPCopyAndAdvance(secretId, sessionGeneration) : false)
         .catch(async error => {
+          if (!isSecretSessionCurrent(sessionGeneration)) return false;
           console.error('HOTP 计数器更新失败:', error);
           try {
             await loadSecrets();
+            if (!isSecretSessionCurrent(sessionGeneration)) return false;
           } catch (reconcileError) {
+            if (!isSecretSessionCurrent(sessionGeneration)) return false;
             console.warn('重新加载 HOTP 计数器失败:', reconcileError);
           }
           const message = error.hotpCopied
-            ? '验证码已复制，但本地计数器同步失败：'
-            : '验证码未复制，计数器状态已重新对账：';
+            ? t('coreHotpCopiedSyncFailed')
+            : t('coreHotpNotCopiedReconciled');
           showCenterToast('⚠️', message + error.message);
           return false;
         });
@@ -557,11 +793,12 @@ export function getCoreCode() {
       return operation;
     }
 
-    async function performHOTPCopyAndAdvance(secretId) {
+    async function performHOTPCopyAndAdvance(secretId, sessionGeneration = secretSessionGeneration) {
+      if (!isSecretSessionCurrent(sessionGeneration)) return false;
       const secret = secrets.find(item => String(item.id) === String(secretId));
       const snapshot = getHOTPGenerationSnapshot(secret);
       if (!snapshot) {
-        showCenterToast('⚠️', 'HOTP 计数器无效或已达到上限');
+        showCenterToast('⚠️', t('coreHotpLimit'));
         return false;
       }
 
@@ -573,23 +810,24 @@ export function getCoreCode() {
       if (!otpText) {
         // 恢复计算失败或被取消的 HOTP；本次不等待计算后自动复制，避免丢失用户激活。
         updateOTP(secretId, null, secret).catch(error => console.warn('刷新 HOTP 失败:', error));
-        showCenterToast('⏳', '验证码正在更新，请稍后重试');
+        showCenterToast('⏳', t('coreCodeUpdating'));
         return false;
       }
       if (navigator.onLine === false) {
-        showCenterToast('⚠️', '离线状态下无法安全复制 HOTP 验证码');
+        showCenterToast('⚠️', t('coreHotpCopyOffline'));
         return false;
       }
 
       // 本地校验通过并即将预留；更早开始的 GET 不得在复制后回写旧状态。
       secretLoadGeneration += 1;
       // 剪贴板调用必须在用户激活仍有效时启动；与服务端预留并发，避免网络 await 后权限失效。
-      const clipboardOperation = copyHOTPText(otpText);
-      const reservationOperation = reserveHOTPCounter(snapshot);
+      const clipboardOperation = copyHOTPText(otpText, sessionGeneration);
+      const reservationOperation = reserveHOTPCounter(snapshot, sessionGeneration);
       const [clipboardResult, reservationResult] = await Promise.allSettled([
         clipboardOperation,
         reservationOperation
       ]);
+      if (!isSecretSessionCurrent(sessionGeneration)) return false;
       const copied = clipboardResult.status === 'fulfilled' && clipboardResult.value === true;
       if (reservationResult.status === 'rejected') {
         const reservationError = reservationResult.reason instanceof Error
@@ -600,14 +838,16 @@ export function getCoreCode() {
       }
 
       try {
-        await commitReservedHOTPCounter(snapshot);
+        await commitReservedHOTPCounter(snapshot, sessionGeneration);
+        if (!isSecretSessionCurrent(sessionGeneration)) return false;
       } catch (error) {
+        if (!isSecretSessionCurrent(sessionGeneration)) return false;
         error.hotpCopied = copied;
         throw error;
       }
 
       if (!copied) {
-        showCenterToast('⚠️', '复制失败，HOTP 计数器已安全推进，请使用新验证码重试');
+        showCenterToast('⚠️', t('coreHotpCopyFailedAdvanced'));
         return false;
       }
 
@@ -615,11 +855,13 @@ export function getCoreCode() {
       return true;
     }
 
-    async function copyHOTPText(otpText) {
+    async function copyHOTPText(otpText, sessionGeneration = secretSessionGeneration) {
+      if (!isSecretSessionCurrent(sessionGeneration)) return false;
       try {
         await navigator.clipboard.writeText(otpText);
-        return true;
+        return isSecretSessionCurrent(sessionGeneration);
       } catch (clipboardError) {
+        if (!isSecretSessionCurrent(sessionGeneration)) return false;
         const textArea = document.createElement('textarea');
         try {
           textArea.value = otpText;
@@ -636,7 +878,8 @@ export function getCoreCode() {
       }
     }
 
-    async function reserveHOTPCounter(snapshot) {
+    async function reserveHOTPCounter(snapshot, sessionGeneration = secretSessionGeneration) {
+      if (!isSecretSessionCurrent(sessionGeneration)) return;
       const queuedSecret = secrets.find(item => String(item.id) === snapshot.id);
       const queuedCounter = queuedSecret && queuedSecret.counter !== undefined
         ? queuedSecret.counter
@@ -645,7 +888,7 @@ export function getCoreCode() {
         !matchesHOTPGenerationSnapshot(queuedSecret, snapshot) ||
         queuedCounter !== snapshot.counter
       ) {
-        throw new Error('密钥已发生变化，已取消旧验证码的计数器更新');
+        throw new Error(t('coreHotpChanged'));
       }
 
       const response = await authenticatedFetch(
@@ -662,22 +905,28 @@ export function getCoreCode() {
           })
         }
       );
+      if (!isSecretSessionCurrent(sessionGeneration)) return;
+      if (response.status === 401) {
+        handleUnauthorized(sessionGeneration);
+        return;
+      }
       const result = await response.json();
+      if (!isSecretSessionCurrent(sessionGeneration)) return;
 
       if (!response.ok) {
-        throw new Error(result.message || result.error || '服务器拒绝更新计数器');
+        throw new Error(result.message || result.error || t('coreHotpRejected'));
       }
 
       const queuedOffline = result.queued === true && result.offline === true;
       if (queuedOffline) {
-        throw new Error('离线状态下无法安全推进 HOTP 计数器');
+        throw new Error(t('coreHotpAdvanceOffline'));
       }
       const responseSecret = result.data && result.data.secret;
       if (
         (!matchesHOTPGenerationSnapshot(responseSecret, snapshot) ||
           responseSecret.counter !== snapshot.nextCounter)
       ) {
-        throw new Error('服务器返回了无效的计数器状态');
+        throw new Error(t('coreHotpInvalidState'));
       }
 
       const currentSecret = secrets.find(item => String(item.id) === snapshot.id);
@@ -689,11 +938,12 @@ export function getCoreCode() {
         (currentCounter !== snapshot.counter &&
           currentCounter !== snapshot.nextCounter)
       ) {
-        throw new Error('密钥状态已更新，请刷新后重试');
+        throw new Error(t('coreKeyChanged'));
       }
     }
 
-    async function commitReservedHOTPCounter(snapshot) {
+    async function commitReservedHOTPCounter(snapshot, sessionGeneration = secretSessionGeneration) {
+      if (!isSecretSessionCurrent(sessionGeneration)) return;
       const currentSecret = secrets.find(item => String(item.id) === snapshot.id);
       const currentCounter = currentSecret && currentSecret.counter !== undefined
         ? currentSecret.counter
@@ -703,25 +953,27 @@ export function getCoreCode() {
         (currentCounter !== snapshot.counter &&
           currentCounter !== snapshot.nextCounter)
       ) {
-        throw new Error('密钥状态已更新，请刷新后重试');
+        throw new Error(t('coreKeyChanged'));
       }
       // 使 POST 期间启动的 GET 失效，再提交本地新 counter。
       secretLoadGeneration += 1;
       currentSecret.counter = snapshot.nextCounter;
       cacheSecretsLocally();
       const counterElement = document.getElementById('counter-' + snapshot.id);
-      if (counterElement) counterElement.textContent = '计数器: ' + snapshot.nextCounter;
+      if (counterElement) counterElement.textContent = t('counterLabel') + snapshot.nextCounter;
       await updateOTP(snapshot.id, null, currentSecret);
     }
 
     function showOTPCopyFeedback(secretId) {
       const secret = secrets.find(s => s.id === secretId);
-      const serviceName = secret ? secret.name : '验证码';
+      const serviceName = secret ? getSecretDisplayName(secret) : t('coreCode');
       
-      showCenterToast('✅', serviceName + ' 验证码已复制到剪贴板');
+      showCenterToast('✅', t('coreCopiedService', { name: serviceName }));
     }
 
     async function copyNextOTP(secretId) {
+      const sessionGeneration = secretSessionGeneration;
+      if (!isSecretSessionCurrent(sessionGeneration)) return;
       // 关闭所有打开的卡片菜单
       closeAllCardMenus();
 
@@ -743,8 +995,10 @@ export function getCoreCode() {
 
       try {
         await navigator.clipboard.writeText(nextOtpText);
+        if (!isSecretSessionCurrent(sessionGeneration)) return;
         showNextOTPCopyFeedback(secretId);
       } catch (err) {
+        if (!isSecretSessionCurrent(sessionGeneration)) return;
         const textArea = document.createElement('textarea');
         textArea.value = nextOtpText;
         document.body.appendChild(textArea);
@@ -757,9 +1011,9 @@ export function getCoreCode() {
 
     function showNextOTPCopyFeedback(secretId) {
       const secret = secrets.find(s => s.id === secretId);
-      const serviceName = secret ? secret.name : '验证码';
+      const serviceName = secret ? getSecretDisplayName(secret) : t('coreCode');
 
-      showCenterToast('⏭️', serviceName + ' 下一个验证码已复制到剪贴板');
+      showCenterToast('⏭️', t('coreCopiedNextService', { name: serviceName }));
     }
 
     function isCopyableOTPValue(secretId, value) {
@@ -774,13 +1028,13 @@ export function getCoreCode() {
     async function copyOTPAuthURL(secretId) {
       const secret = secrets.find(s => s.id === secretId);
       if (!secret) {
-        showCenterToast('❌', '未找到密钥');
+        showCenterToast('❌', t('coreKeyMissing'));
         return;
       }
 
       try {
         // 构建标签
-        const serviceName = secret.name.trim();
+        const serviceName = getSecretDisplayName(secret).trim();
         const accountName = secret.account ? secret.account.trim() : '';
         let label;
         if (accountName) {
@@ -821,10 +1075,10 @@ export function getCoreCode() {
 
         // 复制到剪贴板
         await navigator.clipboard.writeText(otpauthURL);
-        showCenterToast('🔗', secret.name + ' 验证器 URI 已复制到剪贴板');
+        showCenterToast('🔗', t('coreCopiedUriService', { name: getSecretDisplayName(secret) }));
       } catch (err) {
         console.error('复制验证器 URI 失败:', err);
-        showCenterToast('❌', '复制验证器 URI 失败: ' + err.message);
+        showCenterToast('❌', t('coreCopyUriFailed') + err.message);
       }
     }
 
@@ -832,7 +1086,7 @@ export function getCoreCode() {
     async function copyOTPPageURL(secretId) {
       const secret = secrets.find(s => s.id === secretId);
       if (!secret) {
-        showCenterToast('❌', '未找到密钥');
+        showCenterToast('❌', t('coreKeyMissing'));
         return;
       }
 
@@ -853,10 +1107,10 @@ export function getCoreCode() {
         if (algorithm !== 'SHA1') url.searchParams.set('algorithm', algorithm);
 
         await navigator.clipboard.writeText(url.toString());
-        showCenterToast('🔗', secret.name + ' 验证码链接已复制到剪贴板');
+        showCenterToast('🔗', t('coreCopiedLinkService', { name: getSecretDisplayName(secret) }));
       } catch (err) {
         console.error('复制验证码链接失败:', err);
-        showCenterToast('❌', '复制验证码链接失败: ' + err.message);
+        showCenterToast('❌', t('coreCopyLinkFailed') + err.message);
       }
     }
 
@@ -986,82 +1240,145 @@ export function getCoreCode() {
     function editSecret(id) {
       const secret = secrets.find(s => s.id === id);
       if (!secret) return;
-      
+      showSecretModal(() => fillSecretForm(id, secret));
+    }
+
+    // Reopen an offline add/edit the server rejected. Saving it replaces the
+    // stopped queue entry, so its content is never lost to a cancellation.
+    function showQueuedSecretEditor(detail) {
+      if (!detail || typeof detail.id !== 'string' || !detail.data || typeof detail.data !== 'object') return false;
+      const targetId = detail.type === 'UPDATE' && typeof detail.targetId === 'string' && detail.targetId ? detail.targetId : null;
+      if (detail.type === 'UPDATE' ? !targetId : detail.type !== 'ADD') return false;
+      const data = detail.data;
+      const text = value => typeof value === 'string' ? value : '';
+      const secret = {
+        name: text(data.name),
+        account: text(data.account),
+        secret: text(data.secret),
+        type: text(data.type).toUpperCase() || 'TOTP',
+        digits: data.digits,
+        period: data.period,
+        algorithm: text(data.algorithm).toUpperCase() || 'SHA1',
+        counter: data.counter
+      };
+      // The server reported that the edited account was deleted meanwhile, so
+      // saving adds it as a new account instead of editing a missing one.
+      const targetMissing = detail.type === 'UPDATE' && detail.targetMissing === true;
+      showSecretModal(() => {
+        fillSecretForm(targetMissing ? null : targetId, secret);
+        secretDialogQueuedOperationId = detail.id;
+      });
+      if (targetMissing) showCenterToast('⚠️', t('coreQueuedTargetMissing'));
+      else if (detail.type === 'ADD' && detail.duplicateDiffers === true) showCenterToast('⚠️', t('offlineQueueDuplicateDiffers'));
+      else if (typeof detail.reason === 'string' && detail.reason) showCenterToast('⚠️', detail.reason);
+      return true;
+    }
+
+    // Show a stored value that a select does not offer (for example a 45-second
+    // period) instead of silently reading it back as the default. The option
+    // exists only while this dialog shows that record.
+    function selectSecretFormValue(field, value) {
+      const text = String(value);
+      if (field && field.options && ![...field.options].some(option => option.value === text)) {
+        const option = document.createElement('option');
+        option.value = text;
+        option.textContent = text;
+        option.setAttribute('data-temporary-value', 'true');
+        field.appendChild(option);
+      }
+      if (field) field.value = text;
+    }
+
+    function fillSecretForm(id, secret) {
       editingId = id;
-      document.getElementById('secretId').value = id;
+      // The server keeps a period it no longer offers for new accounts when an
+      // edit submits it unchanged with the same type, like this form does.
+      const stored = id ? secrets.find(s => s.id === id) : null;
+      const storedPeriod = stored ? Number(stored.period || 30) : NaN;
+      secretDialogStoredParams = stored && Number.isSafeInteger(storedPeriod) && storedPeriod > 0
+        ? { type: String(stored.type || 'TOTP').toUpperCase(), period: storedPeriod }
+        : null;
+      document.getElementById('secretId').value = id || '';
       document.getElementById('secretName').value = secret.name;
       document.getElementById('secretService').value = secret.account || '';
       document.getElementById('secretKey').value = secret.secret;
-      
+
       // 填充高级参数
-      document.getElementById('secretType').value = secret.type || 'TOTP';
-      document.getElementById('secretDigits').value = secret.digits || 6;
-      document.getElementById('secretPeriod').value = secret.period || 30;
-      document.getElementById('secretAlgorithm').value = secret.algorithm || 'SHA1';
+      // Unlisted stored values stay visible; validation then decides whether
+      // they can be saved instead of the form quietly replacing them.
+      selectSecretFormValue(document.getElementById('secretType'), String(secret.type || 'TOTP').toUpperCase());
+      selectSecretFormValue(document.getElementById('secretDigits'), secret.digits || 6);
+      // HOTP ignores the period, and only HOTP accounts can carry an unusable one.
+      const period = Number(secret.period || 30);
+      selectSecretFormValue(document.getElementById('secretPeriod'), Number.isSafeInteger(period) && period > 0 ? period : 30);
+      selectSecretFormValue(document.getElementById('secretAlgorithm'),
+        String(secret.algorithm || 'SHA1').toUpperCase().replace('-', ''));
       document.getElementById('secretCounter').value = secret.counter || 0;
-      
+
       // 如果有非默认的高级参数，显示高级选项
       const hasAdvancedOptions = (secret.type && secret.type !== 'TOTP') ||
-                                (secret.digits && secret.digits !== 6) || 
-                                (secret.period && secret.period !== 30) || 
+                                (secret.digits && secret.digits !== 6) ||
+                                (secret.period && secret.period !== 30) ||
                                 (secret.algorithm && secret.algorithm !== 'SHA1') ||
                                 (secret.counter && secret.counter !== 0);
-      
-      const checkbox = document.getElementById('showAdvanced');
-      if (hasAdvancedOptions) {
-        checkbox.checked = true;
-        toggleAdvancedOptions();
-      } else {
-        checkbox.checked = false;
-        toggleAdvancedOptions();
-      }
-      
-      syncSecretDialogTranslations();
-      const modal = document.getElementById('secretModal');
-      modal.style.display = 'flex';
-      setTimeout(() => modal.classList.add('show'), 10);
-      disableBodyScroll();
+
+      document.getElementById('showAdvanced').checked = Boolean(hasAdvancedOptions);
+      toggleAdvancedOptions();
     }
     
     async function deleteSecret(id) {
+      const sessionGeneration = secretSessionGeneration;
+      if (!isSecretSessionCurrent(sessionGeneration)) return;
       const secret = secrets.find(s => s.id === id);
       if (!secret) return;
 
+      const displayName = getSecretDisplayName(secret);
       const confirmed = await showConfirmDialog({
-        title: '删除密钥',
-        message: '确定要删除 "' + secret.name + '" 吗？\\n该操作无法撤销。',
-        confirmText: '删除',
-        cancelText: '取消',
+        i18n: { title: 'deleteSecretTitle', message: 'deleteSecretConfirm', confirmText: 'delete', cancelText: 'cancel', params: { name: displayName } },
+        title: t('deleteSecretTitle'),
+        message: t('deleteSecretConfirm', { name: displayName }),
+        confirmText: t('delete'),
+        cancelText: t('cancel'),
         danger: true
       });
-      if (!confirmed) {
+      if (!confirmed || !isSecretSessionCurrent(sessionGeneration)) {
         return;
       }
 
       // 🔒 删除操作也使用队列，避免与编辑操作产生竞态条件
       saveQueue = saveQueue.then(async () => {
+        if (!isSecretSessionCurrent(sessionGeneration)) return;
         try {
           console.log('🗑️ [保存队列] 提交删除请求:', secret.name);
 
-          const response = await authenticatedFetch('/api/secrets/' + id, {
+          // Ids may contain / % ? #; the server decodes the last path segment.
+          const response = await authenticatedFetch('/api/secrets/' + encodeURIComponent(id), {
             method: 'DELETE'
           });
+          if (!isSecretSessionCurrent(sessionGeneration)) return;
+          if (response.status === 401) {
+            handleUnauthorized(sessionGeneration);
+            return;
+          }
 
           if (response.ok) {
             const result = await response.json();
+            if (!isSecretSessionCurrent(sessionGeneration)) return;
 
             // 检查是否为离线排队响应
             if (result.queued && result.offline) {
               console.log('📥 [离线模式] 删除操作已排队，等待同步:', result.operationId);
-              showCenterToast('📥', result.message || '操作已保存，网络恢复后自动同步');
+              showCenterToast('📥', t('coreQueued'));
 
               // 离线模式下，暂时不更新本地状态，等待同步完成后由 PWA 模块刷新
               return;
             }
 
             // 正常在线响应，立即删除本地数据
-            secrets = secrets.filter(s => s.id !== id);
+            const cached = commitSecretListChange(secrets.filter(s => s.id !== id), sessionGeneration);
             await renderSecrets();
+            if (!isSecretSessionCurrent(sessionGeneration)) return;
+            if (!cached) showCenterToast('⚠️', t('coreDeletedNoCache'));
 
             if (otpIntervals[id]) {
               clearInterval(otpIntervals[id]);
@@ -1070,13 +1387,15 @@ export function getCoreCode() {
 
             console.log('✅ [保存队列] 删除成功:', secret.name);
           } else {
-            showCenterToast('❌', '删除失败，请重试');
+            showCenterToast('❌', t('coreDeleteRetry'));
           }
         } catch (error) {
+          if (!isSecretSessionCurrent(sessionGeneration)) return;
           console.error('❌ [保存队列] 删除失败:', error);
-          showCenterToast('❌', '删除失败：' + error.message);
+          showCenterToast('❌', t('coreDeleteFailed') + error.message);
         }
       }).catch(err => {
+        if (!isSecretSessionCurrent(sessionGeneration)) return;
         console.error('❌ [保存队列] 队列执行错误:', err);
       });
     }
@@ -1117,8 +1436,77 @@ export function getCoreCode() {
       showKeyGeneratorModal();
     }
     
+    // Mirror the server's addSecretSchema/validateBase32 rules. An offline save
+    // is only queued when the server will accept it after reconnecting.
+    function keepsStoredPeriod({ type, period }, stored) {
+      return Boolean(stored) && period === stored.period && String(type).toUpperCase() === stored.type;
+    }
+
+    function getSecretFormError({ name, secret, type, digits, period, algorithm, counter }, stored = null) {
+      if (!name || !secret) return { message: t('coreRequiredFields'), field: name ? 'secretKey' : 'secretName' };
+      if (name.length > 50) return { message: t('coreNameTooLong', { 0: name.length }), field: 'secretName' };
+      const compactSecret = secret.replace(/\\s/g, '');
+      if (!/^[A-Z2-7]+=*$/.test(compactSecret)) return { message: t('coreSecretInvalid'), field: 'secretKey' };
+      if (compactSecret.length < 8) return { message: t('coreSecretTooShort', { 0: compactSecret.length }), field: 'secretKey' };
+      if (!['TOTP', 'HOTP'].includes(String(type).toUpperCase())) return { message: t('coreTypeInvalid'), field: 'secretType' };
+      if (![6, 8].includes(digits)) return { message: t('coreDigitsInvalid'), field: 'secretDigits' };
+      if (![30, 60, 120].includes(period) && !keepsStoredPeriod({ type, period }, stored)) {
+        return { message: t('corePeriodInvalid'), field: 'secretPeriod' };
+      }
+      if (!['SHA1', 'SHA256', 'SHA512'].includes(String(algorithm).toUpperCase())) {
+        return { message: t('coreAlgorithmInvalid'), field: 'secretAlgorithm' };
+      }
+      if (!Number.isSafeInteger(counter) || counter < 0) return { message: t('coreCounterRange'), field: 'secretCounter' };
+      return null;
+    }
+
+    // A corrected queued change was saved or queued again; drop the stopped copy.
+    function replaceStoppedQueuedChange(submission) {
+      if (!submission.replacesOperationId || typeof discardReplacedOfflineQueueOperation !== 'function') return;
+      submission.replaced = true;
+      void discardReplacedOfflineQueueOperation(submission.replacesOperationId);
+    }
+
+    // Claim the stopped change this save replaces. Returns false when another
+    // tab is handling it; the dialog then stays open and nothing is saved, so
+    // the change is never applied twice.
+    async function claimStoppedQueuedChange(submission, ownsDialog) {
+      if (!submission.replacesOperationId || typeof claimOfflineQueueOperation !== 'function') return true;
+      const claim = await claimOfflineQueueOperation(submission.replacesOperationId);
+      submission.claimed = claim === 'claimed';
+      if (claim !== 'busy' && claim !== 'gone') return true;
+      const message = claim === 'busy' ? 'coreQueuedChangeBusy' : 'coreQueuedChangeGone';
+      // The stopped copy no longer exists; saving again submits an ordinary change.
+      const queuedOperationId = claim === 'gone' ? null : submission.replacesOperationId;
+      if (ownsDialog()) {
+        showCenterToast('⚠️', t(message));
+        if (secretDialogQueuedOperationId === submission.replacesOperationId) {
+          secretDialogQueuedOperationId = queuedOperationId;
+        }
+      } else if (isSecretSessionCurrent(submission.sessionGeneration)) {
+        if (!secretDialogOpen) {
+          // The dialog was closed while saving: reopen the correction instead
+          // of dropping it silently.
+          showSecretModal(() => {
+            fillSecretForm(submission.editingId, submission.data);
+            secretDialogQueuedOperationId = queuedOperationId;
+          });
+          showCenterToast('⚠️', t(message));
+        } else {
+          // Another dialog is open now and is left alone. A busy change can
+          // still be edited again from the queue; a handled one cannot.
+          showCenterToast('⚠️', t(claim === 'busy' ? 'coreQueuedChangeBusy' : 'coreQueuedCorrectionDiscarded'));
+        }
+      }
+      return false;
+    }
+
     async function handleSubmit(event) {
       event.preventDefault();
+      const sessionGeneration = secretSessionGeneration;
+      if (!isSecretSessionCurrent(sessionGeneration)) return;
+      if (!secretDialogOpen) return;
+      if (secretDialogSubmission) return secretDialogSubmission.promise;
 
       const name = document.getElementById('secretName').value.trim();
       const account = document.getElementById('secretService').value.trim();
@@ -1126,50 +1514,69 @@ export function getCoreCode() {
 
       // 获取高级参数
       const type = document.getElementById('secretType').value || 'TOTP';
-      const digits = parseInt(document.getElementById('secretDigits').value) || 6;
-      const period = parseInt(document.getElementById('secretPeriod').value) || 30;
+      // Read the selected value as is; an unexpected value is reported by
+      // validation instead of being replaced with a default.
+      const numberField = (fieldId, fallback) => {
+        const value = document.getElementById(fieldId).value;
+        return value === '' ? fallback : Number(value);
+      };
+      const digits = numberField('secretDigits', 6);
+      let period = numberField('secretPeriod', 30);
+      const stored = editingId ? secretDialogStoredParams : null;
       const algorithm = document.getElementById('secretAlgorithm').value || 'SHA1';
       const counterValue = document.getElementById('secretCounter').value;
-      const counter = counterValue === '' ? 0 : Number(counterValue);
+      const enteredCounter = counterValue === '' ? 0 : Number(counterValue);
+      // TOTP ignores the hidden counter field; never let it reject the save.
+      const counter = type.toUpperCase() === 'HOTP' || (Number.isSafeInteger(enteredCounter) && enteredCounter >= 0)
+        ? enteredCounter : 0;
 
-      if (!name || !secret) {
-        showCenterToast('❌', '请填写服务名称和密钥');
-        return;
+      // HOTP does not use the period. An unlisted value left in the hidden field
+      // after switching an account to HOTP falls back to the default.
+      if (type.toUpperCase() === 'HOTP' && ![30, 60, 120].includes(period) && !keepsStoredPeriod({ type, period }, stored)) {
+        period = 30;
       }
-      if (
-        type.toUpperCase() === 'HOTP' &&
-        (!Number.isSafeInteger(counter) || counter < 0)
-      ) {
-        showCenterToast('❌', 'HOTP 计数器必须是 0 到 9007199254740991 之间的整数');
+
+      const invalid = getSecretFormError({ name, secret, type, digits, period, algorithm, counter }, stored);
+      if (invalid) {
+        // Keep the dialog open with the entered values, online or offline.
+        showCenterToast('❌', invalid.message);
+        const field = document.getElementById(invalid.field);
+        if (field && typeof field.focus === 'function') field.focus();
         return;
       }
 
       const submitBtn = document.getElementById('submitBtn');
-      submitBtn.disabled = true;
+      // Capture the submitted record and form before joining the write queue.
+      // The user can close this dialog and edit another account while it waits.
+      const submission = {
+        sessionGeneration,
+        generation: secretDialogGeneration,
+        editingId,
+        replacesOperationId: secretDialogQueuedOperationId,
+        data: { name, account, secret, type, digits, period, algorithm, counter }
+      };
+      secretDialogSubmission = submission;
+      const ownsDialog = () => isSecretSessionCurrent(submission.sessionGeneration) && secretDialogOpen &&
+        secretDialogGeneration === submission.generation && secretDialogSubmission === submission;
       syncSecretDialogTranslations();
+      submitBtn.disabled = true;
 
       // 🔒 关键修复：使用队列确保保存操作串行执行，避免并发覆盖
       // 当快速连续编辑多个密钥时，后端的读-修改-写操作会产生race condition
       // 通过Promise链式调用，确保前一个保存完成后再执行下一个
       saveQueue = saveQueue.then(async () => {
+        if (!isSecretSessionCurrent(submission.sessionGeneration)) return;
         try {
+          if (!(await claimStoppedQueuedChange(submission, ownsDialog))) return;
+          if (!isSecretSessionCurrent(submission.sessionGeneration)) return;
           let response;
-          const data = {
-            name,
-            account: account,
-            secret,
-            type,
-            digits,
-            period,
-            algorithm,
-            counter
-          };
+          const data = submission.data;
 
-          const action = editingId ? '更新' : '新增';
+          const action = submission.editingId ? '更新' : '新增';
           console.log('🔄 [保存队列] 提交保存请求:', action, name, { period, digits, algorithm });
 
-          if (editingId) {
-            response = await authenticatedFetch('/api/secrets/' + editingId, {
+          if (submission.editingId) {
+            response = await authenticatedFetch('/api/secrets/' + encodeURIComponent(submission.editingId), {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(data)
@@ -1182,52 +1589,80 @@ export function getCoreCode() {
             });
           }
 
+          if (!isSecretSessionCurrent(submission.sessionGeneration)) return;
+          if (response.status === 401) {
+            handleUnauthorized(submission.sessionGeneration);
+            return;
+          }
           if (response.ok) {
             const result = await response.json();
+            if (!isSecretSessionCurrent(submission.sessionGeneration)) return;
 
             // 检查是否为离线排队响应
             if (result.queued && result.offline) {
               console.log('📥 [离线模式] 操作已排队，等待同步:', result.operationId);
-              showCenterToast('📥', result.message || '操作已保存，网络恢复后自动同步');
+              replaceStoppedQueuedChange(submission);
+              if (ownsDialog()) showCenterToast('📥', t('coreQueued'));
 
               // 离线模式下，暂时不更新本地状态，等待同步完成后由 PWA 模块刷新
-              hideSecretModal();
+              if (ownsDialog()) hideSecretModal();
               return;
             }
 
             // 正常在线响应，更新本地状态
             console.log('✅ [保存队列] 保存成功:', result.data ? result.data.secret.name : result.name, '- period:', result.data ? result.data.secret.period : result.period);
 
-            if (editingId) {
-              const index = secrets.findIndex(s => s.id === editingId);
-              if (index !== -1) {
-                secrets[index] = result.data ? result.data.secret : result;
-                console.log('✅ [本地更新] 密钥已更新:', secrets[index].name, '- period:', secrets[index].period);
-              }
-            } else {
-              secrets.push(result.data ? result.data.secret : result);
+            const savedSecret = result.data ? result.data.secret : result;
+            if (!savedSecret || typeof savedSecret.id !== 'string' || !savedSecret.id ||
+                (submission.editingId && savedSecret.id !== submission.editingId)) {
+              throw new Error(t('coreSaveMismatch'));
             }
+            // A concurrent list response may already include a newly created
+            // account before the POST response reaches this page.
+            const cached = commitSecretListChange(secrets.some(item => item.id === savedSecret.id)
+              ? secrets.map(item => item.id === savedSecret.id ? savedSecret : item)
+              : [...secrets, savedSecret], submission.sessionGeneration);
+            replaceStoppedQueuedChange(submission);
 
             await renderSecrets();
-            hideSecretModal();
+            if (!isSecretSessionCurrent(submission.sessionGeneration)) return;
+            if (ownsDialog()) {
+              if (!cached) showCenterToast('⚠️', t('coreSavedNoCache'));
+              hideSecretModal();
+            }
           } else {
             const error = await response.json();
-            const errorMessage = error.message || error.error || '保存失败，请重试';
-            showCenterToast('❌', errorMessage);
+            if (!isSecretSessionCurrent(submission.sessionGeneration)) return;
+            const errorMessage = error.message || error.error || t('coreSaveRetry');
+            if (ownsDialog()) showCenterToast('❌', errorMessage);
           }
         } catch (error) {
+          if (!isSecretSessionCurrent(submission.sessionGeneration)) return;
           console.error('❌ [保存队列] 保存失败:', error);
-          showCenterToast('❌', '保存失败：' + error.message);
+          if (ownsDialog()) showCenterToast('❌', t('coreSaveFailed') + error.message);
         } finally {
-          submitBtn.disabled = false;
-          syncSecretDialogTranslations();
+          // Not saved: the stopped change stays available to this and other tabs.
+          if (submission.claimed && !submission.replaced && typeof releaseOfflineQueueOperation === 'function') {
+            void releaseOfflineQueueOperation(submission.replacesOperationId);
+          }
+          if (ownsDialog()) {
+            secretDialogSubmission = null;
+            syncSecretDialogTranslations();
+            submitBtn.disabled = false;
+          }
         }
       }).catch(err => {
+        if (!isSecretSessionCurrent(submission.sessionGeneration)) return;
         // 队列执行失败的最终兜底
         console.error('❌ [保存队列] 队列执行错误:', err);
-        submitBtn.disabled = false;
-        syncSecretDialogTranslations();
+        if (ownsDialog()) {
+          secretDialogSubmission = null;
+          syncSecretDialogTranslations();
+          submitBtn.disabled = false;
+        }
       });
+      submission.promise = saveQueue;
+      return saveQueue;
     }
 
 
@@ -1253,7 +1688,7 @@ export function getCoreCode() {
         debugMode = !debugMode;
         console.log('Debug mode ' + (debugMode ? 'enabled' : 'disabled'));
         
-        showCenterToast('ℹ️', '调试模式: ' + (debugMode ? '开启' : '关闭'));
+        showCenterToast('ℹ️', t('coreDebug') + (debugMode ? t('coreEnabled') : t('coreDisabled')));
 
       }
       
@@ -1268,7 +1703,7 @@ export function getCoreCode() {
           });
         }
         
-        showCenterToast('ℹ️', '已手动刷新所有验证码');
+        showCenterToast('ℹ️', t('coreCodesRefreshed'));
 
       }
     });

@@ -4,6 +4,7 @@ import { getS3ToolCode } from '../../src/ui/scripts/tools/s3Tool.js';
 import { getWebdavToolCode } from '../../src/ui/scripts/tools/webdavTool.js';
 import { getOneDriveToolCode } from '../../src/ui/scripts/tools/onedriveTool.js';
 import { getGoogleDriveToolCode } from '../../src/ui/scripts/tools/gdriveTool.js';
+import { TOOLS_LOCALES } from '../../src/ui/locales/tools.js';
 
 const providers = [
 	['S3', 's3', getS3ToolCode],
@@ -16,14 +17,17 @@ function createHarness(code, count = 0) {
 	const elements = new Map();
 	const document = {
 		getElementById(id) {
-			if (!elements.has(id)) {elements.set(id, { style: {}, dataset: {}, value: '' });}
+			if (!elements.has(id)) {
+				elements.set(id, { style: {}, dataset: {}, value: '' });
+			}
 			return elements.get(id);
 		},
 	};
 	const state = { count, maxAllowed: 5, destinations: [] };
 	const context = createContext({
 		document,
-		authenticatedFetch: async () => ({ json: async () => state }),
+		t: (key, params = {}) => (TOOLS_LOCALES['zh-CN'][key] || key).replace(/\{(\w+)\}/g, (_, name) => params[name] ?? _),
+		authenticatedFetch: async () => ({ ok: true, json: async () => state }),
 		console,
 	});
 	runInContext(code, context);

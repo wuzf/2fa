@@ -16,7 +16,6 @@ export function getSettingsCode() {
     let preferencesLoadRequestId = 0;
     let defaultExportFormatChangeVersion = 0;
     let defaultExportFormatSaveRequestId = 0;
-    let languageChangeVersion = 0;
     let pendingLanguageSaves = 0;
     let languageLoadRequestId = 0;
     let languagePreferenceSynced = false;
@@ -82,94 +81,47 @@ export function getSettingsCode() {
     /**
      * 加载同步配置状态（WebDAV 和 S3）
      */
+    const settingsTextState = new Map();
+
+    // Keep translation keys alongside dynamic text, so changing language never
+    // reloads settings or overwrites an in-progress edit.
+    function setSettingsText(id, key, params = {}, serverMessage = '') {
+      settingsTextState.set(id, { key, params, serverMessage });
+      const element = document.getElementById(id);
+      if (element) element.textContent = serverMessage
+        ? (typeof localizeAuthMessage === 'function' ? localizeAuthMessage(serverMessage) : serverMessage)
+        : t(key, params);
+    }
+
+    function refreshSettingsLanguage() {
+      settingsTextState.forEach(({ key, params, serverMessage }, id) => setSettingsText(id, key, params, serverMessage));
+      const button = document.getElementById('changePasswordBtn');
+      if (button) button.textContent = t(button.disabled ? 'changePasswordSubmitting' : 'changePasswordBtn');
+    }
+
     async function loadSyncStatus() {
-      // 加载 WebDAV 状态
-      try {
-        const webdavResp = await authenticatedFetch('/api/webdav/config');
-        const webdavData = await webdavResp.json();
-        const webdavStatusEl = document.getElementById('settingsWebdavStatus');
-        if (webdavStatusEl) {
-          if (webdavData.count > 0) {
-            webdavStatusEl.textContent = '已配置 ' + webdavData.count + ' 个目标';
-            webdavStatusEl.className = 'sync-status configured';
-          } else {
-            webdavStatusEl.textContent = '未配置';
-            webdavStatusEl.className = 'sync-status not-configured';
-          }
+      const providers = [
+        ['webdav', 'settingsWebdavStatus'],
+        ['s3', 'settingsS3Status'],
+        ['onedrive', 'settingsOneDriveStatus'],
+        ['gdrive', 'settingsGoogleDriveStatus']
+      ];
+      await Promise.all(providers.map(async ([provider, elementId]) => {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+        setSettingsText(elementId, 'loading');
+        try {
+          const response = await authenticatedFetch('/api/' + provider + '/config');
+          if (!response.ok) throw new Error('Sync status request failed');
+          const data = await response.json();
+          const configured = data.count > 0;
+          setSettingsText(elementId, configured ? 'syncStatusConfigured' : 'syncStatusNotConfigured', { count: data.count });
+          element.className = 'sync-status ' + (configured ? 'configured' : 'not-configured');
+        } catch {
+          setSettingsText(elementId, 'syncStatusError');
+          element.className = 'sync-status not-configured';
         }
-      } catch {
-        const webdavStatusEl = document.getElementById('settingsWebdavStatus');
-        if (webdavStatusEl) {
-          webdavStatusEl.textContent = '加载失败';
-          webdavStatusEl.className = 'sync-status not-configured';
-        }
-      }
-
-      // 加载 S3 状态
-      try {
-        const s3Resp = await authenticatedFetch('/api/s3/config');
-        const s3Data = await s3Resp.json();
-        const s3StatusEl = document.getElementById('settingsS3Status');
-        if (s3StatusEl) {
-          if (s3Data.count > 0) {
-            s3StatusEl.textContent = '已配置 ' + s3Data.count + ' 个目标';
-            s3StatusEl.className = 'sync-status configured';
-          } else {
-            s3StatusEl.textContent = '未配置';
-            s3StatusEl.className = 'sync-status not-configured';
-          }
-        }
-      } catch {
-        const s3StatusEl = document.getElementById('settingsS3Status');
-        if (s3StatusEl) {
-          s3StatusEl.textContent = '加载失败';
-          s3StatusEl.className = 'sync-status not-configured';
-        }
-      }
-
-      // 加载 OneDrive 状态
-      try {
-        const oneDriveResp = await authenticatedFetch('/api/onedrive/config');
-        const oneDriveData = await oneDriveResp.json();
-        const oneDriveStatusEl = document.getElementById('settingsOneDriveStatus');
-        if (oneDriveStatusEl) {
-          if (oneDriveData.count > 0) {
-            oneDriveStatusEl.textContent = '已配置' + oneDriveData.count + ' 个目标';
-            oneDriveStatusEl.className = 'sync-status configured';
-          } else {
-            oneDriveStatusEl.textContent = '未配置';
-            oneDriveStatusEl.className = 'sync-status not-configured';
-          }
-        }
-      } catch {
-        const oneDriveStatusEl = document.getElementById('settingsOneDriveStatus');
-        if (oneDriveStatusEl) {
-          oneDriveStatusEl.textContent = '加载失败';
-          oneDriveStatusEl.className = 'sync-status not-configured';
-        }
-      }
-
-      // 加载 Google Drive 状态
-      try {
-        const googleDriveResp = await authenticatedFetch('/api/gdrive/config');
-        const googleDriveData = await googleDriveResp.json();
-        const googleDriveStatusEl = document.getElementById('settingsGoogleDriveStatus');
-        if (googleDriveStatusEl) {
-          if (googleDriveData.count > 0) {
-            googleDriveStatusEl.textContent = '已配置' + googleDriveData.count + ' 个目标';
-            googleDriveStatusEl.className = 'sync-status configured';
-          } else {
-            googleDriveStatusEl.textContent = '未配置';
-            googleDriveStatusEl.className = 'sync-status not-configured';
-          }
-        }
-      } catch {
-        const googleDriveStatusEl = document.getElementById('settingsGoogleDriveStatus');
-        if (googleDriveStatusEl) {
-          googleDriveStatusEl.textContent = '加载失败';
-          googleDriveStatusEl.className = 'sync-status not-configured';
-        }
-      }
+      }));
     }
 
     /**
@@ -224,29 +176,28 @@ export function getSettingsCode() {
 
       // 前端验证
       if (!currentPassword || !newPassword || !confirmPassword) {
-        resultEl.textContent = '请填写所有密码字段';
+        setSettingsText('changePasswordResult', 'passwordFieldsRequired');
         resultEl.className = 'change-password-result error';
         resultEl.style.display = 'block';
         return;
       }
 
       if (newPassword !== confirmPassword) {
-        resultEl.textContent = '两次输入的新密码不一致';
+        setSettingsText('changePasswordResult', 'passwordMismatch');
         resultEl.className = 'change-password-result error';
         resultEl.style.display = 'block';
         return;
       }
 
       if (newPassword.length < 8) {
-        resultEl.textContent = '新密码长度至少为 8 位';
+        setSettingsText('changePasswordResult', 'passwordTooShort');
         resultEl.className = 'change-password-result error';
         resultEl.style.display = 'block';
         return;
       }
 
       const btn = document.getElementById('changePasswordBtn');
-      const originalText = btn.textContent;
-      btn.textContent = '修改中...';
+      btn.textContent = t('changePasswordSubmitting');
       btn.disabled = true;
       resultEl.style.display = 'none';
 
@@ -260,7 +211,7 @@ export function getSettingsCode() {
         const data = await response.json();
 
         if (response.ok && data.success) {
-          resultEl.textContent = data.message || '密码修改成功，请重新登录';
+          setSettingsText('changePasswordResult', 'changePasswordSuccess');
           resultEl.className = 'change-password-result success';
           resultEl.style.display = 'block';
 
@@ -274,16 +225,16 @@ export function getSettingsCode() {
             logout();
           }, 2000);
         } else {
-          resultEl.textContent = data.message || '修改密码失败';
+          setSettingsText('changePasswordResult', 'changePasswordFailed', {}, data.message);
           resultEl.className = 'change-password-result error';
           resultEl.style.display = 'block';
         }
       } catch (error) {
-        resultEl.textContent = '网络错误，请稍后重试';
+        setSettingsText('changePasswordResult', 'networkError');
         resultEl.className = 'change-password-result error';
         resultEl.style.display = 'block';
       } finally {
-        btn.textContent = originalText;
+        btn.textContent = t('changePasswordBtn');
         btn.disabled = false;
       }
     }
@@ -446,15 +397,15 @@ export function getSettingsCode() {
           const savedFormat = (data.settings && data.settings.defaultExportFormat) || selectedFormat;
           formatSelect.value = savedFormat;
           localStorage.setItem('defaultExportFormat', savedFormat);
-          showCenterToast('✅', '偏好格式已保存，批量导出和备份导出会优先使用该格式');
+          showCenterToast('✅', t('defaultExportFormatSaved'));
         } else {
-          showCenterToast('❌', data.message || '保存偏好格式失败');
+          showCenterToast('❌', data.message || t('defaultExportFormatFailed'));
         }
       } catch {
         if (requestId !== defaultExportFormatSaveRequestId) {
           return;
         }
-        showCenterToast('❌', '网络错误，请稍后重试');
+        showCenterToast('❌', t('networkError'));
       }
     }
 
@@ -463,7 +414,6 @@ export function getSettingsCode() {
      * @param {string} selectedLang - 选中的语言代码
      */
     async function saveLanguagePreference(selectedLang) {
-      languageChangeVersion += 1;
       if (typeof setLanguage === 'function') {
         setLanguage(selectedLang);
       }
@@ -476,7 +426,7 @@ export function getSettingsCode() {
         }));
         const data = await resp.json();
         if (resp.ok && data.success) {
-          const msg = (typeof t === 'function' ? t('languageSaved') : null) || '语言偏好已保存';
+          const msg = t('languageSaved');
           if (typeof showCenterToast === 'function') {
             showCenterToast('✅', msg);
           }
@@ -488,9 +438,10 @@ export function getSettingsCode() {
       }
     }
 
-    function showNumericPreferenceResult(key, message, status = '') {
-      const result = document.getElementById(numericPreferences[key].resultId);
-      result.textContent = message;
+    function showNumericPreferenceResult(key, messageKey, status = '', params = {}, serverMessage = '') {
+      const resultId = numericPreferences[key].resultId;
+      const result = document.getElementById(resultId);
+      setSettingsText(resultId, messageKey, params, serverMessage);
       result.className = 'settings-result' + (status ? ' ' + status : '');
       result.style.display = 'block';
     }
@@ -503,15 +454,15 @@ export function getSettingsCode() {
       const valid = raw !== '' && Number.isInteger(value) && value >= state.min && value <= state.max;
       input.setAttribute('aria-invalid', String(!valid));
       if (!valid) {
-        showNumericPreferenceResult(key, '请输入 ' + state.min + '~' + state.max + ' 之间的整数', 'error');
+        showNumericPreferenceResult(key, 'numericPreferenceRange', 'error', { min: state.min, max: state.max });
         return null;
       }
       return value;
     }
 
     function numericPreferenceSavedMessage(key, value) {
-      if (key === 'jwtExpiryDays') return '已保存，下次登录生效';
-      return value === 0 ? '已保存，备份不限数量' : '已保存，保留最新 ' + value + ' 条备份';
+      if (key === 'jwtExpiryDays') return 'jwtExpirySaved';
+      return value === 0 ? 'maxBackupsUnlimitedSaved' : 'maxBackupsSaved';
     }
 
     // Input events debounce typing and spinner changes. Blur and Enter flush
@@ -521,7 +472,7 @@ export function getSettingsCode() {
       state.version += 1;
       state.dirty = true;
       if (state.timer !== null) clearTimeout(state.timer);
-      showNumericPreferenceResult(key, '等待保存…');
+      showNumericPreferenceResult(key, 'preferenceWaiting');
       state.timer = setTimeout(() => {
         state.timer = null;
         saveNumericPreference(key);
@@ -542,11 +493,11 @@ export function getSettingsCode() {
           if (value === null) break;
           if (value === state.savedValue) {
             state.dirty = false;
-            showNumericPreferenceResult(key, numericPreferenceSavedMessage(key, value), 'success');
+            showNumericPreferenceResult(key, numericPreferenceSavedMessage(key, value), 'success', { count: value });
             break;
           }
 
-          showNumericPreferenceResult(key, '保存中…');
+          showNumericPreferenceResult(key, 'preferenceSaving');
           try {
             const resp = await enqueuePreferenceSave(() => authenticatedFetch('/api/settings', {
               method: 'POST',
@@ -559,12 +510,12 @@ export function getSettingsCode() {
               if (state.version === version) {
                 state.dirty = false;
                 document.getElementById(state.inputId).value = String(value);
-                showNumericPreferenceResult(key, numericPreferenceSavedMessage(key, value), 'success');
+                showNumericPreferenceResult(key, numericPreferenceSavedMessage(key, value), 'success', { count: value });
               }
             } else {
               state.savedValue = null;
               if (state.version === version) {
-                showNumericPreferenceResult(key, data.message || '保存失败，请稍后重试', 'error');
+                showNumericPreferenceResult(key, 'preferenceSaveFailed', 'error', {}, data.message);
                 break;
               }
             }
@@ -572,7 +523,7 @@ export function getSettingsCode() {
             // A lost response does not prove the server left the old value intact.
             state.savedValue = null;
             if (state.version === version) {
-              showNumericPreferenceResult(key, '网络错误，未保存，请稍后重试', 'error');
+              showNumericPreferenceResult(key, 'preferenceNetworkError', 'error');
               break;
             }
           }

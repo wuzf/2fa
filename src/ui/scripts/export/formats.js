@@ -76,7 +76,7 @@ export function getStandardFormatsCode() {
           await exportAsOTPAuth(secretsData, { formatName: format });
           break;
         default:
-          showCenterToast('❌', '不支持的导出格式');
+          showCenterToast('❌', t('transferUnsupportedExport'));
       }
     }
 
@@ -99,7 +99,7 @@ export function getStandardFormatsCode() {
           await exportAsHTML(sortedSecrets, options);
           return;
         default:
-          throw new Error('Unsupported export format');
+          throw new Error(t('transferUnsupportedExport'));
       }
     }
 
@@ -115,7 +115,7 @@ export function getStandardFormatsCode() {
       };
 
       try {
-        showCenterToast('INFO', 'Preparing export file...');
+        showCenterToast('INFO', t('transferPreparingExport'));
 
         const response = await authenticatedFetch('/api/secrets/export', {
           method: 'POST',
@@ -124,6 +124,7 @@ export function getStandardFormatsCode() {
           },
           body: JSON.stringify({
             format: format,
+            language: getLanguage(),
             filenamePrefix: options.filenamePrefix || '2FA-secrets',
             metadata: options.metadata || {},
             secrets: sortedSecrets
@@ -131,7 +132,7 @@ export function getStandardFormatsCode() {
         });
 
         if (response.status === 202) {
-          let errorMessage = 'Export requires an online connection';
+          let errorMessage = t('transferOnlineRequired');
           try {
             const queuedData = await response.clone().json();
             if (queuedData && queuedData.offline) {
@@ -144,7 +145,7 @@ export function getStandardFormatsCode() {
         }
 
         if (response.status !== 200) {
-          let errorMessage = 'Export failed';
+          let errorMessage = t('transferExportFailed');
           let errorData = null;
           try {
             errorData = await response.json();
@@ -155,8 +156,8 @@ export function getStandardFormatsCode() {
 
           if (shouldFallbackToLocalStandardExport(response.status, errorData)) {
             const fallbackMessage = response.status === 413
-              ? '导出内容较大，已切换为本地兼容导出'
-              : '当前离线，已切换为本地兼容导出';
+              ? t('transferLargeLocalExport')
+              : t('transferOfflineLocalExport');
             await fallbackToLocalExport(fallbackMessage);
             return;
           }
@@ -166,7 +167,7 @@ export function getStandardFormatsCode() {
 
         const contentDisposition = response.headers.get('Content-Disposition');
         if (!contentDisposition) {
-          throw new Error('Export failed: server did not return a downloadable file');
+          throw new Error(t('transferMissingDownload'));
         }
 
         let filename = (options.filenamePrefix || '2FA-secrets') + '-' + format + '-' + getDateString();
@@ -189,16 +190,16 @@ export function getStandardFormatsCode() {
           showExportSuccess(sortedSecrets.length, formatNames[format] || format.toUpperCase());
         }
       } catch (error) {
-        const errorMessage = error && error.message ? error.message : 'Export failed';
+        const errorMessage = error && error.message ? error.message : t('transferExportFailed');
         const isNetworkFailure = error && (error.name === 'TypeError' || /Failed to fetch|NetworkError/i.test(errorMessage));
 
         if (isNetworkFailure) {
-          await fallbackToLocalExport('当前无法连接在线导出服务，已切换为本地兼容导出');
+          await fallbackToLocalExport(t('transferNetworkLocalExport'));
           return;
         }
 
         console.error('Export failed:', error);
-        showCenterToast('ERR', 'Export failed: ' + errorMessage);
+        showCenterToast('ERR', t('transferExportFailedPrefixASCII') + errorMessage);
       }
     }
 
@@ -236,7 +237,7 @@ export function getStandardFormatsCode() {
       const content = otpauthUrls.join('\\n');
       const saved = await downloadFile(content, filenamePrefix + '-' + formatName + '-' + getDateString() + '.txt', 'text/plain;charset=utf-8');
       if (saved) {
-        showExportSuccess(sortedSecrets.length, 'OTPAuth 文本');
+        showExportSuccess(sortedSecrets.length, t('transferOTPAuthText'));
       }
     }
 
@@ -272,15 +273,15 @@ export function getStandardFormatsCode() {
       const content = JSON.stringify(exportData, null, 2);
       const saved = await downloadFile(content, filenamePrefix + '-data-' + getDateString() + '.json', 'application/json;charset=utf-8');
       if (saved) {
-        showExportSuccess(sortedSecrets.length, 'JSON 数据');
+        showExportSuccess(sortedSecrets.length, t('transferJSONData'));
       }
     }
 
     // 导出为 CSV 格式
     async function exportAsCSV(sortedSecrets, options = {}) {
       const filenamePrefix = options.filenamePrefix || '2FA-secrets';
-      const headers = ['服务名称', '账户信息', '密钥', '类型', '位数', '周期(秒)', '算法', '计数器'];
-      const csvRows = [headers.join(',')];
+      const headers = [t('transferService'), t('transferAccountInfo'), t('transferSecret'), t('transferType'), t('transferDigits'), t('transferPeriodSeconds'), t('transferAlgorithm'), t('transferCounter')];
+      const csvRows = [headers.map(escapeCSV).join(',')];
 
       sortedSecrets.forEach(secret => {
         const type = (secret.type || 'TOTP').toUpperCase();
@@ -301,7 +302,7 @@ export function getStandardFormatsCode() {
       const bom = '\\uFEFF';
       const saved = await downloadFile(bom + content, filenamePrefix + '-table-' + getDateString() + '.csv', 'text/csv;charset=utf-8');
       if (saved) {
-        showExportSuccess(sortedSecrets.length, 'CSV 表格');
+        showExportSuccess(sortedSecrets.length, t('transferCSVTable'));
       }
     }
 
@@ -340,34 +341,34 @@ export function getStandardFormatsCode() {
         '          <td>' + secret.period + '</td>\\n' +
         '          <td>' + escapeHTML(secret.algorithm) + '</td>\\n' +
         '          <td>' + secret.counter + '</td>\\n' +
-        '          <td class="qr-cell qr-cell-placeholder">未嵌入</td>\\n' +
+        '          <td class="qr-cell qr-cell-placeholder">' + escapeHTML(t('transferQRNotEmbedded')) + '</td>\\n' +
         '        </tr>\\n'
       ).join('');
 
       const htmlContent = '<!DOCTYPE html>\\n' +
-        '<html lang="zh-CN">\\n' +
+        '<html lang="' + escapeHTML(getLanguage()) + '">\\n' +
         '<head>\\n' +
-        ${JSON.stringify(getStandaloneHead('2FA 密钥备份', getBackupDocumentStyles())).replace(/</g, '\\u003c')} +
+        ${JSON.stringify(getStandaloneHead('__BACKUP_DOCUMENT_TITLE__', getBackupDocumentStyles())).replace(/</g, '\\u003c')}.replace('__BACKUP_DOCUMENT_TITLE__', escapeHTML(t('transferBackupTitle'))) +
         '  <meta name="2fa-backup-meta" content="skippedInvalidCount=0">\\n' +
         '</head>\\n' +
         '<body data-skipped-invalid-count="0">\\n' +
-        '  <main class="backup-document"><header class="document-header"><h1>2FA 密钥备份</h1><div class="meta">\\n' +
-        '  <p>创建时间: ' + escapeHTML(exportTimestamp) + '</p>\\n' +
-        '  <p>备份数量: ' + normalizedSecrets.length + '</p>\\n' +
+        '  <main class="backup-document"><header class="document-header"><h1>' + escapeHTML(t('transferBackupTitle')) + '</h1><div class="meta">\\n' +
+        '  <p>' + escapeHTML(t('transferCreatedTime')) + escapeHTML(formatI18nDate(exportTimestamp)) + '</p>\\n' +
+        '  <p>' + escapeHTML(t('transferBackupCount')) + normalizedSecrets.length + '</p>\\n' +
         '  </div></header>\\n' +
-        '  <div class="table-scroll" role="region" aria-label="备份密钥表格" tabindex="0">\\n' +
+        '  <div class="table-scroll" role="region" aria-label="' + escapeHTML(t('transferBackupTable')) + '" tabindex="0">\\n' +
         '  <table data-skipped-invalid-count="0">\\n' +
         '    <thead>\\n' +
         '      <tr>\\n' +
-        '        <th>服务名称</th>\\n' +
-        '        <th>账户信息</th>\\n' +
-        '        <th>密钥</th>\\n' +
-        '        <th>类型</th>\\n' +
-        '        <th>位数</th>\\n' +
-        '        <th>周期(秒)</th>\\n' +
-        '        <th>算法</th>\\n' +
-        '        <th>计数器</th>\\n' +
-        '        <th>二维码</th>\\n' +
+        '        <th>' + escapeHTML(t('transferService')) + '</th>\\n' +
+        '        <th>' + escapeHTML(t('transferAccountInfo')) + '</th>\\n' +
+        '        <th>' + escapeHTML(t('transferSecret')) + '</th>\\n' +
+        '        <th>' + escapeHTML(t('transferType')) + '</th>\\n' +
+        '        <th>' + escapeHTML(t('transferDigits')) + '</th>\\n' +
+        '        <th>' + escapeHTML(t('transferPeriodSeconds')) + '</th>\\n' +
+        '        <th>' + escapeHTML(t('transferAlgorithm')) + '</th>\\n' +
+        '        <th>' + escapeHTML(t('transferCounter')) + '</th>\\n' +
+        '        <th>' + escapeHTML(t('transferQRCode')) + '</th>\\n' +
         '      </tr>\\n' +
         '    </thead>\\n' +
         '    <tbody>\\n' +

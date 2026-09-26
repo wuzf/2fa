@@ -1,3 +1,5 @@
+import { getCardProgressStyles } from './progress.js';
+
 /**
  * 组件样式模块
  */
@@ -717,24 +719,7 @@ export function getComponentStyles() {
       transition: width 1s ease-in-out;
     }
 
-    .progress-top {
-      height: var(--progress-height);
-      background: transparent;
-      border-radius: 0;
-      overflow: hidden;
-      position: absolute;
-      top: -1px;
-      left: var(--radius-lg);
-      right: var(--radius-lg);
-    }
-
-    .progress-top-fill {
-      height: 100%;
-      background: var(--progress-fill);
-      border-radius: 0;
-      transition: width 1s linear, background-color 0.5s ease;
-      width: 0%;
-    }
+${getCardProgressStyles()}
 
     /* ========== 同步目标卡片 ========== */
     .dest-card {
@@ -927,6 +912,21 @@ export function getComponentStyles() {
       color: var(--footer-link-hover);
     }
 
+    .footer-button {
+      padding: 0;
+      border: 0;
+      background: none;
+      font-family: inherit;
+      line-height: inherit;
+      cursor: pointer;
+    }
+
+    .footer-button:focus-visible {
+      outline: 2px solid var(--border-focus);
+      outline-offset: 4px;
+      border-radius: 2px;
+    }
+
     .github-icon {
       vertical-align: middle;
       width: 14px;
@@ -1008,6 +1008,46 @@ export function getComponentStyles() {
       font-size: 14px;
       font-weight: 600;
     }
+
+    .offline-queue {
+      margin: 0 0 16px;
+      padding: 12px 16px;
+      color: var(--text-primary);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-md);
+      font-size: 14px;
+    }
+
+    .offline-queue[hidden], .offline-queue [hidden] { display: none; }
+    .offline-queue-header, .offline-queue-list li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+    }
+    .offline-queue-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .offline-queue .btn {
+      width: auto;
+      flex: 0 0 auto;
+      min-height: 32px;
+      margin: 0;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-sm);
+      box-shadow: none;
+    }
+    .offline-queue .btn:hover { background: var(--bg-secondary); }
+    .offline-queue-list { list-style: none; margin: 12px 0 0; padding: 0; }
+    .offline-queue-list li { padding: 10px 0; border-top: 1px solid var(--border-primary); }
+    .offline-queue-label { flex: 1; min-width: 140px; overflow-wrap: anywhere; }
+    .offline-queue-label time { display: block; color: var(--text-secondary); font-size: 12px; margin-top: 4px; }
+    #offlineQueueFeedback { margin: 8px 0 0; }
 
     /* 离线模式下的页面样式调整 */
     body.offline-mode {

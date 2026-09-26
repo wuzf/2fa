@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { SERVICE_LOGOS } from '../../src/ui/config/serviceLogos.js';
+import { SERVICE_FAMILY_ALIASES, SERVICE_FAMILY_NAMES, SERVICE_FUZZY_MATCH_KEYS, SERVICE_LOGOS } from '../../src/ui/config/serviceLogos.js';
+import { createServiceAggregation } from '../../src/shared/service-aggregation.js';
+import { LOCALES } from '../../src/ui/locales/index.js';
 import { getCoreCode } from '../../src/ui/scripts/core.js';
 import { getServiceAggregationCode } from '../../src/ui/scripts/serviceAggregation.js';
+import { transferI18n } from '../helpers/transfer-i18n.js';
 
-function createHarness() {
+function createHarness(language = 'zh-CN') {
 	const code = `
     const SERVICE_LOGOS = ${JSON.stringify(SERVICE_LOGOS)};
     ${getServiceAggregationCode()}
@@ -15,14 +18,15 @@ function createHarness() {
       resolveServiceIdentity,
       getServiceFamilyMetadata,
       groupSecretsByServiceFamily,
-      getIdentityCacheSize: () => SERVICE_IDENTITY_CACHE.size,
-      getFamilyDomainCacheSize: () => SERVICE_FAMILY_DOMAIN_CACHE.size,
-      OTHER_SERVICE_GROUP_KEY
+      getIdentityCacheSize: () => getServiceCacheSizes().identities,
+      getFamilyDomainCacheSize: () => getServiceCacheSizes().familyDomains,
+      OTHER_SERVICE_GROUP_KEY,
+      UNNAMED_SERVICE_GROUP_KEY
     };
   `;
 
 	// eslint-disable-next-line no-new-func
-	return new Function(code)();
+	return new Function('i18n', `const { t, getLanguage } = i18n; ${code}`)(transferI18n(language));
 }
 
 function secret(id, name) {
@@ -315,5 +319,59 @@ describe('automatic service grouping', () => {
 
 	it('wires aggregate group order independently from item sorting', () => {
 		expect(getCoreCode()).toContain('groupSecretsByServiceFamily(sortedSecrets, secrets, currentGroupSortType)');
+	});
+});
+
+describe('accounts without a service name', () => {
+	const unnamed = [secret('a', ''), secret('b', '   '), secret('c', null)];
+
+	it.each([
+		['zh-CN', LOCALES['zh-CN'].transferUnnamed],
+		['zh-TW', LOCALES['zh-TW'].transferUnnamed],
+		['en', LOCALES.en.transferUnnamed],
+	])('groups them under an internal key with the card label of %s', (language, title) => {
+		const api = createHarness(language);
+		const groups = api.groupSecretsByServiceFamily(unnamed, unnamed);
+
+		expect(groups).toHaveLength(1);
+		expect(groups[0]).toMatchObject({ key: api.UNNAMED_SERVICE_GROUP_KEY, name: title, isOther: false, totalCount: 3 });
+		expect(groups[0].items.map((item) => item.id)).toEqual(['a', 'b', 'c']);
+	});
+
+	it('never merges them with a service that is really called Unknown service', () => {
+		const api = createHarness('zh-CN');
+		const all = [...unnamed, secret('d', '未知服务'), secret('e', '未知服务')];
+		const groups = api.groupSecretsByServiceFamily(all, all);
+
+		expect(groups.map((group) => [group.name, group.items.map((item) => item.id)])).toEqual([
+			['未命名', ['a', 'b', 'c']],
+			['未知服务', ['d', 'e']],
+		]);
+		expect(groups[1].key).toBe('name:未知服务');
+		expect(api.resolveServiceIdentity('').key).toBe(api.UNNAMED_SERVICE_GROUP_KEY);
+		expect(api.resolveServiceIdentity('__unnamed-service__').key).not.toBe(api.UNNAMED_SERVICE_GROUP_KEY);
+	});
+
+	it('puts a single one into the other services group', () => {
+		const api = createHarness('en');
+		const all = [secret('a', ''), secret('g1', 'GitHub'), secret('g2', 'GitHub')];
+		const groups = api.groupSecretsByServiceFamily(all, all);
+
+		expect(groups.at(-1)).toMatchObject({ key: api.OTHER_SERVICE_GROUP_KEY, name: LOCALES.en.otherServices });
+		expect(groups.at(-1).items.map((item) => item.id)).toEqual(['a']);
+	});
+
+	it('takes the group title from the adapter each time, so a language change applies at once', () => {
+		let title = 'First';
+		const aggregation = createServiceAggregation({
+			SERVICE_LOGOS,
+			SERVICE_FAMILY_ALIASES,
+			SERVICE_FAMILY_NAMES,
+			SERVICE_FUZZY_MATCH_KEYS,
+			getUnnamedServiceGroupName: () => title,
+		});
+		expect(aggregation.groupSecretsByServiceFamily(unnamed, unnamed)[0].name).toBe('First');
+		title = 'Second';
+		expect(aggregation.groupSecretsByServiceFamily(unnamed, unnamed)[0].name).toBe('Second');
 	});
 });

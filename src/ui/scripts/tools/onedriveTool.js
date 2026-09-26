@@ -40,78 +40,102 @@ export function getOneDriveToolCode() {
         _oneDriveExpectedCallbackOrigin = null;
         loadOneDriveDestinations();
         const icon = data.severity === 'warning' ? '⚠️' : (data.success ? '✅' : '❌');
-        showCenterToast(icon, data.message || (data.success ? 'OneDrive 授权成功' : 'OneDrive 授权失败'));
+        showCenterToast(icon, data.message || (data.success ? t('toolSyncAuthSucceeded', { provider: 'OneDrive' }) : t('toolSyncAuthFailed', { provider: 'OneDrive' })));
       });
     }
 
     function _escapeOneDriveHtml(str) {
       const div = document.createElement('div');
       div.textContent = str;
-      return div.innerHTML;
+      return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
-    async function loadOneDriveDestinations() {
-      const listEl = document.getElementById('oneDriveDestinationList');
+    let _oneDriveDestinationState = null;
+    let _oneDriveLoadVersion = 0;
+
+    async function loadOneDriveDestinations(preserveForm = false) {
+      const loadVersion = ++_oneDriveLoadVersion;
       const addBtn = document.getElementById('oneDriveAddBtn');
       const warningEl = document.getElementById('oneDriveOauthWarning');
 
       try {
         const response = await authenticatedFetch('/api/onedrive/config');
         const data = await response.json();
+        if (!response.ok) throw new Error(data.message || t('toolSyncLoadRetry'));
+        if (loadVersion !== _oneDriveLoadVersion) return;
 
         if (warningEl) {
           if (data.oauthConfigured) {
             warningEl.style.display = 'none';
           } else {
             warningEl.style.display = 'block';
-            warningEl.textContent = '服务端未配置 OneDrive OAuth 凭据。当前仍可新增、查看和编辑目标，但暂时无法完成授权或启用同步。';
+            warningEl.textContent = t('toolSyncOAuthMissing', { provider: 'OneDrive' });
           }
         }
 
-        if (data.destinations && data.destinations.length > 0) {
-          listEl.innerHTML = data.destinations.map(dest => _renderOneDriveCard(dest)).join('');
-        } else {
-          listEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-tertiary); font-size: var(--dialog-caption-size);">暂无 OneDrive 目标，点击下方按钮添加</div>';
-        }
+        _oneDriveDestinationState = data;
+        _refreshOneDriveTranslations();
 
         const canAdd = data.count < data.maxAllowed;
         addBtn.dataset.canAdd = canAdd ? 'true' : 'false';
-        addBtn.style.display = canAdd ? 'block' : 'none';
-        hideOneDriveForm();
+        if (!preserveForm) addBtn.style.display = canAdd ? 'block' : 'none';
+        if (!preserveForm) hideOneDriveForm();
       } catch (error) {
+        if (loadVersion !== _oneDriveLoadVersion) return;
         console.error('加载 OneDrive 配置失败:', error);
-        listEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--danger-color); font-size: var(--dialog-caption-size);">加载失败，请稍后重试</div>';
+        _oneDriveDestinationState = { loadFailed: true };
+        _refreshOneDriveTranslations();
       }
+    }
+
+    function _refreshOneDriveTranslations() {
+      const listEl = document.getElementById('oneDriveDestinationList');
+      if (!listEl || !_oneDriveDestinationState) return;
+      if (_oneDriveDestinationState.loadFailed) {
+        listEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--danger-color); font-size: var(--dialog-caption-size);">' + t('toolSyncLoadRetry') + '</div>';
+        return;
+      }
+        if (_oneDriveDestinationState.destinations && _oneDriveDestinationState.destinations.length > 0) {
+          listEl.innerHTML = _oneDriveDestinationState.destinations.map(dest => _renderOneDriveCard(dest)).join('');
+        } else {
+          listEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-tertiary); font-size: var(--dialog-caption-size);">' + t('toolSyncEmpty', { provider: 'OneDrive' }) + '</div>';
+        }
+
+      const warning = document.getElementById('oneDriveOauthWarning');
+      if (warning && !_oneDriveDestinationState.oauthConfigured) {
+        warning.textContent = t('toolSyncOAuthMissing', { provider: 'OneDrive' });
+      }
+
     }
 
     function _renderOneDriveCard(dest) {
       let statusDot = 'dest-status-dot-gray';
-      let statusText = '未授权';
+      let statusText = t('toolSyncUnauthorized');
 
       if (dest.status.lastError) {
         statusDot = 'dest-status-dot-red';
-        statusText = '失败: ' + dest.status.lastError.error;
+        statusText = t('toolSyncError', { message: dest.status.lastError.error });
       } else if (dest.status.lastSuccess) {
         statusDot = 'dest-status-dot-green';
-        statusText = new Date(dest.status.lastSuccess.timestamp).toLocaleString();
+        statusText = formatI18nDate(dest.status.lastSuccess.timestamp);
       } else if (dest.authorized) {
-        statusText = '已授权，等待首次推送';
+        statusText = t('toolSyncAuthorizedWaiting');
       }
 
       const enabledClass = dest.enabled ? '' : 'dest-card-disabled';
       const accountText = dest.account && (dest.account.email || dest.account.displayName)
-        ? ((dest.account.displayName || 'OneDrive 账户') + (dest.account.email ? ' · ' + dest.account.email : ''))
-        : '未授权';
+        ? ((dest.account.displayName || t('toolSyncAccount', { provider: 'OneDrive' })) + (dest.account.email ? ' · ' + dest.account.email : ''))
+        : t('toolSyncUnauthorized');
 
-      return '<div class="dest-card ' + enabledClass + '" data-id="' + dest.id + '">'
+      return '<div class="dest-card ' + enabledClass + '" data-id="' + _escapeOneDriveHtml(dest.id) + '">'
         + '<div class="dest-card-header">'
         + '<div class="dest-card-info">'
         + '<span class="dest-card-name">' + _escapeOneDriveHtml(dest.name) + '</span>'
         + '<span class="dest-card-url">' + _escapeOneDriveHtml(accountText) + '</span>'
-        + '<span class="dest-card-url">应用目录: ' + _escapeOneDriveHtml(dest.config.folderPath || '/2FA-Backups') + '</span>'
+        + '<span class="dest-card-url">' + t('toolSyncAppFolder') + ' ' + _escapeOneDriveHtml(dest.config.folderPath || '/2FA-Backups') + '</span>'
         + '</div>'
         + '<label class="dest-toggle" onclick="event.stopPropagation()">'
-        + '<input type="checkbox" aria-label="启用此同步目标" ' + (dest.enabled ? 'checked' : '') + ' ' + (!dest.authorized ? 'disabled ' : '') + 'onchange="toggleOneDriveDest(\\'' + dest.id + '\\', this.checked)" />'
+        + '<input type="checkbox" aria-label="' + t('toolSyncEnabledLabel') + '" ' + (dest.enabled ? 'checked' : '') + ' ' + (!dest.authorized ? 'disabled ' : '') + 'onchange="toggleOneDriveDest(this.closest(\\'.dest-card\\').dataset.id, this.checked)" />'
         + '<span class="dest-toggle-slider"></span>'
         + '</label>'
         + '</div>'
@@ -120,9 +144,9 @@ export function getOneDriveToolCode() {
         + '<span class="dest-status-text">' + _escapeOneDriveHtml(statusText) + '</span>'
         + '</div>'
         + '<div class="dest-card-actions">'
-        + '<button class="btn btn-sm btn-info" onclick="event.stopPropagation(); authorizeOneDriveDest(\\'' + dest.id + '\\')" >' + (dest.authorized ? '重新授权' : '授权') + '</button>'
-        + '<button class="btn btn-sm" onclick="event.stopPropagation(); editOneDriveDest(\\'' + dest.id + '\\')" >编辑</button>'
-        + '<button class="btn btn-sm btn-danger-outline" onclick="event.stopPropagation(); deleteOneDriveDest(\\'' + dest.id + '\\', \\'' + _escapeOneDriveHtml(dest.name).replace(/'/g, "\\\\'") + '\\')" >删除</button>'
+        + '<button class="btn btn-sm btn-info" onclick="event.stopPropagation(); authorizeOneDriveDest(this.closest(\\'.dest-card\\').dataset.id)" >' + (dest.authorized ? t('toolSyncReauthorize') : t('toolSyncAuthorize')) + '</button>'
+        + '<button class="btn btn-sm" onclick="event.stopPropagation(); editOneDriveDest(this.closest(\\'.dest-card\\').dataset.id)" >' + t('edit') + '</button>'
+        + '<button class="btn btn-sm btn-danger-outline" onclick="event.stopPropagation(); deleteOneDriveDest(this.closest(\\'.dest-card\\').dataset.id, this.closest(\\'.dest-card\\').querySelector(\\'.dest-card-name\\').textContent)" >' + t('delete') + '</button>'
         + '</div>'
         + '</div>';
     }
@@ -160,7 +184,7 @@ export function getOneDriveToolCode() {
         document.getElementById('oneDriveFolderPath').value = dest.config.folderPath || '/2FA-Backups';
         showOneDriveForm(id);
       } catch (error) {
-        showCenterToast('❌', '加载 OneDrive 配置失败: ' + error.message);
+        showCenterToast('❌', t('toolSyncLoadError', { message: error.message }));
       }
     }
 
@@ -170,7 +194,7 @@ export function getOneDriveToolCode() {
       const folderPath = document.getElementById('oneDriveFolderPath').value.trim() || '/2FA-Backups';
 
       if (!name) {
-        showCenterToast('⚠️', '请填写目标名称');
+        showCenterToast('⚠️', t('toolSyncNameRequired'));
         return null;
       }
 
@@ -185,7 +209,7 @@ export function getOneDriveToolCode() {
 
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.message || '保存失败');
+        throw new Error(data.message || t('toolSyncSaveFailed'));
       }
 
       if (data.warning) {
@@ -198,19 +222,23 @@ export function getOneDriveToolCode() {
     async function saveOneDriveConfig() {
       const saveBtn = document.getElementById('oneDriveSaveBtn');
       const originalText = saveBtn.textContent;
-      saveBtn.textContent = '保存中...';
+      const originalI18nKey = saveBtn.dataset.i18n;
+      saveBtn.dataset.i18n = 'saving';
+      saveBtn.textContent = t('saving');
       saveBtn.disabled = true;
 
       try {
         const data = await _upsertOneDriveConfig();
         if (!data) return;
 
-        showCenterToast('✅', 'OneDrive 配置已保存');
+        showCenterToast('✅', t('toolSyncSaved', { provider: 'OneDrive' }));
         loadOneDriveDestinations();
       } catch (error) {
-        showCenterToast('❌', '保存失败: ' + error.message);
+        showCenterToast('❌', t('toolSyncSaveError', { message: error.message }));
       } finally {
-        saveBtn.textContent = originalText;
+        if (originalI18nKey) saveBtn.dataset.i18n = originalI18nKey;
+        else delete saveBtn.dataset.i18n;
+        saveBtn.textContent = originalI18nKey ? t(originalI18nKey) : originalText;
         saveBtn.disabled = false;
       }
     }
@@ -220,9 +248,11 @@ export function getOneDriveToolCode() {
       const authBtn = document.getElementById('oneDriveAuthorizeBtn');
       const hadFormButton = !!authBtn;
       const originalText = hadFormButton ? authBtn.textContent : '';
+      const originalI18nKey = hadFormButton ? authBtn.dataset.i18n : null;
 
       if (hadFormButton) {
-        authBtn.textContent = '准备授权...';
+        authBtn.dataset.i18n = 'toolSyncAuthorizing';
+        authBtn.textContent = t('toolSyncAuthorizing');
         authBtn.disabled = true;
       }
 
@@ -244,7 +274,7 @@ export function getOneDriveToolCode() {
 
         if (!response.ok || !data.success || !data.authorizeUrl) {
           if (popup && !popup.closed) popup.close();
-          throw new Error(data.message || '启动授权失败');
+          throw new Error(data.message || t('toolSyncAuthStartFailed'));
         }
 
         _oneDriveExpectedCallbackOrigin = _resolveOneDriveCallbackOrigin(data.callbackOrigin);
@@ -255,14 +285,16 @@ export function getOneDriveToolCode() {
           window.location.href = data.authorizeUrl;
         }
 
-        showCenterToast('ℹ️', '请在弹出窗口中完成 OneDrive 授权');
+        showCenterToast('ℹ️', t('toolSyncAuthPopup', { provider: 'OneDrive' }));
         loadOneDriveDestinations();
       } catch (error) {
         _oneDriveExpectedCallbackOrigin = null;
-        showCenterToast('❌', '授权失败: ' + error.message);
+        showCenterToast('❌', t('toolSyncAuthError', { message: error.message }));
       } finally {
         if (hadFormButton) {
-          authBtn.textContent = originalText;
+          if (originalI18nKey) authBtn.dataset.i18n = originalI18nKey;
+          else delete authBtn.dataset.i18n;
+          authBtn.textContent = originalI18nKey ? t(originalI18nKey) : originalText;
           authBtn.disabled = false;
         }
       }
@@ -279,10 +311,11 @@ export function getOneDriveToolCode() {
 
     async function deleteOneDriveDest(id, name) {
       const confirmed = await showConfirmDialog({
-        title: '删除 OneDrive 目标',
-        message: '确定要删除 OneDrive 目标"' + name + '"吗？\\n删除后该目标将不再接收备份推送。',
-        confirmText: '删除',
-        cancelText: '取消',
+        i18n: { title: 'toolSyncDeleteTitle', message: 'toolSyncDeleteConfirm', confirmText: 'delete', cancelText: 'cancel', params: { provider: 'OneDrive', name } },
+        title: t('toolSyncDeleteTitle', { provider: 'OneDrive' }),
+        message: t('toolSyncDeleteConfirm', { provider: 'OneDrive', name }),
+        confirmText: t('delete'),
+        cancelText: t('cancel'),
         danger: true
       });
       if (!confirmed) {
@@ -296,13 +329,13 @@ export function getOneDriveToolCode() {
         const data = await response.json();
 
         if (data.success) {
-          showCenterToast('✅', 'OneDrive 目标已删除');
+          showCenterToast('✅', t('toolSyncDeleted', { provider: 'OneDrive' }));
           loadOneDriveDestinations();
         } else {
-          showCenterToast('❌', data.message || '删除失败');
+          showCenterToast('❌', data.message || t('toolSyncDeleteFailed'));
         }
       } catch (error) {
-        showCenterToast('❌', '删除失败: ' + error.message);
+        showCenterToast('❌', t('toolSyncDeleteError', { message: error.message }));
       }
     }
 
@@ -318,11 +351,11 @@ export function getOneDriveToolCode() {
         if (data.success) {
           showCenterToast('✅', data.message);
         } else {
-          showCenterToast('❌', data.message || '操作失败');
+          showCenterToast('❌', data.message || t('toolSyncOperationFailed'));
         }
         loadOneDriveDestinations();
       } catch (error) {
-        showCenterToast('❌', '操作失败: ' + error.message);
+        showCenterToast('❌', t('toolSyncOperationError', { message: error.message }));
         loadOneDriveDestinations();
       }
     }

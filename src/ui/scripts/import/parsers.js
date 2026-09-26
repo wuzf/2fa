@@ -3,13 +3,39 @@
  * 包含各种格式的解析函数（CSV、HTML、JSON等）
  */
 
+import { BACKUP_DOCUMENT_LOCALES } from '../../../utils/backup-locales.js';
+
 /**
  * 获取CSV解析器代码
  * @returns {string} JavaScript 代码
  */
 export function getCSVParserCode() {
+	const legacyAliases = [
+		['服务名称', '服務名稱', 'service', 'service name'],
+		['账户信息', '账户名称', '账户', '帳戶資訊', '帳戶名稱', '帳戶', 'account', 'account name'],
+		['密钥', '金鑰', 'secret'],
+		['类型', '類型', 'type'],
+		['位数', '位數', 'digits'],
+		['周期', '週期', 'period', 'period (seconds)'],
+		['算法', '演算法', 'algorithm'],
+		['计数器', '計數器', 'counter'],
+	];
+	const aliases = legacyAliases.map((values, index) => [
+		...new Set(
+			[...values, ...Object.values(BACKUP_DOCUMENT_LOCALES).map((locale) => locale.headers[index])].map((value) =>
+				value.trim().toLowerCase(),
+			),
+		),
+	]);
 	return `
     // ========== CSV 解析器 ==========
+    const CSV_COLUMN_ALIASES = ${JSON.stringify(aliases)};
+    function isKnownCSVHeader(header) {
+      return parseCSVLine(header).some(column => {
+        const value = column.trim().toLowerCase();
+        return CSV_COLUMN_ALIASES[2].includes(value) || value === 'login_totp';
+      });
+    }
 
     /**
      * 解析CSV格式的导入数据
@@ -60,23 +86,16 @@ export function getCSVParserCode() {
         }
 
         // 原有的 2FA CSV 格式检测
-        const isCSVFormat = header.includes('服务名称') || header.includes('密钥') ||
-                           header.toLowerCase().includes('service') || header.toLowerCase().includes('secret');
-
-        if (!isCSVFormat) {
-          console.warn('不是有效的CSV格式');
-          return otpauthUrls;
-        }
-
-        // 解析标题行，确定列的索引
-        const headers = parseCSVLine(header);
-        const serviceIndex = headers.findIndex(h => h === '服务名称' || h.toLowerCase() === 'service');
-        const accountIndex = headers.findIndex(h => h === '账户信息' || h === '账户' || h.toLowerCase() === 'account');
-        const secretIndex = headers.findIndex(h => h === '密钥' || h.toLowerCase() === 'secret');
-        const typeIndex = headers.findIndex(h => h === '类型' || h.toLowerCase() === 'type');
-        const digitsIndex = headers.findIndex(h => h === '位数' || h.toLowerCase() === 'digits');
-        const periodIndex = headers.findIndex(h => h.includes('周期') || h.toLowerCase().includes('period'));
-        const algoIndex = headers.findIndex(h => h === '算法' || h.toLowerCase() === 'algorithm');
+        const headers = parseCSVLine(header).map(value => value.trim().toLowerCase());
+        const indexOf = (aliases, column) => {
+          const exactIndex = headers.findIndex(value => aliases.includes(value));
+          if (exactIndex >= 0 || column !== 5) return exactIndex;
+          // Older CSV imports accepted period headers with arbitrary unit labels.
+          return headers.findIndex(value => value.includes('周期') || value.includes('period'));
+        };
+        const [serviceIndex, accountIndex, secretIndex, typeIndex, digitsIndex, periodIndex, algoIndex, counterIndex] =
+          CSV_COLUMN_ALIASES.map(indexOf);
+        if (secretIndex < 0) return otpauthUrls;
 
         console.log('CSV列索引:', { serviceIndex, accountIndex, secretIndex, typeIndex, digitsIndex, periodIndex, algoIndex });
 
@@ -91,10 +110,11 @@ export function getCSVParserCode() {
             const service = serviceIndex >= 0 ? fields[serviceIndex] : '';
             const account = accountIndex >= 0 ? fields[accountIndex] : '';
             const secret = secretIndex >= 0 ? fields[secretIndex] : '';
-            const type = typeIndex >= 0 ? fields[typeIndex] : 'TOTP';
+            const type = typeIndex >= 0 && String(fields[typeIndex]).toUpperCase() === 'HOTP' ? 'hotp' : 'totp';
             const digits = digitsIndex >= 0 ? parseInt(fields[digitsIndex]) || 6 : 6;
             const period = periodIndex >= 0 ? parseInt(fields[periodIndex]) || 30 : 30;
             const algo = algoIndex >= 0 ? fields[algoIndex] : 'SHA1';
+            const counter = counterIndex >= 0 ? Number(fields[counterIndex]) || 0 : 0;
 
             // 验证必要数据
             if (!secret || !secret.trim()) {
@@ -121,10 +141,11 @@ export function getCSVParserCode() {
             params.set('secret', cleanSecret);
             if (service) params.set('issuer', service);
             if (digits !== 6) params.set('digits', digits);
-            if (period !== 30) params.set('period', period);
+            if (type === 'hotp') params.set('counter', counter);
+            else if (period !== 30) params.set('period', period);
             if (algo !== 'SHA1') params.set('algorithm', algo);
 
-            const otpauthUrl = 'otpauth://totp/' + label + '?' + params.toString();
+            const otpauthUrl = 'otpauth://' + type + '/' + label + '?' + params.toString();
             otpauthUrls.push(otpauthUrl);
 
             console.log('CSV第', i + 1, '行解析成功:', service, account);
@@ -288,7 +309,7 @@ export function getJSONParserCode() {
           algorithm: secret.algorithm || secret.algo || 'SHA1',
           counter: secret.counter || 0
         }),
-        '本应用 JSON'
+        t('transferAppJSON')
       );
     }
 
@@ -560,11 +581,11 @@ export function getJSONParserCode() {
           return parseProtonJSON(jsonData);
         }
 
-        throw new Error('未识别的 JSON 导入格式');
+        throw new Error(t('transferJSONUnknown'));
       }
 
       if (!jsonData || typeof jsonData !== 'object') {
-        throw new Error('未识别的 JSON 导入格式');
+        throw new Error(t('transferJSONUnknown'));
       }
 
       if (Array.isArray(jsonData.secrets)) {
@@ -607,7 +628,7 @@ export function getJSONParserCode() {
         return parse2FASJSON(jsonData);
       }
 
-      throw new Error('未识别的 JSON 导入格式');
+      throw new Error(t('transferJSONUnknown'));
     }
 `;
 }

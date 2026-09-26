@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { createServiceWorker } from '../../src/ui/serviceworker.js';
 import { getPWACode } from '../../src/ui/scripts/pwa.js';
+import { getI18nCode } from '../../src/ui/scripts/i18n.js';
+import { getStateCode } from '../../src/ui/scripts/state.js';
 
 function getNotifyPayloads(source, messageType) {
 	return [...source.matchAll(/await notifyClients\(\{([\s\S]*?)\n\s*\}\);/g)]
@@ -19,6 +21,7 @@ function createPWAHarness({ online = true } = {}) {
 		ready: Promise.resolve(registration),
 	};
 	const navigator = {
+		language: 'zh-CN',
 		onLine: online,
 		serviceWorker,
 	};
@@ -52,8 +55,8 @@ function createPWAHarness({ online = true } = {}) {
 		'console',
 		'setInterval',
 		'setTimeout',
-		`${getPWACode()}
-      return { requestPendingOperationSync, handleServiceWorkerMessage };
+		`${getI18nCode()}${getStateCode()}${getPWACode()}
+      return { requestPendingOperationSync, handleServiceWorkerMessage, invalidateSecretSession };
     `,
 	)(navigator, window, document, loadSecrets, showCenterToast, quietConsole, vi.fn(), setTimeout);
 
@@ -85,7 +88,14 @@ async function createServiceWorkerHarness(operations = []) {
 		delete: (id) => request(() => pending.delete(id)),
 	};
 	const indexedDB = {
-		open: () => request(() => ({ transaction: () => ({ objectStore: () => store }) })),
+		open: () =>
+			request(() => ({
+				transaction: () => {
+					const transaction = { objectStore: () => store };
+					setTimeout(() => transaction.oncomplete?.(), 0);
+					return transaction;
+				},
+			})),
 	};
 	const listeners = new Map();
 	const messages = [];
@@ -167,7 +177,9 @@ describe('generated Service Worker offline sync contract', () => {
 			expect(payload).toContain('operationId: operation.id');
 			expect(payload).toContain('operationType: operation.type');
 		}
-		expect(source.match(/if \(newRetryCount >= 5\)/g)).toHaveLength(2);
+		// HTTP rejections stop at once; other HTTP and local errors use the retry limit.
+		expect(source.match(/if \(rejected \|\| newRetryCount >= 5\)/g)).toHaveLength(1);
+		expect(source.match(/if \(newRetryCount >= 5\)/g)).toHaveLength(1);
 	});
 });
 
@@ -177,7 +189,7 @@ describe('PWA offline replay fallback', () => {
 
 		harness.api.requestPendingOperationSync({});
 
-		expect(harness.controller.postMessage).toHaveBeenCalledWith({ type: 'SYNC_OPERATIONS' });
+		expect(harness.controller.postMessage).toHaveBeenCalledWith({ type: 'SYNC_OPERATIONS', language: 'zh-CN' });
 	});
 
 	it('does not replay on repeated offline loads or controller changes and resumes on online', async () => {
@@ -194,7 +206,7 @@ describe('PWA offline replay fallback', () => {
 		const online = harness.window.addEventListener.mock.calls.find(([type]) => type === 'online')[1];
 		online();
 		await Promise.resolve();
-		expect(harness.controller.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'SYNC_OPERATIONS' });
+		expect(harness.controller.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'SYNC_OPERATIONS', language: 'zh-CN' });
 	});
 
 	it('does not fall back to manual replay if the network drops during sync registration', async () => {
@@ -208,6 +220,40 @@ describe('PWA offline replay fallback', () => {
 		rejectRegistration(new Error('Sync unavailable'));
 		await Promise.resolve();
 		expect(harness.controller.postMessage).not.toHaveBeenCalled();
+	});
+
+	it('refreshes accounts once for a completed batch instead of once per operation', () => {
+		const harness = createPWAHarness();
+		for (let index = 0; index < 5; index++) {
+			harness.api.handleServiceWorkerMessage({ type: 'SYNC_SUCCESS', operationId: String(index), operationType: 'UPDATE' });
+		}
+		expect(harness.loadSecrets).not.toHaveBeenCalled();
+		harness.api.handleServiceWorkerMessage({ type: 'SYNC_COMPLETE', successCount: 5, failCount: 0, deferredCount: 0 });
+		expect(harness.loadSecrets).toHaveBeenCalledOnce();
+	});
+
+	it.each(['logged-out', 'logged-out authentication-paused', 'no-success'])('does not reload accounts after a %s batch', (scenario) => {
+		const harness = createPWAHarness();
+		if (scenario.startsWith('logged-out')) {
+			harness.api.invalidateSecretSession();
+		}
+		harness.api.handleServiceWorkerMessage({
+			type: 'SYNC_COMPLETE',
+			successCount: scenario === 'no-success' ? 0 : 1,
+			failCount: 0,
+			deferredCount: 0,
+			authRequired: scenario.endsWith('authentication-paused'),
+		});
+		expect(harness.loadSecrets).not.toHaveBeenCalled();
+	});
+
+	it.each([0, 1])('verifies the session with one account read after an authentication pause with %i applied changes', (successCount) => {
+		// A current 401 then clears cached codes through loadSecrets' normal
+		// unauthorized handling; a still-valid session simply refreshes.
+		const harness = createPWAHarness();
+		harness.api.handleServiceWorkerMessage({ type: 'SYNC_COMPLETE', successCount, failCount: 0, deferredCount: 0, authRequired: true });
+		expect(harness.loadSecrets).toHaveBeenCalledOnce();
+		expect(harness.setTimeout).not.toHaveBeenCalled();
 	});
 
 	it('retries deferred operations once without showing a permanent failure and rechecks connectivity', async () => {
@@ -232,13 +278,20 @@ describe('generated Service Worker offline replay behavior', () => {
 		}
 		expect(harness.fetch).not.toHaveBeenCalled();
 		expect(harness.pending.get(operation.id)).toEqual(operation);
-		expect(harness.messages.at(-1)).toMatchObject({ type: 'SYNC_COMPLETE', deferredCount: 1, failCount: 0 });
+		expect(harness.messages.filter((message) => message.type === 'SYNC_COMPLETE').at(-1)).toMatchObject({
+			type: 'SYNC_COMPLETE',
+			deferredCount: 1,
+			failCount: 0,
+		});
 
 		harness.navigator.onLine = true;
 		await harness.dispatch('message', { data: { type: 'SYNC_OPERATIONS' } });
 		expect(harness.fetch).toHaveBeenCalledTimes(1);
 		expect(harness.pending.size).toBe(0);
-		expect(harness.messages.at(-1)).toMatchObject({ successCount: 1, deferredCount: 0 });
+		expect(harness.messages.filter((message) => message.type === 'SYNC_COMPLETE').at(-1)).toMatchObject({
+			successCount: 1,
+			deferredCount: 0,
+		});
 	});
 
 	it('keeps transport failures retryable even when navigator reports online', async () => {
@@ -272,7 +325,11 @@ describe('generated Service Worker offline replay behavior', () => {
 		await harness.api.syncPendingOperations();
 		expect(harness.fetch).toHaveBeenCalledTimes(failure === 'reported offline' ? 1 : 2);
 		expect([...harness.pending.values()]).toEqual(operations.slice(1));
-		expect(harness.messages.at(-1)).toMatchObject({ successCount: 1, failCount: 0, deferredCount: 2 });
+		expect(harness.messages.filter((message) => message.type === 'SYNC_COMPLETE').at(-1)).toMatchObject({
+			successCount: 1,
+			failCount: 0,
+			deferredCount: 2,
+		});
 
 		harness.navigator.onLine = true;
 		harness.fetch.mockResolvedValue({ ok: true });
@@ -280,15 +337,27 @@ describe('generated Service Worker offline replay behavior', () => {
 		expect(harness.pending.size).toBe(0);
 	});
 
-	it('preserves terminal failure after five HTTP responses', async () => {
+	it('preserves terminal failure after five server-error responses', async () => {
+		const operation = queuedUpdate();
+		const harness = await createServiceWorkerHarness([operation]);
+		harness.fetch.mockResolvedValue({ ok: false, status: 503, statusText: 'Service Unavailable' });
+		for (let attempt = 0; attempt < 6; attempt++) {
+			await harness.api.syncPendingOperations();
+		}
+		expect(harness.fetch).toHaveBeenCalledTimes(5);
+		expect(harness.pending.get(operation.id)).toMatchObject({ status: 'failed', retryCount: 5 });
+		expect(harness.messages.filter((message) => message.type === 'SYNC_FAILED')).toHaveLength(1);
+	});
+
+	it('stops a request rejection after one response instead of spending five retries', async () => {
 		const operation = queuedUpdate();
 		const harness = await createServiceWorkerHarness([operation]);
 		harness.fetch.mockResolvedValue({ ok: false, status: 409, statusText: 'Conflict' });
 		for (let attempt = 0; attempt < 6; attempt++) {
 			await harness.api.syncPendingOperations();
 		}
-		expect(harness.fetch).toHaveBeenCalledTimes(5);
-		expect(harness.pending.get(operation.id)).toMatchObject({ status: 'failed', retryCount: 5 });
+		expect(harness.fetch).toHaveBeenCalledOnce();
+		expect(harness.pending.get(operation.id)).toMatchObject({ status: 'failed', retryCount: 1 });
 		expect(harness.messages.filter((message) => message.type === 'SYNC_FAILED')).toHaveLength(1);
 	});
 

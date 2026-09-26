@@ -1,3 +1,4 @@
+import { transferI18n } from '../helpers/transfer-i18n.js';
 import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
@@ -9,6 +10,7 @@ function createImportApi() {
 
 	// eslint-disable-next-line no-new-func
 	return new Function(
+		't',
 		'crypto',
 		'TextEncoder',
 		'TextDecoder',
@@ -23,6 +25,7 @@ function createImportApi() {
 		'hideImportModal',
 		`${code}; return { parseJsonImport, parseFreeOTPBackup, decryptFreeOTPBackup, decodeImportFileContent };`,
 	)(
+		transferI18n().t,
 		globalThis.crypto,
 		TextEncoder,
 		TextDecoder,

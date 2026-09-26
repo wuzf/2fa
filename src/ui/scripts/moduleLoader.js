@@ -19,6 +19,7 @@ export function getModuleLoaderCode() {
     // ========== 模块懒加载系统 ==========
 
     // 模块加载状态
+    let loadingModuleName = null;
     const moduleLoadState = {
       import: { loaded: false, loading: false, code: null },
       export: { loaded: false, loading: false, code: null },
@@ -52,7 +53,7 @@ export function getModuleLoaderCode() {
         if (moduleLoadState[moduleName].loaded) {
           return;
         } else {
-          throw new Error(\`模块 \${moduleName} 加载超时\`);
+          throw new Error(t('moduleLoadTimeout', { module: getModuleDisplayName(moduleName) }));
         }
       }
 
@@ -62,13 +63,14 @@ export function getModuleLoaderCode() {
 
       try {
         // 显示加载提示
-        showLoadingToast(\`正在加载 \${getModuleDisplayName(moduleName)}...\`);
+        loadingModuleName = moduleName;
+        showLoadingToast(t('moduleLoading', { module: getModuleDisplayName(moduleName) }));
 
         // 从服务器获取模块代码
         const response = await authenticatedFetch(\`/modules/\${moduleName}.js\`);
 
         if (!response.ok) {
-          throw new Error(\`加载模块失败: \${response.statusText}\`);
+          throw new Error(t('moduleHttpError', { status: response.status }));
         }
 
         const code = await response.text();
@@ -89,7 +91,7 @@ export function getModuleLoaderCode() {
         console.error(\`❌ 加载模块 \${moduleName} 失败:\`, error);
         moduleLoadState[moduleName].loading = false;
         hideLoadingToast();
-        showCenterToast('❌', \`加载功能失败: \${error.message}\`);
+        showCenterToast('❌', t('moduleLoadFailed', { error: error.message }));
         throw error;
       } finally {
         moduleLoadState[moduleName].loading = false;
@@ -103,14 +105,14 @@ export function getModuleLoaderCode() {
      */
     function getModuleDisplayName(moduleName) {
       const displayNames = {
-        import: '导入功能',
-        export: '导出功能',
-        backup: '备份管理',
-        qrcode: '二维码功能',
-        tools: '工具集',
-        googleMigration: 'Google迁移'
+        import: 'moduleImport',
+        export: 'moduleExport',
+        backup: 'moduleBackup',
+        qrcode: 'moduleQRCode',
+        tools: 'moduleTools',
+        googleMigration: 'moduleGoogleMigration'
       };
-      return displayNames[moduleName] || moduleName;
+      return displayNames[moduleName] ? t(displayNames[moduleName]) : moduleName;
     }
 
     /**
@@ -143,7 +145,12 @@ export function getModuleLoaderCode() {
     /**
      * 隐藏加载Toast
      */
+    function refreshModuleLoaderLanguage() {
+      if (loadingModuleName) showLoadingToast(t('moduleLoading', { module: getModuleDisplayName(loadingModuleName) }));
+    }
+
     function hideLoadingToast() {
+      loadingModuleName = null;
       const toast = document.getElementById('loadingToast');
       if (toast) {
         toast.style.display = 'none';
@@ -174,11 +181,11 @@ export function getModuleLoaderCode() {
               return result;
             }
           } else {
-            throw new Error(\`函数 \${functionName} 在模块 \${moduleName} 中未找到\`);
+            throw new Error(t('moduleFunctionMissing', { module: getModuleDisplayName(moduleName) }));
           }
         } catch (error) {
           console.error(\`调用 \${functionName} 失败:\`, error);
-          showCenterToast('❌', \`功能加载失败: \${error.message}\`);
+          showCenterToast('❌', t('moduleLoadFailed', { error: error.message }));
         }
       };
 

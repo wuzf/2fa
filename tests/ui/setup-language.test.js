@@ -36,7 +36,8 @@ describe('setup page language detection', () => {
 		['zh-HK', 'zh-TW'],
 		['zh-Hant', 'zh-TW'],
 		['zh-CN', 'zh-CN'],
-		['fr-FR', 'zh-CN'],
+		['fr-FR', 'fr'],
+		['unsupported', 'en'],
 	])('uses %s from the browser to select %s', (browserLanguage, expectedLanguage) => {
 		const h = createHarness({ browserLanguage });
 		expect(h.document.documentElement.lang).toBe(expectedLanguage);

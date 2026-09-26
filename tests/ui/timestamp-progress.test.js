@@ -2,6 +2,7 @@ import { createContext, runInContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import { createMainPage } from '../../src/ui/page.js';
 import { getTimestampToolCode } from '../../src/ui/scripts/tools/timestampTool.js';
+import { TOOLS_LOCALES } from '../../src/ui/locales/tools.js';
 
 async function createHarness(initialTime) {
 	const html = await (await createMainPage()).text();
@@ -42,6 +43,7 @@ async function createHarness(initialTime) {
 	const cancelFrame = vi.fn((id) => frames.delete(id));
 	const context = createContext({
 		document,
+		t: (key, params = {}) => (TOOLS_LOCALES['zh-CN'][key] || key).replace(/\{(\w+)\}/g, (_, name) => params[name] ?? _),
 		Date: { now: () => now },
 		showModal: (_id, onShow) => onShow(),
 		hideModal: vi.fn(),

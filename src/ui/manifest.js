@@ -1,3 +1,6 @@
+import { getRequestLanguage } from '../utils/i18n.js';
+import { getStandaloneText } from './standalone.js';
+
 /**
  * PWA Manifest 生成模块
  * 提供 Web App Manifest 用于支持 PWA 安装和 WebAPK
@@ -11,12 +14,15 @@
 export function createManifest(request) {
 	const url = new URL(request.url);
 	const baseUrl = `${url.protocol}//${url.host}`;
+	const language = getRequestLanguage(request, 'en');
+	const t = (key) => getStandaloneText(language, key);
 
 	// 简化的 Manifest 配置，确保最佳兼容性
 	const manifest = {
-		name: '2FA - 两步验证密钥管理器',
+		name: t('manifestName'),
 		short_name: '2FA',
-		description: '安全的两步验证密钥管理器，支持 TOTP、HOTP 验证码生成',
+		lang: language,
+		description: t('manifestDescription'),
 		start_url: '/',
 		display: 'standalone',
 		background_color: '#ffffff',
@@ -53,15 +59,15 @@ export function createManifest(request) {
 		// 简化的快捷方式（无图标）
 		shortcuts: [
 			{
-				name: '添加密钥',
-				short_name: '添加',
-				description: '快速添加新的 2FA 密钥',
+				name: t('manifestAdd'),
+				short_name: t('manifestAddShort'),
+				description: t('manifestAddDescription'),
 				url: '/?action=add',
 			},
 			{
-				name: '扫描二维码',
-				short_name: '扫描',
-				description: '扫描二维码添加密钥',
+				name: t('manifestScan'),
+				short_name: t('manifestScanShort'),
+				description: t('manifestScanDescription'),
 				url: '/?action=scan',
 			},
 		],
@@ -87,6 +93,8 @@ export function createManifest(request) {
 			'Content-Type': 'application/manifest+json',
 			'Cache-Control': 'public, max-age=3600',
 			'Access-Control-Allow-Origin': '*',
+			'Content-Language': language,
+			Vary: 'Accept-Language, X-Language',
 		},
 	});
 }

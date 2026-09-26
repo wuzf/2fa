@@ -1,3 +1,88 @@
+import { STANDALONE_LOCALES } from './locales/standalone.js';
+import { normalizeLanguage, LANGUAGE_OPTIONS } from '../shared/languages.js';
+
+export function getStandaloneText(language, key, params = {}) {
+	const value = STANDALONE_LOCALES[normalizeLanguage(language)]?.[key] || STANDALONE_LOCALES.en[key] || key;
+	return value.replace(/\{(\w+)\}/g, (match, name) => (params[name] === undefined ? match : String(params[name])));
+}
+
+/** Self-contained so the service worker's offline document needs no network. */
+export function getStandaloneI18nScript({ language = 'en', titleKey = '', preferServerLanguage = false, translations = {} } = {}) {
+	language = normalizeLanguage(language) || 'en';
+	const locales = Object.fromEntries(
+		Object.entries(STANDALONE_LOCALES).map(([lang, messages]) => [lang, { ...messages, ...translations[lang] }]),
+	);
+	return `
+    const standaloneLocales = ${JSON.stringify(locales).replace(/</g, '\\u003c')};
+    const standaloneInitialLanguage = ${JSON.stringify(language)};
+    let standaloneLanguage = standaloneInitialLanguage;
+    const standaloneNormalizeLanguage = ${normalizeLanguage.toString()};
+    function standaloneT(key, params = {}) {
+      const value = standaloneLocales[standaloneLanguage]?.[key] || standaloneLocales.en[key] || key;
+      return value.replace(/\\{(\\w+)\\}/g, (match, name) => params[name] === undefined ? match : String(params[name]));
+    }
+    function applyStandaloneLanguage(language) {
+      if (!Object.prototype.hasOwnProperty.call(standaloneLocales, language)) return;
+      standaloneLanguage = language;
+      document.documentElement.lang = language;
+      const titleKey = ${JSON.stringify(titleKey)};
+      if (titleKey) document.title = standaloneT(titleKey);
+      document.querySelectorAll?.('[data-standalone-i18n]').forEach(function (element) {
+        let params = {};
+        try { params = JSON.parse(element.getAttribute('data-standalone-params') || '{}'); } catch { /* Use the plain translation. */ }
+        element.textContent = standaloneT(element.getAttribute('data-standalone-i18n'), params);
+      });
+      for (const attribute of ['aria-label', 'placeholder', 'title']) {
+        document.querySelectorAll?.('[data-standalone-' + attribute + ']').forEach(function (element) {
+          element.setAttribute(attribute, standaloneT(element.getAttribute('data-standalone-' + attribute)));
+        });
+      }
+      const selector = document.getElementById('standaloneLanguage');
+      if (selector) selector.value = language;
+      if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+        window.dispatchEvent(new CustomEvent('standalone-language-change', { detail: language }));
+      }
+    }
+    function changeStandaloneLanguage(language) {
+      applyStandaloneLanguage(language);
+      try { localStorage.setItem('language', standaloneLanguage); } catch { /* Language still works without storage. */ }
+      try {
+        const url = new URL(location.href);
+        url.searchParams.set('lang', standaloneLanguage);
+        window.history.replaceState(null, '', url);
+      } catch { /* Embedded or exported pages may not allow URL updates. */ }
+    }
+    (function () {
+      let saved = null;
+      let query = null;
+      try { saved = localStorage.getItem('language'); } catch { /* Detect the browser language. */ }
+      try {
+        const params = new URL(location.href).searchParams;
+        query = params.has('lang') ? params.get('lang') : params.get('language');
+      } catch { /* Exported documents have no URL. */ }
+      const browser = (navigator.languages || [navigator.language]).map(standaloneNormalizeLanguage).find(Boolean);
+      const language = ${preferServerLanguage ? 'standaloneInitialLanguage || ' : ''}(query !== null ? standaloneNormalizeLanguage(query) || 'en' : null) ||
+        (Object.prototype.hasOwnProperty.call(standaloneLocales, saved) ? saved : null) || browser || 'en';
+      applyStandaloneLanguage(language);
+      document.getElementById('standaloneLanguage')?.addEventListener('change', event => changeStandaloneLanguage(event.target.value));
+      window.addEventListener('storage', function (event) {
+        if (event.key === 'language' || event.key === null) {
+          let savedLanguage;
+          try { savedLanguage = localStorage.getItem('language'); } catch { /* Fall back to browser. */ }
+          applyStandaloneLanguage(standaloneNormalizeLanguage(savedLanguage) || browser || 'en');
+        }
+      });
+    })();
+  `;
+}
+
+export function getStandaloneLanguageSelect(language = 'en') {
+	const selected = normalizeLanguage(language) || 'en';
+	return `<select id="standaloneLanguage" class="standalone-language" aria-label="${getStandaloneText(selected, 'standaloneLanguage')}" data-standalone-aria-label="standaloneLanguage">
+    ${LANGUAGE_OPTIONS.map(({ value, label }) => `<option value="${value}"${selected === value ? ' selected' : ''}>${label}</option>`).join('\n    ')}
+  </select>`;
+}
+
 /** Shared Fluent presentation for pages rendered outside the account workspace. */
 export function getStandaloneThemeScript() {
 	return `
@@ -117,6 +202,8 @@ export function getStandaloneStyles() {
     .page-link:hover { text-decoration-thickness: 2px; }
     .page-notice { padding: 12px; margin: 20px 0; border: 1px solid var(--page-line); border-radius: 4px; background: var(--page-bg); color: var(--page-muted); font-size: 12px; line-height: 18px; }
     .page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 24px; }
+    .standalone-language { max-width: 100%; min-height: 36px; padding: 6px 8px; border: 1px solid var(--page-stroke); border-radius: 4px; background: var(--page-surface); color: var(--page-text); font: inherit; }
+    .standalone-language-row { display: flex; justify-content: flex-end; margin-bottom: 16px; }
     :is(button, input, a, [tabindex]):focus-visible { outline: 2px solid var(--page-brand); outline-offset: 3px; }
     @media (max-width: 600px) {
       body { padding: 16px; }

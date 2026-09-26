@@ -1,3 +1,4 @@
+import { SUPPORTED_LANGUAGES, LANGUAGE_OPTIONS } from '../shared/languages.js';
 /**
  * 首次设置页面模块
  * 用于用户首次访问时设置管理员密码
@@ -6,14 +7,35 @@
 import { getSetupStyles } from './styles/setup.js';
 import { dialogIcon } from './dialogIcons.js';
 import { LOCALES } from './locales/index.js';
+import { getRequestLanguage, normalizeLanguage } from '../utils/i18n.js';
+import { serverMessages, getServerTranslations } from '../utils/server-messages.js';
 
 /**
  * 创建首次设置页面
  * @returns {Response} HTML响应
  */
-export async function createSetupPage() {
+export async function createSetupPage(request) {
+	const initialLanguage = getRequestLanguage(request, 'en');
+	const setupMessages = serverMessages.filter(([source]) =>
+		/密码|设置|^KV 存储未绑定|^请求|^您的请求次数过多|^服务器内部错误/.test(source),
+	);
+	const translatedSetupMessages = setupMessages.map(getServerTranslations);
+	const setupMessagePatterns = translatedSetupMessages.flatMap((translations, messageIndex) =>
+		Object.values(translations).map((template) => {
+			const parameters = [...template.matchAll(/\{(\w+)\}/g)];
+			let position = 0;
+			let pattern = '^';
+			const escapePattern = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			for (const parameter of parameters) {
+				pattern += escapePattern(template.slice(position, parameter.index)) + '([\\s\\S]*?)';
+				position = parameter.index + parameter[0].length;
+			}
+			pattern += escapePattern(template.slice(position)) + '$';
+			return { pattern, parameters: parameters.map((parameter) => parameter[1]), messageIndex };
+		}),
+	);
 	const setupLocales = {};
-	for (const lang of ['zh-CN', 'zh-TW', 'en']) {
+	for (const lang of SUPPORTED_LANGUAGES) {
 		setupLocales[lang] = {};
 		for (const [k, v] of Object.entries(LOCALES[lang] || {})) {
 			if (k.startsWith('setup')) {
@@ -23,11 +45,11 @@ export async function createSetupPage() {
 	}
 
 	const html = `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${initialLanguage}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>首次设置 - 2FA 密钥管理器</title>
+  <title>${LOCALES[initialLanguage].setupPageTitle}</title>
 
   <script>
     (function() {
@@ -58,9 +80,7 @@ export async function createSetupPage() {
         <div class="setup-icon" aria-hidden="true">${dialogIcon('lock')}</div>
         <div class="setup-lang-selector">
           <select id="setupLangSelect" class="setup-lang-select" aria-label="Language / 語言" onchange="changeSetupLanguage(this.value)">
-            <option value="zh-CN">简体中文</option>
-            <option value="zh-TW">繁體中文</option>
-            <option value="en">English</option>
+            ${LANGUAGE_OPTIONS.map(({ value, label }) => `<option value="${value}">${label}</option>`).join('\n            ')}
           </select>
         </div>
       </div>
@@ -141,18 +161,43 @@ export async function createSetupPage() {
 
   <script>
     const I18N = ${JSON.stringify(setupLocales)};
-    let currentLang = 'zh-CN';
+    let currentLang = ${JSON.stringify(initialLanguage)};
     let setupLanguagePreference = 'auto';
+    let setupErrorMessage = '';
+    const setupMessages = ${JSON.stringify(translatedSetupMessages).replace(/</g, '\\u003c')};
+    const setupMessagePatterns = ${JSON.stringify(setupMessagePatterns).replace(/</g, '\\u003c')}.map(entry => ({ ...entry, regex: new RegExp(entry.pattern) }));
+    const normalizeSetupLanguage = ${normalizeLanguage.toString()};
 
     function t(key) {
-      return (I18N[currentLang] && I18N[currentLang][key]) || (I18N['zh-CN'] && I18N['zh-CN'][key]) || key;
+      return (I18N[currentLang] && I18N[currentLang][key]) || (I18N.en && I18N.en[key]) || key;
+    }
+
+    function localizeSetupMessage(message) {
+      if (typeof message !== 'string') return message;
+      const key = Object.values(I18N).flatMap(dict => Object.entries(dict)).find(([, value]) => value === message)?.[0];
+      if (key) return t(key);
+      for (const entry of setupMessagePatterns) {
+        const match = entry.regex.exec(message);
+        if (!match) continue;
+        return (setupMessages[entry.messageIndex][currentLang] || setupMessages[entry.messageIndex].en).replace(/\\{(\\w+)\\}/g, (_, parameter) => {
+          const value = match[entry.parameters.indexOf(parameter) + 1] || '';
+          return parameter === 'message' ? localizeSetupMessage(value) : value;
+        });
+      }
+      for (const separator of ['; ', '；']) {
+        if (message.includes(separator)) return message.split(separator).map(localizeSetupMessage).join(currentLang.startsWith('zh') ? '；' : '; ');
+      }
+      return message;
     }
 
     function applySetupLanguage(lang) {
       currentLang = lang;
       document.documentElement.lang = lang;
       const select = document.getElementById('setupLangSelect');
-      if (select) select.value = lang;
+      if (select) {
+        select.value = lang;
+        if (select.setAttribute) select.setAttribute('aria-label', t('setupLanguage'));
+      }
 
       document.title = t('setupPageTitle');
       const title = document.getElementById('setupTitle');
@@ -194,7 +239,18 @@ export async function createSetupPage() {
       if (confInput) confInput.placeholder = t('setupConfirmPasswordPlaceholder');
 
       const submitBtn = document.getElementById('submitButton');
-      if (submitBtn && !submitBtn.disabled) submitBtn.textContent = t('setupSubmitBtn');
+      if (submitBtn) {
+        if (!submitBtn.disabled) submitBtn.textContent = t('setupSubmitBtn');
+        else submitBtn.innerHTML = '<span class="loading-spinner"></span>' + t('setupSubmitting');
+      }
+      for (const id of ['errorMessage', 'successMessage']) {
+        const element = document.getElementById(id);
+        if (!element || !element.textContent) continue;
+        const key = Object.values(I18N).flatMap(dict => Object.entries(dict)).find(([, value]) => value === element.textContent)?.[0];
+        if (key) element.textContent = t(key);
+      }
+      const errorMessage = document.getElementById('errorMessage');
+      if (errorMessage && setupErrorMessage) errorMessage.textContent = localizeSetupMessage(setupErrorMessage);
 
       updatePasswordButtonLabels('password', document.getElementById('togglePasswordBtn'));
       updatePasswordButtonLabels('confirmPassword', document.getElementById('toggleConfirmPasswordBtn'));
@@ -215,35 +271,48 @@ export async function createSetupPage() {
     }
 
     function changeSetupLanguage(lang) {
-      if (!I18N[lang]) return;
+      if (!Object.prototype.hasOwnProperty.call(I18N, lang)) return;
       setupLanguagePreference = lang;
       try {
         localStorage.setItem('language', lang);
       } catch (e) {}
       applySetupLanguage(lang);
+      try {
+        const url = new URL(location.href);
+        url.searchParams.set('lang', lang);
+        window.history.replaceState(null, '', url);
+      } catch { /* Embedded pages may not allow URL updates. */ }
+    }
+
+    function detectSetupLanguage() {
+      const browserLanguages = navigator.languages || [navigator.language];
+      for (const browserLanguage of browserLanguages) {
+        const normalized = normalizeSetupLanguage(browserLanguage);
+        if (normalized) return normalized;
+      }
+      return 'en';
     }
 
     (function initLang() {
-      let lang = 'zh-CN';
+      let saved;
+      let query;
+      try { saved = localStorage.getItem('language'); } catch { /* Browser detection still works. */ }
       try {
-        const saved = localStorage.getItem('language');
-        if (saved && I18N[saved]) {
-          lang = saved;
-          setupLanguagePreference = saved;
-        } else {
-          const nav = (navigator.languages && navigator.languages[0]) || navigator.language || '';
-          if (/^zh\\b/i.test(nav)) {
-            if (/-(tw|hk|mo|hant)/i.test(nav)) {
-              lang = 'zh-TW';
-            } else {
-              lang = 'zh-CN';
-            }
-          } else if (/^en\\b/i.test(nav)) {
-            lang = 'en';
-          }
-        }
-      } catch (e) {}
-      applySetupLanguage(lang);
+        const params = new URL(location.href).searchParams;
+        const requested = params.has('lang') ? params.get('lang') : params.get('language');
+        query = requested !== null ? normalizeSetupLanguage(requested) || 'en' : null;
+      } catch { /* No URL in exported documents. */ }
+      const preferred = [query, saved].find(value => Object.prototype.hasOwnProperty.call(I18N, value));
+      if (preferred) setupLanguagePreference = preferred;
+      applySetupLanguage(preferred || detectSetupLanguage());
+      window.addEventListener('storage', function(event) {
+        if (event.key !== 'language' && event.key !== null) return;
+        let language;
+        try { language = localStorage.getItem('language'); } catch { /* Detect browser language. */ }
+        const valid = Object.prototype.hasOwnProperty.call(I18N, language);
+        setupLanguagePreference = valid ? language : 'auto';
+        applySetupLanguage(valid ? language : detectSetupLanguage());
+      });
     })();
 
     // 检测不安全上下文：HTTP 下浏览器无法保存 Secure Cookie，登录状态无法保持
@@ -303,7 +372,8 @@ export async function createSetupPage() {
     // 显示错误消息
     function showError(message) {
       const errorDiv = document.getElementById('errorMessage');
-      errorDiv.textContent = message;
+      setupErrorMessage = message;
+      errorDiv.textContent = localizeSetupMessage(message);
       errorDiv.style.display = 'block';
 
       // 5秒后自动隐藏
@@ -367,7 +437,8 @@ export async function createSetupPage() {
         const response = await fetch('/api/setup', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Language': currentLang
           },
           body: JSON.stringify({
             password: password,
@@ -379,7 +450,7 @@ export async function createSetupPage() {
         const data = await response.json();
 
         if (response.ok) {
-          showSuccess(data.message || t('setupSuccess'));
+          showSuccess(t('setupSuccess'));
 
           // 2秒后跳转到主页
           setTimeout(() => {
@@ -404,6 +475,7 @@ export async function createSetupPage() {
 	return new Response(html, {
 		headers: {
 			'Content-Type': 'text/html; charset=utf-8',
+			'Content-Language': initialLanguage,
 			'Cache-Control': 'no-cache, no-store, must-revalidate',
 			Pragma: 'no-cache',
 			Expires: '0',

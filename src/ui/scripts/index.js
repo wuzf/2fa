@@ -4,6 +4,7 @@
  */
 
 import { getI18nCode } from './i18n.js';
+import { getSharedTransferMessageLocalizerCode } from './transferMessages.js';
 import { getStateCode } from './state.js';
 import { getTimeCode } from './time.js';
 import { getAuthCode } from './auth.js';
@@ -23,6 +24,7 @@ import { getUtilsCode } from './utils.js';
 import { getPWACode } from './pwa.js';
 import { getModuleLoaderCode } from './moduleLoader.js';
 import { getVersionCheckCode } from './versionCheck.js';
+import { getBrowserExtensionCode } from './browserExtension.js';
 
 export { getI18nCode };
 
@@ -32,7 +34,7 @@ export { getI18nCode };
  * @returns {string} 核心JavaScript代码
  */
 export function getCoreScripts() {
-	return `${getI18nCode()}${getUtilsCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getCoreCode()}${getServiceAggregationCode()}${getPWACode()}${getModuleLoaderCode()}${getVersionCheckCode()}`;
+	return `${getI18nCode()}${getSharedTransferMessageLocalizerCode()}${getUtilsCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getBrowserExtensionCode()}${getCoreCode()}${getServiceAggregationCode()}${getPWACode()}${getModuleLoaderCode()}${getVersionCheckCode()}`;
 }
 
 /**
@@ -43,7 +45,7 @@ export function getCoreScripts() {
 export function getScripts() {
 	// QRCode must come before GoogleMigration, GoogleMigration must come before Export
 	// because Export calls showExportToGoogleModal from GoogleMigration
-	return `${getI18nCode()}${getUtilsCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getQRCodeCode()}${getGoogleMigrationCode()}${getExportCode()}${getImportCode()}${getBackupCode()}${getToolsCode()}${getCoreCode()}${getServiceAggregationCode()}${getPWACode()}${getVersionCheckCode()}`;
+	return `${getI18nCode()}${getSharedTransferMessageLocalizerCode()}${getUtilsCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getBrowserExtensionCode()}${getQRCodeCode()}${getGoogleMigrationCode()}${getExportCode()}${getImportCode()}${getBackupCode()}${getToolsCode()}${getCoreCode()}${getServiceAggregationCode()}${getPWACode()}${getVersionCheckCode()}`;
 }
 
 /**

@@ -8,6 +8,15 @@ export function getQuickOtpScript({ isHOTP, period, remainingTime, validUntil, f
     const copiedEl = document.getElementById('copied');
     let copyMessageTimer = null;
     let copyRequest = 0;
+    let copyMessageKey = 'otpCopyHint';
+    function setCopyMessage(key) {
+      copyMessageKey = key;
+      copiedEl.textContent = standaloneT(key);
+    }
+    window.addEventListener('standalone-language-change', function () {
+      setCopyMessage(copyMessageKey);
+      ${isHOTP ? '' : "if (failed) refreshMessage.textContent = standaloneT('otpRefreshFailed'); updateCountdown();"}
+    });
 
     async function copyCode(next = false) {
       ${isHOTP ? '' : 'updateCountdown();'}
@@ -20,15 +29,15 @@ export function getQuickOtpScript({ isHOTP, period, remainingTime, validUntil, f
         await navigator.clipboard.writeText(value.textContent);
         if (request !== copyRequest) return;
         copiedEl.classList.remove('error');
-        copiedEl.textContent = next ? '下一个验证码已复制' : '验证码已复制';
+        setCopyMessage(next ? 'otpNextCopied' : 'otpCopied');
       } catch {
         if (request !== copyRequest) return;
         copiedEl.classList.add('error');
-        copiedEl.textContent = '复制失败，请检查剪贴板权限';
+        setCopyMessage('otpCopyFailed');
       }
       copyMessageTimer = setTimeout(function () {
         copiedEl.classList.remove('error');
-        copiedEl.textContent = '点击验证码即可复制';
+        setCopyMessage('otpCopyHint');
         copyMessageTimer = null;
       }, 2000);
     }
@@ -79,7 +88,7 @@ export function getQuickOtpScript({ isHOTP, period, remainingTime, validUntil, f
       if (value.textContent !== display) value.textContent = display;
       button.disabled = !canCopy;
       button.setAttribute('aria-busy', String(!canCopy));
-      button.setAttribute('aria-label', canCopy ? label : '正在更新验证码');
+      button.setAttribute('aria-label', canCopy ? label : standaloneT('otpUpdatingCode'));
     }
 
     function updateCountdown() {
@@ -109,11 +118,11 @@ export function getQuickOtpScript({ isHOTP, period, remainingTime, validUntil, f
       const valid = now >= rolloverAt - duration && now < safeUntil && !!current;
       const handoff = now >= safeUntil && now < rolloverAt && !!current && !!upcoming;
       const remaining = valid ? Math.max(0, safeUntil - now) : 0;
-      setCode(tokenEl, tokenValue, valid || handoff ? current : '', '复制当前验证码', valid);
-      setCode(nextEl, nextValue, valid || handoff ? upcoming : '', '复制下一个验证码', valid && !!upcoming);
+      setCode(tokenEl, tokenValue, valid || handoff ? current : '', standaloneT('otpCopyCurrent'), valid);
+      setCode(nextEl, nextValue, valid || handoff ? upcoming : '', standaloneT('otpCopyNext'), valid && !!upcoming);
       progress.style.transform = 'scaleX(' + Math.min(1, remaining / duration) + ')';
       progress.setAttribute('aria-valuenow', String(Math.round(Math.min(1, remaining / duration) * 100)));
-      countdown.textContent = valid ? Math.ceil(remaining / 1000) + ' 秒后更新' : handoff ? '正在切换' : '正在更新';
+      countdown.textContent = valid ? standaloneT('otpCountdown', { seconds: Math.ceil(remaining / 1000) }) : standaloneT(handoff ? 'otpSwitching' : 'otpUpdating');
       if ((!current || !upcoming || !following || (failed && !valid)) && !document.hidden && !inFlight && now >= retryAt) void refreshCodes();
     }
 
@@ -131,6 +140,7 @@ export function getQuickOtpScript({ isHOTP, period, remainingTime, validUntil, f
         const url = new URL(location.href);
         url.searchParams.set('format', 'json');
         url.searchParams.set('preview', '1');
+        url.searchParams.set('lang', standaloneLanguage);
         const response = await fetch(url.href, { cache: 'no-store', signal: controller.signal });
         if (!response.ok) throw new Error('Refresh failed');
         const data = await response.json();
@@ -157,7 +167,7 @@ export function getQuickOtpScript({ isHOTP, period, remainingTime, validUntil, f
       } catch {
         if (generation === clockGeneration) {
           failed = true;
-          refreshMessage.textContent = '暂时无法更新，请检查网络后重试';
+          refreshMessage.textContent = standaloneT('otpRefreshFailed');
           retry.hidden = false;
         }
       } finally {

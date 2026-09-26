@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createMainPage } from '../../src/ui/page.js';
 import { getAuthCode } from '../../src/ui/scripts/auth.js';
+import { getI18nCode } from '../../src/ui/scripts/i18n.js';
+import { getStateCode } from '../../src/ui/scripts/state.js';
 
 async function createLoginHarness() {
 	const html = await (await createMainPage()).text();
@@ -46,17 +48,19 @@ async function createLoginHarness() {
 	const showCenterToast = vi.fn();
 	const loadSecrets = vi.fn();
 	const context = createContext({
+		navigator: { language: 'zh-CN' },
 		document: { getElementById: (id) => elements.get(id) || null },
 		window: { isSecureContext: true },
 		console: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
 		requestAnimationFrame: (callback) => callback(),
 		setTimeout,
 		clearTimeout,
+		AbortController,
 		fetch,
 		showCenterToast,
 		loadSecrets,
 	});
-	runInContext(getAuthCode(), context);
+	runInContext(getI18nCode() + getStateCode() + getAuthCode(), context);
 	return { context, elements, fetch, showCenterToast, loadSecrets };
 }
 
@@ -117,7 +121,7 @@ describe('login dialog with the generated page DOM', () => {
 		fetch.mockRejectedValue(new Error('Network unavailable'));
 
 		await expect(context.handleLoginSubmit()).resolves.toBeUndefined();
-		expect(elements.get('loginError').textContent).toBe('登录失败：Network unavailable');
+		expect(elements.get('loginError').textContent).toBe('网络错误，请稍后重试');
 		expect(elements.get('loginError').style.display).toBe('block');
 	});
 
@@ -128,10 +132,61 @@ describe('login dialog with the generated page DOM', () => {
 		fetch.mockResolvedValue({ ok: true, json: async () => ({ success: true, expiresIn: '30 天' }) });
 
 		await expect(context.handleLoginSubmit()).resolves.toBeUndefined();
-		expect(showCenterToast).toHaveBeenCalledWith('✅', '登录成功，有效期 30 天');
+		expect(showCenterToast).toHaveBeenCalledWith('✅', '登录成功，有效期 30天');
 		expect(loadSecrets).toHaveBeenCalledOnce();
 		expect(elements.get('loginModal').classList.contains('show')).toBe(false);
 		vi.advanceTimersByTime(300);
 		expect(elements.get('loginModal').style.display).toBe('none');
+	});
+
+	it('retranslates a visible server error and password visibility without replacing typed input', async () => {
+		const { context, elements, fetch } = await createLoginHarness();
+		context.setLanguage('en');
+		elements.get('loginToken').value = 'wrong password';
+		fetch.mockResolvedValue({ ok: false, json: async () => ({ message: 'Incorrect password' }) });
+		await context.handleLoginSubmit();
+		expect(elements.get('loginError').textContent).toBe('Incorrect password');
+		elements.get('loginToken').value = 'new draft';
+		context.setLoginPasswordVisibility(true);
+		context.setLanguage('zh-TW');
+		expect(elements.get('loginError').textContent).toBe('密碼錯誤');
+		expect(elements.get('loginToken').value).toBe('new draft');
+		expect(elements.get('loginToken').type).toBe('text');
+		expect(elements.get('loginPasswordToggle').attributes['aria-label']).toBe('隱藏密碼');
+		expect(fetch.mock.calls[0][1].headers['X-Language']).toBe('en');
+	});
+
+	it.each([
+		['object', { Accept: 'application/json', 'x-language': 'en' }],
+		['Headers', new Headers({ Accept: 'application/json', 'x-language': 'en' })],
+		[
+			'tuples',
+			[
+				['Accept', 'application/json'],
+				['x-language', 'en'],
+			],
+		],
+	])('preserves %s headers and adds the current resolved language without mutating options', async (_type, headers) => {
+		const { context, fetch } = await createLoginHarness();
+		context.setLanguage('zh-TW');
+		const options = { method: 'POST', headers };
+		fetch.mockResolvedValue({ ok: true, headers: new Headers() });
+		await context.authenticatedFetch('/api/settings', options);
+		const request = fetch.mock.calls[0][1];
+		expect(new Headers(request.headers).get('Accept')).toBe('application/json');
+		expect(new Headers(request.headers).get('X-Language')).toBe('zh-TW');
+		expect(new Headers(options.headers).get('X-Language')).toBe('en');
+		expect(request.credentials).toBe('include');
+		expect(options).not.toHaveProperty('credentials');
+	});
+
+	it('retranslates parameterized authentication diagnostics and login expiry across languages', async () => {
+		const { context } = await createLoginHarness();
+		context.setLanguage('en');
+		expect(context.localizeAuthMessage('您的请求次数过多，请在 30 秒后重试')).toBe('Too many requests. Please try again in 30 seconds.');
+		expect(context.localizeAuthMessage('30天')).toBe('30 days');
+		context.setLanguage('zh-TW');
+		expect(context.localizeAuthMessage('Password must be at least 8 characters long')).toBe('密碼長度至少為 8 位');
+		expect(context.localizeAuthMessage('30 days')).toBe('30 天');
 	});
 });

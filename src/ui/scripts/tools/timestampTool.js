@@ -77,7 +77,7 @@ export function getTimestampToolCode() {
       updateTimestamp();
     }
 
-    function updateTimestamp() {
+    function updateTimestamp(force = false) {
       const nowMs = Date.now();
       const now = Math.floor(nowMs / 1000);
       const periodMs = currentPeriod * 1000;
@@ -89,14 +89,14 @@ export function getTimestampToolCode() {
       progressBar.style.transform = 'scaleX(' + fraction + ')';
 
       // Text and accessibility values only change on second/period boundaries.
-      if (now !== lastTimestampSecond || currentPeriod !== lastTimestampPeriod) {
+      if (force || now !== lastTimestampSecond || currentPeriod !== lastTimestampPeriod) {
         const remaining = Math.ceil(remainingMs / 1000);
         document.getElementById('currentTimestamp').textContent = now;
-        document.getElementById('totpPeriod').textContent = currentPeriod + ' 秒';
+        document.getElementById('totpPeriod').textContent = t('toolSeconds', { count: currentPeriod });
         document.getElementById('totpCounter').textContent = Math.floor(nowMs / periodMs);
-        document.getElementById('remainingTime').textContent = remaining + ' 秒';
+        document.getElementById('remainingTime').textContent = t('toolSeconds', { count: remaining });
         progressBar.setAttribute('aria-valuenow', String(Math.round(fraction * 100)));
-        progressBar.setAttribute('aria-valuetext', remaining + ' 秒');
+        progressBar.setAttribute('aria-valuetext', t('toolSeconds', { count: remaining }));
         lastTimestampSecond = now;
         lastTimestampPeriod = currentPeriod;
       }

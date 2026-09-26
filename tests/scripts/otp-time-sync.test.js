@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { getOTPCode } from '../../src/ui/scripts/otp.js';
 import { getTimeCode } from '../../src/ui/scripts/time.js';
+import { getI18nCode } from '../../src/ui/scripts/i18n.js';
 
 const SERVER_BASE_MS = Date.UTC(2026, 0, 1);
 const STORAGE_KEY = '2fa-clock-sync-v1';
@@ -140,7 +141,8 @@ function createHarness({
 		'console',
 		'secrets',
 		'otpIntervals',
-		`${getTimeCode()}${getOTPCode()}; return {
+		`${getI18nCode()}${getTimeCode()}${getOTPCode()}; return {
+			setLanguage,
 			TrustedClock,
 			trustedClock,
 			getCorrectedNowMs,
@@ -469,6 +471,13 @@ describe('trusted browser clock', () => {
 		expect(elements.clockWarning.hidden).toBe(false);
 		expect(elements.clockWarning.classList.toggle).toHaveBeenLastCalledWith('show', true);
 		expect(elements.clockWarningText.textContent).not.toBe('');
+		const calls = harness.fetch.mock.calls.length;
+		harness.api.setLanguage('en');
+		expect(elements.clockWarningText.textContent).toContain('Using the previous time calibration (just now)');
+		harness.api.setLanguage('zh-TW');
+		expect(elements.clockWarningText.textContent).toContain('正在使用上次時間校準（剛剛）');
+		expect(harness.fetch).toHaveBeenCalledTimes(calls);
+		expect(harness.api.trustedClock.offsetMs).toBe(30_000);
 	});
 
 	it.each([

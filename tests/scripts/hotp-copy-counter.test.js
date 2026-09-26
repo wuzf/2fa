@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { getI18nCode } from '../../src/ui/scripts/i18n.js';
 import { getCoreCode } from '../../src/ui/scripts/core.js';
 import { getOTPCode } from '../../src/ui/scripts/otp.js';
 import { getStateCode } from '../../src/ui/scripts/state.js';
@@ -73,6 +74,7 @@ async function createHarness(authenticatedFetch, options = {}) {
 	};
 	const window = { addEventListener: vi.fn(), matchMedia: vi.fn(() => ({ matches: false })) };
 	const navigator = {
+		language: 'zh-CN',
 		onLine: options.onLine ?? true,
 		clipboard: { writeText: vi.fn(async () => {}) },
 	};
@@ -96,6 +98,7 @@ async function createHarness(authenticatedFetch, options = {}) {
       function getTrustedClockGeneration() { return 0; }
       function getTrustedMonotonicNowMs() { return 0; }
       async function ensureServerTimeSynchronized() { return true; }
+      ${getI18nCode()}
       ${getStateCode()}
       secrets = initialSecrets;
       ${getOTPCode()}
@@ -331,7 +334,7 @@ describe('HOTP copy counter persistence', () => {
 		const authenticatedFetch = vi.fn(() => pendingGet.promise);
 		const harness = await createHarness(authenticatedFetch);
 		const load = harness.api.loadSecrets();
-		await Promise.resolve();
+		await flushMicrotasks();
 		harness.elements['otp-hotp-1'].textContent = '------';
 
 		await expect(harness.api.copyOTP('hotp-1')).resolves.toBe(false);

@@ -25,6 +25,20 @@ export function getUICode() {
     let toastTimeout = null;
     let isToastVisible = false;
     let lastToastTime = 0;
+    let toastGeneration = 0;
+
+    function refreshToastLanguage() {
+      toastGeneration += 1;
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = null;
+      isToastVisible = false;
+      lastToastTime = 0;
+      const toast = document.getElementById('centerToast');
+      if (toast) {
+        toast.classList.remove('show');
+        toast.querySelector('.toast-message').textContent = '';
+      }
+    }
 
     // 显示中间提示
     function showCenterToast(icon, message) {
@@ -35,6 +49,7 @@ export function getUICode() {
         return;
       }
       lastToastTime = now;
+      const generation = ++toastGeneration;
       const toast = document.getElementById('centerToast');
       const iconElement = toast.querySelector('.toast-icon');
       const messageElement = toast.querySelector('.toast-message');
@@ -55,11 +70,13 @@ export function getUICode() {
         toast.classList.remove('show');
         // 等待隐藏动画完成后再显示新的toast
         setTimeout(() => {
+          if (generation !== toastGeneration) return;
           toast.classList.add('show');
           isToastVisible = true;
 
           // 设置新的定时器
           toastTimeout = setTimeout(() => {
+            if (generation !== toastGeneration) return;
             toast.classList.remove('show');
             isToastVisible = false;
             toastTimeout = null;
@@ -72,6 +89,7 @@ export function getUICode() {
 
         // 设置定时器
         toastTimeout = setTimeout(() => {
+          if (generation !== toastGeneration) return;
           toast.classList.remove('show');
           isToastVisible = false;
           toastTimeout = null;
@@ -163,10 +181,10 @@ export function getUICode() {
       title.textContent = typeof t === 'function' ? t(titleKey) : (editingId ? '编辑密钥' : '添加新密钥');
 
       const submitBtn = document.getElementById('submitBtn');
-      const submitKey = submitBtn.disabled ? 'saving' : (editingId ? 'update' : 'save');
+      const submitKey = secretDialogSubmission ? 'saving' : (editingId ? 'update' : 'save');
       submitBtn.setAttribute('data-i18n', submitKey);
       submitBtn.textContent = typeof t === 'function' ? t(submitKey)
-        : (submitBtn.disabled ? '保存中...' : (editingId ? '更新' : '保存'));
+        : (secretDialogSubmission ? '保存中...' : (editingId ? '更新' : '保存'));
       syncSecretAdvancedInfo();
     }
 
@@ -182,21 +200,67 @@ export function getUICode() {
           : '大多数2FA应用使用默认设置：TOTP、6位、30秒、SHA1算法');
     }
 
+    // Options added by selectSecretFormValue() for the account being shown.
+    function removeTemporarySecretFormOptions() {
+      const form = document.getElementById('secretForm');
+      if (!form) return;
+      form.querySelectorAll('option[data-temporary-value]').forEach(option => option.remove());
+    }
+
+    function showSecretModal(onShow) {
+      const modal = document.getElementById('secretModal');
+      if (!modal) return;
+      const generation = ++secretDialogGeneration;
+      secretDialogSubmission = null;
+      secretDialogQueuedOperationId = null;
+      secretDialogStoredParams = null;
+      removeTemporarySecretFormOptions();
+      clearTimeout(secretDialogShowTimer);
+      clearTimeout(secretDialogHideTimer);
+      secretDialogShowTimer = null;
+      secretDialogHideTimer = null;
+      document.getElementById('submitBtn').disabled = false;
+      modal.style.display = 'flex';
+      if (!secretDialogOpen) disableBodyScroll();
+      secretDialogOpen = true;
+      onShow();
+      syncSecretDialogTranslations();
+      secretDialogShowTimer = setTimeout(() => {
+        if (!secretDialogOpen || secretDialogGeneration !== generation) return;
+        secretDialogShowTimer = null;
+        modal.classList.add('show');
+      }, 10);
+    }
+
     function showAddModal() {
-      showModal('secretModal', () => {
+      showSecretModal(() => {
         editingId = null;
         document.getElementById('secretForm').reset();
         document.getElementById('secretId').value = '';
-        syncSecretDialogTranslations();
       });
     }
 
     // 隐藏添加/编辑密钥模态框
     function hideSecretModal() {
       const modal = document.getElementById('secretModal');
-      if (!modal || !modal.classList.contains('show')) return;
+      if (!modal || !secretDialogOpen) return;
+      const generation = ++secretDialogGeneration;
+      secretDialogOpen = false;
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = false;
+      secretDialogSubmission = null;
+      syncSecretDialogTranslations();
+      clearTimeout(secretDialogShowTimer);
+      clearTimeout(secretDialogHideTimer);
+      secretDialogShowTimer = null;
       modal.classList.remove('show');
-      setTimeout(() => modal.style.display = 'none', 300);
+      secretDialogHideTimer = setTimeout(() => {
+        if (secretDialogGeneration !== generation || secretDialogOpen) return;
+        secretDialogHideTimer = null;
+        modal.style.display = 'none';
+        // Removed after the fade so the closing dialog never flips to a default.
+        removeTemporarySecretFormOptions();
+      }, 300);
       enableBodyScroll();
     }
 

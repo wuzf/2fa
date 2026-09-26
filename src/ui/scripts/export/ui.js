@@ -14,7 +14,7 @@ export function getExportUICode() {
     // 导出所有密钥 - 显示格式选择
     function exportAllSecrets() {
       if (secrets.length === 0) {
-        showCenterToast('❌', '没有密钥可以导出');
+        showCenterToast('❌', t('transferNoExport'));
         return;
       }
       showExportFormatModal();
@@ -34,8 +34,10 @@ export function getExportUICode() {
     }
 
     // 显示二级格式选择模态框
-    function showSubFormatModal(multiFormatId) {
-      const config = subFormatConfigs[multiFormatId];
+    let currentSubFormatId = null;
+    function showSubFormatModal(multiFormatId, refreshOnly = false) {
+      currentSubFormatId = multiFormatId;
+      const config = getSubFormatConfigs()[multiFormatId];
       if (!config) {
         console.error('未找到格式配置:', multiFormatId);
         return;
@@ -43,13 +45,14 @@ export function getExportUICode() {
 
       const modal = document.getElementById('subFormatModal');
       const title = document.getElementById('subFormatTitle');
-      const optionsContainer = document.getElementById('subFormatOptions');
+      const optionsContainer = document.getElementById('subFormatOptions') || document.getElementById('subFormatList');
 
       title.textContent = config.title;
       optionsContainer.innerHTML = '';
 
       config.options.forEach(opt => {
-        const optionDiv = document.createElement('div');
+        const optionDiv = document.createElement('button');
+        optionDiv.type = 'button';
         optionDiv.className = 'format-option';
         optionDiv.onclick = () => selectSubFormat(opt.id);
         optionDiv.innerHTML =
@@ -57,12 +60,18 @@ export function getExportUICode() {
           '<div class="format-info">' +
           '  <div class="format-name">' + opt.name + ' <span class="format-ext">' + opt.ext + '</span></div>' +
           '  <div class="format-desc">' + opt.desc + '</div>' +
-          '  <div class="format-compat">兼容: ' + opt.compat + '</div>' +
+          '  <div class="format-compat">' + escapeHTML(t('transferCompat')) + opt.compat + '</div>' +
           '</div>';
         optionsContainer.appendChild(optionDiv);
       });
 
-      showModal('subFormatModal');
+      if (!refreshOnly) showModal('subFormatModal');
+    }
+
+    function refreshExportTranslations() {
+      if (currentSubFormatId && document.getElementById('subFormatModal')?.classList.contains('show')) {
+        showSubFormatModal(currentSubFormatId, true);
+      }
     }
 
     // 隐藏二级格式选择模态框
@@ -111,7 +120,7 @@ export function getExportUICode() {
 
     // 显示导出成功提示
     function showExportSuccess(count, format) {
-      showCenterToast('✅', '成功导出 ' + count + ' 个密钥 (' + format + ')');
+      showCenterToast('✅', t('transferExported', { count, format }));
     }
 `;
 }

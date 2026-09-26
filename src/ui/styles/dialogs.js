@@ -283,6 +283,7 @@ export function getDialogStyles() {
     .modal .settings-tabs { width: 164px; padding: 8px 12px; background: var(--dialog-subtle); }
     .modal .settings-tab { position: relative; width: 100%; border: 0; border-radius: 4px; background: transparent; color: var(--dialog-text); padding: 10px 12px; min-height: 40px; margin-bottom: 4px; text-align: left; font: inherit; }
     .modal .settings-tab.active { background: var(--dialog-hover); font-weight: 600; }
+    .modal .settings-tab-text { white-space: normal; overflow: visible; overflow-wrap: anywhere; hyphens: auto; }
     .modal .settings-tab.active::before { content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--dialog-brand); }
     .modal .settings-content { padding: 8px 24px 24px; }
     .modal .settings-modal-actions { display: flex; flex-shrink: 0; justify-content: flex-end; padding: 16px 24px; background: var(--dialog-subtle); border-top: 1px solid var(--dialog-line); }
@@ -424,6 +425,27 @@ export function getDialogStyles() {
     .center-toast .toast-content { background: var(--dialog-surface); border: 1px solid var(--dialog-line); border-radius: 6px; box-shadow: var(--dialog-shadow); padding: 16px 24px; gap: 12px; backdrop-filter: none; text-align: left; }
     .center-toast .toast-icon { display: flex; color: var(--dialog-brand); margin: 0; }
     .center-toast .toast-message { color: var(--dialog-text); font-size: var(--dialog-body-size); font-weight: 400; }
+    .modal .extension-description { margin: 0 0 8px; }
+    .modal .extension-caption { margin: 0; color: var(--dialog-muted); font-size: var(--dialog-caption-size); line-height: 1.6; }
+    .modal .extension-store-links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0 24px; }
+    .modal .extension-store-link { display: flex; align-items: center; justify-content: center; text-decoration: none; text-align: center; }
+    .modal .extension-connection { padding-top: 20px; border-top: 1px solid var(--dialog-line); }
+    .modal .extension-instance-label { display: block; margin-bottom: 8px; font-weight: 600; }
+    .modal .extension-instance-controls { display: flex; gap: 8px; }
+    .modal .extension-instance-controls input { flex: 1; min-width: 0; }
+    .modal .extension-instance-controls .btn { flex: 0 0 auto; }
+    .modal .extension-copy-status { min-height: 24px; padding-top: 4px; }
+    .modal .extension-help-links { margin-top: 16px; font-size: var(--dialog-caption-size); }
+    .modal .extension-help-links a { color: var(--dialog-brand); text-underline-offset: 3px; }
+    .modal .extension-help-links a:hover { color: var(--dialog-brand-hover); }
+    @media (max-width: 480px) {
+      .modal .extension-store-links { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    }
+    @media (max-width: 400px) {
+      .modal .extension-store-links { gap: 8px; }
+      .modal .extension-instance-controls { flex-wrap: wrap; }
+      .modal .extension-instance-controls input { flex-basis: 100%; }
+    }
     @media (max-width: 768px) {
       .modal { --dialog-title-size: 18px; }
       .modal:not(.confirm-dialog-modal) { align-items: center; padding: 16px; }
@@ -447,7 +469,7 @@ export function getDialogStyles() {
       .modal .settings-tabs { width: auto; padding: 0 12px 12px; background: var(--dialog-surface); gap: 4px; }
       .modal .settings-layout { flex-direction: column; }
       .modal .settings-tabs { display: flex; flex-shrink: 0; border-right: 0; }
-      .modal .settings-tab { flex: 1; }
+      .modal .settings-tab { flex: 1; min-width: 0; }
       .modal .settings-tab-text { display: inline; }
       .modal .settings-tab { padding: 8px 10px; justify-content: center; border: 0; margin: 0; font-size: var(--dialog-body-size); }
       .modal .settings-tab.active::before { left: 12px; right: 12px; top: auto; bottom: 0; height: 3px; width: auto; }

@@ -33,7 +33,11 @@ function createHarness(language) {
 		renderFilteredSecrets: async () => {},
 	});
 	runInContext(
-		`const SERVICE_LOGOS = ${JSON.stringify(SERVICE_LOGOS)};` + getI18nCode() + getServiceAggregationCode() + getSearchCode(),
+		`const SERVICE_LOGOS = ${JSON.stringify(SERVICE_LOGOS)};` +
+			getI18nCode() +
+			getServiceAggregationCode() +
+			getSearchCode() +
+			'Object.assign(globalThis, { groupSecretsByServiceFamily, getServiceFamilyMetadata });',
 		context,
 	);
 	return context;

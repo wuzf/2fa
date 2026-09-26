@@ -28,6 +28,8 @@ function createHarness({ language, settings = { language: 'en' }, fetchImpl } = 
 		localStorage.setItem('language', language);
 	}
 	const listeners = new Map();
+	const pageWindow = new EventTarget();
+	pageWindow.isSecureContext = true;
 	const fetch = vi.fn(async (url, options) => {
 		if (fetchImpl) {
 			return fetchImpl(url, options);
@@ -58,7 +60,7 @@ function createHarness({ language, settings = { language: 'en' }, fetchImpl } = 
 			querySelectorAll: document.querySelectorAll.bind(document),
 			addEventListener: (type, listener) => listeners.set(type, listener),
 		},
-		window: { addEventListener: vi.fn(), isSecureContext: true },
+		window: pageWindow,
 		navigator: { language: 'zh-CN', onLine: true },
 		localStorage,
 		console: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -82,6 +84,7 @@ function createHarness({ language, settings = { language: 'en' }, fetchImpl } = 
 	runInContext(getStateCode() + getI18nCode() + getSettingsCode() + getAuthCode() + getCoreCode(), api);
 	return {
 		api,
+		window: pageWindow,
 		fetch,
 		settings,
 		startPage: async () => {
@@ -201,6 +204,54 @@ describe('saved language after authentication', () => {
 });
 
 describe('startup language read races', () => {
+	it.each(['syncLanguagePreferenceAfterAuth', 'loadPreferences'])(
+		'keeps a newer cross-tab language when %s returns an older language',
+		async (load) => {
+			const reading = deferred();
+			const h = createHarness({ language: 'en', fetchImpl: () => reading.promise });
+			const loading = h.api[load]();
+			localStorage.setItem('language', 'ja');
+			h.window.dispatchEvent(new window.StorageEvent('storage', { key: 'language', oldValue: 'en', newValue: 'ja' }));
+			expect(h.api.getLanguage()).toBe('ja');
+
+			reading.resolve(reply({ language: 'en', maxBackups: 50 }));
+			await loading;
+			expect(h.api.getLanguage()).toBe('ja');
+			expect(document.documentElement.lang).toBe('ja');
+			expect(document.getElementById('settingsLanguage').value).toBe('ja');
+			expect(localStorage.getItem('language')).toBe('ja');
+			if (load === 'loadPreferences') {
+				expect(document.getElementById('settingsMaxBackups').value).toBe('50');
+			}
+		},
+	);
+
+	it.each(['language', null])('keeps an automatic preference after cross-tab storage removal with key %s', async (key) => {
+		const reading = deferred();
+		const h = createHarness({ language: 'en', fetchImpl: () => reading.promise });
+		const loading = h.api.syncLanguagePreferenceAfterAuth();
+		localStorage.clear();
+		h.window.dispatchEvent(new window.StorageEvent('storage', { key, oldValue: 'en', newValue: null }));
+		expect(h.api.getLanguagePreference()).toBe('auto');
+
+		reading.resolve(reply({ language: 'en' }));
+		await loading;
+		expect(h.api.getLanguagePreference()).toBe('auto');
+		expect(h.api.getLanguage()).toBe('zh-CN');
+		expect(localStorage.getItem('language')).toBeNull();
+	});
+
+	it('keeps a language applied directly while the startup request is pending', async () => {
+		const reading = deferred();
+		const h = createHarness({ fetchImpl: () => reading.promise });
+		const loading = h.api.syncLanguagePreferenceAfterAuth();
+		h.api.setLanguage('zh-TW');
+		reading.resolve(reply({ language: 'en' }));
+		await loading;
+		expect(h.api.getLanguage()).toBe('zh-TW');
+		expect(localStorage.getItem('language')).toBe('zh-TW');
+	});
+
 	it('keeps a language selected and saved while the startup request is pending', async () => {
 		const reading = deferred();
 		const h = createHarness({

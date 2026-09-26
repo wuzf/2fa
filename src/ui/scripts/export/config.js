@@ -12,71 +12,71 @@ export function getExportConfigCode() {
     // ========== 导出配置模块 ==========
 
     // 需要二级选择的格式配置
-    const subFormatConfigs = {
+    function getSubFormatConfigs() { return {
       'freeotp-plus-multi': {
-        title: '选择 FreeOTP+ 导出格式',
+        title: t('transferFreeOTPFormat'),
         options: [
           {
             id: 'freeotp-plus',
             icon: '🔓',
-            name: 'FreeOTP+ 原生',
+            name: t('transferFreeOTPNative'),
             ext: '.json',
-            desc: '社区版原生格式，明文JSON文件',
+            desc: t('transferFreeOTPDesc'),
             compat: 'FreeOTP+ (Android)'
           },
           {
             id: 'freeotp-txt',
             icon: '🔓',
-            name: '标准格式',
+            name: t('transferStandardFormat'),
             ext: '.txt',
-            desc: 'OTPAuth URL格式，兼容所有验证器',
-            compat: '通用'
+            desc: t('transferOTPAuthDesc'),
+            compat: t('transferUniversal')
           }
         ]
       },
       'aegis-multi': {
-        title: '选择 Aegis 导出格式',
+        title: t('transferAegisFormat'),
         options: [
           {
             id: 'aegis',
             icon: '🔓',
-            name: 'Aegis 原生',
+            name: t('transferAegisNative'),
             ext: '.json',
-            desc: 'Aegis Authenticator 完整格式',
+            desc: t('transferAegisDesc'),
             compat: 'Aegis (Android)'
           },
           {
             id: 'aegis-txt',
             icon: '🔓',
-            name: '标准格式',
+            name: t('transferStandardFormat'),
             ext: '.txt',
-            desc: 'OTPAuth URL格式，兼容所有验证器',
-            compat: '通用'
+            desc: t('transferOTPAuthDesc'),
+            compat: t('transferUniversal')
           }
         ]
       },
       'authpro-multi': {
-        title: '选择 Authenticator Pro 导出格式',
+        title: t('transferAuthProFormat'),
         options: [
           {
             id: 'authpro',
             icon: '🔓',
-            name: 'Auth Pro 原生',
+            name: t('transferAuthProNative'),
             ext: '.authpro',
-            desc: 'Stratum 原生格式',
+            desc: t('transferStratumDesc'),
             compat: 'Authenticator Pro'
           },
           {
             id: 'authenticator-txt',
             icon: '🔓',
-            name: '标准格式',
+            name: t('transferStandardFormat'),
             ext: '.txt',
-            desc: 'OTPAuth URL格式，兼容所有验证器',
-            compat: '通用'
+            desc: t('transferOTPAuthDesc'),
+            compat: t('transferUniversal')
           }
         ]
       }
-    };
+    }; }
 
     /**
      * 根据排序选项对密钥进行排序
@@ -132,7 +132,7 @@ export function getExportConfigCode() {
         exportSecretsAsFormat(secretsToExport, format);
       } catch (error) {
         console.error('导出失败:', error);
-        showCenterToast('❌', '导出失败：' + error.message);
+        showCenterToast('❌', t('transferExportFailedPrefix') + error.message);
       }
     }
 `;

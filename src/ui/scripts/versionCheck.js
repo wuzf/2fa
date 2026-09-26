@@ -17,6 +17,15 @@ export function getVersionCheckCode() {
 	return `// ==================== 版本显示与新版本检测 ====================
 
     window.APP_VERSION = '${APP_VERSION}';
+    let availableVersion = null;
+
+    function refreshVersionLanguage() {
+      const badge = document.getElementById('footerUpdateBadge');
+      if (badge && availableVersion) {
+        badge.textContent = t('versionUpdateAvailable', { version: availableVersion });
+        badge.style.display = '';
+      }
+    }
 
     // 与 src/utils/version.js 的 compareVersions 逻辑一致。
     // 不能用 compareVersions.toString() 内联：esbuild 打包会往函数体注入 __name() 辅助调用，浏览器端没有该函数
@@ -87,11 +96,8 @@ export function getVersionCheckCode() {
       }
 
       if (compareVersions(latest, window.APP_VERSION) > 0) {
-        const badge = document.getElementById('footerUpdateBadge');
-        if (badge) {
-          badge.textContent = '🆕 有新版本 ' + (latest.startsWith('v') ? latest : 'v' + latest);
-          badge.style.display = '';
-        }
+        availableVersion = latest.startsWith('v') ? latest : 'v' + latest;
+        refreshVersionLanguage();
       }
     }
 

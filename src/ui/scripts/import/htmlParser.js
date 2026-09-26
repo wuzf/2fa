@@ -162,7 +162,14 @@ export function getHTMLParserCode() {
               params.set('secret', secret);
               if (issuer) params.set('issuer', issuer);
 
-              const otpauthUrl = 'otpauth://totp/' + label + '?' + params.toString();
+              const type = cells.length >= 8 && cells[3].textContent.trim().toUpperCase() === 'HOTP' ? 'hotp' : 'totp';
+              if (cells.length >= 8) {
+                params.set('digits', cells[4].textContent.trim() || '6');
+                params.set('algorithm', cells[6].textContent.trim() || 'SHA1');
+                if (type === 'hotp') params.set('counter', cells[7].textContent.trim() || '0');
+                else params.set('period', cells[5].textContent.trim() || '30');
+              }
+              const otpauthUrl = 'otpauth://' + type + '/' + label + '?' + params.toString();
               otpauthUrls.push(otpauthUrl);
 
             } catch (err) {
