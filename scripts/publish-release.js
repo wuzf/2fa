@@ -7,12 +7,12 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { isMainModule } from './is-main-module.js';
+import { releaseAssetNames } from './release-assets.js';
 
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const tagPattern = /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 const repoPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const commitPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
-const assetNames = Object.freeze(['worker.js', 'worker.metadata.json', 'DEPLOY.md']);
 // Tags pushed together publish in parallel (the workflow's concurrency group is
 // per tag). A run can only take the latest mark from a release published between
 // its own latest check and its own publication, a few seconds apart, and its
@@ -97,7 +97,7 @@ function assertRelease(release, tag) {
 }
 
 function assertAssets(release, assets, { verifyContents = false, onlyAllowed = false } = {}) {
-	if (onlyAllowed && release.assets.some((asset) => !assetNames.includes(asset.name))) {
+	if (onlyAllowed && release.assets.some((asset) => !assets.some((local) => local.name === asset.name))) {
 		throw new Error('Draft contains unexpected assets; review them before publishing');
 	}
 	for (const local of assets) {
@@ -125,6 +125,10 @@ export function publishRelease({ tag, repo, rootDir = defaultRoot, run = execFil
 	const notesPath = join(root, 'docs', 'releases', `${tag}.md`);
 	readNonemptyFile(notesPath);
 	const packageJson = JSON.parse(readNonemptyFile(join(root, 'package.json')).toString('utf8'));
+	// The Worker files and one extension package per browser, named with the
+	// extension's own version.
+	const extensionManifest = JSON.parse(readNonemptyFile(join(root, 'extension', 'manifest.base.json')).toString('utf8'));
+	const assetNames = releaseAssetNames(extensionManifest.version);
 	const assets = assetNames.map((name) => {
 		const path = join(root, 'dist', name);
 		const content = readNonemptyFile(path);

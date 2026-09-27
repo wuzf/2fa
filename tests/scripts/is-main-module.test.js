@@ -17,7 +17,7 @@ beforeEach(() => {
 	real = join(root, '真实 目录');
 	mkdirSync(join(real, 'scripts'), { recursive: true });
 	writeFileSync(join(real, 'package.json'), JSON.stringify({ type: 'module' }));
-	for (const name of ['release.js', 'publish-release.js', 'is-main-module.js']) {
+	for (const name of ['release.js', 'publish-release.js', 'release-assets.js', 'is-main-module.js']) {
 		copyFileSync(new URL(`../../scripts/${name}`, import.meta.url), join(real, 'scripts', name));
 	}
 	link = join(root, 'link');

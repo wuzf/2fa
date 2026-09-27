@@ -16,7 +16,7 @@
  *
  * 发版流程：
  *   1. 检查 tag 未存在、发布说明已准备、版本相关文件无未提交修改
- *   2. 按 Publish release 工作流的顺序运行 lint、全量测试（--skip-tests 跳过）和 Worker 构建；
+ *   2. 按 Publish release 工作流的顺序运行 lint、全量测试（--skip-tests 跳过）、Worker 构建和扩展打包；
  *      任一失败即中止，此时尚未改动版本号，也没有提交或 tag
  *   3. 复查工作区，确认上述检查没有产生需要提交的文件（构建产物位于被忽略的 dist/）
  *   4. bump package.json + package-lock.json
@@ -68,6 +68,7 @@ export const RELEASE_CHECKS = Object.freeze([
 	Object.freeze({ label: 'ESLint 检查', command: 'npm run lint', skippable: false }),
 	Object.freeze({ label: '全量测试', command: 'npm test -- --run', skippable: true }),
 	Object.freeze({ label: 'Worker 构建', command: 'npm run build', skippable: false }),
+	Object.freeze({ label: '扩展打包', command: 'npm run package:extension', skippable: false }),
 ]);
 
 function run(cmd, options = {}) {

@@ -48,7 +48,7 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      # scripts/release.js runs these same lint, test, and build commands before creating the tag.
+      # scripts/release.js runs these same lint, test, build, and packaging commands before creating the tag.
       - name: Lint
         run: npm run lint
 
@@ -57,6 +57,9 @@ jobs:
 
       - name: Build Worker release assets
         run: npm run build
+
+      - name: Package browser extensions
+        run: npm run package:extension
 
       - name: Publish notes and assets
         env:

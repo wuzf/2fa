@@ -16,6 +16,7 @@
     "build:minify": "node scripts/build-release.js --minify",
     "build:extension": "node scripts/build-extension.js",
     "icons:extension": "node scripts/generate-extension-icons.js",
+    "package:extension": "node scripts/package-extensions.js",
     "test": "vitest",
     "test:extension": "vitest run tests/extension",
     "test:extension:coverage": "vitest run --config vitest.extension.config.js --coverage",

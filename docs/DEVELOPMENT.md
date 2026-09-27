@@ -822,6 +822,9 @@ npx playwright install chromium
 # 重新构建 Chrome / Edge 并运行 Chromium E2E
 npm run test:extension:e2e
 
+# 构建三个浏览器并打包发布用的安装包：dist/2fa-extension-{chrome,edge,firefox}-<扩展版本>.zip
+npm run package:extension
+
 # 项目回归和静态检查
 npm test -- --run
 npm run lint
@@ -1054,12 +1057,12 @@ npx wrangler secret list
 **发布流程**:
 
 1. 在 `docs/releases/v<版本号>.md` 编写本次发布说明，包括功能、修复、升级方法和完整变更链接。GitHub Release 标题统一使用标签名（如 `v1.9.0`），功能摘要放在说明正文；手动补发也遵循此规则。
-2. 确认功能修改已提交，再运行 `npm run release:patch`、`npm run release:minor`、`npm run release:major` 或 `node scripts/release.js <版本号>`。除本次发布说明与未暂存的本地 `wrangler.toml` 配置外，工作区须保持干净。脚本先依次运行 `npm run lint`、全量测试和 Worker 构建，与 **Publish release** 工作流的检查相同，任一失败即中止且不改动版本号；随后同步版本文件，把发布说明一并提交并创建对应标签；此时仅完成本地准备。`--skip-tests` 只跳过测试，lint 与构建照常运行。
+2. 确认功能修改已提交，再运行 `npm run release:patch`、`npm run release:minor`、`npm run release:major` 或 `node scripts/release.js <版本号>`。除本次发布说明与未暂存的本地 `wrangler.toml` 配置外，工作区须保持干净。脚本先依次运行 `npm run lint`、全量测试、Worker 构建和扩展打包（`npm run package:extension`），与 **Publish release** 工作流的检查相同，任一失败即中止且不改动版本号；随后同步版本文件，把发布说明一并提交并创建对应标签；此时仅完成本地准备。`--skip-tests` 只跳过测试，lint 与构建照常运行。
 3. 确认正式发布后，按脚本输出执行 `git push --atomic origin HEAD v<版本号>`，只推送本次标签。已单独完成版本提交时，可先在该提交上创建对应标签，再执行同样的推送步骤。
-4. 标签推送触发 **Publish release** 工作流，从该标签源码运行检查和测试、构建 `worker.js`、`worker.metadata.json` 与 `DEPLOY.md`，再使用对应版本说明创建 GitHub Release。三个附件上传完成后才公开发布；推送标签本身不代表 Release 已完成。
-5. 检查工作流结果及 [Releases](https://github.com/wuzf/2fa/releases) 页面，确认版本说明、三个附件及最新版本标记正确。失败时排查后重跑工作流；草稿可继续上传，已完整发布的版本不会被重复覆盖，补发较旧版本也不会替换更高版本的最新标记。同时推送多个标签时，各标签的工作流并行运行、互不取消。发布后，如果最新版本标记停在同批（前后两分钟内发布）较低的版本上，工作流会把它移到同批最高的稳定版本；标记在其他版本上时视为手动设置，保持不变。重跑已发布版本的工作流时，如果标记仍停在该版本上，也会补做这项检查。
+4. 标签推送触发 **Publish release** 工作流，从该标签源码运行检查和测试、构建 `worker.js`、`worker.metadata.json` 与 `DEPLOY.md`，打包 Chrome、Edge、Firefox 扩展安装包 `2fa-extension-<浏览器>-<扩展版本>.zip`，再使用对应版本说明创建 GitHub Release。六个附件上传完成后才公开发布；推送标签本身不代表 Release 已完成。
+5. 检查工作流结果及 [Releases](https://github.com/wuzf/2fa/releases) 页面，确认版本说明、六个附件及最新版本标记正确。失败时排查后重跑工作流；草稿可继续上传，已完整发布的版本不会被重复覆盖，补发较旧版本也不会替换更高版本的最新标记。同时推送多个标签时，各标签的工作流并行运行、互不取消。发布后，如果最新版本标记停在同批（前后两分钟内发布）较低的版本上，工作流会把它移到同批最高的稳定版本；标记在其他版本上时视为手动设置，保持不变。重跑已发布版本的工作流时，如果标记仍停在该版本上，也会补做这项检查。
 
-GitHub Release 与 Cloudflare 部署是独立步骤，部署仍使用 `npm run deploy`。Release 工作流不修改 KV 或 Secrets，也不向 Chrome、Edge、Firefox 商店上传扩展。
+GitHub Release 与 Cloudflare 部署是独立步骤，部署仍使用 `npm run deploy`。Release 工作流不修改 KV 或 Secrets，也不向 Chrome、Edge、Firefox 商店上传扩展；Release 附带的扩展安装包供用户手动安装，商店版本仍需单独提交。
 
 ### 依赖管理
 

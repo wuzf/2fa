@@ -10,7 +10,8 @@ const tag = 'v1.10.0';
 const repo = 'owner/2fa';
 const commit = 'a'.repeat(40);
 const otherCommit = 'b'.repeat(40);
-const names = ['worker.js', 'worker.metadata.json', 'DEPLOY.md'];
+const extensionPackages = ['chrome', 'edge', 'firefox'].map((browser) => `2fa-extension-${browser}-1.1.1.zip`);
+const names = ['worker.js', 'worker.metadata.json', 'DEPLOY.md', ...extensionPackages];
 let rootDir;
 
 function commandError(message = 'release not found') {
@@ -184,11 +185,16 @@ beforeEach(() => {
 	rootDir = mkdtempSync(join(tmpdir(), '2fa-publish-release-'));
 	mkdirSync(join(rootDir, 'docs', 'releases'), { recursive: true });
 	mkdirSync(join(rootDir, 'dist'));
+	mkdirSync(join(rootDir, 'extension'));
 	writeFileSync(join(rootDir, 'docs', 'releases', `${tag}.md`), '- Release notes\n');
 	writeFileSync(join(rootDir, 'package.json'), JSON.stringify({ version: '1.10.0' }));
 	writeFileSync(join(rootDir, 'dist', 'worker.js'), '/**\n * @version 1.10.0\n */\nexport default {};\n');
 	writeFileSync(join(rootDir, 'dist', 'worker.metadata.json'), JSON.stringify({ version: '1.10.0' }));
 	writeFileSync(join(rootDir, 'dist', 'DEPLOY.md'), 'Deployment instructions\n');
+	writeFileSync(join(rootDir, 'extension', 'manifest.base.json'), JSON.stringify({ version: '1.1.1' }));
+	for (const name of extensionPackages) {
+		writeFileSync(join(rootDir, 'dist', name), `PK archive ${name}`);
+	}
 });
 
 afterEach(() => {
@@ -234,6 +240,10 @@ describe('release preflight', () => {
 		['banner mismatch', () => writeFileSync(join(rootDir, 'dist', 'worker.js'), '/**\n * @version 1.9.0\n */')],
 		['version outside banner', () => writeFileSync(join(rootDir, 'dist', 'worker.js'), 'const fake = "@version 1.10.0";')],
 		['missing asset', () => rmSync(join(rootDir, 'dist', 'DEPLOY.md'))],
+		['missing extension package', () => rmSync(join(rootDir, 'dist', '2fa-extension-firefox-1.1.1.zip'))],
+		['extension package of another version', () => writeFileSync(join(rootDir, 'extension', 'manifest.base.json'), '{"version":"1.1.2"}')],
+		['invalid extension version', () => writeFileSync(join(rootDir, 'extension', 'manifest.base.json'), '{"version":"../1.1.1"}')],
+		['missing extension manifest', () => rmSync(join(rootDir, 'extension', 'manifest.base.json'))],
 	])('does not issue remote writes for %s', (_name, change) => {
 		change();
 		const task = mockCommands();

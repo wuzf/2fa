@@ -160,9 +160,11 @@ describe('release checks before any version change', () => {
 		vi.spyOn(console, 'log').mockImplementation(() => {});
 	});
 
-	it('runs the same lint, test and build commands as the tag-triggered workflow, in the same order', () => {
-		const steps = [...workflow.matchAll(/^ {6}- name: (Lint|Test|Build Worker release assets)\n {8}run: (.+)$/gm)].map((match) => match[2]);
-		expect(steps).toHaveLength(3);
+	it('runs the same lint, test, build and packaging commands as the tag-triggered workflow, in the same order', () => {
+		const steps = [
+			...workflow.matchAll(/^ {6}- name: (Lint|Test|Build Worker release assets|Package browser extensions)\n {8}run: (.+)$/gm),
+		].map((match) => match[2]);
+		expect(steps).toHaveLength(4);
 		expect(RELEASE_CHECKS.map(({ command }) => command)).toEqual(steps);
 	});
 
@@ -173,6 +175,7 @@ describe('release checks before any version change', () => {
 			{ command: 'npm run lint', options: { stdio: 'inherit' } },
 			{ command: 'npm test -- --run', options: { stdio: 'inherit' } },
 			{ command: 'npm run build', options: { stdio: 'inherit' } },
+			{ command: 'npm run package:extension', options: { stdio: 'inherit' } },
 		]);
 	});
 
@@ -180,13 +183,14 @@ describe('release checks before any version change', () => {
 		vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const { calls, runCommand } = recordRuns();
 		runReleaseChecks({ skipTests: true }, runCommand);
-		expect(calls.map(({ command }) => command)).toEqual(['npm run lint', 'npm run build']);
+		expect(calls.map(({ command }) => command)).toEqual(['npm run lint', 'npm run build', 'npm run package:extension']);
 	});
 
 	it.each([
 		['npm run lint', ['npm run lint'], 'ESLint 检查未通过'],
 		['npm test -- --run', ['npm run lint', 'npm test -- --run'], '全量测试未通过'],
 		['npm run build', ['npm run lint', 'npm test -- --run', 'npm run build'], 'Worker 构建未通过'],
+		['npm run package:extension', ['npm run lint', 'npm test -- --run', 'npm run build', 'npm run package:extension'], '扩展打包未通过'],
 	])('stops at the first failing check %s', (failing, expected, message) => {
 		const { calls, runCommand } = recordRuns(failing);
 		expect(() => runReleaseChecks({}, runCommand)).toThrow(message);
@@ -195,7 +199,7 @@ describe('release checks before any version change', () => {
 });
 
 describe('release script aborts on a failed check without leaving changes', () => {
-	// Minimal project whose lint, test and build scripts log their order and fail on request.
+	// Minimal project whose lint, test, build and packaging scripts log their order and fail on request.
 	function prepareProject() {
 		mkdirSync(join(fixture, 'scripts'), { recursive: true });
 		copyFileSync(new URL('../../scripts/release.js', import.meta.url), join(fixture, 'scripts', 'release.js'));
@@ -205,7 +209,12 @@ describe('release script aborts on a failed check without leaving changes', () =
 			JSON.stringify({
 				type: 'module',
 				version: '1.0.0',
-				scripts: { lint: 'node check.js lint', test: 'node check.js test', build: 'node check.js build' },
+				scripts: {
+					lint: 'node check.js lint',
+					test: 'node check.js test',
+					build: 'node check.js build',
+					'package:extension': 'node check.js package',
+				},
 			}),
 		);
 		write(
@@ -254,6 +263,8 @@ describe('release script aborts on a failed check without leaving changes', () =
 		['test', [], ['lint', 'test'], '全量测试未通过'],
 		['build', [], ['lint', 'test', 'build'], 'Worker 构建未通过'],
 		['build', ['--skip-tests'], ['lint', 'build'], 'Worker 构建未通过'],
+		['package', [], ['lint', 'test', 'build', 'package'], '扩展打包未通过'],
+		['package', ['--skip-tests'], ['lint', 'build', 'package'], '扩展打包未通过'],
 	])(
 		'stops when %s fails (%j) before bumping, committing or tagging',
 		(step, extraArgs, expectedLog, message) => {
@@ -268,7 +279,7 @@ describe('release script aborts on a failed check without leaving changes', () =
 
 	it('stops when a passing check leaves a change that the release commit would not contain', () => {
 		const result = release({ RELEASE_FIXTURE_DIRTY: 'build' });
-		expect(result.log).toEqual(['lint', 'test', 'build']);
+		expect(result.log).toEqual(['lint', 'test', 'build', 'package']);
 		expect(result.stderr).toContain('工作区出现了新的改动');
 		expect(result.stderr).toContain('src/work file.js');
 	}, 30000);

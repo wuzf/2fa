@@ -133,6 +133,15 @@ Chrome 的快捷键设置位于 `chrome://extensions/shortcuts`，Edge 位于 `e
 
 扩展与主程序独立编号，不要求版本号相同。Chrome、Edge、Firefox 扩展版本均为 `1.1.1`。使用扩展前需要部署本项目的 2FA 服务并添加账户；扩展版本可在设置页查看。
 
+## 从 GitHub Release 手动安装
+
+每个 [GitHub Release](https://github.com/wuzf/2fa/releases) 都附带从该版本源码构建的安装包：`2fa-extension-chrome-<版本>.zip`、`2fa-extension-edge-<版本>.zip` 和 `2fa-extension-firefox-<版本>.zip`，版本为扩展自己的版本号。
+
+- **Chrome / Edge**：解压安装包，在 `chrome://extensions` 或 `edge://extensions` 打开“开发者模式”，点击“加载已解压的扩展程序”（Edge 为“加载解压缩的扩展”），选择解压出的文件夹，也就是直接包含 `manifest.json` 的那一层。之后不要删除或移动这个文件夹。
+- **Firefox**：安装包未经 Mozilla 签名，正式版 Firefox 只能临时载入。打开 `about:debugging#/runtime/this-firefox`，点击“临时载入附加组件”，直接选择 zip 文件；浏览器重启后需重新载入。长期使用请从商店安装。
+
+手动安装的扩展不会自动更新，新版本需重新下载并在扩展管理页重新加载。Chrome / Edge 手动加载的扩展与商店版是两个扩展，分别保存设置，可以同时存在，但同一网站只应启用其中一个的自动填充。Firefox 安装包与商店版使用同一个附加组件 ID：已从商店安装时无需再临时载入；临时载入后，在浏览器重启前会代替商店版。
+
 ## 从源码构建
 
 Chrome / Edge 在项目根目录执行：
