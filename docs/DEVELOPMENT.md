@@ -10,6 +10,7 @@
 - [数据库设计](#️-数据库设计)
 - [部署](#-部署)
 - [测试指南](#-测试指南)
+- [浏览器扩展开发与测试](#浏览器扩展开发与测试)
 - [性能优化](#-性能优化)
 - [故障排查](#-故障排查)
 
@@ -373,7 +374,7 @@ const otp = binary % 1000000;
 
 ### 环境要求
 
-- **Node.js**: >= 16.0.0
+- **Node.js**: >= 20.19.0，推荐使用当前 LTS
 - **npm**: >= 8.0.0
 - **Wrangler CLI**: >= 3.0.0
 - **Cloudflare账户**: 用于部署和KV存储
@@ -761,6 +762,83 @@ curl -b cookies.txt -X POST https://your-worker.workers.dev/api/secrets \
   -d '{"name":"Test","secret":"JBSWY3DPEHPK3PXP"}'
 ```
 
+### 浏览器扩展开发与测试
+
+Chrome、Edge 与 Firefox 的 Manifest V3 扩展源码位于 `extension/`，扩展版本、浏览器构建与 Worker 部署相互独立。Firefox 使用 `extension/firefox/` 中的适配层和独立构建，要求桌面 Firefox 153 及以上，在普通窗口的默认标签页中使用；不支持容器标签页、隐私窗口或 Android。连接模式有 `session`（网页登录）和 `offline`（网页登录＋离线缓存），默认使用 `session`。两种模式都支持点击扩展、快捷键填充和按页面授权后的自动填充。
+
+网页登录模式授予实例权限后，后台使用 `credentials: include`、`cache: no-store`、`redirect: error` 直接请求 `/api/secrets` 与 `/api/time`，在单次任务内存中计算 TOTP。此模式需要联网；Cookie 过期后由用户点击“打开 2FA”重新登录，扩展不自动开页或续期。
+
+离线模式明确启用后，使用同一网页登录 API 同步账户与时间，也允许用户点击“从 2FA 网页恢复”，从已打开、与当前实例完整 origin 相同的顶层网页读取 `2fa-secrets-cache` 和 `2fa-clock-sync-v1`。扩展在 `chrome.storage.local.offlineCache` 保存当前实例的原始密钥、时间戳与校时信息，后台本地计算 TOTP；关闭网页、后台重启或浏览器重启后仍可使用。缓存解析与校时校验复用 `src/shared/` 中的模块。
+
+有缓存时的滚动取码、到期换码和填充不请求网络，离线模式图标使用已保存的本地图像，缺失时显示文字占位。读取账户列表遇到超过 5 分钟的缓存会尝试同步，传输或服务器暂时故障时保留旧缓存并退避 30 秒；401/403 或无效账户响应清除缓存。账户响应有效但校时失败时仍更新账户列表；已有校准不可用或检测到本机时间跳变时暂停取码，直至重新同步。此前从未获得校准信息时，可使用本机时间并提示。
+
+仅离线模式持久保存种子，且没有额外的密码加密，采用与主网页浏览器缓存相同的信任模型。Chrome / Edge 的本地和会话存储限制为 `TRUSTED_CONTEXTS`。Firefox 使用原生扩展存储，`storage.local` 不提供这项访问限制，`storage.session` 默认不向内容脚本开放，详见[Firefox 隐私说明](../extension/PRIVACY_FIREFOX.md)。网页登录模式的完整密钥列表只在后台单次任务内处理，完成后释放引用；传给 Popup、服务分组和目标站点的数据均不包含种子。常规在线取码不向实例网页注入来源脚本；离线模式的网页缓存读取仅由用户明确触发。原管理登录和 Cookie 配置不变，也不增加 `cookies` 权限。
+
+扩展与主网页缓存是独立副本，网页退出登录或清除站点数据不自动清除扩展缓存，断网时无法立即执行服务端撤销或接收账户修改。在已保存的连接上关闭“允许离线使用”会立即删除缓存并切回 `session`；切换实例、切到 `session` 或撤销实例主机权限也清除缓存。仅缓存当前实例，不跨实例回退。使用方法与权限说明见[扩展指南](BROWSER_EXTENSION.md)。
+
+维护界面控制器时，请保持以下边界：
+
+- 弹窗入口组合账户展示、来源刷新和授权流程；卡片预览、刷新计时器和授权状态由各自模块管理，不通过共享可写状态对象相互修改。
+- 设置页的网站授权、账户绑定、搜索和列表请求版本由网站设置控制器管理；连接表单与离线开关的保存仍由连接入口编排。地址输入始终可见，编辑状态只表示未保存的草稿；无草稿时主按钮只检查连接，有草稿时才保存。输入规范化由设置页局部适配器补全协议，后台仍要求规范的 origin。
+- 目标页面的 `automatic.js` 负责访问、授权和账户流程；`automatic-panel.js` 只管理提示面板与用户操作，`automatic-observation.js` 管理 DOM 观察和页面生命周期。面板不读写账户流程状态，观察模块暂停后可恢复，永久销毁后不再启动任务。
+- 后台的 `registration-controller.js` 共用脚本注册、页面调用超时和失败清理；自动填充与来源监视分别提供自己的授权作用域。常规配置未变化时不触达页面，实例、连接模式或路径变化时更新相关来源。后台首次恢复会保守停止地址不可见的旧脚本；页面调用失败保留有界的内存重试记录，不能把失败当成永久完成。
+- `START_FLOW` 与填充共用一次性请求的操作队列；账户和图标的网络维护不占用该队列。账户修订与校时修订分别检查，时间变化时立即停用旧验证码。
+- `chrome.permissions.request` 必须在原始点击调用栈中、首次 `await` 之前发起；后台保存授权意图，以应对权限提示关闭弹窗的情况。
+- 模块负责释放自己的监听器、观察器与计时器，异步返回后再次检查实例和操作是否仍有效。销毁与页面暂时隐藏分开处理，避免破坏浏览器前进／后退缓存恢复。
+- 填充期间的目标校验只在同一次同步调用、没有页面回调介入的相邻检查之间复用。发出 `beforeinput`、`input`、`change` 或原生写值前使结果失效，每次事件后仍完整检查目标；验证码时间检查始终实时执行。不能依赖 MutationObserver 来跨事件缓存判定，因为 CSSOM 和已有元素的 `attachShadow()` 也会改变可填充目标。
+
+后台工作流按以下职责组织，`workflow.js` 保留现有操作导出，供消息路由和自动填充调用；实现模块不得反向依赖这个入口：
+
+| 模块                    | 职责                                                       |
+| ----------------------- | ---------------------------------------------------------- |
+| `workflow.js`           | 账户选择、填充、复制的流程编排                             |
+| `target-session.js`     | 捕获目标文档与登录账号，领取和消费一次性请求，准备输入框   |
+| `source-service.js`     | 在线／离线来源分发、取码、有效期及来源版本校验             |
+| `offline-management.js` | 显式同步、网页缓存导入、停用缓存、读取缓存状态与图标       |
+| `configuration.js`      | 当前实例、来源权限、连接模式和配置版本校验                 |
+| `browser-access.js`     | 有超时的浏览器调用、文档消息、来源标签页查找和显式打开实例 |
+| `errors.js`             | 统一错误类型与公开错误文案                                 |
+
+配置写入队列仍由后台入口管理，目标请求的内存领取记录由 `target-session.js` 管理，缓存写入及来源版本仍由 `offline-source.js` 管理。移动流程时不要合并这些不同生命周期的状态，也不要删掉异步边界前后的复查。
+
+账户搜索、服务聚合及离线缓存解析的共享逻辑位于 `src/shared/`，扩展直接导入普通 ES 模块。主网页继续通过 `src/ui/scripts/` 适配器生成内联脚本；适配器只序列化自包含的函数或工厂，并显式传入配置，不单独序列化依赖模块变量的函数。可序列化函数内部的具名函数采用对象方法语法，避免 Wrangler 默认保留函数名时注入外部辅助函数。`shared-browser-code.test.js` 验证压缩与保留函数名开关的四种组合，确保输出网页和直接导入的行为一致。
+
+```bash
+# 构建 Chrome / Edge 的可侧载目录
+npm run build:extension
+
+# 独立构建 Firefox
+node scripts/build-firefox-extension.js
+
+# 扩展单元、协议、后台 API 与 DOM 测试
+npm run test:extension
+
+# 扩展专项覆盖率（只运行扩展测试，统计 extension/src 和 src/shared）
+npm run test:extension:coverage
+
+# 首次安装 E2E 所需的浏览器运行时
+npx playwright install chromium
+
+# 重新构建 Chrome / Edge 并运行 Chromium E2E
+npm run test:extension:e2e
+
+# 项目回归和静态检查
+npm test -- --run
+npm run lint
+```
+
+扩展专项覆盖率由 `vitest.extension.config.js` 运行，共用项目的测试初始化，只收集 `tests/extension/**/*.test.js`，统计 `extension/src/**/*.js` 和 `src/shared/**/*.js`。终端输出覆盖率摘要，报告保存在 `coverage/extension/`：`index.html` 用于浏览，`coverage-summary.json` 和 `lcov.info` 用于工具集成。项目默认的 `npm run test:coverage` 也包含扩展及共享源码。
+
+GitHub Actions 在 `main` 分支推送、PR 和手动触发时运行 lint、扩展覆盖率、Chrome／Edge 构建及浏览器 E2E，并上传测试报告。CI 使用 Playwright Chromium，通过 `EXTENSION_E2E_SKIP_BRANDED=1` 跳过依赖本机 Chrome／Edge 安装的冒烟测试；本地 E2E 默认包含这些测试，未安装对应浏览器时会跳过。
+
+Chrome / Edge 构建输出为 `dist/extension/chrome` 与 `dist/extension/edge`，都可从扩展管理页选择“加载已解压的扩展程序”。Firefox 独立构建输出为 `dist/extension/firefox`，可在 `about:debugging#/runtime/this-firefox` 临时载入其中的 `manifest.json`，浏览器重启后需重新载入。Chrome / Edge 构建会重建 `dist/extension`，之后如需加载 Firefox 包，应重新执行 Firefox 构建命令。安装、设置和快捷键操作见[扩展指南](BROWSER_EXTENSION.md)。代码变更后重新构建、在扩展管理页重新加载，并刷新目标标签页；无需为扩展保留或刷新实例标签页。
+
+测试覆盖 TOTP 标准向量、API 与消息校验、缓存和权限边界、账户匹配、输入识别及导航竞态。浏览器 E2E 使用本地测试页面验证在线取码、离线缓存、自动填充和会话恢复；`tests/extension/e2e/branded.spec.js` 使用原始构建检查工具栏弹窗与 `activeTab` 填充。
+
+自动化中的本地测试权限和预授权不改变正式构建，也不能覆盖原生权限提示、键盘快捷键及所有真实网站的行为。浏览器或权限逻辑变更后，应在目标浏览器检查这些交互及真实 HTTPS 实例的连接。
+
+所有测试使用专用测试种子，不应包含真实密钥或账户列表。后端的 `GET /api/secrets` 使用同源 CORS、安全响应头和 `no-store`，相关回归测试位于 `tests/api/secrets-extension-headers.test.js`。
+
 ### 前端测试
 
 **手动测试清单**:
@@ -964,6 +1042,8 @@ npx wrangler secret list
 ## 📈 项目维护
 
 ### 版本管理
+
+主程序版本由根目录 `package.json` 管理；浏览器扩展使用 `extension/manifest.base.json` 的独立版本，Chrome、Edge、Firefox 共用该版本。主程序的 `release:*` 命令不更新扩展版本。扩展发布时需单独递增版本号，Chrome / Edge 执行 `npm run build:extension`，Firefox 执行 `node scripts/build-firefox-extension.js`；构建全部目标时按此顺序执行。接口兼容与运行依赖见[扩展指南](BROWSER_EXTENSION.md#版本与运行依赖)。
 
 **语义化版本控制**:
 

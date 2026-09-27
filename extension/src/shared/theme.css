@@ -1,0 +1,89 @@
+/* Shared extension surfaces and semantic colors, aligned with the main workspace. */
+:root {
+	color-scheme: light dark;
+	--fontFamilyBase: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei', sans-serif;
+	--fontFamilyNumeric: 'Segoe UI Variable Display', 'Segoe UI', 'Microsoft YaHei', sans-serif;
+	--colorNeutralBackgroundHover: #f0f0f0;
+	--colorNeutralBackgroundPressed: #e0e0e0;
+	--colorNeutralForegroundDisabled: #bdbdbd;
+	--colorNeutralBackgroundDisabled: #f0f0f0;
+	--colorBrandBackgroundHover: #115ea3;
+	--colorBrandBackgroundPressed: #0c3b5e;
+	--colorNeutralBackground1: #ffffff;
+	--colorNeutralBackground2: #fafafa;
+	--colorNeutralForeground1: #242424;
+	--colorNeutralForeground2: #616161;
+	--colorNeutralStroke1: #d1d1d1;
+	--colorNeutralStroke2: #e0e0e0;
+	--colorNeutralStrokeAccessible: #8a8a8a;
+	--colorBrandForeground1: #0f6cbd;
+	--colorBrandBackground: #0f6cbd;
+	--colorNeutralForegroundOnBrand: #ffffff;
+	--colorBrandBackground2: #eff6fc;
+	--colorStatusDangerForeground1: #b10e1c;
+	--colorStatusDangerBackground1: #fdf3f4;
+	--colorStatusSuccessForeground1: #0e700e;
+	--colorStatusSuccessBackground1: #f1faf1;
+	--colorStatusWarningForeground1: #8a3707;
+	--colorStatusWarningBackground1: #fff9f5;
+	--shadowCardHover: 0 2px 4px #00000008;
+	--shadowToast: 0 24px 64px #00000024, 0 2px 8px #00000012;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--colorNeutralBackgroundHover: #383838;
+		--colorNeutralBackgroundPressed: #4d4d4d;
+		--colorNeutralForegroundDisabled: #858585;
+		--colorNeutralBackgroundDisabled: #383838;
+		--colorBrandBackgroundHover: #0f6cbd;
+		--colorBrandBackgroundPressed: #0c3b5e;
+		--colorNeutralBackground1: #292929;
+		--colorNeutralBackground2: #1f1f1f;
+		--colorNeutralForeground1: #ffffff;
+		--colorNeutralForeground2: #bdbdbd;
+		--colorNeutralStroke1: #666666;
+		--colorNeutralStroke2: #424242;
+		--colorBrandForeground1: #62abf5;
+		--colorBrandBackground: #115ea3;
+		--colorBrandBackground2: #20384c;
+		--colorStatusDangerForeground1: #ff9a9f;
+		--colorStatusDangerBackground1: #3b2529;
+		--colorStatusSuccessForeground1: #9fd89f;
+		--colorStatusSuccessBackground1: #052505;
+		--colorStatusWarningForeground1: #f5b894;
+		--colorStatusWarningBackground1: #4a1e04;
+		--shadowCardHover: 0 2px 4px #00000020;
+		--shadowToast: 0 24px 64px #0006, 0 2px 8px #0003;
+	}
+}
+
+@media (forced-colors: active) {
+	:root {
+		--colorNeutralBackground1: Canvas;
+		--colorNeutralBackground2: Canvas;
+		--colorNeutralForeground1: CanvasText;
+		--colorNeutralForeground2: CanvasText;
+		--colorNeutralStroke1: ButtonText;
+		--colorNeutralStroke2: ButtonText;
+		--colorNeutralStrokeAccessible: ButtonText;
+		--colorBrandForeground1: LinkText;
+		--colorBrandBackground: Highlight;
+		--colorBrandBackgroundHover: Highlight;
+		--colorBrandBackgroundPressed: Highlight;
+		--colorNeutralForegroundOnBrand: HighlightText;
+		--colorBrandBackground2: Canvas;
+		--colorNeutralForegroundDisabled: GrayText;
+		--colorNeutralBackgroundDisabled: Canvas;
+		--colorNeutralBackgroundHover: Canvas;
+		--colorNeutralBackgroundPressed: Canvas;
+		--colorStatusDangerForeground1: CanvasText;
+		--colorStatusDangerBackground1: Canvas;
+		--colorStatusSuccessForeground1: CanvasText;
+		--colorStatusSuccessBackground1: Canvas;
+		--colorStatusWarningForeground1: CanvasText;
+		--colorStatusWarningBackground1: Canvas;
+		--shadowCardHover: none;
+		--shadowToast: none;
+	}
+}

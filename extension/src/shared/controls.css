@@ -1,0 +1,110 @@
+/* Common interaction states for popup and settings controls. */
+.extension-icon {
+	display: block;
+	flex-shrink: 0;
+	width: 20px;
+	height: 20px;
+}
+
+button,
+input,
+select {
+	font-family: var(--fontFamilyBase);
+}
+
+:is(.primary-button, .secondary-button, .delete-button, .quiet-button, .scope-button, .account-fill, .account-favorite) {
+	border-radius: 4px;
+}
+
+:is(
+		.secondary-button,
+		.quiet-button,
+		.scope-button,
+		.account-fill,
+		.account-favorite,
+		.search-clear,
+		.preview-link,
+		.preview-code,
+		.preview-next-code
+	):not(:disabled):not([aria-disabled='true']):hover {
+	background: var(--colorNeutralBackgroundHover);
+}
+
+:is(
+		.secondary-button,
+		.quiet-button,
+		.scope-button,
+		.account-fill,
+		.account-favorite,
+		.search-clear,
+		.preview-link,
+		.preview-code,
+		.preview-next-code
+	):not(:disabled):not([aria-disabled='true']):active {
+	background: var(--colorNeutralBackgroundPressed);
+}
+
+.primary-button:not(:disabled):hover {
+	background: var(--colorBrandBackgroundHover);
+}
+
+.primary-button:not(:disabled):active {
+	background: var(--colorBrandBackgroundPressed);
+}
+
+.delete-button:not(:disabled):hover,
+.delete-button:not(:disabled):active {
+	background: var(--colorStatusDangerBackground1);
+}
+
+.scope-button[aria-pressed='true'] {
+	background: var(--colorBrandBackground2);
+	border-color: var(--colorBrandForeground1);
+}
+
+:where(button, a[href], select, input, summary):focus-visible {
+	outline: 2px solid var(--colorBrandForeground1);
+	outline-offset: 3px;
+}
+
+.search-clear:focus-visible {
+	outline-offset: -4px;
+}
+
+.account-search:focus-visible {
+	outline: none;
+}
+
+:is(button, .scope-button, .account-favorite):is(:disabled, [aria-disabled='true']) {
+	color: var(--colorNeutralForegroundDisabled);
+	cursor: not-allowed;
+	opacity: 1;
+}
+
+:is(.primary-button, .secondary-button, .delete-button, .account-fill):disabled {
+	border-color: var(--colorNeutralStroke2);
+	background: var(--colorNeutralBackgroundDisabled);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.search-input-wrapper {
+		transition: none;
+	}
+}
+
+@media (forced-colors: active) {
+	.scope-button[aria-pressed='true'] {
+		border-color: Highlight;
+		text-decoration: underline;
+		text-decoration-thickness: 2px;
+	}
+
+	.account-favorite[aria-pressed='true'] {
+		color: Highlight;
+	}
+
+	.progress-top-fill {
+		background: Highlight;
+		forced-color-adjust: none;
+	}
+}

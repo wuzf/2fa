@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Authenticate - Vultr.com fixture</title>
+	</head>
+	<body>
+		<div class="box box--auth">
+			<div class="box__content">
+				<form class="form">
+					<input type="hidden" name="csrf_token" value="synthetic-csrf-token" />
+					<input type="hidden" name="action" value="authenticate" />
+					<div class="form-group input-group">
+						<input type="text" name="token" autocomplete="off" placeholder="Authentication code" />
+					</div>
+					<button type="submit">Authenticate</button>
+				</form>
+			</div>
+		</div>
+	</body>
+</html>

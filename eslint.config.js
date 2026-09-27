@@ -102,11 +102,29 @@ export default [
 		},
 	},
 	{
+		files: ['extension/**/*.js'],
+		languageOptions: {
+			globals: {
+				chrome: 'readonly',
+				performance: 'readonly',
+			},
+		},
+	},
+	{
 		files: ['scripts/**/*.js'],
 		languageOptions: {
 			globals: {
 				process: 'readonly',
 				Buffer: 'readonly',
+			},
+		},
+	},
+	{
+		files: ['tests/extension/**/*.js'],
+		languageOptions: {
+			globals: {
+				chrome: 'readonly',
+				structuredClone: 'readonly',
 			},
 		},
 	},

@@ -1,0 +1,90 @@
+name: Extension checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  extension:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Extension tests and coverage
+        run: npm run test:extension:coverage
+
+      - name: Build Chrome and Edge extensions
+        run: npm run build:extension
+
+      - name: Save coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: extension-coverage
+          path: coverage/extension/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Test both extension builds with the pinned Playwright Chromium, without
+      # depending on the runner's preinstalled Chrome/Edge versions.
+      EXTENSION_E2E_SKIP_BRANDED: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Build and test Chrome and Edge extensions in Chromium
+        run: npm run test:extension:e2e
+
+      - name: Save browser test report and failure diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: extension-browser-e2e
+          path: |
+            test-results/extension/
+            test-results/extension-report/
+          if-no-files-found: ignore
+          retention-days: 14

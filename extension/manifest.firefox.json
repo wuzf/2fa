@@ -1,0 +1,17 @@
+{
+	"permissions": ["activeTab", "scripting", "storage", "clipboardWrite"],
+	"background": {
+		"scripts": ["background.js"],
+		"type": "module"
+	},
+	"incognito": "not_allowed",
+	"browser_specific_settings": {
+		"gecko": {
+			"id": "2fa-verification-assistant@wuzf.github.io",
+			"strict_min_version": "153.0",
+			"data_collection_permissions": {
+				"required": ["authenticationInfo", "personallyIdentifyingInfo"]
+			}
+		}
+	}
+}

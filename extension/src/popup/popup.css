@@ -1,0 +1,772 @@
+:root {
+	color-scheme: light dark;
+	font-family: var(--fontFamilyBase);
+	font-size: 14px;
+	line-height: 20px;
+	background: var(--colorNeutralBackground2);
+	color: var(--colorNeutralForeground1);
+	--card-focus-color: var(--colorBrandForeground1);
+}
+
+* {
+	box-sizing: border-box;
+	letter-spacing: 0;
+}
+
+[hidden] {
+	display: none !important;
+}
+
+body {
+	width: 380px;
+	height: 600px;
+	min-height: 220px;
+	margin: 0;
+	background: var(--colorNeutralBackground2);
+	overflow: hidden;
+}
+
+/* Request the normal popup height, then fit its contents to the height the
+   browser actually grants near the screen edge. Only the account list scrolls. */
+.popup-viewport {
+	display: flex;
+	flex-direction: column;
+	height: min(600px, 100vh);
+	overflow: hidden;
+}
+
+button,
+input {
+	font: inherit;
+}
+
+button {
+	cursor: pointer;
+}
+
+.topbar {
+	flex-shrink: 0;
+	display: grid;
+	grid-template-columns: 32px minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 16px;
+	background: var(--colorNeutralBackground1);
+	border-bottom: 1px solid var(--colorNeutralStroke2);
+}
+
+.brand-mark {
+	display: block;
+	width: 32px;
+	height: 32px;
+	object-fit: contain;
+}
+
+.brand-text {
+	min-width: 0;
+}
+
+h1 {
+	margin: 0;
+	overflow: hidden;
+	font-size: 16px;
+	line-height: 22px;
+	font-weight: 600;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.target-origin {
+	max-width: 230px;
+	margin: 3px 0 0;
+	overflow: hidden;
+	color: var(--colorNeutralForeground2);
+	font-size: 12px;
+	line-height: 16px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.quiet-button {
+	min-width: 44px;
+	padding: 6px 8px;
+	border: 0;
+	background: transparent;
+	color: var(--colorBrandForeground1);
+}
+
+.topbar-actions {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.topbar-actions .quiet-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 0;
+	padding: 6px;
+	line-height: 20px;
+	text-decoration: none;
+}
+
+main {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-height: 0;
+	padding: 8px 16px;
+}
+
+.status {
+	flex-shrink: 0;
+	margin: 0 0 8px;
+	min-height: 38px;
+	padding: 9px 10px;
+	border-left: 3px solid var(--colorBrandForeground1);
+	background: var(--colorBrandBackground2);
+	line-height: 1.45;
+}
+
+.status[data-tone='error'] {
+	border-color: var(--colorStatusDangerForeground1);
+	background: var(--colorStatusDangerBackground1);
+	color: var(--colorStatusDangerForeground1);
+}
+
+.status[data-tone='success'] {
+	border-color: var(--colorStatusSuccessForeground1);
+	background: var(--colorStatusSuccessBackground1);
+	color: var(--colorStatusSuccessForeground1);
+}
+
+.setup-guide {
+	min-height: 0;
+	overflow-y: auto;
+	margin-top: 18px;
+	line-height: 1.6;
+}
+
+.setup-guide h2 {
+	margin: 0 0 10px;
+	font-size: 18px;
+}
+
+.setup-actions {
+	display: grid;
+	gap: 10px;
+	margin: 18px 0;
+}
+
+.setup-guide a.primary-button {
+	text-align: center;
+	text-decoration: none;
+}
+
+.account-section {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.popup-footer {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 4px 12px;
+	flex-shrink: 0;
+}
+
+.popup-footer:has(> :not([hidden])) {
+	margin-top: 6px;
+}
+
+.offline-state {
+	flex-shrink: 0;
+	max-width: 100%;
+	margin: 0;
+	color: var(--colorNeutralForeground2);
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+.offline-state[open] {
+	flex-basis: 100%;
+}
+
+.offline-state[data-warning='true'] summary {
+	color: var(--colorStatusWarningForeground1);
+}
+
+.offline-state summary {
+	cursor: pointer;
+}
+
+.offline-state summary:focus-visible {
+	outline: 2px solid var(--card-focus-color);
+	outline-offset: 2px;
+}
+
+.offline-state p {
+	margin: 6px 0 0;
+}
+
+.account-section > :not(.account-list) {
+	flex-shrink: 0;
+}
+
+.search-input-wrapper {
+	position: relative;
+	display: flex;
+	align-items: center;
+	border: 1px solid var(--colorNeutralStroke1);
+	border-bottom-color: var(--colorNeutralStrokeAccessible);
+	border-radius: 4px;
+	background: var(--colorNeutralBackground1);
+	transition: border-color 0.2s ease;
+}
+
+.search-input-wrapper:focus-within {
+	border-color: var(--colorBrandForeground1);
+	box-shadow: inset 0 -1px var(--colorBrandForeground1);
+}
+
+.account-search {
+	flex: 1;
+	min-width: 0;
+	height: 36px;
+	padding: 8px 40px 8px 0;
+	border: 0;
+	outline: none;
+	background: transparent;
+	color: inherit;
+}
+
+.account-search::placeholder,
+.search-icon,
+.search-clear {
+	color: var(--colorNeutralForeground2);
+}
+
+.account-search::-webkit-search-cancel-button {
+	display: none;
+	-webkit-appearance: none;
+}
+
+.search-icon,
+.search-clear {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 36px;
+}
+
+.search-icon {
+	padding: 10px 12px;
+}
+
+.search-clear {
+	position: absolute;
+	right: 0;
+	top: 0;
+	padding: 8px 10px;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+}
+
+.search-clear:hover {
+	color: inherit;
+}
+
+.search-clear:focus-visible {
+	outline: 2px solid var(--colorBrandForeground1);
+	outline-offset: -4px;
+}
+
+.search-icon svg,
+.search-clear svg {
+	width: 20px;
+	height: 20px;
+}
+
+.account-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px 8px;
+	margin: 6px 0;
+}
+
+.account-scopes {
+	display: flex;
+	gap: 6px;
+}
+
+.scope-button {
+	min-height: 28px;
+	padding: 4px 8px;
+	border: 1px solid var(--colorNeutralStroke1);
+	border-radius: 5px;
+	background: transparent;
+	color: inherit;
+	font-size: 12px;
+	line-height: 16px;
+}
+
+.scope-button[aria-pressed='true'] {
+	border-color: var(--colorBrandForeground1);
+	background: var(--colorBrandBackground2);
+	color: var(--colorBrandForeground1);
+}
+
+.account-summary,
+.account-empty {
+	margin: 0 0 4px;
+	color: var(--colorNeutralForeground2);
+	font-size: 12px;
+	line-height: 1.5;
+	overflow-wrap: anywhere;
+}
+
+.account-badge.suggested-badge {
+	background: var(--colorBrandBackground2);
+	color: var(--colorBrandForeground1);
+}
+
+.fill-preferences {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	flex-shrink: 0;
+	gap: 16px;
+	margin-top: 4px;
+	padding-top: 4px;
+	border-top: 1px solid var(--colorNeutralStroke2);
+}
+
+.fill-preferences:not(:has(> label:not([hidden]))) {
+	display: none;
+}
+
+.fill-preference {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	color: var(--colorNeutralForeground2);
+	font-size: 12px;
+	line-height: 20px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.fill-preference input {
+	flex-shrink: 0;
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	accent-color: var(--colorBrandForeground1);
+}
+
+.fill-preference + .fill-preference {
+	margin-left: auto;
+}
+
+.fill-preference:has(input:disabled) {
+	cursor: default;
+}
+
+/* Shown under the switches when a plain-HTTP page only allows manual filling. */
+.fill-note {
+	flex-basis: 100%;
+	margin: 0;
+	color: var(--colorNeutralForeground2);
+	font-size: 12px;
+	line-height: 16px;
+}
+
+/* The remember label names the account about to be filled. A long account or
+   translation is cut with an ellipsis (the full text is in its title) instead of
+   pushing the autofill switch onto another line: a zero basis always fits beside
+   it, and growing fills whatever room is left. Only the note below wraps. */
+.fill-preference:has(#remember-binding) {
+	flex: 1 1 0;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.fill-preference:has(#autofill-site) {
+	flex-shrink: 0;
+}
+
+#remember-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.account-list {
+	display: grid;
+	flex: 1 1 0;
+	min-height: 0;
+	align-content: start;
+	gap: 8px;
+	overflow-y: auto;
+	padding: 6px;
+	margin-inline: -6px;
+}
+
+.account-list:empty {
+	flex: 0 0 auto;
+	padding-block: 0;
+}
+
+.account-card {
+	--radius-lg: 16px;
+	position: relative;
+	outline: none;
+	/* Keep the 3px outline offset and 2px ring inside the scroll viewport. */
+	scroll-margin-block: 6px;
+	border: 1px solid var(--colorNeutralStroke2);
+	border-radius: var(--radius-lg);
+	background: var(--colorNeutralBackground1);
+}
+
+.account-row {
+	display: grid;
+	grid-template-columns: 32px minmax(0, 1fr) auto auto;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 10px 0;
+}
+
+.service-icon {
+	display: grid;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	border: 1px solid var(--colorNeutralStroke2);
+	border-radius: 8px;
+	background: var(--colorNeutralBackground2);
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.service-icon img {
+	width: 24px;
+	height: 24px;
+	object-fit: contain;
+	border-radius: 6px;
+}
+
+.account-info {
+	min-width: 0;
+}
+
+.account-card:hover {
+	border-color: var(--colorNeutralStroke1);
+	box-shadow: var(--shadowCardHover);
+}
+
+.account-card[data-copyable='true'] {
+	cursor: pointer;
+}
+
+.account-card:active {
+	background: var(--colorBrandBackground2);
+}
+
+.account-card:active,
+:root:not([data-card-input='pointer']) .account-card:focus-visible,
+:root:not([data-card-input='pointer']) .account-card:has(:focus-visible) {
+	outline: 2px solid var(--card-focus-color);
+	outline-offset: 3px;
+}
+
+:root[data-card-input='pointer'] .account-card :focus-visible {
+	outline: none;
+}
+
+.account-fill {
+	min-width: 44px;
+	min-height: 28px;
+	padding: 4px 8px;
+	border: 1px solid var(--colorNeutralStroke2);
+	border-radius: 4px;
+	background: transparent;
+	color: var(--colorBrandForeground1);
+	font-size: 12px;
+	line-height: 16px;
+}
+
+.account-fill:hover {
+	background: var(--colorBrandBackground2);
+}
+
+.account-fill:focus-visible,
+.preview-code:focus-visible,
+.preview-next-code:focus-visible,
+.preview-link:focus-visible {
+	outline: 2px solid var(--card-focus-color);
+	outline-offset: 3px;
+}
+
+.code-preview {
+	padding: 0 10px 2px;
+}
+
+.preview-next,
+.preview-status {
+	color: var(--colorNeutralForeground2);
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+.preview-current,
+.preview-next {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.preview-code {
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	font-family: var(--fontFamilyNumeric);
+	font-size: 28px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	line-height: 36px;
+	letter-spacing: 1.5px;
+	white-space: nowrap;
+}
+
+.preview-next-code,
+.preview-next-time {
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.preview-link {
+	min-height: 30px;
+	padding: 4px 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--colorBrandForeground1);
+	font-size: 12px;
+}
+
+.preview-link:last-child {
+	margin-left: auto;
+}
+
+.preview-next {
+	margin-top: 2px;
+	padding-top: 2px;
+	border-top: 1px solid var(--colorNeutralStroke2);
+}
+
+.preview-next-code {
+	min-height: 24px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	font-size: 16px;
+	font-weight: 600;
+	letter-spacing: 0.5px;
+}
+
+.preview-status {
+	margin: 6px 0;
+	overflow-wrap: anywhere;
+}
+
+.preview-code:not(:disabled):hover,
+.preview-next-code:not(:disabled):hover {
+	color: var(--colorBrandForeground1);
+}
+
+.account-name,
+.account-detail {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.account-name {
+	font-weight: 600;
+	line-height: 20px;
+}
+
+.account-detail {
+	color: var(--colorNeutralForeground2);
+	font-size: 12px;
+	line-height: 16px;
+}
+
+.account-badge {
+	align-self: center;
+	padding: 3px 6px;
+	border-radius: 4px;
+	background: var(--colorStatusSuccessBackground1);
+	color: var(--colorStatusSuccessForeground1);
+	font-size: 12px;
+	line-height: 16px;
+	white-space: nowrap;
+}
+
+.actions {
+	flex-shrink: 0;
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.primary-button,
+.secondary-button {
+	min-height: 34px;
+	padding: 7px 12px;
+	border-radius: 5px;
+}
+
+.primary-button {
+	border: 1px solid var(--colorBrandForeground1);
+	background: var(--colorBrandBackground);
+	color: var(--colorNeutralForegroundOnBrand);
+}
+
+.secondary-button {
+	border: 1px solid var(--colorNeutralStroke1);
+	background: var(--colorNeutralBackground1);
+	color: var(--colorNeutralForeground1);
+}
+
+button:disabled {
+	cursor: wait;
+	opacity: 0.55;
+}
+
+.copy-toast {
+	position: fixed;
+	width: max-content;
+	max-width: 90vw;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	z-index: 100000;
+	pointer-events: none;
+	animation: toast-appear 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast-content {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 200px;
+	max-width: 90vw;
+	padding: 16px 24px;
+	border: 1px solid var(--colorNeutralStroke2);
+	border-radius: 6px;
+	background: var(--colorNeutralBackground1);
+	color: var(--colorNeutralForeground1);
+	box-shadow: var(--shadowToast);
+	font-size: 14px;
+	line-height: 1.5;
+	white-space: nowrap;
+}
+
+.toast-icon {
+	display: flex;
+	flex-shrink: 0;
+	color: var(--colorBrandForeground1);
+}
+
+@keyframes toast-appear {
+	from {
+		opacity: 0;
+		transform: translate(-50%, -50%) scale(0.9);
+	}
+	to {
+		opacity: 1;
+		transform: translate(-50%, -50%) scale(1);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.copy-toast {
+		animation: none;
+	}
+}
+
+.account-favorite {
+	display: grid;
+	place-items: center;
+	min-width: 28px;
+	min-height: 28px;
+	border: 0;
+	background: transparent;
+	color: var(--colorNeutralForeground2);
+	padding: 2px;
+}
+.account-favorite[aria-pressed='true'] {
+	color: var(--colorStatusWarningForeground1);
+}
+
+.status[data-loading='true']::before {
+	content: '';
+	display: inline-block;
+	width: 12px;
+	height: 12px;
+	margin-right: 8px;
+	border: 2px solid currentColor;
+	border-right-color: transparent;
+	border-radius: 50%;
+	vertical-align: -2px;
+	animation: connection-spin 0.9s linear infinite;
+}
+@keyframes connection-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.status[data-loading='true']::before {
+		animation: none;
+	}
+}
+
+/* Keep the full product name and translated actions readable in the popup. */
+:root:lang(en) .topbar {
+	grid-template-columns: 32px minmax(0, 1fr);
+}
+
+:root:lang(en) .topbar-actions {
+	grid-column: 1 / -1;
+	justify-content: flex-end;
+}
+
+:root:lang(en) .fill-preferences {
+	column-gap: 8px;
+	row-gap: 0;
+}
+
+:root:lang(en) .preview-next-time {
+	white-space: normal;
+	text-align: right;
+}

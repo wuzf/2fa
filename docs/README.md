@@ -8,6 +8,7 @@
 
 - **[部署指南](DEPLOYMENT.md)** - 一键部署到 Cloudflare Workers
 - **[PWA 安装指南](PWA_GUIDE.md)** - 安装 PWA 到手机和桌面
+- **[浏览器扩展指南](BROWSER_EXTENSION.md)** - Chrome / Edge / Firefox 商店安装、验证码辅助填充与故障排查
 - **[网盘备份配置指南](CLOUD_DRIVE_SETUP.md)** - 配置 OneDrive / Google Drive 远程备份
 
 ### 开发者
@@ -18,14 +19,17 @@
 
 ## 📦 文档列表
 
-| 文档                                         | 说明         | 适用对象        |
-| -------------------------------------------- | ------------ | --------------- |
-| [DEPLOYMENT.md](DEPLOYMENT.md)               | 部署指南     | 所有用户        |
-| [CLOUD_DRIVE_SETUP.md](CLOUD_DRIVE_SETUP.md) | 网盘备份配置 | 部署者 / 管理员 |
-| [DEVELOPMENT.md](DEVELOPMENT.md)             | 开发文档     | 开发者          |
-| [ARCHITECTURE.md](ARCHITECTURE.md)           | 架构文档     | 开发者          |
-| [API_REFERENCE.md](API_REFERENCE.md)         | API 参考     | 集成开发者      |
-| [PWA_GUIDE.md](PWA_GUIDE.md)                 | PWA 指南     | 终端用户        |
+| 文档                                                | 说明                           | 适用对象        |
+| --------------------------------------------------- | ------------------------------ | --------------- |
+| [DEPLOYMENT.md](DEPLOYMENT.md)                      | 部署指南                       | 所有用户        |
+| [CLOUD_DRIVE_SETUP.md](CLOUD_DRIVE_SETUP.md)        | 网盘备份配置                   | 部署者 / 管理员 |
+| [DEVELOPMENT.md](DEVELOPMENT.md)                    | 开发文档                       | 开发者          |
+| [ARCHITECTURE.md](ARCHITECTURE.md)                  | 架构文档                       | 开发者          |
+| [API_REFERENCE.md](API_REFERENCE.md)                | API 参考                       | 集成开发者      |
+| [BROWSER_EXTENSION.md](BROWSER_EXTENSION.md)        | 浏览器扩展安装、使用与权限     | 用户 / 开发者   |
+| [Chrome / Edge 隐私说明](../extension/PRIVACY.md)   | 扩展数据处理与权限边界         | 用户 / 审核者   |
+| [Firefox 隐私说明](../extension/PRIVACY_FIREFOX.md) | Firefox 扩展数据处理与权限边界 | 用户 / 审核者   |
+| [PWA_GUIDE.md](PWA_GUIDE.md)                        | PWA 指南                       | 终端用户        |
 
 ## 📌 我想...
 
@@ -35,6 +39,7 @@
 - **了解架构** → [ARCHITECTURE.md](ARCHITECTURE.md)
 - **调用 API** → [API_REFERENCE.md](API_REFERENCE.md)
 - **安装 PWA** → [PWA_GUIDE.md](PWA_GUIDE.md)
+- **安装 Chrome / Edge / Firefox 扩展** → [BROWSER_EXTENSION.md](BROWSER_EXTENSION.md)
 - **运行测试** → [DEVELOPMENT.md](DEVELOPMENT.md#-测试指南)
 - **故障排查** → [DEVELOPMENT.md](DEVELOPMENT.md#-故障排查)
 

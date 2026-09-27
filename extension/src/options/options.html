@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title data-i18n="optionsTitle">2FA 验证助手 · 设置</title>
+		<link rel="icon" type="image/png" href="icons/icon-32.png" />
+		<link rel="stylesheet" href="theme.css" />
+		<link rel="stylesheet" href="options.css" />
+		<link rel="stylesheet" href="controls.css" />
+	</head>
+	<body>
+		<header class="page-header">
+			<div class="header-inner">
+				<img class="brand-mark" src="icons/icon-48.png" alt="" aria-hidden="true" />
+				<div>
+					<div class="brand-heading">
+						<h1 data-i18n="optionsBrand">2FA 验证助手</h1>
+						<span id="extension-version" class="extension-version"></span>
+					</div>
+				</div>
+			</div>
+		</header>
+
+		<main>
+			<section class="language-section" aria-labelledby="language-label">
+				<div class="language-row">
+					<label id="language-label" for="extension-language" data-i18n="optionsLanguage">显示语言</label>
+					<select id="extension-language" aria-describedby="language-hint language-status">
+						<option value="auto" data-i18n="optionsLanguageAuto">跟随浏览器</option>
+					</select>
+				</div>
+				<p id="language-hint" class="setting-hint" data-i18n="optionsLanguageHint">语言设置适用于此扩展的所有 2FA 实例。</p>
+				<p id="language-status" class="status" role="status" aria-live="polite"></p>
+			</section>
+			<section class="connection-section" aria-labelledby="instance-heading">
+				<h2 id="instance-heading" data-i18n="optionsConnectionHeading">2FA 连接</h2>
+				<form id="instance-form">
+					<div id="connection-editor">
+						<label for="instance-origin" data-i18n="optionsAddress">2FA 地址</label>
+						<div class="input-row">
+							<input
+								id="instance-origin"
+								type="text"
+								inputmode="url"
+								placeholder="twofa.example.com"
+								aria-describedby="address-help"
+								autocomplete="url"
+								autocapitalize="off"
+								spellcheck="false"
+								required
+							/>
+							<button id="connect-instance" class="primary-button" type="submit" data-i18n="optionsConnect">连接 2FA</button>
+						</div>
+						<div class="address-hint-row">
+							<p id="address-help" class="setting-hint" data-i18n="optionsAddressHelp">粘贴网站地址或输入域名，默认使用 HTTPS。</p>
+							<button id="cancel-connection" class="text-button" type="button" hidden data-i18n="optionsCancel">撤销修改</button>
+						</div>
+						<div id="saved-instances-wrapper" class="recent-instances" hidden>
+							<label for="saved-instances" data-i18n="optionsRecent">最近使用</label>
+							<select id="saved-instances" aria-label="选择最近使用的 2FA 地址" data-i18n-aria-label="optionsRecentLabel"></select>
+						</div>
+					</div>
+					<div id="connection-summary" class="connection-summary" hidden>
+						<span data-i18n="optionsCurrent">当前使用</span><a id="current-instance" target="_blank" rel="noopener noreferrer"></a>
+					</div>
+					<div class="connection-feedback">
+						<p id="status" class="status" role="status" aria-live="polite"></p>
+						<p id="login-next-step" class="setting-hint" hidden data-i18n="optionsLoginNext">登录完成后回到此页，会自动检查连接。</p>
+						<div class="button-row">
+							<button id="open-instance" class="secondary-button" type="button" hidden data-i18n="optionsOpen">打开 2FA</button>
+							<button id="check-instance" class="secondary-button" type="button" hidden data-i18n="optionsRetryConnection">重试连接</button>
+							<button id="import-offline" class="secondary-button" type="button" hidden data-i18n="optionsRestore">从 2FA 网页恢复</button>
+						</div>
+					</div>
+					<div id="offline-choice" class="setting-choice">
+						<label class="checkbox-label" for="offline-enabled"
+							><input id="offline-enabled" type="checkbox" aria-describedby="offline-help" /><span data-i18n="optionsOffline"
+								>允许离线使用</span
+							></label
+						>
+						<p id="offline-help" class="setting-hint" data-i18n="optionsOfflineHelp">密钥保存在此浏览器，断网后仍可取码。</p>
+						<p id="offline-apply-hint" class="setting-hint" data-i18n="optionsOfflineApply">连接时一并保存。</p>
+					</div>
+				</form>
+			</section>
+
+			<section id="site-settings" aria-labelledby="site-heading" hidden>
+				<div class="section-heading-row">
+					<h2 id="site-heading" data-i18n="optionsSiteHeading">网站设置</h2>
+					<span id="site-count" class="count"></span>
+				</div>
+				<div id="site-search-wrapper" class="site-search-row" hidden>
+					<input
+						id="binding-search"
+						type="search"
+						aria-label="搜索网站或账户"
+						placeholder="搜索网站或账户"
+						data-i18n-aria-label="optionsSearch"
+						data-i18n-placeholder="optionsSearch"
+					/>
+					<button
+						id="clear-site-search"
+						class="search-clear"
+						type="button"
+						aria-label="清空搜索"
+						data-i18n-aria-label="optionsClearSearch"
+						hidden
+					>
+						×
+					</button>
+				</div>
+				<div id="site-list" class="site-list"></div>
+				<p id="site-empty" class="empty-state" data-i18n="optionsSitesLoading">正在读取网站设置…</p>
+				<p id="site-status" class="status" role="status" aria-live="polite"></p>
+				<button id="retry-site-settings" class="secondary-button" type="button" hidden data-i18n="optionsRetry">重试</button>
+			</section>
+			<details id="setup-guide" class="setup-guide settings-details" open>
+				<summary data-i18n="optionsHelp">部署与帮助</summary>
+				<div class="details-body">
+					<h2 id="setup-heading" data-i18n="optionsSetupHeading">还没有 2FA 网站？</h2>
+					<p data-i18n="optionsSetupHelp">
+						本扩展配合 GitHub 开源项目 wuzf/2fa 使用。先按指南部署主程序，登录并添加账户，再填写上方地址连接。
+					</p>
+					<div class="button-row">
+						<a
+							class="primary-button"
+							href="https://github.com/wuzf/2fa/blob/main/docs/DEPLOYMENT.md"
+							target="_blank"
+							rel="noopener noreferrer"
+							data-i18n="optionsViewGuide"
+							>查看部署指南</a
+						>
+						<a
+							class="secondary-button"
+							href="https://github.com/wuzf/2fa"
+							target="_blank"
+							rel="noopener noreferrer"
+							data-i18n="optionsGithub"
+							>GitHub 项目</a
+						>
+					</div>
+				</div>
+			</details>
+			<footer class="settings-footer">
+				<a id="footer-instance" target="_blank" rel="noopener noreferrer" hidden>2FA</a>
+				<a href="https://github.com/wuzf/2fa" target="_blank" rel="noopener noreferrer">GitHub</a>
+				<a
+					href="https://github.com/wuzf/2fa/blob/main/docs/DEPLOYMENT.md"
+					target="_blank"
+					rel="noopener noreferrer"
+					data-i18n="optionsGuide"
+					>部署指南</a
+				>
+				<button id="privacy-toggle" type="button" aria-expanded="false" aria-controls="privacy-content" data-i18n="optionsPrivacy">
+					数据与隐私
+				</button>
+			</footer>
+			<div id="privacy-content" class="privacy-content" hidden>
+				<h2 data-i18n="optionsPrivacy">数据与隐私</h2>
+				<p data-i18n="optionsPrivacyOffline">
+					允许离线使用后，账户密钥会保存在此浏览器。网页退出不会立即删除本地副本；联网确认登录失效时会清除，离线时无法获知服务端撤销。
+				</p>
+				<p data-i18n="optionsPrivacySession">未开启离线使用时，网页登录仅在取码时临时处理密钥。</p>
+				<p data-i18n="optionsPrivacyAutofill">只在已授权的验证页面自动填充。扩展只填写验证码，不主动提交表单。</p>
+			</div>
+		</main>
+
+		<script type="module" src="options.js"></script>
+	</body>
+</html>

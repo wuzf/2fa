@@ -9,7 +9,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      include: ['src/**/*.js'],
+      include: ['src/**/*.js', 'extension/src/**/*.js'],
       exclude: [
         'src/ui/**',  // 前端代码单独测试
         'src/worker.js',  // Worker 入口需要集成测试

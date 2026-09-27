@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="utf-8" />
+		<title>JumpServer MFA fixture</title>
+	</head>
+	<body>
+		<h2>MFA 多因子认证</h2>
+		<form class="m-t" role="form" method="post" action="/core/auth/login/mfa/">
+			<input type="hidden" name="csrfmiddlewaretoken" value="synthetic-csrf-token" />
+			<div class="form-group">
+				<div class="mfa-div">
+					<div id="mfa-otp" class="mfa-field">
+						<input type="text" name="code" class="form-control input-style" placeholder="虚拟 MFA 验证码" />
+					</div>
+				</div>
+			</div>
+			<button id="submit_button" type="submit">下一步</button>
+		</form>
+		<script>
+			window.fixtureState = { submits: 0, automaticInputs: 0 };
+			document.querySelector('form').addEventListener('submit', (event) => {
+				event.preventDefault();
+				window.fixtureState.submits += 1;
+			});
+			document.querySelector('input[name="code"]').addEventListener('input', (event) => {
+				if (!event.isTrusted) window.fixtureState.automaticInputs += 1;
+			});
+		</script>
+	</body>
+</html>

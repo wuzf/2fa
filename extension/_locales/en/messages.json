@@ -1,0 +1,14 @@
+{
+	"extensionName": {
+		"message": "2FA Authenticator Assistant"
+	},
+	"extensionDescription": {
+		"message": "Companion to github.com/wuzf/2fa. Deploy a 2FA instance, then connect to view, copy and autofill two-factor authentication codes."
+	},
+	"actionTitle": {
+		"message": "2FA Authenticator Assistant"
+	},
+	"fillOtpCommandDescription": {
+		"message": "Fill the verification code for the account linked to this website"
+	}
+}

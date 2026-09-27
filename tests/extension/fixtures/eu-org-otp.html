@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>EU.org OTP field regression fixture</title>
+	</head>
+	<body>
+		<!-- Observed public field attributes; the CSRF token and account are test-only. -->
+		<form method="post" action="/arf/en/2fa/login/">
+			<input type="hidden" name="csrfmiddlewaretoken" value="fixture-csrf" />
+			<div>
+				<label for="id_otp">One-Time Password</label>
+				<input type="text" name="otp" id="id_otp" autocomplete="off" placeholder="One-Time Password" maxlength="30" />
+				<p>Your one-time password</p>
+			</div>
+			<input type="submit" name="login" value="Log in" />
+		</form>
+		<script>
+			window.fixtureState = { inputEvents: 0, changeEvents: 0, submits: 0 };
+			const input = document.getElementById('id_otp');
+			input.addEventListener('input', () => window.fixtureState.inputEvents++);
+			input.addEventListener('change', () => window.fixtureState.changeEvents++);
+			document.querySelector('form').addEventListener('submit', (event) => {
+				event.preventDefault();
+				window.fixtureState.submits++;
+			});
+		</script>
+	</body>
+</html>

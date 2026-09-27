@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Google 两步验证测试页面</title></head>
+<body><main>
+<h1>两步验证</h1>
+<!-- Public DOM structure observed on Google's TOTP page, with a synthetic account. -->
+<div role="link" tabindex="0" aria-label="已选择 alice@example.com。切换账号">
+<div data-profile-identifier translate="no">alice@example.com</div>
+</div>
+<label for="totpPin">输入验证码</label>
+<input type="tel" pattern="[0-9 ]*" autocomplete="off" aria-label="输入验证码" name="totpPin" id="totpPin">
+<input type="hidden" id="identifierId" value="alice@example.com">
+<button type="button">下一步</button>
+</main></body></html>

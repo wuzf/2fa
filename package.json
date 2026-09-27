@@ -14,12 +14,17 @@
     "start": "wrangler dev --env development",
     "build": "node scripts/build-release.js",
     "build:minify": "node scripts/build-release.js --minify",
+    "build:extension": "node scripts/build-extension.js",
+    "icons:extension": "node scripts/generate-extension-icons.js",
     "test": "vitest",
+    "test:extension": "vitest run tests/extension",
+    "test:extension:coverage": "vitest run --config vitest.extension.config.js --coverage",
+    "test:extension:e2e": "npm run build:extension && playwright test --config tests/extension/playwright.config.js",
     "test:watch": "vitest --watch",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "lint": "eslint src/ tests/ scripts/ --max-warnings=0",
-    "lint:fix": "eslint src/ tests/ scripts/ --fix --max-warnings=0",
+    "lint": "eslint src/ extension/src/ tests/ scripts/ --max-warnings=0",
+    "lint:fix": "eslint src/ extension/src/ tests/ scripts/ --fix --max-warnings=0",
     "format": "prettier --write \"src/**/*.js\"",
     "format:check": "prettier --check \"src/**/*.js\"",
     "release:patch": "node scripts/release.js patch",
@@ -30,6 +35,10 @@
   },
   "lint-staged": {
     "src/**/*.js": [
+      "eslint --fix --max-warnings=0",
+      "prettier --write"
+    ],
+    "extension/src/**/*.js": [
       "eslint --fix --max-warnings=0",
       "prettier --write"
     ],

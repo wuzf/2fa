@@ -1,0 +1,14 @@
+{
+	"extensionName": {
+		"message": "2FA 驗證助手"
+	},
+	"extensionDescription": {
+		"message": "搭配 GitHub 開源專案：https://github.com/wuzf/2fa 使用。請先部署 2FA 執行個體，連線後即可檢視、複製和自動填入兩步驗證碼。"
+	},
+	"actionTitle": {
+		"message": "2FA 驗證助手"
+	},
+	"fillOtpCommandDescription": {
+		"message": "填入此網站已綁定帳號的驗證碼"
+	}
+}
