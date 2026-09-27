@@ -6,9 +6,25 @@ A two-factor authentication key management system built on Cloudflare Workers. F
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
-**[简体中文](README.md)** · **[繁體中文](README_TC.md)**
+<!-- README_LANGUAGE_NAV_START -->
 
-**Key Features:** TOTP/HOTP code auto-generation · QR code scanning/image recognition/paste screenshot/drag & drop image to add keys · AES-GCM 256-bit encrypted storage · Bulk import from Google Authenticator, Aegis, 2FAS, Bitwarden, etc. · Multi-format export (TXT/JSON/CSV/HTML/Google migration QR codes) · Auto backup & restore · WebDAV/S3/OneDrive/Google Drive remote backup sync · Security/sync/preference settings · Multi-language support (Simplified Chinese / Traditional Chinese / English, with auto-detection) · Light/dark/follow-system themes · Fluent 2-inspired responsive UI
+[简体中文](README.md) · [繁體中文](README_TC.md) · **[English](README_EN.md)** · [日本語](README_JA.md) · [한국어](README_KO.md) ·
+[Deutsch](README_DE.md) · [Français](README_FR.md) · [Español](README_ES.md) · [Português (Brasil)](README_PT_BR.md) · [Italiano](README_IT.md) ·
+[Русский](README_RU.md) · [Türkçe](README_TR.md) · [Bahasa Indonesia](README_ID.md) · [Tiếng Việt](README_VI.md) · [ไทย](README_TH.md)
+
+<!-- README_LANGUAGE_NAV_END -->
+
+**Key Features:** TOTP/HOTP code auto-generation · QR code scanning/image recognition/paste screenshot/drag & drop image to add keys · AES-GCM 256-bit encrypted storage · Bulk import from Google Authenticator, Aegis, 2FAS, Bitwarden, etc. · Multi-format export (TXT/JSON/CSV/HTML/Google migration QR codes) · Auto backup & restore · WebDAV/S3/OneDrive/Google Drive remote backup sync · Security/sync/preference settings · 15 languages across the project (auto-detection / manual selection) · Light/dark/follow-system themes · Fluent 2-inspired responsive UI
+
+The web app, browser extensions, initial setup, public OTP pages, API messages and backup documents support Simplified Chinese, Traditional Chinese, English, Japanese, Korean, German, French, Spanish, Portuguese (Brazil), Italian, Russian, Turkish, Indonesian, Vietnamese and Thai. Interfaces follow the browser or a manual selection, with English as the fallback for unsupported browser languages. CSV/HTML backups can be imported across interface languages.
+
+## 🧩 Browser Extension
+
+Install 2FA Verification Assistant: **[Chrome Web Store](https://chromewebstore.google.com/detail/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/lifeiloiefdlbohelpjajdbopeocalhl)** · **[Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/kmchncmoddhdlbpfoejeahdjhieghklm)** · **[Firefox Add-ons](https://addons.mozilla.org/zh-CN/firefox/addon/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/)**.
+
+Open the installation link in the corresponding browser. After installation, enter your self-hosted 2FA instance URL in the extension settings and sign in to that instance in the same browser to view, copy, and fill TOTP codes. Automatic filling requires separate permission for each verification page. The extension requires a deployed instance of this project, and its interface supports the 15 languages listed above. Firefox requires desktop version 153 or later in a normal tab using the default container; container tabs, private windows, and Android are not supported.
+
+[Installation and usage guide](docs/BROWSER_EXTENSION.md) · [Chrome / Edge privacy policy](extension/PRIVACY.md) · [Firefox privacy policy](extension/PRIVACY_FIREFOX.md) (Chinese)
 
 ## 📸 Screenshots
 
@@ -172,6 +188,14 @@ Click the floating button → **⚙️ Settings**:
 
 After installation, use it like a native app in full screen with offline access support.
 
+### Chrome / Edge / Firefox TOTP Filling
+
+Click the extension to select an account, or press `Ctrl+Shift+U` to fill the current TOTP for a previously bound account. With permission for each verification page, the extension can detect and fill verification fields automatically; multiple matches show an account picker. It supports a single field or 6/8 separate digit fields and does not submit the form.
+
+After signing in to the 2FA instance in the same browser profile and granting instance access, you can close the instance tab. By default, the extension reads secrets through the valid session and computes codes in background memory for each task; sign in again when the session expires. Explicitly enabling offline use saves an independent local secret cache so codes remain available without a network connection or an open instance tab. The cache has no additional password encryption. Authorized extension code can read the entire secret list, but seeds are never sent to the popup or target site. Open Shadow DOM and same-origin iframe fields are supported; HOTP, cross-origin iframes, closed Shadow DOM, and private browsing are not supported.
+
+See the [installation and usage guide](docs/BROWSER_EXTENSION.md), [Chrome / Edge privacy notice](extension/PRIVACY.md), and [Firefox privacy notice](extension/PRIVACY_FIREFOX.md) (currently Chinese).
+
 ## 🔒 Security
 
 - **Password**: PBKDF2-SHA256 (100,000 iterations) salted hash, JWT stored in HttpOnly + Secure + SameSite=Strict cookies
@@ -196,14 +220,15 @@ TOTP pages show both the current and next codes, each available to copy, and upd
 
 ## 📚 More Documentation
 
-| Document                                       | Description                                   |
-| ---------------------------------------------- | --------------------------------------------- |
-| [Deployment Guide](docs/DEPLOYMENT.md)         | Manual deployment, KV config, Secrets         |
-| [Cloud Drive Setup](docs/CLOUD_DRIVE_SETUP.md) | OneDrive / Google Drive setup steps (Chinese) |
-| [API Reference](docs/API_REFERENCE.md)         | Complete API endpoint documentation           |
-| [Architecture](docs/ARCHITECTURE.md)           | System architecture & technical design        |
-| [Development Guide](docs/DEVELOPMENT.md)       | Local development, testing, code style        |
-| [PWA Guide](docs/PWA_GUIDE.md)                 | PWA installation & offline features           |
+| Document                                       | Description                                                            |
+| ---------------------------------------------- | ---------------------------------------------------------------------- |
+| [Deployment Guide](docs/DEPLOYMENT.md)         | Manual deployment, KV config, Secrets                                  |
+| [Cloud Drive Setup](docs/CLOUD_DRIVE_SETUP.md) | OneDrive / Google Drive setup steps (Chinese)                          |
+| [API Reference](docs/API_REFERENCE.md)         | Complete API endpoint documentation                                    |
+| [Architecture](docs/ARCHITECTURE.md)           | System architecture & technical design                                 |
+| [Development Guide](docs/DEVELOPMENT.md)       | Local development, testing, code style                                 |
+| [PWA Guide](docs/PWA_GUIDE.md)                 | PWA installation & offline features                                    |
+| [Browser Extension](docs/BROWSER_EXTENSION.md) | Chrome / Edge / Firefox installation, usage, and permissions (Chinese) |
 
 ## 🤝 Contributing
 

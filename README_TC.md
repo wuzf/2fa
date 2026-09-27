@@ -2,13 +2,21 @@
 
 基於 Cloudflare Workers 的兩步驟驗證金鑰管理系統。免費部署、全球加速、支援 PWA 離線使用。
 
-**[简体中文](README.md)** · **[English](README_EN.md)**
+<!-- README_LANGUAGE_NAV_START -->
 
-![Version](https://img.shields.io/badge/version-1.9.0-blue)
+[简体中文](README.md) · **[繁體中文](README_TC.md)** · [English](README_EN.md) · [日本語](README_JA.md) · [한국어](README_KO.md) ·
+[Deutsch](README_DE.md) · [Français](README_FR.md) · [Español](README_ES.md) · [Português (Brasil)](README_PT_BR.md) · [Italiano](README_IT.md) ·
+[Русский](README_RU.md) · [Türkçe](README_TR.md) · [Bahasa Indonesia](README_ID.md) · [Tiếng Việt](README_VI.md) · [ไทย](README_TH.md)
+
+<!-- README_LANGUAGE_NAV_END -->
+
+![Version](https://img.shields.io/github/package-json/v/wuzf/2fa?label=version)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
-**主要特色：** TOTP/HOTP 驗證碼自動產生 · QR Code 掃描/圖片識別/貼上截圖/拖曳圖片新增金鑰 · AES-GCM 256 位元加密儲存 · 從 Google Authenticator、Aegis、2FAS、Bitwarden 等應用程式批次匯入 · 多格式匯出（TXT/JSON/CSV/HTML/Google 轉移 QR Code） · 自動備份與還原 · WebDAV/S3/OneDrive/Google Drive 遠端備份同步 · 帳號安全/同步/偏好設定 · 多國語言支援（繁體中文 / 簡體中文 / English，依瀏覽器自動判定） · 淺色/深色/跟隨系統主題 · Fluent 2 風格響應式介面
+**主要特色：** TOTP/HOTP 驗證碼自動產生 · QR Code 掃描/圖片識別/貼上截圖/拖曳圖片新增金鑰 · AES-GCM 256 位元加密儲存 · 從 Google Authenticator、Aegis、2FAS、Bitwarden 等應用程式批次匯入 · 多格式匯出（TXT/JSON/CSV/HTML/Google 轉移 QR Code） · 自動備份與還原 · WebDAV/S3/OneDrive/Google Drive 遠端備份同步 · 帳號安全/同步/偏好設定 · 專案全模組 15 語支援（自動判定 / 手動切換） · 淺色/深色/跟隨系統主題 · Fluent 2 風格響應式介面
+
+網頁、瀏覽器擴充功能、初始設定、公開 OTP 頁面、API 提示與備份文件統一支援：簡體中文、繁體中文、English、日本語、한국어、Deutsch、Français、Español、Português (Brasil)、Italiano、Русский、Türkçe、Bahasa Indonesia、Tiếng Việt、ไทย。介面可依瀏覽器自動判定或手動選擇，未支援的瀏覽器語言使用英文；不同語言匯出的 CSV/HTML 備份可互相匯入。
 
 ## 📸 截圖預覽
 
@@ -87,7 +95,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 - **搜尋**：頂部搜尋框依服務名稱或帳號即時搜尋
 - **智慧聚合**：預設依服務系列自動分組，同一服務的多個帳號彙整在一起，亦可切換為全平鋪
 - **排序**：依新增時間或名稱排序
-- **多國語言**：懸浮按鈕 → **設定 → 偏好設定 → 顯示語言**，支援繁體中文、簡體中文、English 或跟隨瀏覽器
+- **多國語言**：懸浮按鈕 → **設定 → 偏好設定 → 顯示語言**，支援上述 15 種語言或跟隨瀏覽器
 - **主題**：懸浮按鈕 → **設定 → 偏好設定 → 主題模式**，選擇淺色、深色或跟隨系統
 
 ### 批次匯入

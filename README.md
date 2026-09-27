@@ -2,13 +2,29 @@
 
 基于 Cloudflare Workers 的两步验证密钥管理系统。免费部署、全球加速、支持 PWA 离线使用。
 
-**[繁體中文](README_TC.md)** · **[English](README_EN.md)**
+<!-- README_LANGUAGE_NAV_START -->
+
+**[简体中文](README.md)** · [繁體中文](README_TC.md) · [English](README_EN.md) · [日本語](README_JA.md) · [한국어](README_KO.md) ·
+[Deutsch](README_DE.md) · [Français](README_FR.md) · [Español](README_ES.md) · [Português (Brasil)](README_PT_BR.md) · [Italiano](README_IT.md) ·
+[Русский](README_RU.md) · [Türkçe](README_TR.md) · [Bahasa Indonesia](README_ID.md) · [Tiếng Việt](README_VI.md) · [ไทย](README_TH.md)
+
+<!-- README_LANGUAGE_NAV_END -->
 
 ![Version](https://img.shields.io/badge/version-1.9.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
-**主要特性：** TOTP/HOTP 验证码自动生成 · 二维码扫描/图片识别/粘贴截图/拖拽图片添加密钥 · AES-GCM 256 位加密存储 · 从 Google Authenticator、Aegis、2FAS、Bitwarden 等应用批量导入 · 多格式导出（TXT/JSON/CSV/HTML/Google 迁移二维码） · 自动备份与还原 · WebDAV/S3/OneDrive/Google Drive 远程备份同步 · 账户安全/同步/偏好设置 · 多语言支持（简体中文 / 繁體中文 / English，跟随系统自动检测） · 浅色/深色/跟随系统主题 · Fluent 2 风格响应式界面
+**主要特性：** TOTP/HOTP 验证码自动生成 · 二维码扫描/图片识别/粘贴截图/拖拽图片添加密钥 · AES-GCM 256 位加密存储 · 从 Google Authenticator、Aegis、2FAS、Bitwarden 等应用批量导入 · 多格式导出（TXT/JSON/CSV/HTML/Google 迁移二维码） · 自动备份与还原 · WebDAV/S3/OneDrive/Google Drive 远程备份同步 · 账户安全/同步/偏好设置 · 项目全模块 15 语支持（自动检测 / 手动切换） · 浅色/深色/跟随系统主题 · Fluent 2 风格响应式界面
+
+网页、浏览器扩展、首次设置、公开 OTP 页面、接口提示及备份文档统一支持：简体中文、繁體中文、English、日本語、한국어、Deutsch、Français、Español、Português (Brasil)、Italiano、Русский、Türkçe、Bahasa Indonesia、Tiếng Việt、ไทย。界面可跟随浏览器或手动选择，未支持的浏览器语言回退英文；不同语言导出的 CSV/HTML 备份可相互导入。
+
+## 🧩 浏览器扩展
+
+安装「2FA 验证助手」：**[Chrome 应用商店](https://chromewebstore.google.com/detail/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/lifeiloiefdlbohelpjajdbopeocalhl)** · **[Microsoft Edge 商店](https://microsoftedge.microsoft.com/addons/detail/kmchncmoddhdlbpfoejeahdjhieghklm)** · **[Firefox 附加组件商店](https://addons.mozilla.org/zh-CN/firefox/addon/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/)**。
+
+请使用对应浏览器打开安装链接。安装后，在扩展设置中填写自己的 2FA 实例地址，并在同一浏览器中登录实例，即可查看、复制和填充 TOTP 验证码；自动填充需在目标验证页面单独开启并授权。扩展需配合已部署的本项目使用，界面支持上述 15 种语言。Firefox 需使用 153 及以上桌面版本的普通标签页，不支持容器标签页、隐私窗口或 Android。
+
+[安装与使用指南](docs/BROWSER_EXTENSION.md) · [Chrome / Edge 隐私政策](extension/PRIVACY.md) · [Firefox 隐私政策](extension/PRIVACY_FIREFOX.md)
 
 ## 📸 截图预览
 
@@ -172,6 +188,14 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 安装后可像原生应用一样全屏使用，支持离线访问。
 
+### Chrome / Edge / Firefox 验证码辅助填充
+
+在目标网站点击扩展选择账户，或按 `Ctrl+Shift+U` 填入已绑定账户的当前 TOTP。按页面授权后，可自动检测验证码框并填充；多个账户匹配时显示选择面板。支持单框和 6/8 格输入，不主动提交表单。
+
+扩展使用网页登录会话，支持明确启用离线缓存，均无需保持主网页打开。网页登录模式在后台临时读取密钥，离线模式则在本机保留独立密钥缓存，断网后仍可取码。种子不传给弹窗或目标网站，离线缓存没有额外密码加密。支持开放 Shadow DOM 与同源 iframe；暂不支持 HOTP、跨域 iframe、关闭的 Shadow DOM 或隐私模式。
+
+详见[安装与使用指南](docs/BROWSER_EXTENSION.md)、[Chrome / Edge 隐私说明](extension/PRIVACY.md)及[Firefox 隐私说明](extension/PRIVACY_FIREFOX.md)。
+
 ## 🔒 安全
 
 - **密码**：PBKDF2-SHA256（100,000 次迭代）加盐哈希，JWT 存储在 HttpOnly + Secure + SameSite=Strict Cookie 中
@@ -204,6 +228,7 @@ TOTP 网页同时显示当前和下一个验证码，均可点击复制，到期
 | [架构设计](docs/ARCHITECTURE.md)              | 系统架构与技术实现                                 |
 | [开发指南](docs/DEVELOPMENT.md)               | 本地开发、测试、代码规范                           |
 | [PWA 指南](docs/PWA_GUIDE.md)                 | PWA 安装与离线功能                                 |
+| [浏览器扩展指南](docs/BROWSER_EXTENSION.md)   | Chrome / Edge / Firefox 扩展安装、使用与权限       |
 
 ## 🤝 参与贡献
 
