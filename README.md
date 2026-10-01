@@ -22,7 +22,7 @@
 
 安装「2FA 验证助手」：**[Chrome 应用商店](https://chromewebstore.google.com/detail/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/lifeiloiefdlbohelpjajdbopeocalhl)** · **[Microsoft Edge 商店](https://microsoftedge.microsoft.com/addons/detail/kmchncmoddhdlbpfoejeahdjhieghklm)** · **[Firefox 附加组件商店](https://addons.mozilla.org/zh-CN/firefox/addon/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/)**。
 
-请使用对应浏览器打开安装链接。安装后，在扩展设置中填写自己的 2FA 实例地址，并在同一浏览器中登录实例，即可查看、复制和填充 TOTP 验证码；自动填充需在目标验证页面单独开启并授权。扩展需配合已部署的本项目使用，界面支持上述 15 种语言。Firefox 需使用 153 及以上桌面版本的普通标签页，不支持容器标签页、隐私窗口或 Android。
+请使用对应浏览器打开安装链接。安装后，在扩展设置中填写自己的 2FA 实例地址，并在同一浏览器中登录实例，即可查看、复制和填充 TOTP 验证码；自动填充需在目标验证页面单独开启并授权。扩展需配合已部署的本项目使用，界面支持上述 15 种语言。Firefox 桌面版与 Android 版均要求 153 及以上版本，并使用普通标签页；不支持桌面容器标签页和两端的隐私标签页。Android 适配已加入当前源码，兼容的商店新版待发布，尚未完成 Firefox Android 实机验证。Firefox Android 不提供扩展快捷键。Edge Android 已有用户实测可用。
 
 [安装与使用指南](docs/BROWSER_EXTENSION.md) · [Chrome / Edge 隐私政策](extension/PRIVACY.md) · [Firefox 隐私政策](extension/PRIVACY_FIREFOX.md)
 

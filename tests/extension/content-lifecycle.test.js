@@ -34,12 +34,12 @@ function createController(options = {}) {
 	return controller;
 }
 
-function prepare(controller, nonce = NONCE) {
-	return controller.handle({ type: MESSAGE.PREPARE_TARGET, nonce, expectedDigits: 6 });
+function prepare(controller, nonce = NONCE, extra = {}) {
+	return controller.handle({ type: MESSAGE.PREPARE_TARGET, nonce, expectedDigits: 6, ...extra });
 }
 
-function fill(controller, nonce = NONCE) {
-	return controller.handle({ type: MESSAGE.FILL_CODE, nonce, code: '012345', expiresAt: Date.now() + 10000 });
+function fill(controller, nonce = NONCE, extra = {}) {
+	return controller.handle({ type: MESSAGE.FILL_CODE, nonce, code: '012345', expiresAt: Date.now() + 10000, ...extra });
 }
 
 function trackListeners(target) {
@@ -105,6 +105,106 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
+describe('manual fill covered by an Android popup', () => {
+	it('fills a hidden document only when both prepare and fill carry the trusted allowance', async () => {
+		const input = appendOtpInput();
+		vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+		const controller = createController();
+		expect(await prepare(controller, NONCE, { allowHiddenTarget: true })).toMatchObject({ ok: true, status: 'ready' });
+		expect(await fill(controller, NONCE, { allowHiddenTarget: true })).toMatchObject({ ok: true, status: 'filled' });
+		expect(input.value).toBe('012345');
+		expect(await fill(controller, NONCE, { allowHiddenTarget: true })).toMatchObject({ ok: false, error: { code: 'NONCE_INVALID' } });
+	});
+
+	it.each([undefined, false])('refuses a hidden prepare or fill with allowance %s', async (allowHiddenTarget) => {
+		const input = appendOtpInput();
+		vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+		const controller = createController();
+		expect(await prepare(controller, NONCE, { allowHiddenTarget })).toMatchObject({ ok: false, error: { code: 'TARGET_UNAVAILABLE' } });
+		expect(await prepare(controller, NONCE, { allowHiddenTarget: true })).toMatchObject({ ok: true, status: 'ready' });
+		expect(await fill(controller, NONCE, { allowHiddenTarget })).toMatchObject({ ok: false, error: { code: 'TARGET_UNAVAILABLE' } });
+		expect(input.value).toBe('');
+	});
+
+	it.each([null, 1, 'true', {}])('rejects a nonboolean hidden-target allowance: %j', async (allowHiddenTarget) => {
+		const input = appendOtpInput();
+		vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+		const controller = createController();
+		expect(await prepare(controller, NONCE, { allowHiddenTarget })).toMatchObject({ ok: false, error: { code: 'INVALID_MESSAGE' } });
+		expect(await fill(controller, NONCE, { allowHiddenTarget })).toMatchObject({ ok: false, error: { code: 'INVALID_MESSAGE' } });
+		expect(input.value).toBe('');
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('cannot upgrade an ordinary prepared nonce to permit hidden filling', async () => {
+		const input = appendOtpInput();
+		const controller = createController();
+		expect(await prepare(controller)).toMatchObject({ ok: true, status: 'ready' });
+		vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+		expect(await fill(controller, NONCE, { allowHiddenTarget: true })).toMatchObject({ ok: false, error: { code: 'TARGET_UNAVAILABLE' } });
+		expect(await fill(controller, NONCE, { allowHiddenTarget: true })).toMatchObject({ ok: false, error: { code: 'NONCE_INVALID' } });
+		expect(input.value).toBe('');
+	});
+
+	it.each(['visibilitychange', 'pagehide'])('still retires allowed pending targets on %s', async (event) => {
+		const input = appendOtpInput();
+		vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+		const controller = createController();
+		expect(await prepare(controller, NONCE, { allowHiddenTarget: true })).toMatchObject({ ok: true, status: 'ready' });
+		(event === 'pagehide' ? window : document).dispatchEvent(new Event(event));
+		expect(await fill(controller, NONCE, { allowHiddenTarget: true })).toMatchObject({ ok: false, error: { code: 'NONCE_INVALID' } });
+		expect(input.value).toBe('');
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it.each([{ expectedOrigin: 'https://wrong.example' }, { expectedTargetPath: '/different-path' }])(
+		'keeps the expected target check for a hidden document: %j',
+		async (expectations) => {
+			const input = appendOtpInput();
+			vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+			const controller = createController();
+			expect(await prepare(controller, NONCE, { allowHiddenTarget: true, ...expectations })).toMatchObject({
+				ok: false,
+				error: { code: 'TARGET_UNAVAILABLE' },
+			});
+			expect(await prepare(controller, NONCE, { allowHiddenTarget: true })).toMatchObject({ ok: true, status: 'ready' });
+			expect(await fill(controller, NONCE, { allowHiddenTarget: true, ...expectations })).toMatchObject({
+				ok: false,
+				error: { code: 'TARGET_UNAVAILABLE' },
+			});
+			expect(input.value).toBe('');
+		},
+	);
+
+	it('does not treat the document allowance as permission to fill hidden inputs', async () => {
+		const input = appendOtpInput();
+		input.hidden = true;
+		vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+		const controller = createController({ detectionTimeoutMs: 0 });
+		expect(await prepare(controller, NONCE, { allowHiddenTarget: true })).toMatchObject({ ok: true, status: 'not_found' });
+		expect(await fill(controller, NONCE, { allowHiddenTarget: true })).toMatchObject({ ok: false, error: { code: 'NONCE_INVALID' } });
+		expect(input.value).toBe('');
+	});
+
+	it('rejects a foreign runtime sender even if it supplies the allowance', async () => {
+		const input = appendOtpInput();
+		vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+		const controller = createController();
+		const handle = vi.spyOn(controller, 'handle');
+		const runtime = { id: 'test-extension', onMessage: { removeListener: vi.fn() } };
+		const listener = createRuntimeMessageListener({ runtime, controller });
+		const respond = vi.fn();
+		expect(listener({ type: MESSAGE.PREPARE_TARGET, nonce: NONCE, allowHiddenTarget: true }, { id: 'foreign-extension' }, respond)).toBe(
+			false,
+		);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(handle).not.toHaveBeenCalled();
+		expect(respond).not.toHaveBeenCalled();
+		expect(input.value).toBe('');
+		listener.dispose();
+	});
+});
+
 describe('content controller disposal', () => {
 	it('removes a prepared nonce and its expiry timer, and remains disposed after repeated disposal', async () => {
 		const input = appendOtpInput();
@@ -123,13 +223,16 @@ describe('content controller disposal', () => {
 		expect(input.value).toBe('');
 	});
 
-	it.each([MESSAGE.TARGET_PING, MESSAGE.PREPARE_TARGET, MESSAGE.FILL_CODE])('refuses %s after disposal without starting work', async (type) => {
-		const controller = createController();
-		controller.dispose();
-		expect(await controller.handle({ type, nonce: NONCE })).toMatchObject({ ok: false, error: { code: 'TARGET_UNAVAILABLE' } });
-		expect(observers).toHaveLength(0);
-		expect(vi.getTimerCount()).toBe(0);
-	});
+	it.each([MESSAGE.TARGET_PING, MESSAGE.PREPARE_TARGET, MESSAGE.FILL_CODE])(
+		'refuses %s after disposal without starting work',
+		async (type) => {
+			const controller = createController();
+			controller.dispose();
+			expect(await controller.handle({ type, nonce: NONCE })).toMatchObject({ ok: false, error: { code: 'TARGET_UNAVAILABLE' } });
+			expect(observers).toHaveLength(0);
+			expect(vi.getTimerCount()).toBe(0);
+		},
+	);
 
 	it('immediately cancels every ongoing detection and removes its observers, timers, and page listeners', async () => {
 		const windowListeners = trackListeners(window);
@@ -191,7 +294,10 @@ describe('content controller disposal', () => {
 
 	it('does not dispose a caller-owned explicit-focus provider or install its own focus listeners', async () => {
 		const listeners = trackListeners(document);
-		const getExplicitFocusedInput = Object.assign(vi.fn(() => null), { dispose: vi.fn() });
+		const getExplicitFocusedInput = Object.assign(
+			vi.fn(() => null),
+			{ dispose: vi.fn() },
+		);
 		const controller = createController({ getExplicitFocusedInput, detectionTimeoutMs: 0 });
 		expect(await prepare(controller)).toMatchObject({ ok: true, status: 'not_found' });
 		expect(getExplicitFocusedInput).toHaveBeenCalled();

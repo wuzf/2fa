@@ -7,6 +7,7 @@ import { getConfigurationGeneration } from './generation.js';
 import { ExtensionError, throwFromResponse } from './errors.js';
 import { requireSettings, validateFlowConfiguration, assertCurrentGeneration } from './configuration.js';
 import { injectScript, sendDocumentMessage } from './browser-access.js';
+import { validateMobilePopupTarget } from './mobile-popup.js';
 
 // Own the captured document, login identity, and one-use request claims together.
 // Reading authorization context must remain possible without source access.
@@ -145,6 +146,9 @@ export async function discardClaim(nonce) {
 }
 
 export async function prepareTarget(flow, account, confirmFocused = false) {
+	if (flow.allowHiddenTarget) {
+		await validateMobilePopupTarget(flow);
+	}
 	const response = await sendDocumentMessage(
 		flow.targetTabId,
 		flow.targetDocumentId,
@@ -152,6 +156,7 @@ export async function prepareTarget(flow, account, confirmFocused = false) {
 			type: MESSAGE.PREPARE_TARGET,
 			nonce: flow.nonce,
 			expectedDigits: account.digits,
+			...(flow.allowHiddenTarget ? { allowHiddenTarget: true } : {}),
 			...(confirmFocused ? { confirmFocused: true } : {}),
 			expectedOrigin: flow.targetOrigin,
 			expectedTargetPath: flow.targetPath,

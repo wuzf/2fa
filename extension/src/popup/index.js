@@ -21,8 +21,6 @@ const elements = Object.fromEntries(
 		remember: 'remember-binding',
 		rememberTitle: 'remember-title',
 		autofill: 'autofill-site',
-		autofillDescription: 'autofill-description',
-		autofillNote: 'autofill-note',
 		actions: 'actions',
 		retry: 'retry',
 		fillFocused: 'fill-focused',
@@ -437,14 +435,26 @@ async function fill(account, confirmFocused = false, { automatic = false } = {})
 			const rememberChoice = accounts.rememberFor(account.id);
 			const remember = elements.remember.closest('label').hidden ? boundAccountIds().includes(account.id) : rememberChoice;
 			session.consume();
-			await send({
-				type: MESSAGE.FILL_ACCOUNT,
-				nonce: session.flow.nonce,
-				account,
-				remember,
-				...(confirmFocused ? { confirmFocused: true } : {}),
-				...(automatic ? { automatic: true } : {}),
-			});
+			const nonce = session.flow.nonce;
+			if (!automatic) {
+				// The background can verify the visible Android popup owns this
+				// manual request while its full-screen view covers the target page.
+				document.documentElement.dataset.manualFillNonce = nonce;
+			}
+			try {
+				await send({
+					type: MESSAGE.FILL_ACCOUNT,
+					nonce,
+					account,
+					remember,
+					...(confirmFocused ? { confirmFocused: true } : {}),
+					...(automatic ? { automatic: true } : {}),
+				});
+			} finally {
+				if (!automatic && document.documentElement.dataset.manualFillNonce === nonce) {
+					delete document.documentElement.dataset.manualFillNonce;
+				}
+			}
 		});
 		if (closed) {
 			return;

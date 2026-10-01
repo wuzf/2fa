@@ -107,16 +107,22 @@ async function openConfiguredInstance(configurationGeneration) {
 			continue;
 		}
 		await validateFlowConfiguration(configuration);
-		const window = await chrome.windows.get(activated.windowId);
+		// Firefox for Android has tabs but no window-management API. Activation is
+		// sufficient there; keep the same source/configuration checks on both paths.
+		const canFocusWindow = typeof chrome.windows?.get === 'function' && typeof chrome.windows?.update === 'function';
+		const window = canFocusWindow ? await chrome.windows.get(activated.windowId) : null;
 		const current = await getOpenableInstanceTab(tab.id, instanceOrigin);
-		if (!current || current.windowId !== window.id) {
+		if (!current || (window && current.windowId !== window.id)) {
 			continue;
 		}
 		assertCurrentGeneration(configuration);
-		await chrome.windows.update(window.id, {
-			focused: true,
-			...(window.state === 'minimized' ? { state: 'normal' } : {}),
-		});
+		await validateFlowConfiguration(configuration);
+		if (window) {
+			await chrome.windows.update(window.id, {
+				focused: true,
+				...(window.state === 'minimized' ? { state: 'normal' } : {}),
+			});
+		}
 		return { status: 'activated', instanceOrigin };
 	}
 

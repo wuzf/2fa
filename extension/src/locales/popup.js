@@ -34,7 +34,6 @@ export const POPUP_LOCALES = {
 		popupRememberTitle: '记住账户',
 		popupRememberAccount: '记住 {name}',
 		popupRememberAccountDetail: '记住 {name}（{account}）',
-		popupAutofillHttpManual: '这是 HTTP 页面，只能手动填充；每个账户的填充按钮仍可使用。',
 		popupRememberHint: '手动填充成功后记住此网站的账户，下次优先推荐；不会开启自动填充',
 		popupRememberDescription: '手动填充成功后记住此网站的账户，下次优先推荐；不会开启自动填充。',
 		popupAutofillTitle: '在此页面自动填充',
@@ -151,7 +150,6 @@ export const POPUP_LOCALES = {
 		popupRememberTitle: '記住帳戶',
 		popupRememberAccount: '記住 {name}',
 		popupRememberAccountDetail: '記住 {name}（{account}）',
-		popupAutofillHttpManual: '這是 HTTP 頁面，只能手動填入；每個帳戶的填入按鈕仍可使用。',
 		popupRememberHint: '手動填入成功後記住此網站的帳戶，下次優先推薦；不會開啟自動填入',
 		popupRememberDescription: '手動填入成功後記住此網站的帳戶，下次優先推薦；不會開啟自動填入。',
 		popupAutofillTitle: '在此頁面自動填入',
@@ -268,7 +266,6 @@ export const POPUP_LOCALES = {
 		popupRememberTitle: 'Remember account',
 		popupRememberAccount: 'Remember {name}',
 		popupRememberAccountDetail: 'Remember {name} ({account})',
-		popupAutofillHttpManual: "This is an HTTP page, so codes can only be filled manually. Each account's Fill button still works.",
 		popupRememberHint:
 			"Remember this website's account after a successful manual fill and suggest it next time. This does not enable autofill.",
 		popupRememberDescription:

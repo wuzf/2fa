@@ -51,6 +51,8 @@ const AUTHENTICATOR_DENIAL_SIGNAL =
 const HEADING_ELEMENTS = 'h1,h2,h3,h4,h5,h6,[role="heading"],legend';
 // Classes naming the state of an accordion item or tab rather than its kind.
 const STATE_CLASS = /^(?:open|active|expanded|collapsed|selected|current|(?:is|has)[-_].+)$/i;
+// Classes naming a help or contact block beside a card ("box help").
+const HELP_CLASS = /(?:^|[-_])(?:help|support|faq|contact)(?:$|[-_])/i;
 // Inline elements continue the sentence around them; any other element ends a block.
 const INLINE_ELEMENTS = new Set([
 	'A',
@@ -82,16 +84,22 @@ const CHANNEL_ROUTE_SIGNAL =
 // A channel word that names the code itself: "email verification", "手机验证码".
 const CHANNEL_NAMED_CODE_SIGNAL =
 	/\b(?:sms|text|e[\s_-]?mail|email|phone|mobile)[\s:_-]*(?:(?:verification|authentication|security|one[\s_-]*time)[\s_-]*)?(?:code|pin|passcode|otp|verification|verify|one[\s_-]*time[\s_-]*password)\b|(?:短信|邮件|邮箱|手机)(?:验证|动态|校验)?码|(?:短信|邮件|邮箱|手机)验证/i;
-const GENERIC_CODE_SIGNAL = /\b(?:code|pin)\b|验证码|动态码|口令/i;
+const GENERIC_CODE_SIGNAL = /\b(?:codes?|pins?)\b|验证码|动态码|口令/i;
 const SECURITY_CODE_SIGNAL = /\bsecurity[\s_-]*code\b|安全码/i;
 const NEGATIVE_SIGNAL =
 	/\b(?:backup|recovery|recover|captcha|promo|coupon|postal|zip|card|cvv|cvc|gift|invite|referral)\b|恢复码|备用码|图形验证码|优惠码|邮编|银行卡/i;
-// Deliveries in any tense. The future names its channel with the verb ("We'll
-// text you a code", "We will email you a code", "We're texting you a code") or
-// gets the code ("You'll get a code by email", "我们会把验证码发给您"); "We will
-// never text you" and "The code will get refreshed" are not one.
+// Deliveries in any tense ("A code is on its way"). The future names its
+// channel with the verb ("We'll text you a code", "We will email you a code",
+// "We're texting you a code", "我们会把验证码发给您") or gets the code ("You'll
+// get a code shortly", "You should get a code within a minute"), and getting a
+// message counts now or later ("You'll get a text with a code", "You can also
+// get an email"). Getting the code by a channel or at a destination is one in
+// any tense ("You can also get a code by text message", "You'll get a code at
+// j***@example.com", "通过短信获取验证码"). "We will never text you", "The code
+// will get refreshed", "You'll get a new code every 30 seconds" and "Scan the
+// QR code and you'll get a 6-digit code" are not one.
 const DELIVERY_ACTION_SIGNAL =
-	/\b(?:sent|send|sending|delivered|receive[ds]?|receiving|texted|texting|e[\s_-]?mailed|e[\s_-]?mailing)\b|(?:\b(?:will|shall)|['’]ll|\b(?:going|about)\s+to)\s+(?:(?!not\b|never\b)\w+\s+)?(?:text|e[\s_-]?mail|sms|get\s+(?:an?|the|your|it|one))\b|\bdid(?:n['’]?t| not)\s+get\b|\bcheck\s+(?:your\s+)?(?:phone|inbox|e[\s_-]?mail|messages|texts)\b|发送|发到|发至|发给|接收|收到|查收|查看(?:您的|你的)?(?:手机|短信|邮箱|收件箱|邮件)/i;
+	/\b(?:sent|send|sending|delivered|receive[ds]?|receiving|texted|texting|e[\s_-]?mailed|e[\s_-]?mailing)\b|\bon\s+(?:its|the)\s+way\b|(?:\b(?:will|shall)|['’]ll|\b(?:going|about)\s+to)\s+(?:(?!not\b|never\b)\w+\s+)?(?:text|e[\s_-]?mail|sms)\b|(?:\b(?:will|shall|can|could)|['’]ll|\b(?:going|about)\s+to)\s+(?:(?!not\b|never\b)\w+\s+)?get\s+an?\s+(?:text|sms|e[\s_-]?mail)\b|(?<!\b(?:scan\w*|qr)\b[^.!?]*)(?:\b(?:will|shall|should)|['’]ll|\b(?:going|about)\s+to)\s+(?:(?!not\b|never\b)\w+\s+)?get\s+(?:an?|the|your|it|one)\b(?![^.!?]*\b(?:every|each)\s+(?:\d+\s*)?(?:s|secs?|seconds?|mins?|minutes?)\b)|\bget\s+(?:an?|the|your|it|one)\b[^.!?,;]{0,40}?(?:\b(?:by|via|through|over)\s+(?:(?:an?|the|your)\s+)?(?:sms|text|e[\s_-]?mail|phone|mobile)\b|\bin\s+(?:your\s+)?(?:inbox|e[\s_-]?mail|texts|messages)\b|\b(?:on|to|at)\s+(?:your\s+)?(?:(?:mobile|cell)\s+)?(?:phone|mobile|cell)\b|\b(?:on|to|at)\s+(?:[^\s@]+@|[+(]?[*•\d][\d*•\s()-]{5,}))|\bdid(?:n['’]?t| not)\s+get\b|\bcheck\s+(?:your\s+)?(?:phone|inbox|e[\s_-]?mail|messages|texts)\b|发送|发到|发至|发给|接收|收到|收不到|查收|通过(?:短信|邮件|邮箱|电子邮件)获取|查看(?:您的|你的)?(?:手机|短信|邮箱|收件箱|邮件)/i;
 // "请查看手机短信", "请查看邮箱", "Check your inbox": checking a message channel
 // describes the delivered code. Checking the phone does not: the authenticator
 // app runs there too. Nor do the email settings or address.
@@ -110,11 +118,16 @@ const ALSO_ALTERNATIVE_SIGNAL = /\b(?:can|could|may)\s+also\b|\balso\s+(?:use|en
 const ALTERNATIVE_CLAUSE_BOUNDARY = /[,;，；]/;
 // An authenticator code is never delivered, so asking to deliver the code
 // again means the current challenge was sent, even without a channel word:
-// "Resend", "Send me a new code", "给我发一个新的验证码". Getting the QR code,
-// recovery or backup codes or the key again ("重新获取二维码", "重新获取恢复码",
-// "Resend QR code", "Send me a new QR code") sets up the authenticator instead.
+// "Resend", "Send me a new code", "Text me again", "We won't text you again for
+// 60 seconds", "给我发一个新的验证码". Getting the QR code, recovery or backup
+// codes or the key again ("重新获取二维码", "重新获取恢复码", "Resend QR code",
+// "Send me a new QR code") sets up the authenticator instead, an invite or a
+// welcome email ("Resend invite", "Resend welcome email") is no code, and
+// getting a new code every 30 seconds ("You'll get a new code every 30
+// seconds") is the authenticator's. Requesting one is not: "You can request a
+// new code every 60 seconds", "New codes can be requested every 2 minutes".
 const RESEND_SIGNAL =
-	/\bre[\s-]*send\b(?!\s+(?:(?:me|the|your|a|new)\s+)*(?:qr|recovery|backup|secret|setup)\b)|\bsend\b(?!\s+(?:(?:me|the|your|a|new)\s+)*(?:qr|recovery|backup|secret|setup)\b)[^.!?]*\bagain\b|\b(?:send|request|get)\s+(?:me\s+)?(?:an?\s+)?(?:new|another)\s+(?:code|one|sms|text|e[\s_-]?mail|email|message)\b|(?:重新发送|再次发送|重发|重新获取|再次获取)(?!(?:新的)?(?:二维码|恢复码|备用码|密钥))|发送?一?[个条封]?新的?(?:短信|手机|邮箱|邮件)?(?:验证码|动态码|校验码)/i;
+	/\bre[\s-]*send\b(?!\s+(?:(?:me|the|your|a|new)\s+)*(?:qr|recovery|backup|secret|setup|invite|invitation|welcome)\b)|\bsend\b(?!\s+(?:(?:me|the|your|a|new)\s+)*(?:qr|recovery|backup|secret|setup|invite|invitation|welcome)\b)[^.!?]*\bagain\b|\b(?:text|e[\s_-]?mail)\s+(?:me|you|it)\b[^.!?]*\bagain\b|\b(?:send|request|ask\s+for)\s+(?:me\s+)?(?:an?\s+)?(?:new|another)\s+(?:code|one|sms|text|e[\s_-]?mail|email|message)\b|\bget\s+(?:me\s+)?(?:an?\s+)?(?:new|another)\s+(?:code|one|sms|text|e[\s_-]?mail|email|message)\b(?![^.!?]*\b(?:every|each)\s+(?:\d+\s*)?(?:s|secs?|seconds?|mins?|minutes?)\b)|\b(?:new|another)\s+(?:codes?|one)\s+(?:can|may)\s+(?:only\s+)?be\s+requested\b|(?:重新发送|再次发送|重发|重新获取|再次获取)(?!(?:新的)?(?:二维码|恢复码|备用码|密钥))|发送?一?[个条封]?新的?(?:短信|手机|邮箱|邮件)?(?:验证码|动态码|校验码)/i;
 // The first request for a delivered code: "获取验证码", "发送短信验证码". English
 // wording such as "Send code" or "Get code" counts only on a button; a link
 // with it usually offers another method.
@@ -125,9 +138,13 @@ const CODE_REQUEST_TEXT = /^(?:点击)?(?:免费)?(?:获取|发送)(?:短信|手
 const COUNTDOWN_TEXT = /^(?:\(\s*\d{1,3}\s*(?:s|秒)?\s*\)|\d{1,3}\s*(?:s|secs?|seconds?|秒))$/i;
 // A countdown without a unit: "59", "00:59". Keypads, pagination and code
 // timers also show those, so it counts only on a disabled button or on a
-// clickable element whose class or id names the send ("send-btn", "resend").
+// clickable element whose class or id names the send ("send-btn", "resend",
+// "send-message", not "send-feedback"), and not beside a field naming the
+// authenticator.
 const BARE_COUNTDOWN_TEXT = /^(?:\d{1,3}|\d{1,2}:\d{2})$/;
-const SEND_CLASS_SIGNAL = /\b(?:re)?send\b/i;
+const SEND_CLASS_SIGNAL = /\b(?:re)?send\b(?!\s+(?:feedback|invite|gift)\b)/i;
+// A container named for a timer, whose digits may stand in keys of their own.
+const TIMER_CLASS_SIGNAL = /\b(?:timer|countdown|count\s*down)\b/i;
 // A step, tab or title reading "获取验证码" names a stage, not a send action,
 // and so does a label or tip. A label or tip wrapper may still hold the send
 // button ("input-tip" around "send-code"), so only a stage class counts on the
@@ -135,6 +152,9 @@ const SEND_CLASS_SIGNAL = /\b(?:re)?send\b/i;
 const STAGE_CLASS_SIGNAL = /\b(?:steps?|tabs?|title|progress)\b/i;
 const LABEL_CLASS_SIGNAL = /\b(?:steps?|tabs?|title|label|tips?|progress)\b/i;
 const CLICKABLE_CLASS_SIGNAL = /\b(?:btn|button|send|link)\b/i;
+// A class naming the caption of a form row: "adm-form-item-label", "form-label",
+// "adm-list-item-content-prefix".
+const CAPTION_CLASS_SIGNAL = /(?:^|[\s_-])(?:label|caption|prefix)(?:$|[\s_-])/i;
 const CLICKABLE_TEXT_LENGTH = 40;
 const CODE_REQUEST_BUTTON_SIGNAL =
 	/^(?:send|get|request|text|e ?mail)\s+(?:me\s+)?(?:(?:an?|the|new)\s+)?(?:(?:sms|text|e ?mail|verification|security|one time|login|sign in|\d+ digit)\s+)*(?:code|otp|passcode)\b/i;
@@ -178,6 +198,60 @@ const SPAM_FOLDER_SIGNAL = /\b(?:spam|junk)\b|垃圾/i;
 // A plea for help with a code that has not arrived: "收不到？", "Having
 // trouble?". "没收到？" and "Didn't get it?" already describe the delivery.
 const DELIVERY_HELP_SIGNAL = /\b(?:trouble|problems?|issues?)\b|\bneed\s+help\b|收不到|遇到问题|需要帮助/i;
+// A resend of an account email rather than the code: "Resend activation
+// link", "Resend verification email", "重新发送激活邮件". A field named for
+// the same purpose ("Activation code", "Verification code") may take the code
+// that email carries.
+const ACCOUNT_EMAIL_ACTION_SIGNAL =
+	/\b(?:activation|activate|confirmation)\b|\bverification\s+(?:e[\s_-]?mail|link)\b|激活|验证邮件|确认邮件/i;
+// A field named for verifying ("Verification code", "Confirmation code",
+// "确认码"), unlike the plain "验证码" or "身份验证器".
+const VERIFICATION_FIELD_SIGNAL = /\b(?:verif|confirm)\w*|验证(?![码器])|确认/i;
+const ACCOUNT_EMAIL_PURPOSES = [/\bactivat\w*|激活/i, /\b(?:verif|confirm)\w*|验证|确认/i];
+// An action offering another method, beside a resend in a help notice.
+const ANOTHER_METHOD_ACTION_SIGNAL = /\banother\s+(?:method|option|device)\b|\b(?:recovery|backup)\s+codes?\b|恢复码|备用码/i;
+// A delivery promised only for recovery: "If you lose your phone, we'll email
+// you a code", "We will only text you a code if you lose your device". A
+// condition about the code or its message ("If you can't find the text, we'll
+// text you another code", "If you don't have the code yet") is none. Needing
+// recovery is one only as a condition ("If you need account recovery, we'll
+// email you a code"); a recovery the code itself is for ("We'll email you a
+// code to regain access") names the code being entered.
+const RECOVERY_CONDITION_SIGNAL =
+	/\b(?:if|when|in\s+case|should)\s+(?:you\s+)?(?:ever\s+)?(?:(?:lose|lost|misplace\w*|replace|(?:can['’]?t|cannot|don['’]?t|do\s+not|no\s+longer)\s+(?:access|use|have|find))\b(?!\s+(?:(?:the|your|this|that|a|an|any)\s+)?(?:codes?|e[\s_-]?mails?|texts?|sms|messages?|inbox)\b)(?!(?<=\b(?:find|have))\s+(?:it|one)\b)|(?:need|want)\s+(?:to\s+)?(?:account\s+recovery|regain\s+access|recover\s+(?:your\s+|the\s+)?account)\b)/i;
+const FUTURE_DELIVERY_SIGNAL =
+	/(?:\b(?:will|shall)|['’]ll|\b(?:going|about)\s+to)\s+(?:(?!not\b|never\b)\w+\s+)?(?:text|e[\s_-]?mail|sms|get)\b/gi;
+// A clause denying a delivery: "We never send codes by SMS", "Codes are not
+// sent by email", "我们不会通过短信发送验证码". A code not received ("Didn't get
+// the text?") was still sent, and so was a message asked about without a verb
+// of its own ("SMS not sent?", "Code not delivered?"). Nothing else may stand
+// between the negation and the verb ("Do not share the code sent to your
+// phone").
+const DELIVERY_DENIAL_SIGNAL =
+	/\b(?:never|(?<!\b(?:sms|texts?|messages?|e[\s_-]?mails?|codes?)\s+)not|cannot|(?:won|don|doesn|didn)['’]?t|(?:is|are|was|were|ca)n['’]?t)\s+(?:(?:be|been|ever)\s+)?(?:send|sent|text|texted|e[\s_-]?mail(?:ed)?|deliver(?:ed)?)\b|(?:不会|从不|绝不|并不)(?:通过[\u4e00-\u9fff]{1,4}|以[\u4e00-\u9fff]{1,4}(?:形式|方式)|向您|向你|给您|给你|主动)?(?:发送|发到|发至|发给)/i;
+// A code or message right before a denial: "Code didn't send?", "Codes aren't
+// sent by SMS".
+const DENIED_SUBJECT_SIGNAL = /\b(?:sms|texts?|messages?|e[\s_-]?mails?|codes?)\s+$/i;
+// Denying only a further delivery still tells of the first: "We won't text
+// you again for 60 seconds", "We can't send a new code yet", "我们不会再次发送".
+const FURTHER_DELIVERY_SIGNAL = /\b(?:again|another|anymore|an?\s+new|yet)\b|再次|再|重新/i;
+const CONTRAST_SIGNAL = /\b(?:but|instead)\b|而是|而/i;
+// Advice on the device clock ("Make sure your device's time is correct",
+// "Resync the clock", "请确认手机时间是否准确"): time-based codes depend on it,
+// delivered ones do not.
+const CLOCK_ADVICE_SIGNAL =
+	/\b(?:time|clock)\b[^.!?]*\b(?:correct|right|accurate|synced|in\s+sync)\b|\b(?:re)?sync\w*\s+(?:the\s+|your\s+)?(?:time|clock)\b|时间[^。！？]*(?:准确|正确|同步|校准)|(?:同步|校准)[^。！？]*时间/i;
+// A message delivered to the user that carries something other than the code
+// ("We emailed you a link", "Didn't get the invite?", "We'll text you when your
+// sign-in is approved", "We'll email you if someone signs in", "You can get an
+// SMS about unusual sign-ins"), or a check of the address rather than the inbox
+// ("Check your email address below").
+const OTHER_MESSAGE_SIGNAL =
+	/\b(?:links?|invit\w*|receipts?|newsletters?|passwords?|reset|confirm\w*|activat\w*|approv\w*|welcome|setup|alerts?|notifications?|settings|preferences|someone|anyone|unusual|suspicious)\b|\bcheck\s+(?:your\s+)?e[\s_-]?mail\s+address\b|链接|邀请|激活|确认|密码|通知/i;
+// A warning not to pass the code on: "请勿将验证码发给他人", "切勿发送给陌生人",
+// "禁止转发给第三方".
+const PASS_ON_WARNING_SIGNAL =
+	/(?:请勿|切勿|不要|不得|严禁|禁止|勿)[^，,。；;！!？?]{0,10}?(?:发给|发送|发到|发至|转发)|(?:发给|发送给|发送至|转发给)(?:他人|别人|任何人|其他人|陌生人|第三方)/g;
 const NON_ENTRY_INPUT_TYPES = new Set(['hidden', 'submit', 'button', 'reset', 'image', 'checkbox', 'radio']);
 const PASSWORD_AUTOCOMPLETE = new Set(['current-password', 'new-password']);
 const SENTENCE_BOUNDARY = /[.!?;。！？；]/;
@@ -397,9 +471,21 @@ function actionText(action) {
 }
 
 // A countdown without a unit on a disabled button, or on a clickable element
-// whose class or id names the send.
+// whose class or id names the send. The current page or step (aria-current)
+// and one of several numbered items side by side (a keypad, pagination, a
+// stepper) are not one, unless their container is named for a timer.
 function countsDownBare(action, text, asButton) {
-	if (!BARE_COUNTDOWN_TEXT.test(text)) {
+	const current = action.getAttribute('aria-current');
+	if (!BARE_COUNTDOWN_TEXT.test(text) || (current !== null && current !== 'false')) {
+		return false;
+	}
+	const item = action.parentElement?.matches('li') ? action.parentElement : action;
+	if (
+		!TIMER_CLASS_SIGNAL.test(normalizeText(item.parentElement?.getAttribute('class') || '')) &&
+		Array.from(item.parentElement?.children || []).some(
+			(sibling) => sibling !== item && BARE_COUNTDOWN_TEXT.test(normalizeText(actionText(sibling))),
+		)
+	) {
 		return false;
 	}
 	if (action.matches(BUTTON_ELEMENTS) && (action.hasAttribute('disabled') || action.getAttribute('aria-disabled') === 'true')) {
@@ -422,11 +508,12 @@ function requestsCode(action, text, asButton = action.matches(BUTTON_ELEMENTS)) 
 // way"), and only a request to send or resend the code describes the current
 // challenge. It names the channel when it can ("delivery sms"); a resend push
 // notification does not count.
-// Returns { hint, request, named, countdown } where request marks a first
-// send rather than a resend, named a first send that names its channel ("Text
-// me a code", "获取短信验证码"), and countdown the resend state a send button
-// turns into: a bare countdown ("59s", or "59" and "00:59" on a disabled or
-// send button) or a resend with a number ("60秒后重新获取", "重新发送(59)").
+// Returns { hint, request, named, countdown, bare } where request marks a
+// first send rather than a resend, named a first send that names its channel
+// ("Text me a code", "获取短信验证码"), and countdown the resend state a send
+// button turns into: a countdown without words ("59s", or "59" and "00:59"
+// without a unit on a disabled or send button, marked bare) or a resend with a
+// number ("60秒后重新获取", "重新发送(59)").
 // Returns null for any other action. A resend is judged first: "重新获取验证码"
 // also reads as a first send.
 function channelActionHint(action, limit = 300, asButton = undefined) {
@@ -434,8 +521,11 @@ function channelActionHint(action, limit = 300, asButton = undefined) {
 	if (ALTERNATIVE_CHANNEL_SIGNAL.test(text)) {
 		return null;
 	}
-	if (COUNTDOWN_TEXT.test(text) || countsDownBare(action, text, asButton)) {
+	if (COUNTDOWN_TEXT.test(text)) {
 		return { hint: 'delivery code', request: false, countdown: true };
+	}
+	if (countsDownBare(action, text, asButton)) {
+		return { hint: 'delivery code', request: false, countdown: true, bare: true };
 	}
 	if (!RESEND_SIGNAL.test(text) && requestsCode(action, text, asButton)) {
 		return { hint: `delivery ${deliveryChannel(text) || 'code'}`, request: true, named: CHANNEL_WORD_SIGNAL.test(text) };
@@ -539,27 +629,41 @@ function namesDeliveryChannel(value) {
 // sent by email") are left out. A sentence about sending a backup or recovery
 // code ("Check your email for a recovery code", "请查看邮箱中的恢复码") is about
 // that code only, unless it also names a code of its own ("请输入短信验证码或备用码").
+// So are the clauses denying a delivery ("We never send codes by SMS") and a
+// future delivery promised only for recovery ("If you lose your phone, we'll
+// email you a code"): they name no channel of the current code.
 // A delivered code without a channel ("We sent you a 6-digit code") still names
 // a delivery, unless the sentence denies it ("We will never send you ...") or is
 // about the authenticator app. Returns its channel, or an empty string.
-// With keepChannels, a clause offering another way that names its channel
-// ("You can also receive a code by email") is kept, unless the rest of the
-// sentence names the authenticator.
-function deliveryInstructionChannel(value, keepChannels = false) {
+// Without authenticator evidence (noEvidence), a clause offering another way
+// that names its channel ("You can also receive a code by email") is kept,
+// unless the rest of the sentence names the authenticator, and so is a warning
+// not to pass the code on ("请勿将验证码发给他人"): Chinese SMS pages carry it too.
+function deliveryInstructionChannel(value, noEvidence = false) {
 	const own = withoutAlternativeClauses(value);
-	const kept = keepChannels && !namesAuthenticator(own) ? withoutAlternativeClauses(value, true) : own;
-	const sentence = kept.replace(BACKUP_CODE_PHRASE, ' ');
+	const kept = noEvidence && !namesAuthenticator(own) ? withoutAlternativeClauses(value, true) : own;
+	const sentence = withoutRecoveryDelivery(kept.replace(BACKUP_CODE_PHRASE, ' '));
 	if (sentence !== kept && !GENERIC_CODE_SIGNAL.test(sentence)) {
 		return '';
 	}
-	const channel = deliveryChannel(sentence);
-	const delivered = GENERIC_CODE_SIGNAL.test(sentence) && DELIVERY_ACTION_SIGNAL.test(sentence);
+	const verbs = noEvidence ? sentence : sentence.replace(PASS_ON_WARNING_SIGNAL, ' ');
+	// A channel left after the denial ("not by email but by SMS") keeps the
+	// sentence's delivery verb.
+	const undenied = withoutDeniedDeliveries(verbs);
+	const channel = deliveryChannel(undenied);
+	const delivered = GENERIC_CODE_SIGNAL.test(sentence) && DELIVERY_ACTION_SIGNAL.test(channel && undenied !== verbs ? verbs : undenied);
+	// A text message or email delivered to the user is the code's, even without
+	// the word: "Haven't received the email?", "SMS not sent?".
+	const messaged = ['sms', 'email'].includes(channel) && DELIVERY_ACTION_SIGNAL.test(undenied) && !OTHER_MESSAGE_SIGNAL.test(sentence);
 	const describesCode =
-		CHANNEL_CODE_SIGNAL.test(sentence) || RESEND_SIGNAL.test(sentence) || CHECK_MESSAGE_SIGNAL.test(sentence) || delivered;
+		CHANNEL_CODE_SIGNAL.test(sentence) || RESEND_SIGNAL.test(sentence) || CHECK_MESSAGE_SIGNAL.test(sentence) || delivered || messaged;
 	if (!describesCode) {
 		return '';
 	}
-	return channel || (delivered && !NEGATION_SIGNAL.test(sentence) && !APP_SIGNAL.test(sentence) ? 'code' : '');
+	// A negation elsewhere in the sentence does not deny the delivery: "We sent
+	// you a code, don't share it".
+	const affirmed = undenied.split(CLAUSE_BOUNDARY).some((clause) => DELIVERY_ACTION_SIGNAL.test(clause) && !NEGATION_SIGNAL.test(clause));
+	return channel || (delivered && affirmed && !APP_SIGNAL.test(sentence) ? 'code' : '');
 }
 
 // The page region, or a container holding several forms with entry fields,
@@ -636,6 +740,35 @@ function fieldWrapper(input) {
 		field = field.parentNode;
 	}
 	return field;
+}
+
+// The caption standing before the field in its row when no label element or
+// ARIA label names the input: Ant Design Mobile and similar kits caption the
+// field with a div ("<div class="adm-form-item-label">身份验证器</div>"). Only a
+// short caption with a label class, or an unattached label element, counts;
+// one holding an action or another field, or naming a channel ("短信令牌"),
+// does not. Returns its text, or an empty string.
+function fieldCaption(input) {
+	if (normalizeText(associatedLabelText(input)) || input.getAttribute('aria-label') || input.getAttribute('aria-labelledby')) {
+		return '';
+	}
+	const caption = fieldWrapper(input).previousElementSibling;
+	if (
+		!caption ||
+		isHiddenByTree(caption) ||
+		caption.matches(ACTION_ELEMENTS) ||
+		caption.querySelector(`input,select,textarea,${ACTION_ELEMENTS}`)
+	) {
+		return '';
+	}
+	const elements = [caption, ...caption.querySelectorAll('*')];
+	const captioned = elements.some(
+		(element) =>
+			(element.tagName === 'LABEL' && !element.control) ||
+			(CAPTION_CLASS_SIGNAL.test(element.getAttribute('class') || '') && !CLICKABLE_CLASS_SIGNAL.test(element.getAttribute('class') || '')),
+	);
+	const text = normalizeText(caption.textContent);
+	return captioned && text.length <= 30 && !CHANNEL_WORD_SIGNAL.test(text) ? text : '';
 }
 
 // The region that holds the input's challenge: the nearest ancestor with its
@@ -738,17 +871,21 @@ function looseCard(input) {
 // the same kind (same tag and first class apart from state classes such as
 // "open" or "is-active", which may come first), as the items of an accordion
 // of methods are: a collapsed "Authenticator app" block beside an open "Text
-// message" block. A help block beside the card ("Lost your phone?") is not one.
+// message" block. A help block beside the card ("Lost your phone?") is not one,
+// nor is a block without a field classed as help or contact when the heading's
+// own block is not ("box" beside "box help": "Contact us by email").
 function inMethodSwitch(heading) {
 	const visibleHeadings = (element) =>
 		Array.from(element?.children || []).filter((child) => child.matches(HEADING_ELEMENTS) && !isHiddenByTree(child));
 	const block = heading.parentElement;
 	const kind = (element) => Array.from(element.classList || []).find((name) => !STATE_CLASS.test(name)) || '';
 	const sameKind = (left, right) => left.tagName === right.tagName && kind(left) === kind(right);
+	const helpBlock = (element) => Array.from(element.classList || []).some((name) => HELP_CLASS.test(name));
+	const helpOnly = (sibling) => helpBlock(sibling) && !helpBlock(block) && !sibling.querySelector('input,select,textarea');
 	const peers = [
 		...visibleHeadings(block),
 		...Array.from(block?.parentElement?.children || [])
-			.filter((sibling) => sibling !== block && !sibling.matches(HEADING_ELEMENTS) && sameKind(sibling, block))
+			.filter((sibling) => sibling !== block && !sibling.matches(HEADING_ELEMENTS) && sameKind(sibling, block) && !helpOnly(sibling))
 			.flatMap((sibling) => visibleHeadings(sibling).slice(0, 1)),
 	];
 	return peers.some((peer) => peer !== heading && CHANNEL_WORD_SIGNAL.test(normalizeText(peer.textContent)));
@@ -759,18 +896,23 @@ function inMethodSwitch(heading) {
 // 138****1234"), guidance that names the email together with checking the
 // address ("请确认邮箱地址是否正确", "Check your spam folder or confirm your
 // email address"), guidance on the spam folder alone ("Check your spam
-// folder.", "请查看垃圾箱"), and a plea for help beside nothing but resend
-// actions ("收不到？", "Having trouble?") unless it asks to verify the account
-// email. Those that talk about something else ("Your email address is not
-// verified", "Please confirm your email address.") do not. One without text
-// counts only as a header of a card holding nothing but delivery actions: a
-// site header also holds the logo and other links.
+// folder.", "请查看垃圾箱"), and a plea for help beside a resend and nothing
+// but resends and other methods ("收不到？[重新发送] [换一种方式]", "Having
+// trouble? [Resend] [Use a recovery code]") unless it asks to verify the
+// account email or resends one ("Resend activation link"). Those that talk
+// about something else ("Your email address is not verified", "Please confirm
+// your email address.") do not, unless the challenge's title asks to verify
+// the email. A header or alert without text counts when it holds nothing but
+// delivery actions ("[Resend code]"), none resending an account email: a site
+// header also holds the logo and other links.
 function chromeDescribesChallenge(chrome, region, input) {
 	const text = normalizeText(containerInstructionText(chrome).text);
 	const actions = Array.from(chrome.querySelectorAll(ACTION_ELEMENTS)).filter((action) => !isHiddenByTree(action));
 	if (!text) {
 		return (
-			chrome.matches('header,[role="banner"]') && !isLayoutContainer(region, input) && actions.every((action) => channelActionHint(action))
+			!isLayoutContainer(region, input) &&
+			actions.every((action) => channelActionHint(action)) &&
+			!actions.some((action) => resendsAccountEmail(action, input, region))
 		);
 	}
 	if (
@@ -781,7 +923,10 @@ function chromeDescribesChallenge(chrome, region, input) {
 		return true;
 	}
 	return (
-		DELIVERY_HELP_SIGNAL.test(text) && !asksToVerifyEmail(text) && actions.every((action) => channelActionHint(action)?.request === false)
+		DELIVERY_HELP_SIGNAL.test(text) &&
+		!(asksToVerifyEmail(text) && !titleVerifiesEmail(region, input, chrome)) &&
+		!actions.some((action) => resendsAccountEmail(action, input, region)) &&
+		offersResendOrAnotherWay(actions, input, region)
 	);
 }
 
@@ -801,21 +946,50 @@ function describesChallenge(value) {
 }
 
 // Whether a notice asks to verify the account email ("Please verify your email
-// address", "邮箱尚未激活") rather than guiding the user to an emailed code.
+// address", "Your email is unverified", "邮箱尚未激活") rather than guiding the
+// user to an emailed code.
 function asksToVerifyEmail(text) {
 	return EMAIL_WORD_SIGNAL.test(text) && ACCOUNT_CHECK_SIGNAL.test(text) && !EMAIL_CODE_GUIDANCE_SIGNAL.test(text);
+}
+
+// Whether the challenge's own title asks to verify the account email ("Verify
+// your email", "邮箱验证"): its code then verifies that email, and notices and
+// resends about the email are the challenge's. The notice itself is never the
+// title.
+function titleVerifiesEmail(region, input, notice) {
+	if (!region) {
+		return false;
+	}
+	const titles = Array.from(region.querySelectorAll(CARD_HEADINGS)).filter(
+		(heading) => !isHiddenByTree(heading) && !notice?.contains(heading) && !heading.contains(notice),
+	);
+	if (hasTitleChild(region, input)) {
+		const first = Array.from(region.children).find(
+			(child) => !isHiddenByTree(child) && !child.matches(ACTION_ELEMENTS) && normalizeText(child.textContent) !== '',
+		);
+		if (first && !first.contains(notice) && !notice?.contains(first)) {
+			titles.push(first);
+		}
+	}
+	return titles.some((title) => asksToVerifyEmail(normalizeText(title.textContent)));
 }
 
 // In a card without a heading, a bare layout beyond the immediate block or the
 // nearest group, or beside the input's own form, an action sitting in a notice
 // of its own counts unless the notice asks to verify the account email ("Please
 // verify your email address. Resend email", "邮箱尚未激活"): that notice owns
-// its resend, though a first send there still requests a code.
+// its resend, though a first send there still requests a code. Where the
+// challenge's title asks to verify the email ("Verify your email"), or
+// formWrapper marks a notice beside the form in a wrapper that is not the page
+// layout, the notice is about the challenge and owns nothing.
 // Other guidance before a resend ("收不到？", "Having trouble?", "Check your spam
 // folder or confirm your email address.", "请确认邮箱地址是否正确") and notices
-// about the code or where it went keep the action. Returns whether the action
-// counts.
-function noticeAllowsAction(action, region, input) {
+// about the code or where it went keep the action. A resend of an account email
+// ("Resend activation link") belongs to that email wherever it sits. With
+// accountRows, a masked address alone ("Email: j***@example.com", "手机：
+// 138****1234") is an account row that owns its resend. Returns whether the
+// action counts.
+function noticeAllowsAction(action, region, input, accountRows = false, formWrapper = false) {
 	let block = action.parentElement;
 	while (block && block !== region && INLINE_ELEMENTS.has(block.tagName)) {
 		block = block.parentElement;
@@ -823,15 +997,122 @@ function noticeAllowsAction(action, region, input) {
 	if (!block || block === region || block.contains(input)) {
 		return true;
 	}
+	// Whether the challenge verifies the email: its title asks to, or in the
+	// form's own wrapper the field is named for the purpose ("Verification
+	// code", "确认码"; the plain "验证码" names any code).
+	const verifiesEmail = (notice) =>
+		titleVerifiesEmail(region, input, notice) ||
+		(formWrapper && input?.tagName === 'INPUT' && VERIFICATION_FIELD_SIGNAL.test(describeInput(input)));
 	const text = normalizeText(containerInstructionText(block).text);
-	if (!text || describesChallenge(text)) {
-		return true;
+	if (!text) {
+		return !resendsAccountEmail(action, input, region);
+	}
+	if (describesChallenge(text)) {
+		return !accountRows || !namesOnlyDestination(text);
 	}
 	const own = channelActionHint(action, CLICKABLE_TEXT_LENGTH * 2);
 	if (!own) {
 		return false;
 	}
-	return own.request || !asksToVerifyEmail(text) || GENERIC_CODE_SIGNAL.test(normalizeText(actionText(action)));
+	return (
+		own.request ||
+		!((asksToVerifyEmail(text) && !verifiesEmail(block)) || resendsAccountEmail(action, input, region)) ||
+		GENERIC_CODE_SIGNAL.test(normalizeText(actionText(action)))
+	);
+}
+
+// Whether a source of the input's own wording is a delivery instruction
+// without a channel: "Enter the code we sent you", "请输入收到的验证码".
+function wordingDescribesDelivery(input) {
+	return inputWording(input).some((source) =>
+		normalizeText(source || '')
+			.split(SENTENCE_BOUNDARY)
+			.some((sentence) => deliveryInstructionChannel(sentence) === 'code'),
+	);
+}
+
+// Whether an action resends an account email and not the input's code. In a
+// challenge whose title asks to verify the email, that email is the code's.
+// So it may be wherever the field itself does not name the authenticator (its
+// wording, row caption, or for a group its label or legend): "Enter the
+// one-time code", "Passcode" and "Authentication code" may take the code the
+// email carries.
+function resendsAccountEmail(action, input, region = null) {
+	const text = normalizeText(actionText(action));
+	const field = input?.tagName === 'INPUT' ? describeInput(input) : '';
+	return (
+		ACCOUNT_EMAIL_ACTION_SIGNAL.test(text) &&
+		!GENERIC_CODE_SIGNAL.test(text) &&
+		fieldNamesAuthenticator(input) &&
+		!ACCOUNT_EMAIL_PURPOSES.some((purpose) => purpose.test(text) && purpose.test(field)) &&
+		!titleVerifiesEmail(region, input, action)
+	);
+}
+
+// The field's own naming of the authenticator, as in the strong evidence of
+// nearbyChannelHints() before any heading is read.
+function fieldNamesAuthenticator(input) {
+	if (input?.tagName !== 'INPUT') {
+		return Boolean(input) && namesAuthenticator(ownGroupDescription(input));
+	}
+	const caption = fieldCaption(input);
+	return inputNamesAuthenticator(
+		input,
+		caption && !deniesAuthenticator(caption) ? `${caption} ${describeInput(input)}` : describeInput(input),
+	);
+}
+
+// A resend of the code, alone or beside other methods ("Having trouble?
+// Resend | Use another method"). A resend of an account email ("Resend
+// activation email") and any other action ("Reset password") are not one.
+function offersResendOrAnotherWay(actions, input, region) {
+	const resends = actions.filter((action) => channelActionHint(action)?.request === false && !resendsAccountEmail(action, input, region));
+	return (
+		resends.length > 0 &&
+		actions.every((action) => {
+			const text = normalizeText(actionText(action));
+			return resends.includes(action) || offersAnotherWay(text) || ANOTHER_METHOD_ACTION_SIGNAL.test(text);
+		})
+	);
+}
+
+// The sentence without the future deliveries it promises for recovery.
+function withoutRecoveryDelivery(sentence) {
+	return RECOVERY_CONDITION_SIGNAL.test(sentence) ? sentence.replace(FUTURE_DELIVERY_SIGNAL, ' ') : sentence;
+}
+
+// The wording without its denied deliveries: each clause from its denial on
+// is left out, up to a contrast ("not by email but by SMS", "不是邮件而是短信").
+// A denial covers every channel it lists ("never ... by email or text
+// message"), so clauses end only at punctuation here. A code or message that
+// failed to go ("Code didn't send?", "The code wasn't sent? Request another")
+// was still sent; one denied a channel ("Codes aren't sent by SMS") was not.
+function withoutDeniedDeliveries(value) {
+	return String(value || '')
+		.split(/[,，、:：]/)
+		.map((clause) => {
+			const denial = clause.match(DELIVERY_DENIAL_SIGNAL);
+			const rest = denial ? clause.slice(denial.index) : '';
+			const failed = denial && DENIED_SUBJECT_SIGNAL.test(clause.slice(0, denial.index)) && !CHANNEL_ROUTE_SIGNAL.test(rest);
+			if (!denial || failed || FURTHER_DELIVERY_SIGNAL.test(rest)) {
+				return clause;
+			}
+			const contrast = rest.search(CONTRAST_SIGNAL);
+			return `${clause.slice(0, denial.index)} ${contrast > 0 ? rest.slice(contrast) : ''}`;
+		})
+		.join(', ');
+}
+
+// Whether text names a phone number or email address without the code or
+// its delivery.
+function namesOnlyDestination(text) {
+	return (
+		!OTP_SIGNAL.test(text) &&
+		!GENERIC_CODE_SIGNAL.test(text) &&
+		!DELIVERY_ACTION_SIGNAL.test(text) &&
+		!CHECK_MESSAGE_SIGNAL.test(text) &&
+		!deliveryChannel(text)
+	);
 }
 
 // A form without text entry fields, such as a separate resend form, is an
@@ -877,8 +1158,13 @@ function nearbyChannelHints(
 	const region = scope || card?.element;
 	const ownForm = input.form || input.closest?.('form') || null;
 	const budget = { nodes: 128, characters: 2400 };
-	// The authenticator named by the field itself, a heading or a legend.
-	let strongAuthenticator = input.tagName === 'INPUT' ? inputNamesAuthenticator(input, description) : namesAuthenticator(description);
+	// The authenticator named by the field itself, its row's caption, a heading
+	// or a legend.
+	const caption = input.tagName === 'INPUT' ? fieldCaption(input) : '';
+	let strongAuthenticator =
+		input.tagName === 'INPUT'
+			? inputNamesAuthenticator(input, caption && !deniesAuthenticator(caption) ? `${caption} ${description}` : description)
+			: namesAuthenticator(description);
 	// The authenticator named only in a sentence nearby, which on an SMS page
 	// may offer it as another method ("You can also use your authenticator app").
 	let weakAuthenticator = namesAuthenticator(context);
@@ -890,8 +1176,10 @@ function nearbyChannelHints(
 	let ownChannel = false;
 	// besideForm marks a block beside the input's own form, where a notice owns
 	// its actions as it does in a card without a heading or in a bare layout
-	// beyond the immediate block or the nearest group.
-	const readSibling = (root, level, besideForm = false) => {
+	// beyond the immediate block or the nearest group. chromeRegion is the
+	// region whose own headers and alerts may hold the challenge's actions.
+	// formWrapper marks a wrapper around the form that is not the page layout.
+	const readSibling = (root, level, besideForm = false, chromeRegion = region, formWrapper = false) => {
 		let text = '';
 		let blocks = '';
 		// Text outside headings: beside other text, a heading titles a section
@@ -903,8 +1191,12 @@ function nearbyChannelHints(
 		const headings = [];
 		const actions = [];
 		let otherField = false;
+		// Where the authenticator is named, a notice row naming only a phone
+		// number or email address ("手机：138****1234 [重新发送]") owns its resend
+		// anywhere: it is an account row.
 		const noticed = (node) =>
-			(scope && !besideForm) || (!scope && !card && !besideForm && level <= actionLevel) || noticeAllowsAction(node, region, input);
+			(!strongAuthenticator && ((scope && !besideForm) || (!scope && !card && !besideForm && level <= actionLevel))) ||
+			noticeAllowsAction(node, region, input, strongAuthenticator, formWrapper);
 		const pushAction = (node, action) => {
 			budget.characters -= action.hint.length;
 			const form = node.closest('form');
@@ -933,7 +1225,11 @@ function nearbyChannelHints(
 				const ownChrome =
 					!chrome ||
 					chrome.contains(input) ||
-					(region && region !== chrome && region.contains(chrome) && chromeDescribesChallenge(chrome, region, input));
+					(chromeRegion &&
+						chromeRegion !== chrome &&
+						chromeRegion.contains(chrome) &&
+						(chromeRegion === region || chrome.parentElement === chromeRegion) &&
+						chromeDescribesChallenge(chrome, chromeRegion, input));
 				const action = ownChrome && noticed(node) ? channelActionHint(node, Math.min(budget.characters, 300)) : null;
 				if (action) {
 					pushAction(node, action);
@@ -984,12 +1280,20 @@ function nearbyChannelHints(
 			.split(SENTENCE_BOUNDARY)
 			.some((sentence) => CHANNEL_WORD_SIGNAL.test(withoutAlternativeClauses(sentence)));
 		// Keep only the channel of each delivery instruction. Countdowns and
-		// masked destinations then leave the target fingerprint unchanged.
+		// masked destinations then leave the target fingerprint unchanged. The
+		// instructions are read both with and without authenticator evidence,
+		// which is known only once the walk ends.
 		const sentences = normalizeText(text).split(SENTENCE_BOUNDARY);
-		const channels = (keepChannels) =>
+		// Advice on the device clock turns "Didn't get a code?" into the
+		// authenticator's troubleshooting: where the authenticator is named, or
+		// where the advice itself names it ("Resync the clock in your
+		// authenticator app"), a code without a channel there tells of no delivery.
+		const clockAdvice = sentences.filter((sentence) => CLOCK_ADVICE_SIGNAL.test(sentence) && !offersAnotherWay(sentence));
+		const appClockAdvice = clockAdvice.some((sentence) => AUTHENTICATOR_CONTEXT_SIGNAL.test(sentence));
+		const channels = (noEvidence) =>
 			sentences
-				.map((sentence) => deliveryInstructionChannel(sentence, keepChannels))
-				.filter(Boolean)
+				.map((sentence) => deliveryInstructionChannel(sentence, noEvidence))
+				.filter((channel) => channel && !(channel === 'code' && (appClockAdvice || (!noEvidence && clockAdvice.length > 0))))
 				.map((channel) => `channel ${channel}`)
 				.join(' ');
 		const hint = { dropped: channels(false), kept: channels(true) };
@@ -999,8 +1303,11 @@ function nearbyChannelHints(
 	// form element the scope named like one ("login-form"), still describes its
 	// field ("We just sent you a login code."), and so does a resend action there
 	// ("Resend code", "Didn't get it? Resend", a countdown), unless a notice owns
-	// it. A first send there offers another method. Site headers, navigation and
-	// footers there belong to the page.
+	// it, and so does a first send without a channel ("Send code", "获取验证码"),
+	// even beside the phone number it goes to. A first send naming its channel
+	// there ("Text me a code", "Send a code via SMS") or in another form offers
+	// another method. Site headers, navigation and footers there belong to the
+	// page.
 	const readBesideForm = (form, level) => {
 		const outer = form.parentNode;
 		const formLike = ownForm || (scope && Array.from(scope.classList || []).some((name) => FORM_CLASS_SIGNAL.test(name)) ? scope : null);
@@ -1008,13 +1315,22 @@ function nearbyChannelHints(
 			return;
 		}
 		const count = actionHints.length;
+		// A header or alert standing beside the form belongs to the wrapper
+		// around both, unless that wrapper is the page layout.
+		const formWrapper = !isLayoutContainer(outer, input);
+		const chromeRegion = !region?.contains(outer) && formWrapper ? outer : region;
 		for (const sibling of outer.childNodes) {
-			const hint = sibling !== form && budget.nodes > 0 && budget.characters > 0 && readSibling(sibling, level + 1, true);
+			const hint =
+				sibling !== form && budget.nodes > 0 && budget.characters > 0 && readSibling(sibling, level + 1, true, chromeRegion, formWrapper);
 			if (hint) {
 				hints.push(hint);
 			}
 		}
-		actionHints.splice(count, Infinity, ...actionHints.slice(count).filter(({ request }) => !request));
+		actionHints.splice(
+			count,
+			Infinity,
+			...actionHints.slice(count).filter(({ request, named, otherForm }) => !request || (!named && !otherForm)),
+		);
 	};
 	// Levels are counted from the field's outermost wrapper.
 	let branch = fieldWrapper(input);
@@ -1094,7 +1410,9 @@ function nearbyChannelHints(
 	// naming the authenticator is weak evidence: it discards only a send naming
 	// its channel ("Text me a code"), while a generic one ("Send code",
 	// "获取验证码") is discarded only by the field's own description, a heading
-	// or a legend.
+	// or a legend, and so is a countdown without a unit ("00:25" may be the
+	// authenticator's timer) and a resend beside another field (the phone number
+	// being verified).
 	const cardRegion = Boolean(region && !isLayoutContainer(region, input));
 	const openPage = Boolean(region && !cardRegion && !hasOtherEntryField(region, input));
 	const actions = actionHints
@@ -1107,15 +1425,17 @@ function nearbyChannelHints(
 				(!region && !otherForm && !besideField && level <= pageBoundary),
 		)
 		.filter(
-			({ level, inForm, otherForm, request, named, besideField }) =>
-				!request ||
-				(!strongAuthenticator &&
+			({ level, inForm, otherForm, request, named, besideField, bare }) =>
+				(!request && !((bare || besideField) && strongAuthenticator)) ||
+				(request &&
+					!strongAuthenticator &&
 					!(weakAuthenticator && named) &&
 					(inForm || (!otherForm && (level <= 2 || cardRegion || openPage || (!region && !besideField))))),
 		)
 		.map(({ hint }) => hint);
-	// Another way naming its channel is left out only where the field, a
-	// heading, a legend or a sentence names the authenticator.
+	// Another way naming its channel, and a warning not to pass the code on,
+	// are left out only where the field, a heading, a legend or a sentence
+	// names the authenticator.
 	const evidence = strongAuthenticator || weakAuthenticator;
 	const instructions = hints.map((hint) => (evidence ? hint.dropped : hint.kept)).filter(Boolean);
 	return [...instructions, ...actions].join('\u0002');
@@ -1179,7 +1499,9 @@ function containerInstructionText(container) {
 		}
 		const hint = channelActionHint(action);
 		if (hint) {
-			(hint.request ? (hint.named ? namedRequests : requests) : hints).add(hint.hint);
+			// A bare countdown, like a first send, is discarded where the
+			// authenticator is named.
+			(hint.request || hint.bare ? (hint.named ? namedRequests : requests) : hints).add(hint.hint);
 		}
 	}
 	return {
@@ -1472,9 +1794,12 @@ function collectSegmentedCandidates(inputs, expectedDigits, modalGuard, canUseIn
 		// Action wording only adds delivery-channel evidence. It can make the group
 		// require explicit focus, but never excludes it or selects it automatically.
 		// one-time-code marks any OTP, so with a channel word ("SMS verification")
-		// the fields may belong to that channel even without a code word.
+		// the fields may belong to that channel even without a code word. So may
+		// a field whose own wording tells of a delivery ("Enter the code we sent
+		// you").
 		const channelAmbiguous =
-			Boolean(deliveryChannel(descriptor) || actions) && (hasOtpSignal || hasAutocomplete || GENERIC_CODE_SIGNAL.test(descriptor));
+			Boolean(deliveryChannel(descriptor) || actions || group.fields.some(wordingDescribesDelivery)) &&
+			(hasOtpSignal || hasAutocomplete || GENERIC_CODE_SIGNAL.test(descriptor));
 		const hasSecurityCodeSignal = SECURITY_CODE_SIGNAL.test(descriptor);
 		const highConfidence =
 			!hasNegativeSignal &&
@@ -1512,8 +1837,12 @@ function collectSingleCandidates(inputs, groupedInputs, expectedDigits, canUseIn
 		const hasAutocomplete = getAutocompleteTokens(input).includes(OTP_AUTOCOMPLETE);
 		const hasOtpSignal = OTP_SIGNAL.test(descriptor);
 		const hasNegativeSignal = NEGATIVE_SIGNAL.test(descriptor);
+		// The field's own channel, unless its wording denies that delivery ("We
+		// never send this code by text"), or its own delivery wording without one
+		// ("Enter the code we sent you").
 		const describedChannel =
-			Boolean(deliveryChannel(descriptor)) && (hasOtpSignal || hasAutocomplete || GENERIC_CODE_SIGNAL.test(descriptor));
+			Boolean(deliveryChannel(withoutDeniedDeliveries(descriptor)) || wordingDescribesDelivery(input)) &&
+			(hasOtpSignal || hasAutocomplete || GENERIC_CODE_SIGNAL.test(descriptor));
 		const hasSecurityCodeSignal = SECURITY_CODE_SIGNAL.test(descriptor);
 		const highConfidence =
 			!hasNegativeSignal &&

@@ -16,6 +16,7 @@ import { getConfigurationGeneration } from './generation.js';
 import { ExtensionError, throwFromResponse } from './errors.js';
 import { requireSettings, requireInstancePermission, validateFlowConfiguration, assertCurrentGeneration } from './configuration.js';
 import { sendDocumentMessage } from './browser-access.js';
+import { canFillHiddenTarget, validateMobilePopupTarget } from './mobile-popup.js';
 import { captureTarget, validateCapturedTarget, claimPendingFlow, consumeClaim, discardClaim, prepareTarget } from './target-session.js';
 import {
 	requestSource,
@@ -170,6 +171,7 @@ export async function fillAccount(
 			};
 			await flow.assertAutomaticTarget();
 		}
+		flow.allowHiddenTarget = !automatic && (await canFillHiddenTarget(flow));
 		await prepareTarget(flow, account, confirmFocused);
 		let generationSource;
 		const generated = await generateForAccount(
@@ -184,6 +186,9 @@ export async function fillAccount(
 		await validateCapturedTarget(flow);
 		await flow.assertAutomaticTarget?.();
 		await consumeClaim(flow);
+		if (flow.allowHiddenTarget) {
+			await validateMobilePopupTarget(flow);
+		}
 		if (generated.expiresAt - Date.now() < 1000) {
 			throw new ExtensionError('CODE_EXPIRED');
 		}
@@ -202,6 +207,7 @@ export async function fillAccount(
 			{
 				type: MESSAGE.FILL_CODE,
 				nonce: flow.nonce,
+				...(flow.allowHiddenTarget ? { allowHiddenTarget: true } : {}),
 				expectedOrigin: flow.targetOrigin,
 				expectedTargetPath: flow.targetPath,
 				code: generated.code,

@@ -764,7 +764,7 @@ curl -b cookies.txt -X POST https://your-worker.workers.dev/api/secrets \
 
 ### 浏览器扩展开发与测试
 
-Chrome、Edge 与 Firefox 的 Manifest V3 扩展源码位于 `extension/`，扩展版本、浏览器构建与 Worker 部署相互独立。Firefox 使用 `extension/firefox/` 中的适配层和独立构建，要求桌面 Firefox 153 及以上，在普通窗口的默认标签页中使用；不支持容器标签页、隐私窗口或 Android。连接模式有 `session`（网页登录）和 `offline`（网页登录＋离线缓存），默认使用 `session`。两种模式都支持点击扩展、快捷键填充和按页面授权后的自动填充。
+Chrome、Edge 与 Firefox 的 Manifest V3 扩展源码位于 `extension/`，扩展版本、浏览器构建与 Worker 部署相互独立。Firefox 使用 `extension/firefox/` 中的适配层和独立构建，桌面版与 Android 版最低均为 153；仅支持普通标签页，桌面端还要求默认容器，不支持隐私标签页或桌面容器标签页。连接模式有 `session`（网页登录）和 `offline`（网页登录＋离线缓存），默认使用 `session`。两种模式都支持点击扩展、手动复制与填充、按页面授权后的自动填充；快捷键填充仅用于桌面端。
 
 网页登录模式授予实例权限后，后台使用 `credentials: include`、`cache: no-store`、`redirect: error` 直接请求 `/api/secrets` 与 `/api/time`，在单次任务内存中计算 TOTP。此模式需要联网；Cookie 过期后由用户点击“打开 2FA”重新登录，扩展不自动开页或续期。
 
@@ -834,9 +834,27 @@ npm run lint
 
 GitHub Actions 在 `main` 分支推送、PR 和手动触发时运行 lint、扩展覆盖率、Chrome／Edge 构建及浏览器 E2E，并上传测试报告。CI 使用 Playwright Chromium，通过 `EXTENSION_E2E_SKIP_BRANDED=1` 跳过依赖本机 Chrome／Edge 安装的冒烟测试；本地 E2E 默认包含这些测试，未安装对应浏览器时会跳过。
 
-Chrome / Edge 构建输出为 `dist/extension/chrome` 与 `dist/extension/edge`，都可从扩展管理页选择“加载已解压的扩展程序”。Firefox 独立构建输出为 `dist/extension/firefox`，可在 `about:debugging#/runtime/this-firefox` 临时载入其中的 `manifest.json`，浏览器重启后需重新载入。Chrome / Edge 构建会重建 `dist/extension`，之后如需加载 Firefox 包，应重新执行 Firefox 构建命令。安装、设置和快捷键操作见[扩展指南](BROWSER_EXTENSION.md)。代码变更后重新构建、在扩展管理页重新加载，并刷新目标标签页；无需为扩展保留或刷新实例标签页。
+Chrome / Edge 构建输出为 `dist/extension/chrome` 与 `dist/extension/edge`，桌面端可从扩展管理页选择“加载已解压的扩展程序”。Firefox 独立构建输出为 `dist/extension/firefox`，桌面端可在 `about:debugging#/runtime/this-firefox` 临时载入其中的 `manifest.json`，浏览器重启后需重新载入。Chrome / Edge 构建会重建 `dist/extension`，之后如需加载 Firefox 包，应重新执行 Firefox 构建命令。安装、设置和快捷键操作见[扩展指南](BROWSER_EXTENSION.md)。代码变更后重新构建、在扩展管理页重新加载，并刷新目标标签页；无需为扩展保留或刷新实例标签页。
 
 测试覆盖 TOTP 标准向量、API 与消息校验、缓存和权限边界、账户匹配、输入识别及导航竞态。浏览器 E2E 使用本地测试页面验证在线取码、离线缓存、自动填充和会话恢复；`tests/extension/e2e/branded.spec.js` 使用原始构建检查工具栏弹窗与 `activeTab` 填充。
+
+当前浏览器 E2E 运行在桌面 Chromium / Chrome / Edge；将视口缩小到手机尺寸只验证布局，不代表 Android 实机通过。Firefox Android 适配已加入源码，尚未完成 Android 实机验收，兼容的商店新版待发布。Edge Android 已有用户实测可用，但尚未加入 Android 自动化测试。
+
+Firefox Android 的全屏扩展弹窗会遮住目标文档。手动填充由后台核验 Android 平台、当前活动标签页，以及精确匹配的 `moz-extension://` 弹窗仍可见、拥有焦点和本次请求 nonce 后，才允许操作被弹窗遮住的文档；准备输入框与发送验证码前均重新核验。此许可不适用于自动填充，也不能在发送验证码时临时升级，原有文档 ID、页面路径、登录账户与一次性 nonce 检查继续生效。安卓缺少 `cookieStoreId` 时必须先通过原生平台检测，桌面容器和隐私隔离不放宽；缺少快捷键与窗口 API 时分别跳过注册、只激活标签页。
+
+Firefox Android 开发验证需要安装 Android Platform Tools，并在手机启用 USB 调试及 Firefox 的 USB 远程调试；连接手机、批准调试后，用 `adb devices` 确认设备。构建 Firefox 扩展后，可按实际设备 ID 和 Firefox 应用包名运行：
+
+```bash
+npx web-ext run --target=firefox-android --source-dir=dist/extension/firefox --android-device=<设备ID> --firefox-apk=<Firefox应用包名>
+```
+
+浏览器版本须满足 153；此流程供开发时临时加载验证，普通用户应等待兼容 Android 的商店签名版本。实机验收请记录手机系统、浏览器版本和扩展版本，并使用专用测试账户完成：
+
+1. 在普通标签页登录 HTTPS 测试实例，从浏览器扩展菜单打开设置并授权连接；关闭实例页后仍可查看和复制验证码。
+2. 分别检查“打开 2FA”在实例页已打开和未打开时的行为；在目标验证码页面打开全屏扩展弹窗，手动填充单框及分格验证码，并检查无法定位时的提示与确认重试。填充进行中关闭弹窗、切换标签页或退到后台，应停止向原目标发送验证码。
+3. 允许一次页面自动填充，批准权限后返回目标页并重新访问；确认只有已授权路径自动填充，撤销权限后停止。Android 不验收桌面快捷键。
+4. 检查窄屏、横屏、软键盘展开时的搜索和底部操作；开启离线使用并同步后断网取码，关闭离线使用后确认缓存清除。
+5. 确认隐私标签页不可使用扩展；桌面 Firefox 回归默认标签页、容器隔离及快捷键，避免 Android 适配放宽桌面限制。
 
 自动化中的本地测试权限和预授权不改变正式构建，也不能覆盖原生权限提示、键盘快捷键及所有真实网站的行为。浏览器或权限逻辑变更后，应在目标浏览器检查这些交互及真实 HTTPS 实例的连接。
 

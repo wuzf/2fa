@@ -1,11 +1,6 @@
 import { t } from '../shared/i18n.js';
 import { MESSAGE, createNonce } from '../shared/protocol.js';
-import {
-	isManualOnlyTargetOrigin,
-	normalizeAutofillTargetOrigin,
-	normalizeAutofillPath,
-	targetOriginToPermissionPattern,
-} from '../shared/origin.js';
+import { normalizeAutofillTargetOrigin, normalizeAutofillPath, targetOriginToPermissionPattern } from '../shared/origin.js';
 import { sameFlowTarget } from './flow-session.js';
 
 export function canAuthorizeAutofill(flow) {
@@ -24,19 +19,6 @@ export function canAuthorizeAutofill(flow) {
 	}
 }
 
-// A fillable plain-HTTP network page (for example 192.168.1.1) supports manual
-// filling only. Show the switch as unavailable instead of silently hiding it.
-export function isManualOnlyAutofillTarget(flow) {
-	return Boolean(
-		flow &&
-		flow.canFill !== false &&
-		Number.isInteger(flow.targetTabId) &&
-		flow.targetDocumentId &&
-		flow.targetOrigin !== flow.instanceOrigin &&
-		isManualOnlyTargetOrigin(flow.targetOrigin),
-	);
-}
-
 // Owns the permission UI intent. request() is called in the original click
 // stack, and dispose never cancels an intent already handed to the worker.
 export function createAutofillController({ elements, session, accounts, send, isBusy, setBusy, setStatus, onInteraction, onRestart }) {
@@ -46,34 +28,15 @@ export function createAutofillController({ elements, session, accounts, send, is
 	let recoveryContext = null;
 	let stateVersion = 0;
 	const currentTarget = () => recoveryContext || session.flow;
-	function renderAutofillReason(manualOnly) {
-		// Keep the keys in i18n attributes so a language change keeps the reason.
-		// The unavailable switch explains itself on screen, not only on hover.
-		const label = elements.autofill.closest('label');
-		const hintKey = manualOnly ? 'popupAutofillHttpManual' : 'popupAutofillHint';
-		const descriptionKey = manualOnly ? 'popupAutofillHttpManual' : 'popupAutofillDescription';
-		label.setAttribute('data-i18n-title', hintKey);
-		label.title = t(hintKey);
-		if (elements.autofillDescription) {
-			elements.autofillDescription.setAttribute('data-i18n', descriptionKey);
-			elements.autofillDescription.textContent = t(descriptionKey);
-		}
-		if (elements.autofillNote) {
-			elements.autofillNote.hidden = !manualOnly;
-		}
-	}
 	function renderAutofillState() {
 		const target = currentTarget();
 		const available = canAuthorizeAutofill(target);
-		const manualOnly = !available && isManualOnlyAutofillTarget(target);
 		const loaded = Boolean(autofillState && target && autofillState.instanceOrigin === target.instanceOrigin);
-		elements.autofill.closest('label').hidden = !available && !manualOnly;
-		elements.autofill.disabled = manualOnly || isBusy() || !available || !loaded;
+		elements.autofill.closest('label').hidden = !available;
+		elements.autofill.disabled = isBusy() || !available || !loaded;
 		elements.autofill.setAttribute('aria-busy', String(Boolean(pendingAutofill)));
-		renderAutofillReason(manualOnly);
 		elements.autofill.checked =
-			!manualOnly &&
-			(pendingAutofill && sameFlowTarget(pendingAutofill.expectedFlow, target)
+			pendingAutofill && sameFlowTarget(pendingAutofill.expectedFlow, target)
 				? pendingAutofill.enabled
 				: Boolean(
 						loaded &&
@@ -83,7 +46,7 @@ export function createAutofillController({ elements, session, accounts, send, is
 								site.targetOrigin === target.targetOrigin &&
 								site.targetPath === target.targetPath,
 						),
-					));
+					);
 	}
 	async function refreshAutofillState(expectedFlow, version) {
 		const currentStateVersion = stateVersion;

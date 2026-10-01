@@ -22,7 +22,7 @@ Cloudflare Workers 기반의 2단계 인증 키 관리 시스템입니다. 무�
 
 2FA Verification Assistant 설치: **[Chrome Web Store](https://chromewebstore.google.com/detail/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/lifeiloiefdlbohelpjajdbopeocalhl)** · **[Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/kmchncmoddhdlbpfoejeahdjhieghklm)** · **[Firefox Add-ons](https://addons.mozilla.org/zh-CN/firefox/addon/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/)**.
 
-해당 브라우저에서 설치 링크를 여세요. 설치 후 확장 프로그램 설정에 직접 호스팅한 2FA 인스턴스 URL을 입력하고 같은 브라우저에서 해당 인스턴스에 로그인하면 TOTP 코드를 확인, 복사, 입력할 수 있습니다. 자동 입력에는 인증 페이지별로 별도의 권한이 필요합니다. 확장 프로그램을 사용하려면 이 프로젝트의 배포된 인스턴스가 있어야 하며, 인터페이스는 위의 15개 언어를 지원합니다. Firefox는 데스크톱 버전 153 이상에서 기본 컨테이너의 일반 탭을 사용해야 합니다. 컨테이너 탭, 사생활 보호 창, Android는 지원하지 않습니다.
+해당 브라우저에서 설치 링크를 여세요. 설치 후 확장 프로그램 설정에 직접 호스팅한 2FA 인스턴스 URL을 입력하고 같은 브라우저에서 해당 인스턴스에 로그인하면 TOTP 코드를 확인, 복사, 입력할 수 있습니다. 자동 입력에는 인증 페이지별로 별도의 권한이 필요합니다. 확장 프로그램을 사용하려면 이 프로젝트의 배포된 인스턴스가 있어야 하며, 인터페이스는 위의 15개 언어를 지원합니다. Firefox 데스크톱 및 Android 버전 모두 153 이상과 일반 탭이 필요합니다. 데스크톱 컨테이너 탭과 두 플랫폼의 사생활 보호 탭은 지원하지 않습니다. Android 호환성 변경은 현재 소스 코드에 포함되어 있지만, 호환되는 스토어 버전은 아직 출시 전이며 Firefox Android 실기기 검증도 완료되지 않았습니다. Firefox Android는 확장 프로그램 키보드 단축키를 제공하지 않습니다.
 
 [설치 및 사용 가이드](docs/BROWSER_EXTENSION.md) · [Chrome / Edge 개인정보 처리방침](extension/PRIVACY.md) · [Firefox 개인정보 처리방침](extension/PRIVACY_FIREFOX.md) (중국어)
 

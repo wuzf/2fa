@@ -7,7 +7,7 @@ import { createFirefoxManifest } from '../../scripts/build-firefox-extension.js'
 const extensionVersion = JSON.parse(readFileSync(new URL('../../extension/manifest.base.json', import.meta.url), 'utf8')).version;
 
 describe('Firefox extension manifest generation', () => {
-	it('uses a desktop Firefox background page with explicit data disclosures', () => {
+	it('uses a Firefox background page with explicit data disclosures and Android support', () => {
 		const manifest = createFirefoxManifest();
 
 		expect(manifest.manifest_version).toBe(3);
@@ -20,6 +20,7 @@ describe('Firefox extension manifest generation', () => {
 				strict_min_version: '153.0',
 				data_collection_permissions: { required: ['authenticationInfo', 'personallyIdentifyingInfo'] },
 			},
+			gecko_android: { strict_min_version: '153.0' },
 		});
 		expect(manifest).not.toHaveProperty('minimum_chrome_version');
 		expect(manifest.default_locale).toBe('en');

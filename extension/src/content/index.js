@@ -236,7 +236,7 @@ export function createContentController({
 			detections.delete(detection);
 			preparingCount -= 1;
 		}
-		if (disposed || detection.signal.aborted) {
+		if (disposed || detection.signal.aborted || (doc.visibilityState === 'hidden' && message.allowHiddenTarget !== true)) {
 			return error('TARGET_UNAVAILABLE');
 		}
 		if (loginContext && !loginContextsMatch(loginContext, readLoginContext(doc))) {
@@ -265,6 +265,7 @@ export function createContentController({
 				preparedAt,
 				monotonicAt,
 				expectedDigits: message.expectedDigits,
+				allowHiddenTarget: message.allowHiddenTarget === true,
 				loginContext,
 				targetPath,
 				expiresAt,
@@ -290,6 +291,9 @@ export function createContentController({
 		if (pending.expiresAt <= now()) {
 			return error('NONCE_EXPIRED');
 		}
+		if (message.allowHiddenTarget === true && !pending.allowHiddenTarget) {
+			return error('TARGET_UNAVAILABLE');
+		}
 		if (typeof message.code !== 'string' || !/^(?:\d{6}|\d{8})$/.test(message.code)) {
 			return error('INVALID_CODE');
 		}
@@ -313,6 +317,7 @@ export function createContentController({
 
 		const isTargetCurrent = ({ allowCompletedLock = false } = {}) =>
 			!disposed &&
+			(doc.visibilityState !== 'hidden' || (pending.allowHiddenTarget && message.allowHiddenTarget === true)) &&
 			pending.targetPath === autofillPathFromUrl(doc.location.href) &&
 			(!pending.loginContext || loginContextsMatch(pending.loginContext, readLoginContext(doc))) &&
 			targetGuard({ phase: 'fill', message, target: pending.target, allowCompletedLock });
@@ -336,6 +341,9 @@ export function createContentController({
 		if (disposed) {
 			return error('TARGET_UNAVAILABLE');
 		}
+		if (!isPlainObject(message) || (message.allowHiddenTarget !== undefined && typeof message.allowHiddenTarget !== 'boolean')) {
+			return error('INVALID_MESSAGE');
+		}
 		if (message?.type === MESSAGE.TARGET_PING) {
 			const loginContext = readLoginContext(doc);
 			return {
@@ -348,7 +356,7 @@ export function createContentController({
 		if (
 			(message.expectedOrigin && message.expectedOrigin !== doc.location.origin) ||
 			(message.expectedTargetPath !== undefined && message.expectedTargetPath !== autofillPathFromUrl(doc.location.href)) ||
-			doc.visibilityState === 'hidden'
+			(doc.visibilityState === 'hidden' && message.allowHiddenTarget !== true)
 		) {
 			return error('TARGET_UNAVAILABLE');
 		}

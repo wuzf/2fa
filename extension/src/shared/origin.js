@@ -48,26 +48,9 @@ export function isPrivateIPv4Host(host) {
 }
 
 // Target-site grants are distinct from permissions to read the 2FA vault.
-// Automatic filling needs a destination that cannot silently be another device:
-// HTTPS authenticates the host and loopback is this device. Plain-HTTP network
-// addresses such as 192.168.1.1 repeat across networks and can be impersonated
-// on the local segment, so those pages support manual filling only.
+// HTTP and HTTPS targets both require explicit site and page-path authorization.
 export function normalizeAutofillTargetOrigin(value) {
-	const url = parseHttpUrl(value);
-	if (url.protocol === 'https:' || LOCAL_INSTANCE_HOSTS.has(url.hostname)) {
-		return url.origin;
-	}
-	throw localizedError('error_AUTOFILL_ORIGIN_PROTOCOL');
-}
-
-/** A plain-HTTP page on another host: fillable manually, never automatically. */
-export function isManualOnlyTargetOrigin(value) {
-	try {
-		const url = new URL(value);
-		return url.protocol === 'http:' && !LOCAL_INSTANCE_HOSTS.has(url.hostname);
-	} catch {
-		return false;
-	}
+	return normalizeTargetOrigin(value);
 }
 
 export function originFromTabUrl(value) {

@@ -374,7 +374,8 @@ const recoveringAuthorization = configurationQueue.then(async () => {
 });
 configurationQueue = recoveringAuthorization.catch(() => {});
 
-chrome.commands.onCommand.addListener(async (command) => {
+// Keyboard commands are absent on Firefox for Android.
+chrome.commands?.onCommand?.addListener?.(async (command) => {
 	if (command !== 'fill-otp') {
 		return;
 	}

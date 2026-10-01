@@ -18,6 +18,14 @@
 
 網頁、瀏覽器擴充功能、初始設定、公開 OTP 頁面、API 提示與備份文件統一支援：簡體中文、繁體中文、English、日本語、한국어、Deutsch、Français、Español、Português (Brasil)、Italiano、Русский、Türkçe、Bahasa Indonesia、Tiếng Việt、ไทย。介面可依瀏覽器自動判定或手動選擇，未支援的瀏覽器語言使用英文；不同語言匯出的 CSV/HTML 備份可互相匯入。
 
+## 🧩 瀏覽器擴充功能
+
+安裝 2FA 驗證助手：**[Chrome Web Store](https://chromewebstore.google.com/detail/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/lifeiloiefdlbohelpjajdbopeocalhl)** · **[Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/kmchncmoddhdlbpfoejeahdjhieghklm)** · **[Firefox Add-ons](https://addons.mozilla.org/zh-CN/firefox/addon/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/)**。
+
+請使用對應瀏覽器開啟安裝連結。安裝後，在擴充功能設定中填寫自己的 2FA 實例網址，並在同一瀏覽器中登入實例，即可查看、複製及填入 TOTP 驗證碼；自動填入需在目標驗證頁面單獨啟用並授權。擴充功能需搭配已部署的本專案使用，介面支援上述 15 種語言。Firefox 桌面版與 Android 版均要求 153 及以上版本，並使用一般分頁；不支援桌面容器分頁及兩端的隱私分頁。Android 適配已加入目前原始碼，相容的商店新版尚待發布，尚未完成 Firefox Android 實機驗證。Firefox Android 不提供擴充功能快捷鍵。Edge Android 已有使用者實測可用。
+
+[安裝與使用指南](docs/BROWSER_EXTENSION.md) · [Chrome / Edge 隱私權政策](extension/PRIVACY.md) · [Firefox 隱私權政策](extension/PRIVACY_FIREFOX.md)（簡體中文）
+
 ## 📸 截圖預覽
 
 |                    桌面端                     |                    平板端                    |                    手機端                    |

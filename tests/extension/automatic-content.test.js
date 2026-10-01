@@ -192,6 +192,34 @@ afterEach(() => {
 });
 
 describe('authorized automatic content runner', () => {
+	it.each([MESSAGE.AUTO_PREPARE, MESSAGE.AUTO_FILL])('refuses %s on a hidden page even with a forged manual allowance', async (type) => {
+		const target = input();
+		let result;
+		const app = fixture({
+			select: async (message) => {
+				const common = {
+					episodeNonce: message.episodeNonce,
+					expectedOrigin: document.location.origin,
+					expectedTargetPath: autofillPathFromUrl(document.location.href),
+					nonce: message.nonce,
+					allowHiddenTarget: true,
+				};
+				if (type === MESSAGE.AUTO_FILL) {
+					expect(await app.controller.handle({ ...common, type: MESSAGE.AUTO_PREPARE, expectedDigits: 6 })).toMatchObject({
+						ok: true,
+						status: 'ready',
+					});
+				}
+				Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+				result = await app.controller.handle({ ...common, type, expectedDigits: 6, code: '123456', expiresAt: Date.now() + 30000 });
+				return result;
+			},
+		});
+		await app.start();
+		expect(result).toMatchObject({ ok: false, error: { code: 'TARGET_UNAVAILABLE' } });
+		expect(target.value).toBe('');
+	});
+
 	const lockKinds = ['disabled', 'readOnly', 'fieldset.disabled', 'aria-disabled'];
 	function prepareLock(fields, lock) {
 		if (lock === 'fieldset.disabled') {

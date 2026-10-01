@@ -33,6 +33,7 @@ function expectUniqueFill() {
 
 const singleOtp = '<label for="otp">Verification code</label><input id="otp" autocomplete="one-time-code">';
 const smsOtp = '<input placeholder="验证码" autocomplete="one-time-code">';
+const authOtp = '<label for="otp">Authenticator code</label><input id="otp" autocomplete="one-time-code">';
 
 beforeEach(() => document.body.replaceChildren());
 
@@ -255,6 +256,19 @@ describe('sent notices naming only the channel', () => {
 			'an email alert with a masked address',
 			`<div class="card"><h2>Verify</h2><div role="alert">Email sent to j***@example.com <a href="#resend">Resend email</a></div>${field}</div>`,
 		],
+		// An alert without text is the card's own when it holds nothing but a resend.
+		[
+			'an alert holding only a resend link',
+			`<div class="card"><h2>Verify</h2><div role="alert"><a href="#r">Resend code</a></div>${field}</div>`,
+		],
+		[
+			'an alert holding only an email resend',
+			`<div class="card"><h2>Verify</h2><div role="alert"><a href="#r">Resend email</a></div>${field}</div>`,
+		],
+		[
+			'an alert holding only a verification email resend',
+			`<div class="card"><h2>Two-step verification</h2><div role="alert"><a href="#resend">Resend verification email</a></div>${field}</div>`,
+		],
 	])('requires explicit focus with %s', (_name, html) => {
 		renderVisible(html);
 		expectFocusedAmbiguous();
@@ -262,8 +276,12 @@ describe('sent notices naming only the channel', () => {
 
 	it.each([
 		[
-			'an alert holding only a resend link',
-			`<div class="card"><h2>Two-step verification</h2><div role="alert"><a href="#resend">Resend verification email</a></div>${field}</div>`,
+			'an alert holding only a verification email resend beside an authenticator field',
+			`<div class="card"><h2>Two-step verification</h2><div role="alert"><a href="#resend">Resend verification email</a></div><div class="field">${authOtp}</div></div>`,
+		],
+		[
+			'an alert holding only a help link',
+			`<div class="card"><h2>Verify</h2><div role="alert"><a href="/help">Help</a></div>${field}</div>`,
 		],
 		[
 			'a site header with a logo, links and a resend link inside a titled wrapper',

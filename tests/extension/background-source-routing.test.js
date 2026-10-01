@@ -151,6 +151,35 @@ afterEach(() => {
 });
 
 describe('explicit source recovery message boundary', () => {
+	it.each([undefined, {}, { onCommand: {} }])(
+		'starts mobile background workflows without a keyboard command listener: %j',
+		async (commands) => {
+			vi.resetModules();
+			chrome.commands = commands;
+			onCommand = undefined;
+			onPermissionsRemoved = undefined;
+			onPermissionsAdded = undefined;
+			await import('../../extension/src/background/index.js');
+			expect(onCommand).toBeUndefined();
+			expect(typeof onPermissionsRemoved).toBe('function');
+			expect(typeof onPermissionsAdded).toBe('function');
+			expect(await send({ type: MESSAGE.GET_SETTINGS })).toEqual({ ok: true, data: { instanceOrigin: INSTANCE } });
+			workflow.startFlow.mockResolvedValueOnce({ accounts: [] });
+			expect(await send({ type: MESSAGE.START_FLOW })).toEqual({ ok: true, data: { accounts: [] } });
+			expect(startSourceUpdates).toHaveBeenCalled();
+
+			onPermissionsRemoved({ origins: [`${INSTANCE}/*`] });
+			expect(cancelOfflineRequests).toHaveBeenCalledOnce();
+			expect(invalidateConfigurationGeneration).toHaveBeenCalledOnce();
+			await send({ type: MESSAGE.GET_SETTINGS });
+			expect(clearOfflineSource).toHaveBeenCalledOnce();
+			expect(clearPendingFlow).toHaveBeenCalledOnce();
+			expect(sites.pruneRevokedAutofillSites).toHaveBeenCalledExactlyOnceWith([`${INSTANCE}/*`]);
+			expect(reconcileAutofillScripts).toHaveBeenCalledOnce();
+			expect(reconcileSourceWatcher).toHaveBeenCalledOnce();
+		},
+	);
+
 	it('limits account-independent authorization inspection to trusted extension pages', async () => {
 		workflow.getAutofillContext.mockResolvedValue({ instanceOrigin: INSTANCE, sites: [SITE] });
 		expect(await send({ type: MESSAGE.GET_AUTOFILL_CONTEXT }, 'popup.html')).toEqual({

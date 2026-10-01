@@ -607,14 +607,14 @@ export function createAutomaticController({
 			};
 		}
 		if (message.type === MESSAGE.AUTO_PREPARE) {
-			return passive.handle({ ...message, type: MESSAGE.PREPARE_TARGET, confirmFocused: false });
+			return passive.handle({ ...message, type: MESSAGE.PREPARE_TARGET, confirmFocused: false, allowHiddenTarget: false });
 		}
 		if (message.type === MESSAGE.AUTO_FILL) {
 			writing = true;
 			codeDelivered = false;
 			let result;
 			try {
-				result = await passive.handle({ ...message, type: MESSAGE.FILL_CODE });
+				result = await passive.handle({ ...message, type: MESSAGE.FILL_CODE, allowHiddenTarget: false });
 			} finally {
 				writing = false;
 			}

@@ -320,6 +320,128 @@ async function withExtension(browserTarget, testInfo, run) {
 }
 
 for (const browserTarget of ['chrome', 'edge']) {
+	test(`${browserTarget} popup keeps accounts and controls usable in narrow and short viewports`, async ({
+		browserName: _browserName,
+	}, testInfo) => {
+		await withExtension(browserTarget, testInfo, async ({ context, extensionId, extensionPage }) => {
+			extraAccounts = Array.from({ length: 8 }, (_, index) => ({
+				id: `narrow-account-${index}`,
+				name: `Mobile Layout Account ${index}`,
+				account: `long-account-name-${index}@example.com`,
+				secret: TEST_SECRET,
+				type: 'TOTP',
+				digits: 8,
+			}));
+			await extensionPage.goto(`chrome-extension://${extensionId}/popup.html`);
+			const popupCdp = await context.newCDPSession(extensionPage);
+			await expect(extensionPage.locator('.account-card')).toHaveCount(9);
+			await extensionPage.setViewportSize({ width: 380, height: 600 });
+			await extensionPage.evaluate(() => chrome.runtime.sendMessage({ type: 'SAVE_LANGUAGE', preference: 'en' }));
+			await expect(extensionPage.locator('#target-origin')).toHaveText('Codes can only be copied on this page');
+			const englishHeader = await extensionPage.evaluate(() => {
+				const title = document.querySelector('h1');
+				const hint = document.querySelector('#target-origin').getBoundingClientRect();
+				const links = document.querySelector('.topbar-actions').getBoundingClientRect();
+				return {
+					height: document.querySelector('.topbar').getBoundingClientRect().height,
+					titleFits: title.scrollWidth <= title.clientWidth,
+					hintRight: hint.right,
+					linksLeft: links.left,
+					rowCenterDifference: Math.abs((hint.top + hint.bottom - links.top - links.bottom) / 2),
+				};
+			});
+			expect(englishHeader.height).toBeLessThanOrEqual(72);
+			expect(englishHeader.titleFits).toBe(true);
+			expect(englishHeader.hintRight).toBeLessThanOrEqual(englishHeader.linksLeft);
+			expect(englishHeader.rowCenterDifference).toBeLessThanOrEqual(1);
+			await expect(extensionPage.locator('.preview-code').first()).toHaveText(/^\d{6}$/);
+			await saveScreenshot(extensionPage, testInfo, 'popup-english-desktop-header');
+			await activateTarget(extensionPage);
+			await extensionPage.locator('#retry').evaluate((button) => button.click());
+			await expect(extensionPage.locator('.account-fill').first()).toBeEnabled();
+			// This checks the shared popup layout in Chromium. Native Android
+			// popup behavior is verified separately on the target browsers.
+			for (const language of ['zh-CN', 'en', 'de']) {
+				await extensionPage.evaluate((preference) => chrome.runtime.sendMessage({ type: 'SAVE_LANGUAGE', preference }), language);
+				await expect(extensionPage.locator('html')).toHaveAttribute('lang', language);
+				for (const viewport of [
+					{ width: 320, height: 480 },
+					{ width: 360, height: 360 },
+					{ width: 412, height: 720 },
+					{ width: 554, height: 768 },
+					{ width: 1067, height: 400 },
+				]) {
+					await extensionPage.setViewportSize(viewport);
+					// Playwright resets input emulation when resizing an extension
+					// page, so restore a touch pointer for every viewport.
+					await popupCdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+					expect(await extensionPage.evaluate(() => window.matchMedia('(pointer: coarse)').matches)).toBe(true);
+					const controls = ['.topbar-actions', '#open-options', '#account-search', '#scope-all', '.fill-preferences', '#autofill-site'];
+					await extensionPage.locator('main').evaluate((main) => main.scrollTo(0, 0));
+					const layout = await extensionPage.evaluate((selectors) => {
+						const bounds = (selector) => {
+							const element = document.querySelector(selector);
+							const rect = element.getBoundingClientRect();
+							return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+						};
+						return {
+							width: window.innerWidth,
+							height: window.innerHeight,
+							scrollWidth: document.documentElement.scrollWidth,
+							body: bounds('body'),
+							popup: bounds('.popup-viewport'),
+							controls: selectors.map(bounds),
+						};
+					}, controls);
+					expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width);
+					for (const bounds of [layout.body, layout.popup]) {
+						expect(bounds.left).toBe(0);
+						expect(bounds.top).toBe(0);
+						expect(bounds.width).toBe(layout.width);
+						expect(bounds.height).toBe(layout.height);
+					}
+					for (const bounds of layout.controls) {
+						expect(bounds.left).toBeGreaterThanOrEqual(0);
+						expect(bounds.right).toBeLessThanOrEqual(layout.width);
+						if (viewport.height > 480) {
+							expect(bounds.top).toBeGreaterThanOrEqual(0);
+							expect(bounds.bottom).toBeLessThanOrEqual(layout.height);
+						}
+					}
+					if (viewport.height <= 480) {
+						// Short sheets scroll all content, so preferences and accounts
+						// must be reachable even when they cannot fit simultaneously.
+						for (const selector of controls) {
+							const control = extensionPage.locator(selector);
+							await control.scrollIntoViewIfNeeded();
+							await expect(control).toBeInViewport({ ratio: 1 });
+						}
+						await expect.poll(() => extensionPage.locator('main').evaluate((main) => main.scrollTop)).toBeGreaterThan(0);
+					}
+					const lastCard = extensionPage.locator('.account-card').last();
+					await lastCard.locator('.preview-code').scrollIntoViewIfNeeded();
+					await expect(lastCard.locator('.preview-code')).toHaveText(/^\d{8}$/);
+					await expect(lastCard.locator('.preview-code')).toBeInViewport({ ratio: 1 });
+					await lastCard.locator('.preview-next-time').scrollIntoViewIfNeeded();
+					await expect(lastCard.locator('.preview-next-time')).toBeInViewport({ ratio: 1 });
+					await saveScreenshot(extensionPage, testInfo, `popup-mobile-${language}-${viewport.width}x${viewport.height}`);
+				}
+			}
+			await extensionPage.locator('#account-search').fill('long-account-name-7');
+			await expect(extensionPage.locator('.account-card')).toHaveCount(1);
+			await expect(extensionPage.locator('.account-card')).toHaveAttribute('data-account-id', 'narrow-account-7');
+			// A desktop popup still requests its intrinsic size, even when this
+			// test page has more room than the native toolbar popup would grant.
+			await extensionPage.setViewportSize({ width: 800, height: 800 });
+			await popupCdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+			expect(await extensionPage.evaluate(() => window.matchMedia('(pointer: coarse)').matches)).toBe(false);
+			for (const selector of ['body', '.popup-viewport']) {
+				const bounds = await extensionPage.locator(selector).boundingBox();
+				expect(bounds).toMatchObject({ x: 0, y: 0, width: 380, height: 600 });
+			}
+		});
+	});
+
 	test(`${browserTarget} connects without bindings and keeps everyday settings simple`, async ({ browserName: _browserName }, testInfo) => {
 		await withExtension(browserTarget, testInfo, async ({ context, extensionPage, sourcePage, serviceWorker }) => {
 			const optionsFocus = await trackRealTabFocus(context, extensionPage);

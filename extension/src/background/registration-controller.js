@@ -40,8 +40,8 @@ export function createRegistrationController({ id, ownsScript, file, stopMessage
 	const knownTabs = new Map();
 	const pendingStops = new Map();
 
-	// Origins remembered from an older policy, such as a plain-HTTP network page
-	// still waiting for its stop message, may no longer convert to a pattern.
+	// Origins remembered from an older policy while waiting for a stop message
+	// may no longer convert to a pattern.
 	// Skip them: failing here would fail the whole reconciliation and remove the
 	// scripts of every website. Their stops are still retried by tab and origin.
 	function patternsFor(origins) {

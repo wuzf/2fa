@@ -4,7 +4,6 @@ import {
 	autofillPathFromUrl,
 	normalizeAutofillPath,
 	isExactOrigin,
-	isManualOnlyTargetOrigin,
 	isPrivateIPv4Host,
 	normalizeAutofillTargetOrigin,
 	normalizeInstanceOrigin,
@@ -72,37 +71,34 @@ describe('removed browser permission scope', () => {
 	});
 });
 
-describe('private IPv4 automatic-fill targets', () => {
+describe('automatic-fill target origins', () => {
 	it.each(['10.0.0.0', '10.255.255.255', '172.16.0.0', '172.16.0.10', '172.31.255.255', '192.168.0.0', '192.168.255.255'])(
-		'keeps the canonical private host %s manual-only over HTTP and automatic over HTTPS',
+		'allows the canonical private host %s over HTTP and HTTPS while retaining vault restrictions',
 		(host) => {
 			expect(isPrivateIPv4Host(host)).toBe(true);
-			// The same LAN address can be another device on another network.
-			expect(() => normalizeAutofillTargetOrigin(`http://${host}:8123/login`)).toThrow();
-			expect(() => targetOriginToPermissionPattern(`http://${host}:8123`)).toThrow();
-			expect(isManualOnlyTargetOrigin(`http://${host}:8123`)).toBe(true);
+			expect(normalizeAutofillTargetOrigin(`http://${host}:8123/login`)).toBe(`http://${host}:8123`);
+			expect(targetOriginToPermissionPattern(`http://${host}:8123`)).toBe(`http://${host}/*`);
 			expect(normalizeAutofillTargetOrigin(`https://${host}:8123/login`)).toBe(`https://${host}:8123`);
 			expect(targetOriginToPermissionPattern(`https://${host}:8123`)).toBe(`https://${host}/*`);
-			expect(isManualOnlyTargetOrigin(`https://${host}:8123`)).toBe(false);
 			expect(() => normalizeInstanceOrigin(`http://${host}:8123`)).toThrow();
 			expect(() => originToPermissionPattern(`http://${host}:8123`)).toThrow();
 		},
 	);
 	it.each([
-		['http://192.168.1.1', true],
-		['http://169.254.1.1', true],
-		['http://router.local:8080', true],
-		['http://[fd00::1]', true],
-		['http://login.example', true],
-		['http://localhost:8123', false],
-		['http://127.0.0.1:8123', false],
-		['https://192.168.1.1', false],
-		['https://login.example', false],
-		['chrome://settings', false],
-		['not a url', false],
-		[null, false],
-	])('classifies %s as a manual-only fill target: %s', (origin, expected) => {
-		expect(isManualOnlyTargetOrigin(origin)).toBe(expected);
+		'http://192.168.1.1',
+		'http://169.254.1.1',
+		'http://router.local:8080',
+		'http://[fd00::1]',
+		'http://[::1]:8123',
+		'http://login.example',
+		'http://localhost:8123',
+		'http://127.0.0.1:8123',
+		'https://192.168.1.1',
+		'https://login.example:8443',
+	])('accepts HTTP and HTTPS target %s', (origin) => {
+		expect(normalizeAutofillTargetOrigin(`${origin}/login?step=2#input`)).toBe(origin);
+		const url = new URL(origin);
+		expect(targetOriginToPermissionPattern(origin)).toBe(`${url.protocol}//${url.hostname}/*`);
 	});
 	it.each([
 		'9.255.255.255',
@@ -115,9 +111,9 @@ describe('private IPv4 automatic-fill targets', () => {
 		'169.254.1.1',
 		'100.64.0.1',
 		'127.0.0.2',
-	])('rejects HTTP hosts outside the supported private/local ranges: %s', (host) => {
+	])('recognizes %s as outside private IPv4 ranges without excluding it from HTTP filling', (host) => {
 		expect(isPrivateIPv4Host(host)).toBe(false);
-		expect(() => normalizeAutofillTargetOrigin(`http://${host}`)).toThrow();
+		expect(normalizeAutofillTargetOrigin(`http://${host}`)).toBe(`http://${host}`);
 	});
 	it.each([
 		'172.16.0.10.evil.example',
@@ -132,17 +128,21 @@ describe('private IPv4 automatic-fill targets', () => {
 		'router.local',
 		'[fd00::1]',
 		'[::1]',
-	])('rejects noncanonical or unsupported HTTP host spellings: %s', (host) => {
+	])('does not classify a noncanonical or non-IPv4 host as private IPv4: %s', (host) => {
 		expect(isPrivateIPv4Host(host)).toBe(false);
-		expect(() => normalizeAutofillTargetOrigin(`http://${host}`)).toThrow();
 	});
-	it.each(['http://user@172.16.0.10', 'http://user:password@172.16.0.10', 'ftp://172.16.0.10'])(
-		'rejects credential-bearing or non-HTTP target URLs: %s',
-		(input) => expect(() => normalizeAutofillTargetOrigin(input)).toThrow(),
-	);
-	it.each(['https://public.example:8443', 'http://localhost:8123', 'http://127.0.0.1:8123'])(
-		'preserves the previously supported target %s',
-		(origin) => expect(normalizeAutofillTargetOrigin(`${origin}/login`)).toBe(origin),
+	it.each([
+		'http://user@172.16.0.10',
+		'http://user:password@172.16.0.10',
+		'http://172.16.0.256',
+		'ftp://172.16.0.10',
+		'file:///tmp/login',
+		'chrome://settings',
+		'javascript:alert(1)',
+		'not a url',
+		null,
+	])('rejects credential-bearing, invalid or non-HTTP target URLs: %s', (input) =>
+		expect(() => normalizeAutofillTargetOrigin(input)).toThrow(),
 	);
 });
 

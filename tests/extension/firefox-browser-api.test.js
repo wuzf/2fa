@@ -54,7 +54,14 @@ describe('Firefox default-session boundary', () => {
 	});
 	it('keeps the restricted native content-script namespace usable without a tabs API', () => {
 		const contentBrowser = {
-			runtime: { id: 'synthetic-addon@example.com', onMessage: { addListener: vi.fn() }, sendMessage: vi.fn() },
+			runtime: {
+				id: 'synthetic-addon@example.com',
+				onMessage: { addListener: vi.fn() },
+				sendMessage: vi.fn(),
+				getPlatformInfo: vi.fn(() => {
+					throw new Error('Unavailable in content scripts');
+				}),
+			},
 			storage: { local: { get: vi.fn() } },
 			i18n: { getMessage: vi.fn() },
 		};
@@ -63,6 +70,7 @@ describe('Firefox default-session boundary', () => {
 		expect(api.runtime).toBe(contentBrowser.runtime);
 		expect(api).not.toHaveProperty('tabs');
 		expect(api.storage.local.setAccessLevel).toBeUndefined();
+		expect(contentBrowser.runtime.getPlatformInfo).not.toHaveBeenCalled();
 	});
 
 	it.each([undefined, null, {}, { query: vi.fn() }, { get: vi.fn() }])(
@@ -103,6 +111,117 @@ describe('Firefox default-session boundary', () => {
 		expect(await api.tabs.query({ active: true, currentWindow: true })).toEqual([]);
 	});
 
+	it('allows ordinary Android tabs without cookieStoreId and shares one lazy platform lookup', async () => {
+		const androidTabs = [
+			{ id: 1, incognito: false },
+			{ id: 2, incognito: false },
+		];
+		const native = nativeBrowser(androidTabs);
+		native.runtime.getPlatformInfo = vi.fn(async () => ({ os: 'android', arch: 'arm' }));
+		const api = createFirefoxBrowser(native);
+		expect(native.runtime.getPlatformInfo).not.toHaveBeenCalled();
+
+		const [queried, first, second] = await Promise.all([api.tabs.query({}), api.tabs.get(1), api.tabs.get(2)]);
+		expect(queried).toEqual(androidTabs);
+		expect(queried[0]).toBe(androidTabs[0]);
+		expect(first).toBe(androidTabs[0]);
+		expect(second).toBe(androidTabs[1]);
+		expect(native.runtime.getPlatformInfo).toHaveBeenCalledTimes(1);
+		await api.tabs.query({ active: true, currentWindow: true });
+		expect(native.runtime.getPlatformInfo).toHaveBeenCalledTimes(1);
+	});
+
+	it('still rejects explicit containers, private and unclassified contexts on Android', async () => {
+		const allowed = { id: 1, incognito: false };
+		const rejected = [
+			defaultTab(2, { cookieStoreId: 'firefox-container-1' }),
+			defaultTab(3, { cookieStoreId: 'firefox-private' }),
+			defaultTab(4, { incognito: true }),
+			{ id: 5, incognito: true },
+			{ id: 6 },
+			{ id: 7, incognito: null },
+			{ id: 8, incognito: false, cookieStoreId: null },
+			{ id: 9, incognito: false, cookieStoreId: '' },
+		];
+		const native = nativeBrowser([allowed, ...rejected]);
+		native.runtime.getPlatformInfo = vi.fn(async () => ({ os: 'android' }));
+		const api = createFirefoxBrowser(native);
+		expect(await api.tabs.query({})).toEqual([allowed]);
+		for (const tab of rejected) {
+			await expect(api.tabs.get(tab.id)).rejects.toMatchObject({ code: 'FIREFOX_CONTEXT_UNSUPPORTED' });
+		}
+		expect(native.runtime.getPlatformInfo).toHaveBeenCalledTimes(1);
+	});
+
+	it.each(['win', 'mac', 'linux', 'cros', 'openbsd', 'unknown', undefined])(
+		'keeps the strict default-session boundary when the platform is %s',
+		async (os) => {
+			const ordinary = defaultTab(1);
+			const native = nativeBrowser([ordinary, { id: 2, incognito: false }]);
+			native.runtime.getPlatformInfo = vi.fn(async () => ({ os }));
+			const api = createFirefoxBrowser(native);
+			expect(await api.tabs.query({})).toEqual([ordinary]);
+			expect(await api.tabs.get(1)).toBe(ordinary);
+			await expect(api.tabs.get(2)).rejects.toMatchObject({ code: 'FIREFOX_CONTEXT_UNSUPPORTED' });
+		},
+	);
+
+	it.each(['missing', 'rejected', 'throws', 'empty'])(
+		'keeps default tabs usable and rejects unidentified contexts when platform lookup is %s',
+		async (failureMode) => {
+			const ordinary = defaultTab(1);
+			const native = nativeBrowser([ordinary, { id: 2, incognito: false }]);
+			if (failureMode === 'rejected') {
+				native.runtime.getPlatformInfo = vi.fn().mockRejectedValue(new Error('Permission denied'));
+			} else if (failureMode === 'throws') {
+				native.runtime.getPlatformInfo = vi.fn(() => {
+					throw new Error('Platform unavailable');
+				});
+			} else if (failureMode === 'empty') {
+				native.runtime.getPlatformInfo = vi.fn().mockResolvedValue(undefined);
+			}
+			const api = createFirefoxBrowser(native);
+			expect(await api.tabs.query({})).toEqual([ordinary]);
+			expect(await api.tabs.get(1)).toBe(ordinary);
+			await expect(api.tabs.get(2)).rejects.toMatchObject({ code: 'FIREFOX_CONTEXT_UNSUPPORTED' });
+			if (native.runtime.getPlatformInfo) {
+				expect(native.runtime.getPlatformInfo).toHaveBeenCalledTimes(1);
+			}
+		},
+	);
+
+	it('does not inspect the platform when context fields already determine the boundary', async () => {
+		const ordinary = defaultTab(1);
+		const native = nativeBrowser([ordinary, defaultTab(2, { cookieStoreId: 'firefox-container-1' }), { id: 3, incognito: true }]);
+		native.runtime.getPlatformInfo = vi.fn().mockRejectedValue(new Error('Unavailable'));
+		const api = createFirefoxBrowser(native);
+		expect(await api.tabs.query({})).toEqual([ordinary]);
+		expect(await api.tabs.get(1)).toBe(ordinary);
+		await expect(api.tabs.get(2)).rejects.toMatchObject({ code: 'FIREFOX_CONTEXT_UNSUPPORTED' });
+		await expect(api.tabs.get(3)).rejects.toMatchObject({ code: 'FIREFOX_CONTEXT_UNSUPPORTED' });
+		expect(native.runtime.getPlatformInfo).not.toHaveBeenCalled();
+	});
+
+	it('calls native tab and platform methods with their original namespace as this', async () => {
+		const tab = { id: 1, incognito: false };
+		const native = nativeBrowser([tab]);
+		native.tabs.query.mockImplementation(async function () {
+			expect(this).toBe(native.tabs);
+			return [tab];
+		});
+		native.tabs.get.mockImplementation(async function () {
+			expect(this).toBe(native.tabs);
+			return tab;
+		});
+		native.runtime.getPlatformInfo = vi.fn(async function () {
+			expect(this).toBe(native.runtime);
+			return { os: 'android' };
+		});
+		const api = createFirefoxBrowser(native);
+		expect(await api.tabs.query({})).toEqual([tab]);
+		expect(await api.tabs.get(1)).toBe(tab);
+	});
+
 	it('checks the current tab context again after discovery before it can be used', async () => {
 		const tab = defaultTab(1);
 		const native = nativeBrowser([tab]);
@@ -134,9 +253,11 @@ describe('Firefox default-session boundary', () => {
 		const failure = new Error('No tab with id');
 		native.tabs.get.mockRejectedValue(failure);
 		native.tabs.query.mockRejectedValue(failure);
+		native.runtime.getPlatformInfo = vi.fn(async () => ({ os: 'android' }));
 		const api = createFirefoxBrowser(native);
 		await expect(api.tabs.get(7)).rejects.toBe(failure);
 		await expect(api.tabs.query({})).rejects.toBe(failure);
+		expect(native.runtime.getPlatformInfo).not.toHaveBeenCalled();
 	});
 
 	it('retains native message/document APIs, tab events and storage without claiming access-level support', async () => {

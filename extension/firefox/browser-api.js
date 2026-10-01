@@ -13,18 +13,42 @@ export function createFirefoxBrowser(nativeBrowser) {
 		throw new TypeError('Firefox tabs API 不可用');
 	}
 
-	const isDefaultContext = (tab) => tab?.cookieStoreId === 'firefox-default' && tab.incognito === false;
+	// Firefox Android omits cookieStoreId. Only relax that requirement after a
+	// successful native platform check, and share the lazy result across calls.
+	let androidPlatform;
+	const isAndroid = () => {
+		androidPlatform ??= Promise.resolve()
+			.then(() => nativeBrowser.runtime?.getPlatformInfo?.())
+			.then(
+				(platform) => platform?.os === 'android',
+				() => false,
+			);
+		return androidPlatform;
+	};
+	const isDefaultContext = (tab) => {
+		if (tab?.incognito !== false) {
+			return false;
+		}
+		if (tab.cookieStoreId === 'firefox-default') {
+			return true;
+		}
+		return tab.cookieStoreId === undefined ? isAndroid() : false;
+	};
 	const tabs = Object.create(nativeTabs);
 	Object.defineProperties(tabs, {
 		query: {
 			enumerable: true,
-			value: async (queryInfo) => (await nativeTabs.query(queryInfo)).filter(isDefaultContext),
+			value: async (queryInfo) => {
+				const result = await nativeTabs.query(queryInfo);
+				const allowed = await Promise.all(result.map(isDefaultContext));
+				return result.filter((_tab, index) => allowed[index]);
+			},
 		},
 		get: {
 			enumerable: true,
 			value: async (tabId) => {
 				const tab = await nativeTabs.get(tabId);
-				if (!isDefaultContext(tab)) {
+				if (!(await isDefaultContext(tab))) {
 					const error = new Error('Firefox 版暂不支持容器标签页或隐私窗口，请在普通默认标签页中使用。');
 					error.code = 'FIREFOX_CONTEXT_UNSUPPORTED';
 					throw error;

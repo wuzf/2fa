@@ -417,6 +417,63 @@ describe('explicit source recovery', () => {
 		expect(chrome.windows.update).toHaveBeenCalledExactlyOnceWith(2, { focused: true, state: 'normal' });
 	});
 
+	it.each(['namespace', 'get', 'update'])('activates an existing source when the windows %s API is absent', async (missing) => {
+		installChromeMock();
+		const windowApi = chrome.windows;
+		const getWindow = windowApi.get;
+		const updateWindow = windowApi.update;
+		if (missing === 'namespace') {
+			delete chrome.windows;
+		} else {
+			delete windowApi[missing];
+		}
+		await expect(openInstance()).resolves.toEqual({ status: 'activated', instanceOrigin: INSTANCE_ORIGIN });
+		expect(chrome.tabs.update).toHaveBeenCalledExactlyOnceWith(20, { active: true });
+		expect(getWindow).not.toHaveBeenCalled();
+		expect(updateWindow).not.toHaveBeenCalled();
+		expect(chrome.tabs.create).not.toHaveBeenCalled();
+		expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+	});
+
+	it.each(['removed', 'navigated', 'navigating'])('rechecks a mobile source that was %s during activation', async (state) => {
+		const { sourceTab } = installChromeMock();
+		delete chrome.windows;
+		chrome.tabs.get.mockResolvedValueOnce({ ...sourceTab });
+		if (state === 'removed') {
+			chrome.tabs.get.mockRejectedValue(new Error('No such tab'));
+		} else {
+			chrome.tabs.get.mockResolvedValue({
+				...sourceTab,
+				...(state === 'navigated' ? { url: 'https://other.example/' } : { pendingUrl: 'https://other.example/' }),
+			});
+		}
+		await expect(openInstance()).resolves.toEqual({ status: 'opened', instanceOrigin: INSTANCE_ORIGIN });
+		expect(chrome.tabs.update).toHaveBeenCalledExactlyOnceWith(20, { active: true });
+		expect(chrome.tabs.create).toHaveBeenCalledExactlyOnceWith({ url: INSTANCE_ORIGIN, active: true });
+	});
+
+	it.each([
+		['generation', 'REQUEST_EXPIRED'],
+		['settings', 'REQUEST_EXPIRED'],
+		['permission', 'PERMISSION_REQUIRED'],
+	])('rejects mobile activation after %s changes during the final source check', async (change, code) => {
+		const { local, sourceTab } = installChromeMock();
+		delete chrome.windows;
+		chrome.tabs.get.mockResolvedValueOnce({ ...sourceTab }).mockImplementation(async () => {
+			if (change === 'generation') {
+				invalidateConfigurationGeneration();
+			} else if (change === 'settings') {
+				local.values.settings.instanceOrigin = 'https://replacement.example';
+			} else {
+				chrome.permissions.contains.mockResolvedValue(false);
+			}
+			return { ...sourceTab };
+		});
+		await expect(openInstance()).rejects.toMatchObject({ code });
+		expect(chrome.tabs.update).toHaveBeenCalledExactlyOnceWith(20, { active: true });
+		expect(chrome.tabs.create).not.toHaveBeenCalled();
+	});
+
 	it('prefers a usable source over a sleeping source', async () => {
 		const { sourceTab } = installChromeMock();
 		chrome.tabs.query.mockResolvedValue([{ ...sourceTab, id: 21, discarded: true }, sourceTab]);

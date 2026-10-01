@@ -74,16 +74,16 @@ describe('persistent automatic-fill registration', () => {
 		await reconcileAutofillScripts();
 		expect(scripts.get(SCRIPT_ID).matches).toEqual([originToPermissionPattern(TARGET)]);
 	});
-	it('registers an HTTPS private host but starts only the explicitly authorized port', async () => {
-		const target = 'https://172.16.0.10:8080';
+	it.each(['http', 'https'])('registers an %s private host but starts only the explicitly authorized origin', async (scheme) => {
+		const target = `${scheme}://172.16.0.10:8080`;
 		const pattern = targetOriginToPermissionPattern(target);
 		values.autofillSites = [{ instanceOrigin: INSTANCE, targetPath: '/totp', targetOrigin: target }];
 		permissions.add(pattern);
 		openTabs = [
 			{ id: 1, url: `${target}/login` },
-			{ id: 2, url: 'https://172.16.0.10:8081/login' },
-			{ id: 3, url: 'http://172.16.0.10:8080/login' },
-			{ id: 4, url: 'https://172.16.0.11:8080/login' },
+			{ id: 2, url: `${scheme}://172.16.0.10:8081/login` },
+			{ id: 3, url: `${scheme === 'http' ? 'https' : 'http'}://172.16.0.10:8080/login` },
+			{ id: 4, url: `${scheme}://172.16.0.11:8080/login` },
 		];
 		await reconcileAutofillScripts();
 		expect(chrome.scripting.registerContentScripts).toHaveBeenCalledExactlyOnceWith([descriptor([target])]);
@@ -103,31 +103,34 @@ describe('persistent automatic-fill registration', () => {
 		expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
 	});
 
-	it('stops and unregisters a plain-HTTP private grant saved before it became manual-only', async () => {
+	it('retains and starts a saved HTTP page authorization with a live host grant', async () => {
 		const target = 'http://172.16.0.10:8080';
 		values.autofillSites = [{ instanceOrigin: INSTANCE, targetPath: '/totp', targetOrigin: target }];
 		permissions.add('http://172.16.0.10/*');
 		scripts.set(SCRIPT_ID, { ...descriptor(), matches: ['http://172.16.0.10/*'] });
 		openTabs = [{ id: 1, url: `${target}/totp` }];
 		await reconcileAutofillScripts();
-		expect(scripts.has(SCRIPT_ID)).toBe(false);
+		expect(scripts.get(SCRIPT_ID)).toEqual(descriptor([target]));
 		expect(chrome.scripting.registerContentScripts).not.toHaveBeenCalled();
-		expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+		expect(chrome.scripting.executeScript).toHaveBeenCalledExactlyOnceWith({
+			target: { tabId: 1, frameIds: [0] },
+			files: ['automatic.js'],
+			world: 'ISOLATED',
+		});
 		expect(chrome.tabs.sendMessage).toHaveBeenCalledExactlyOnceWith(1, { type: 'AUTO_STOP' }, { frameId: 0 });
-		expect(chrome.permissions.contains.mock.calls).toEqual([[{ origins: [originToPermissionPattern(INSTANCE)] }]]);
+		expect(chrome.permissions.contains).toHaveBeenCalledWith({ origins: ['http://172.16.0.10/*'] });
 	});
 
-	it('keeps other sites registered while a plain-HTTP network page has not acknowledged its stop', async () => {
+	it('keeps other sites registered while a revoked HTTP page has not acknowledged its stop', async () => {
 		vi.useFakeTimers();
-		const legacy = 'http://172.16.0.10:8080';
-		values.autofillSites = [SITE, { instanceOrigin: INSTANCE, targetPath: '/totp', targetOrigin: legacy }];
-		permissions.add('http://172.16.0.10/*');
+		const revoked = 'http://172.16.0.10:8080';
+		values.autofillSites = [SITE, { instanceOrigin: INSTANCE, targetPath: '/totp', targetOrigin: revoked }];
 		scripts.set(SCRIPT_ID, { ...descriptor(), matches: ['http://172.16.0.10/*', targetOriginToPermissionPattern(TARGET)] });
 		openTabs = [
-			{ id: 1, url: `${legacy}/totp` },
+			{ id: 1, url: `${revoked}/totp` },
 			{ id: 2, url: `${TARGET}/totp` },
 		];
-		// During the upgrade the old page does not answer its first stop message.
+		// The revoked page does not answer its first stop message.
 		chrome.tabs.sendMessage.mockImplementationOnce(() => new Promise(() => {}));
 		const first = reconcileAutofillScripts();
 		await vi.advanceTimersByTimeAsync(2_000);
@@ -462,7 +465,7 @@ describe('registration patterns', () => {
 			getScopes: async () =>
 				new Map([
 					[TARGET, '/totp'],
-					['http://172.16.0.10:8080', '/totp'],
+					['ftp://172.16.0.10:8080', '/totp'],
 				]),
 			permissionPattern: targetOriginToPermissionPattern,
 		});

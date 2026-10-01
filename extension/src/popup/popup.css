@@ -32,6 +32,7 @@ body {
 	display: flex;
 	flex-direction: column;
 	height: min(600px, 100vh);
+	height: min(600px, 100dvh);
 	overflow: hidden;
 }
 
@@ -382,19 +383,10 @@ main {
 	cursor: default;
 }
 
-/* Shown under the switches when a plain-HTTP page only allows manual filling. */
-.fill-note {
-	flex-basis: 100%;
-	margin: 0;
-	color: var(--colorNeutralForeground2);
-	font-size: 12px;
-	line-height: 16px;
-}
-
 /* The remember label names the account about to be filled. A long account or
    translation is cut with an ellipsis (the full text is in its title) instead of
    pushing the autofill switch onto another line: a zero basis always fits beside
-   it, and growing fills whatever room is left. Only the note below wraps. */
+   it, and growing fills whatever room is left. */
 .fill-preference:has(#remember-binding) {
 	flex: 1 1 0;
 	min-width: 0;
@@ -751,13 +743,36 @@ button:disabled {
 	}
 }
 
-/* Keep the full product name and translated actions readable in the popup. */
+/* Give the full English name one row. The page hint and navigation share the
+   next row, instead of reserving a separate full-width row for the links. */
+:root:lang(en) .brand-mark {
+	grid-row: 1 / 3;
+}
+
+:root:lang(en) .brand-text {
+	display: contents;
+}
+
 :root:lang(en) .topbar {
-	grid-template-columns: 32px minmax(0, 1fr);
+	grid-template-columns: 32px minmax(0, 1fr) auto;
+	row-gap: 0;
+}
+
+:root:lang(en) h1 {
+	grid-column: 2 / -1;
+	grid-row: 1;
+}
+
+:root:lang(en) .target-origin {
+	grid-column: 2;
+	grid-row: 2;
+	margin: 0;
+	white-space: normal;
 }
 
 :root:lang(en) .topbar-actions {
-	grid-column: 1 / -1;
+	grid-column: 3;
+	grid-row: 2;
 	justify-content: flex-end;
 }
 
@@ -769,4 +784,169 @@ button:disabled {
 :root:lang(en) .preview-next-time {
 	white-space: normal;
 	text-align: right;
+}
+
+/* Android opens the action in a viewport that can be narrower than the desktop
+   popup. Keep navigation and the next-code label inside that viewport. */
+@media (max-width: 379px) {
+	.topbar {
+		grid-template-columns: 32px minmax(0, 1fr);
+	}
+
+	.topbar-actions {
+		grid-column: 1 / -1;
+		justify-content: flex-end;
+		flex-wrap: wrap;
+	}
+
+	.preview-next-time {
+		white-space: normal;
+		text-align: right;
+	}
+}
+
+/* Android browsers provide their own sheet or full-screen viewport. Fill that
+   space; keep the intrinsic 380px desktop popup size for mouse/trackpad input. */
+@media (pointer: coarse) {
+	body {
+		width: 100vw;
+		height: 100vh;
+		height: 100dvh;
+		min-height: 0;
+	}
+
+	.popup-viewport {
+		height: 100vh;
+		height: 100dvh;
+	}
+
+	.topbar {
+		padding: 12px 16px;
+	}
+
+	.topbar-actions .quiet-button {
+		min-width: 44px;
+		min-height: 44px;
+		padding-inline: 8px;
+	}
+
+	main {
+		padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+	}
+
+	.account-search,
+	.search-icon,
+	.search-clear {
+		height: 48px;
+	}
+
+	.account-search {
+		font-size: 16px;
+	}
+
+	.account-toolbar {
+		margin-block: 10px;
+	}
+
+	.account-scopes {
+		width: 100%;
+		gap: 8px;
+	}
+
+	.scope-button {
+		flex: 1;
+		min-height: 44px;
+		font-size: 14px;
+	}
+
+	.account-list {
+		gap: 12px;
+	}
+
+	.account-row {
+		grid-template-columns: 36px minmax(0, 1fr) auto auto;
+		gap: 6px;
+		padding: 10px 12px 0;
+	}
+
+	.service-icon {
+		width: 36px;
+		height: 36px;
+	}
+
+	.account-favorite,
+	.account-fill {
+		min-width: 44px;
+		min-height: 44px;
+	}
+
+	.account-fill {
+		padding-inline: 12px;
+		font-size: 14px;
+	}
+
+	.code-preview {
+		padding: 4px 12px 8px;
+	}
+
+	.preview-code {
+		min-height: 48px;
+		font-size: 34px;
+		line-height: 48px;
+	}
+
+	.preview-next {
+		gap: 6px;
+		margin-top: 6px;
+		padding-top: 4px;
+	}
+
+	.preview-next-code,
+	.preview-link {
+		min-height: 44px;
+	}
+
+	.popup-viewport .fill-preferences {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0;
+		margin-top: 10px;
+		padding-top: 6px;
+	}
+
+	.popup-viewport .fill-preference {
+		flex: none;
+		min-height: 44px;
+		margin-left: 0;
+		gap: 10px;
+		font-size: 14px;
+	}
+
+	.fill-preference input {
+		width: 20px;
+		height: 20px;
+	}
+
+	.primary-button,
+	.secondary-button {
+		min-height: 44px;
+	}
+}
+
+/* A landscape sheet or the on-screen keyboard may leave little vertical room.
+   Scroll the content as one surface so every account and preference is reachable. */
+@media (pointer: coarse) and (max-height: 480px) {
+	main {
+		overflow-y: auto;
+	}
+
+	.account-section {
+		flex: none;
+		min-height: auto;
+	}
+
+	.account-list {
+		flex: none;
+		overflow-y: visible;
+	}
 }

@@ -116,15 +116,43 @@ describe('authorized automatic workflow', () => {
 		expect(listTotpAccounts).not.toHaveBeenCalled();
 		expect(generateTotpCode).not.toHaveBeenCalled();
 	});
-	it.each(['http://192.168.1.1', 'http://172.16.0.10:8080'])(
-		'refuses a grant saved for the plain-HTTP network page %s before reading accounts',
+	it.each(['http://192.168.1.1', 'http://172.16.0.10:8080', 'http://login.example'])(
+		'fills an explicitly authorized HTTP page %s using its bound account',
 		async (target) => {
-			// The same address on another network can be a different device, so an
-			// older saved grant with a live host permission must still never run.
 			values.autofillSites = [{ instanceOrigin: SOURCE, targetOrigin: target, targetPath: '/login' }];
+			values.bindings = [{ instanceOrigin: SOURCE, targetOrigin: target, accountId: ACCOUNT.id }];
 			sender = { ...sender, url: `${target}/login` };
 			chrome.tabs.get.mockResolvedValue({ id: 10, url: `${target}/login` });
 			probeReply = { ok: true, status: 'ready', origin: target, targetPath: '/login' };
+			expect(await send(MESSAGE.AUTO_STATUS)).toEqual({ enabled: true });
+			expect(listTotpAccounts).not.toHaveBeenCalled();
+			const flow = await discover();
+			expect(flow.autoFillAccountId).toBe(ACCOUNT.id);
+			expect(await select(flow)).toEqual({ status: 'filled' });
+			expect(fills()).toHaveLength(1);
+			expect(fills()[0][1]).toMatchObject({ expectedOrigin: target, expectedTargetPath: '/login' });
+			expect(fills()[0][2]).toEqual({ frameId: 0, documentId: 'doc-10' });
+		},
+	);
+	it.each(['no authorization', 'revoked permission', 'scheme', 'host', 'port', 'path'])(
+		'rejects an HTTP page with %s before reading accounts',
+		async (change) => {
+			const target = 'http://172.16.0.10:8080';
+			values.autofillSites = [{ instanceOrigin: SOURCE, targetOrigin: target, targetPath: '/login' }];
+			const locations = {
+				scheme: 'https://172.16.0.10:8080/login',
+				host: 'http://172.16.0.11:8080/login',
+				port: 'http://172.16.0.10:8081/login',
+				path: `${target}/settings`,
+			};
+			sender.url = locations[change] || `${target}/login`;
+			chrome.tabs.get.mockResolvedValue({ id: 10, url: sender.url });
+			if (change === 'no authorization') {
+				values.autofillSites = [];
+			}
+			if (change === 'revoked permission') {
+				chrome.permissions.contains.mockImplementation(async ({ origins }) => origins[0] !== 'http://172.16.0.10/*');
+			}
 			expect(await send(MESSAGE.AUTO_STATUS)).toEqual({ enabled: false });
 			await expect(discover()).rejects.toMatchObject({ code: 'PERMISSION_REQUIRED' });
 			expect(listTotpAccounts).not.toHaveBeenCalled();

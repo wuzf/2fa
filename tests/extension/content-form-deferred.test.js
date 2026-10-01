@@ -79,7 +79,7 @@ describe("resend actions beside the input's own form", () => {
 			'a link offering a text message instead',
 			`<div class="verify"><form>${appOtp}${verify}</form><p><a href="#s">Text me a code instead</a></p></div>`,
 		],
-		['a first send button', `<div class="verify"><form>${appOtp}${verify}</form><button type="button">Send code</button></div>`],
+		['a first send button', `<div class="verify"><form>${authOtp}${verify}</form><button type="button">Send code</button></div>`],
 		[
 			'a separate phone form with its send button',
 			`<div class="settings"><form>${appOtp}${verify}</form><form><label for="tel">Phone</label><input id="tel" type="tel"><button type="button">Send code</button></form></div>`,
@@ -233,7 +233,7 @@ describe('delivery help before a resend in an alert or header of a card', () => 
 			'"Having trouble?" before another method and a resend',
 			card(
 				'<div role="alert">Having trouble? <a href="#b">Use a recovery code</a> <a href="#r">Resend confirmation email</a></div>',
-				appOtp,
+				authOtp,
 				'Two-factor authentication',
 			),
 		],

@@ -305,6 +305,82 @@ afterEach(() => {
 	delete globalThis.chrome;
 });
 
+describe('Popup manual fill ownership', () => {
+	it.each(['success', 'response error', 'transport error'])('holds only the current manual nonce until %s completes', async (outcome) => {
+		const sendMessage = installChromeMock();
+		const original = sendMessage.getMockImplementation();
+		const pending = deferred();
+		sendMessage.mockImplementation((message) => {
+			if (message.type !== 'FILL_ACCOUNT') {
+				return original(message);
+			}
+			expect(document.documentElement.dataset.manualFillNonce).toBe(message.nonce);
+			return pending.promise.then(() => {
+				if (outcome === 'transport error') {
+					throw new Error('Transport disconnected');
+				}
+				return outcome === 'success' ? { ok: true, data: {} } : original(message);
+			});
+		});
+		vi.spyOn(window, 'close').mockImplementation(() => {});
+		await loadPopup();
+		expect(document.documentElement.dataset.manualFillNonce).toBeUndefined();
+		field('account-fill').click();
+		await flushPromises();
+		const [request] = messages(sendMessage, 'FILL_ACCOUNT');
+		expect(request).toMatchObject({ nonce: 'nonce-2' });
+		expect(request).not.toHaveProperty('automatic');
+		expect(document.documentElement.dataset.manualFillNonce).toBe(request.nonce);
+		pending.resolve();
+		await flushPromises();
+		expect(document.documentElement.dataset.manualFillNonce).toBeUndefined();
+		if (outcome === 'success') {
+			expect(document.getElementById('status').textContent).toBe('验证码已填入');
+		} else {
+			expect(document.getElementById('status').dataset.tone).toBe('error');
+			expect(document.getElementById('status').textContent).toContain(outcome === 'response error' ? '未找到' : 'Transport disconnected');
+		}
+	});
+
+	it('does not remove a replacement ownership marker when an earlier manual request settles', async () => {
+		const sendMessage = installChromeMock();
+		const original = sendMessage.getMockImplementation();
+		const pending = deferred();
+		sendMessage.mockImplementation((message) => (message.type === 'FILL_ACCOUNT' ? pending.promise : original(message)));
+		await loadPopup();
+		field('account-fill').click();
+		await flushPromises();
+		document.documentElement.dataset.manualFillNonce = 'newer-request';
+		try {
+			pending.resolve({ ok: false, error: { code: 'NO_INPUT', message: '未找到输入框' } });
+			await flushPromises();
+			expect(document.documentElement.dataset.manualFillNonce).toBe('newer-request');
+		} finally {
+			delete document.documentElement.dataset.manualFillNonce;
+		}
+	});
+
+	it('never advertises a manual nonce while automatically filling', async () => {
+		const sendMessage = installChromeMock({ boundAccountIds: [ACCOUNT.id], autoFillAccountId: ACCOUNT.id });
+		const original = sendMessage.getMockImplementation();
+		const pending = deferred();
+		sendMessage.mockImplementation((message) => {
+			if (message.type !== 'FILL_ACCOUNT') {
+				return original(message);
+			}
+			expect(message.automatic).toBe(true);
+			expect(document.documentElement.dataset.manualFillNonce).toBeUndefined();
+			return pending.promise;
+		});
+		await loadPopup();
+		expect(messages(sendMessage, 'FILL_ACCOUNT')).toHaveLength(1);
+		expect(document.documentElement.dataset.manualFillNonce).toBeUndefined();
+		pending.resolve({ ok: false, error: { code: 'NO_INPUT', message: '未找到输入框' } });
+		await flushPromises();
+		expect(document.documentElement.dataset.manualFillNonce).toBeUndefined();
+	});
+});
+
 describe('Popup automatic source refresh', () => {
 	it('clears old codes immediately and reloads when only the clock revision changes', async () => {
 		const state = { sourceRevision: 'same-accounts', sourceClockRevision: 'old-clock' };
@@ -1096,33 +1172,35 @@ describe('Popup cached icon updates', () => {
 });
 
 describe('Popup per-site automatic fill authorization', () => {
-	it('leaves a unique account manual on an unapproved path, including retry, and sends that exact path when enabling', async () => {
-		const sendMessage = installChromeMock({
-			targetPath: '/mfa',
-			autoFillAccountId: ACCOUNT.id,
-			initialAutofillSites: [
-				{ instanceOrigin: 'https://twofa.example', targetOrigin: 'https://login.example', targetPath: '/another-mfa' },
-			],
-		});
-		await loadPopup();
-		expect(messages(sendMessage, 'FILL_ACCOUNT')).toHaveLength(0);
-		expect(document.getElementById('autofill-site').checked).toBe(false);
-		document.getElementById('retry').click();
-		await flushPromises();
-		expect(messages(sendMessage, 'FILL_ACCOUNT')).toHaveLength(0);
-		field('account-fill').click();
-		await flushPromises();
-		expect(messages(sendMessage, 'FILL_ACCOUNT')).toHaveLength(1);
-		expect(messages(sendMessage, 'FILL_ACCOUNT')[0].automatic).toBeUndefined();
-		document.getElementById('autofill-site').click();
-		await flushPromises();
-		expect(messages(sendMessage, 'BEGIN_AUTOFILL_AUTHORIZATION')[0]).toMatchObject({
-			targetPath: '/mfa',
-			expectedTarget: { targetPath: '/mfa' },
-		});
-		expect(document.getElementById('autofill-site').checked).toBe(true);
-		expect(messages(sendMessage, 'FILL_ACCOUNT')).toHaveLength(1);
-	});
+	it.each(['https://login.example', 'http://login.example', 'http://192.168.1.1'])(
+		'leaves a unique account manual on an unapproved path at %s, including retry, and sends that exact path when enabling',
+		async (targetOrigin) => {
+			const sendMessage = installChromeMock({
+				targetOrigin,
+				targetPath: '/mfa',
+				autoFillAccountId: ACCOUNT.id,
+				initialAutofillSites: [{ instanceOrigin: 'https://twofa.example', targetOrigin, targetPath: '/another-mfa' }],
+			});
+			await loadPopup();
+			expect(messages(sendMessage, 'FILL_ACCOUNT')).toHaveLength(0);
+			expect(document.getElementById('autofill-site').checked).toBe(false);
+			document.getElementById('retry').click();
+			await flushPromises();
+			expect(messages(sendMessage, 'FILL_ACCOUNT')).toHaveLength(0);
+			field('account-fill').click();
+			await flushPromises();
+			expect(messages(sendMessage, 'FILL_ACCOUNT')).toHaveLength(1);
+			expect(messages(sendMessage, 'FILL_ACCOUNT')[0].automatic).toBeUndefined();
+			document.getElementById('autofill-site').click();
+			await flushPromises();
+			expect(messages(sendMessage, 'BEGIN_AUTOFILL_AUTHORIZATION')[0]).toMatchObject({
+				targetPath: '/mfa',
+				expectedTarget: { targetPath: '/mfa' },
+			});
+			expect(document.getElementById('autofill-site').checked).toBe(true);
+			expect(messages(sendMessage, 'FILL_ACCOUNT')).toHaveLength(1);
+		},
+	);
 	it('does not revive delayed popup autofill after the same document changes its route', async () => {
 		const state = { targetPath: '/mfa', autoFillAccountId: ACCOUNT.id };
 		const sendMessage = installChromeMock(state);
@@ -1177,19 +1255,29 @@ describe('Popup per-site automatic fill authorization', () => {
 		await flushPromises();
 		expect(messages(sendMessage, 'FILL_ACCOUNT').at(-1).nonce).not.toBe(previewNonce);
 	});
-	it('keeps manual access available when the user denies the optional site permission', async () => {
-		const sendMessage = installChromeMock();
-		chrome.permissions.request.mockResolvedValue(false);
-		await loadPopup();
-		const toggle = document.getElementById('autofill-site');
-		toggle.click();
-		await flushPromises();
-		expect(toggle.checked).toBe(false);
-		expect(toggle.disabled).toBe(false);
-		expect(messages(sendMessage, 'SET_AUTOFILL_SITE')).toHaveLength(0);
-		expect(document.getElementById('status').textContent).toContain('未授予此网站');
-		expect(field('account-fill').disabled).toBe(false);
-	});
+	it.each(['https://login.example', 'http://192.168.1.1', 'http://login.example'])(
+		'keeps manual access available when the user denies the optional permission for %s',
+		async (targetOrigin) => {
+			const sendMessage = installChromeMock({ targetOrigin });
+			chrome.permissions.request.mockResolvedValue(false);
+			await loadPopup();
+			const toggle = document.getElementById('autofill-site');
+			toggle.click();
+			await flushPromises();
+			expect(toggle.checked).toBe(false);
+			expect(toggle.disabled).toBe(false);
+			expect(messages(sendMessage, 'SET_AUTOFILL_SITE')).toHaveLength(0);
+			expect(messages(sendMessage, 'CANCEL_AUTOFILL_AUTHORIZATION')).toHaveLength(1);
+			expect(messages(sendMessage, 'COMPLETE_AUTOFILL_AUTHORIZATION')).toHaveLength(0);
+			expect(messages(sendMessage, 'FILL_ACCOUNT')).toHaveLength(0);
+			expect(document.getElementById('status').textContent).toContain('未授予此网站');
+			expect(field('account-fill').disabled).toBe(false);
+			field('account-fill').click();
+			await flushPromises();
+			expect(messages(sendMessage, 'FILL_ACCOUNT')).toEqual([expect.objectContaining({ account: ACCOUNT })]);
+			expect(messages(sendMessage, 'FILL_ACCOUNT')[0]).not.toHaveProperty('automatic');
+		},
+	);
 	it.each(['TARGET_CHANGED', 'REQUEST_EXPIRED', 'PERMISSION_REQUIRED'])(
 		'rolls back pending display when the worker rejects authorization with %s',
 		async (code) => {
@@ -1557,17 +1645,39 @@ describe('Popup per-site automatic fill authorization', () => {
 	it.each([
 		'http://localhost:8123',
 		'http://127.0.0.1:8123',
+		'http://192.168.1.1',
+		'http://10.0.0.1:8123',
+		'http://172.16.0.10:8080',
+		'http://169.254.1.1',
+		'http://172.16.0.10.evil.example',
+		'http://login.example',
 		'https://10.0.0.1:8123',
 		'https://172.16.0.10:8123',
 		'https://192.168.1.20:8123',
 	])('authorizes %s by host pattern while preserving the exact port in stored scope', async (origin) => {
-		const sendMessage = installChromeMock({ targetOrigin: origin });
+		const sendMessage = installChromeMock({ targetOrigin: origin, targetPath: '/mfa' });
 		await loadPopup();
-		document.getElementById('autofill-site').click();
+		const toggle = document.getElementById('autofill-site');
+		expect(toggle.closest('label').hidden).toBe(false);
+		expect(toggle.disabled).toBe(false);
+		expect(toggle.checked).toBe(false);
+		expect(chrome.permissions.request).not.toHaveBeenCalled();
+		expect(messages(sendMessage, 'FILL_ACCOUNT')).toHaveLength(0);
+		toggle.click();
 		await flushPromises();
 		const url = new URL(origin);
 		expect(chrome.permissions.request).toHaveBeenCalledWith({ origins: [`${url.protocol}//${url.hostname}/*`] });
-		expect(messages(sendMessage, 'BEGIN_AUTOFILL_AUTHORIZATION')[0].targetOrigin).toBe(origin);
+		expect(messages(sendMessage, 'BEGIN_AUTOFILL_AUTHORIZATION')[0]).toMatchObject({
+			targetOrigin: origin,
+			targetPath: '/mfa',
+			expectedTarget: { tabId: 7, documentId: 'target-document', origin, targetPath: '/mfa' },
+		});
+		expect(messages(sendMessage, 'COMPLETE_AUTOFILL_AUTHORIZATION')).toHaveLength(1);
+		expect(toggle.checked).toBe(true);
+		expect(toggle.disabled).toBe(false);
+		expect((await sendMessage({ type: 'GET_AUTOFILL_SITES' })).data.sites).toEqual([
+			{ instanceOrigin: 'https://twofa.example', targetOrigin: origin, targetPath: '/mfa' },
+		]);
 	});
 	it.each([
 		'http://192.168.1.1',
@@ -1576,7 +1686,7 @@ describe('Popup per-site automatic fill authorization', () => {
 		'http://169.254.1.1',
 		'http://172.16.0.10.evil.example',
 		'http://insecure.example',
-	])('keeps filling manual on the plain-HTTP page %s and shows why automatic filling is unavailable', async (targetOrigin) => {
+	])('automatically fills an already authorized HTTP page at %s', async (targetOrigin) => {
 		const sendMessage = installChromeMock({
 			targetOrigin,
 			autoFillAccountId: ACCOUNT.id,
@@ -1586,60 +1696,23 @@ describe('Popup per-site automatic fill authorization', () => {
 		const checkbox = document.getElementById('autofill-site');
 		const label = checkbox.closest('label');
 		expect(label.hidden).toBe(false);
-		expect(checkbox.disabled).toBe(true);
-		expect(checkbox.checked).toBe(false);
-		expect(label.title).toBe('这是 HTTP 页面，只能手动填充；每个账户的填充按钮仍可使用。');
-		expect(document.getElementById('autofill-description').textContent).toBe('这是 HTTP 页面，只能手动填充；每个账户的填充按钮仍可使用。');
-		// The reason is visible under the switches, not only as a tooltip.
-		const note = document.getElementById('autofill-note');
-		expect(note.hidden).toBe(false);
-		expect(note.textContent.trim()).toBe('这是 HTTP 页面，只能手动填充；每个账户的填充按钮仍可使用。');
-		// A grant saved before this rule must not fill automatically when the popup opens.
-		expect(messages(sendMessage, 'FILL_ACCOUNT')).toHaveLength(0);
-		expect(messages(sendMessage, 'GET_AUTOFILL_SITES')).toHaveLength(0);
-		checkbox.click();
-		await flushPromises();
+		expect(checkbox.disabled).toBe(false);
+		expect(checkbox.checked).toBe(true);
+		expect(label.title).toBe(LOCALES['zh-CN'].popupAutofillHint);
+		expect(document.getElementById('autofill-description').textContent).toBe(LOCALES['zh-CN'].popupAutofillDescription);
+		expect(messages(sendMessage, 'FILL_ACCOUNT')).toEqual([expect.objectContaining({ automatic: true, account: ACCOUNT })]);
+		expect(messages(sendMessage, 'GET_AUTOFILL_SITES')).toHaveLength(1);
 		expect(chrome.permissions.request).not.toHaveBeenCalled();
 		expect(messages(sendMessage, 'BEGIN_AUTOFILL_AUTHORIZATION')).toHaveLength(0);
-		field('account-fill').click();
-		await flushPromises();
-		expect(messages(sendMessage, 'FILL_ACCOUNT')).toEqual([expect.objectContaining({ account: ACCOUNT })]);
-		expect(messages(sendMessage, 'FILL_ACCOUNT')[0]).not.toHaveProperty('automatic');
 	});
-	it('restores the normal automatic-fill hint after moving from a plain-HTTP page to a supported page', async () => {
-		const state = { targetOrigin: 'http://192.168.1.1' };
-		installChromeMock(state);
-		await loadPopup();
-		const label = document.getElementById('autofill-site').closest('label');
-		expect(label.getAttribute('data-i18n-title')).toBe('popupAutofillHttpManual');
-		expect(document.getElementById('autofill-note').hidden).toBe(false);
-		state.targetOrigin = 'https://login.example';
-		document.getElementById('retry').click();
-		await flushPromises();
-		expect(label.hidden).toBe(false);
-		expect(document.getElementById('autofill-site').disabled).toBe(false);
-		expect(label.getAttribute('data-i18n-title')).toBe('popupAutofillHint');
-		expect(label.title).toBe('仅在此验证页面的相同路径自动检测并填码，无需打开扩展；多个匹配账户时需选择');
-		expect(document.getElementById('autofill-description').textContent).toBe(
-			'仅在此验证页面的相同路径自动检测并填码，无需打开扩展；多个匹配账户时需选择。',
-		);
-		expect(document.getElementById('autofill-note').hidden).toBe(true);
-	});
-	it('translates the visible plain-HTTP reason when another surface changes the language', async () => {
+	it('translates the normal HTTP authorization hint when another surface changes the language', async () => {
 		installChromeMock({ targetOrigin: 'http://192.168.1.1' });
 		await loadPopup();
 		for (const [listener] of chrome.runtime.onMessage.addListener.mock.calls) {
 			listener({ type: 'LANGUAGE_CHANGED', preference: 'en' }, {});
 		}
-		const text = "This is an HTTP page, so codes can only be filled manually. Each account's Fill button still works.";
-		expect(document.getElementById('autofill-note').textContent).toBe(text);
-		expect(document.getElementById('autofill-site').closest('label').title).toBe(text);
-	});
-	it('keeps the plain-HTTP reason hidden on pages where automatic filling is available', async () => {
-		installChromeMock();
-		await loadPopup();
-		expect(document.getElementById('autofill-site').closest('label').hidden).toBe(false);
-		expect(document.getElementById('autofill-note').hidden).toBe(true);
+		expect(document.getElementById('autofill-site').closest('label').title).toBe(LOCALES.en.popupAutofillHint);
+		expect(document.getElementById('autofill-description').textContent).toBe(LOCALES.en.popupAutofillDescription);
 	});
 	it('does not infer authorization from another instance or accept a stale settings read', async () => {
 		const sendMessage = installChromeMock();

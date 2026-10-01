@@ -80,62 +80,78 @@ describe('autofill site preferences', () => {
 			expect(chrome.storage.local.set).not.toHaveBeenCalled();
 		},
 	);
-	it('requires an exact saved HTTPS private-IPv4 origin even though the browser grant covers every port', async () => {
-		const target = 'https://172.16.0.10:8080';
-		const pattern = targetOriginToPermissionPattern(target);
-		permissions.add(pattern);
-		await setAutofillSite(INSTANCE, target, '/totp', true);
-		expect(await hasAutofillSite(INSTANCE, target, '/totp')).toBe(true);
-		for (const different of ['https://172.16.0.10', 'https://172.16.0.10:8081', 'http://172.16.0.10:8080', 'https://172.16.0.11:8080']) {
-			expect(await hasAutofillSite(INSTANCE, different, '/totp')).toBe(false);
-		}
-		expect(chrome.permissions.contains).toHaveBeenCalledWith({ origins: ['https://172.16.0.10/*'] });
-		expect(await isPermissionPatternInUse(pattern, INSTANCE)).toBe(true);
-		await setAutofillSite(INSTANCE, 'https://172.16.0.10:8081', '/totp', true);
-		await setAutofillSite(INSTANCE, target, '/totp', false);
-		expect(await isPermissionPatternInUse(pattern, INSTANCE)).toBe(true);
-		await setAutofillSite(INSTANCE, 'https://172.16.0.10:8081', '/totp', false);
-		expect(await isPermissionPatternInUse(pattern, INSTANCE)).toBe(false);
-	});
+	it.each(['http', 'https'])(
+		'requires an exact saved %s private-IPv4 origin even though the browser grant covers every port',
+		async (scheme) => {
+			const target = `${scheme}://172.16.0.10:8080`;
+			const pattern = targetOriginToPermissionPattern(target);
+			permissions.add(pattern);
+			await setAutofillSite(INSTANCE, target, '/totp', true);
+			expect(await hasAutofillSite(INSTANCE, target, '/totp')).toBe(true);
+			for (const different of [
+				`${scheme}://172.16.0.10`,
+				`${scheme}://172.16.0.10:8081`,
+				`${scheme === 'http' ? 'https' : 'http'}://172.16.0.10:8080`,
+				`${scheme}://172.16.0.11:8080`,
+			]) {
+				expect(await hasAutofillSite(INSTANCE, different, '/totp')).toBe(false);
+			}
+			expect(chrome.permissions.contains).toHaveBeenCalledWith({ origins: [`${scheme}://172.16.0.10/*`] });
+			expect(await isPermissionPatternInUse(pattern, INSTANCE)).toBe(true);
+			await setAutofillSite(INSTANCE, `${scheme}://172.16.0.10:8081`, '/totp', true);
+			await setAutofillSite(INSTANCE, target, '/totp', false);
+			expect(await isPermissionPatternInUse(pattern, INSTANCE)).toBe(true);
+			await setAutofillSite(INSTANCE, `${scheme}://172.16.0.10:8081`, '/totp', false);
+			expect(await isPermissionPatternInUse(pattern, INSTANCE)).toBe(false);
+		},
+	);
 
 	it('prunes all private-IP ports on a revocation event without removing another scheme or host', async () => {
-		const targets = ['https://172.16.0.10:8080', 'https://172.16.0.10:8081', 'http://localhost:8080', 'https://172.16.0.11:8080'];
+		const targets = ['http://172.16.0.10:8080', 'http://172.16.0.10:8081', 'https://172.16.0.10:8080', 'http://172.16.0.11:8080'];
 		for (const target of targets) {
 			permissions.add(targetOriginToPermissionPattern(target));
 			await setAutofillSite(INSTANCE, target, '/totp', true);
 		}
-		await pruneRevokedAutofillSites(['https://172.16.0.10/*']);
+		await pruneRevokedAutofillSites(['http://172.16.0.10/*']);
 		expect(values.autofillSites.map((site) => site.targetOrigin)).toEqual(targets.slice(2));
 		expect(await hasAutofillSite(INSTANCE, targets[0], '/totp')).toBe(false);
 	});
 
 	describe('plain-HTTP network pages', () => {
-		const LEGACY = ['http://192.168.1.1', 'http://172.16.0.10:8080', 'http://10.0.0.1:8443'];
+		const HTTP_TARGETS = ['http://192.168.1.1', 'http://172.16.0.10:8080', 'http://10.0.0.1:8443'];
 
-		it.each([...LEGACY, 'http://169.254.1.1', 'http://router.local', 'http://login.example'])(
-			'refuses to enable automatic filling on %s',
+		it.each([...HTTP_TARGETS, 'http://169.254.1.1', 'http://router.local', 'http://login.example', 'http://[fd00::1]'])(
+			'enables automatic filling on %s only after a host grant and an explicit page authorization',
 			async (target) => {
-				permissions.add(`http://${new URL(target).hostname}/*`);
-				await expect(setAutofillSite(INSTANCE, target, '/login', true)).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+				await expect(setAutofillSite(INSTANCE, target, '/login', true)).rejects.toMatchObject({ code: 'PERMISSION_REQUIRED' });
 				expect(chrome.storage.local.set).not.toHaveBeenCalled();
+				permissions.add(targetOriginToPermissionPattern(target));
+				expect(await hasAutofillSite(INSTANCE, target, '/login')).toBe(false);
+				await setAutofillSite(INSTANCE, target, '/login', true);
+				expect(await hasAutofillSite(INSTANCE, target, '/login')).toBe(true);
+				expect(await hasAutofillSite(INSTANCE, target, '/other')).toBe(false);
+				permissions.delete(targetOriginToPermissionPattern(target));
 				expect(await hasAutofillSite(INSTANCE, target, '/login')).toBe(false);
 			},
 		);
 
-		it('never executes a grant saved before these pages became manual-only', async () => {
-			values.autofillSites = [...LEGACY.map((targetOrigin) => ({ instanceOrigin: INSTANCE, targetOrigin, targetPath: '/login' })), SITE];
-			for (const target of LEGACY) {
-				permissions.add(`http://${new URL(target).hostname}/*`);
+		it('honors saved HTTP page authorizations with live browser permissions', async () => {
+			values.autofillSites = [
+				...HTTP_TARGETS.map((targetOrigin) => ({ instanceOrigin: INSTANCE, targetOrigin, targetPath: '/login' })),
+				SITE,
+			];
+			for (const target of HTTP_TARGETS) {
+				permissions.add(targetOriginToPermissionPattern(target));
 			}
-			expect(await readAutofillSites(INSTANCE)).toEqual([SITE]);
-			for (const target of LEGACY) {
-				expect(await hasAutofillSite(INSTANCE, target, '/login')).toBe(false);
+			expect(await readAutofillSites(INSTANCE)).toEqual(values.autofillSites);
+			for (const target of HTTP_TARGETS) {
+				expect(await hasAutofillSite(INSTANCE, target, '/login')).toBe(true);
 			}
 			expect(await hasAutofillSite(INSTANCE, TARGET, '/totp')).toBe(true);
-			expect(await isPermissionPatternInUse('http://192.168.1.1/*', INSTANCE)).toBe(false);
+			expect(await isPermissionPatternInUse('http://192.168.1.1/*', INSTANCE)).toBe(true);
 		});
 
-		it('deletes such grants and releases only their private host permissions during cleanup', async () => {
+		it('retains HTTP grants and host permissions during cleanup while pruning revoked sites', async () => {
 			values.autofillSites = [
 				{ instanceOrigin: INSTANCE, targetOrigin: 'http://192.168.1.1', targetPath: '/login' },
 				{ instanceOrigin: OTHER_INSTANCE, targetOrigin: 'http://192.168.1.1:8080', targetPath: '/login' },
@@ -146,19 +162,22 @@ describe('autofill site preferences', () => {
 			for (const pattern of ['http://192.168.1.1/*', 'http://10.0.0.1/*']) {
 				permissions.add(pattern);
 			}
-			await expect(pruneRevokedAutofillSites()).resolves.toEqual([SITE]);
-			expect(values.autofillSites).toEqual([SITE]);
-			expect(chrome.permissions.remove).toHaveBeenCalledExactlyOnceWith({ origins: ['http://192.168.1.1/*', 'http://10.0.0.1/*'] });
-			chrome.permissions.remove.mockClear();
+			const retained = values.autofillSites.filter((site) => site.targetOrigin !== 'http://login.example');
+			await expect(pruneRevokedAutofillSites()).resolves.toEqual(retained);
+			expect(values.autofillSites).toEqual(retained);
+			expect(chrome.permissions.remove).not.toHaveBeenCalled();
+			chrome.storage.local.set.mockClear();
 			await pruneRevokedAutofillSites();
+			expect(chrome.storage.local.set).not.toHaveBeenCalled();
 			expect(chrome.permissions.remove).not.toHaveBeenCalled();
 		});
 
-		it('keeps cleaning up stored grants when the browser refuses to remove the host permission', async () => {
+		it('does not restore a revoked HTTP page authorization after the browser permission is granted again', async () => {
 			values.autofillSites = [{ instanceOrigin: INSTANCE, targetOrigin: 'http://192.168.1.1', targetPath: '/login' }, SITE];
-			chrome.permissions.remove.mockRejectedValue(new Error('Permission is required'));
 			await expect(pruneRevokedAutofillSites()).resolves.toEqual([SITE]);
 			expect(values.autofillSites).toEqual([SITE]);
+			permissions.add('http://192.168.1.1/*');
+			expect(await hasAutofillSite(INSTANCE, 'http://192.168.1.1', '/login')).toBe(false);
 		});
 
 		it.each(['http://localhost:8123', 'http://127.0.0.1:8123'])(
@@ -351,10 +370,6 @@ describe('autofill site preferences', () => {
 	});
 
 	it.each([
-		['http://login.example', true],
-		['http://172.15.1.1', true],
-		['http://172.32.1.1', true],
-		['http://172.16.0.10.evil.example', true],
 		['file:///tmp/login', true],
 		['https://user:pass@login.example', true],
 		[INSTANCE, true],
@@ -379,7 +394,7 @@ describe('autofill site preferences', () => {
 			{},
 			SITE,
 			{ ...SITE, targetOrigin: `${TARGET}/step` },
-			{ ...SITE, targetOrigin: 'http://insecure.example' },
+			{ ...SITE, targetOrigin: 'ftp://invalid.example' },
 			{ ...SITE, instanceOrigin: 'http://insecure.example' },
 			{ ...SITE, targetOrigin: INSTANCE },
 			{ ...SITE, targetOrigin: 'https://user:pass@login.example' },
