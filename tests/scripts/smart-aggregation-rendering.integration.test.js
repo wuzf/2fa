@@ -692,13 +692,41 @@ describe('smart aggregation rendering integration', () => {
 
 	it('searches the displayed other-services heading', async () => {
 		const { api, document } = createHarness();
-		api.setSecrets([secret('github', 'GitHub', 'code@example.com'), secret('discord', 'Discord', 'chat@example.com')]);
+		api.setSecrets([
+			secret('google', 'Google', 'owner@example.com'),
+			secret('gmail', 'Gmail', 'mail@example.com'),
+			secret('github', 'GitHub', 'code@example.com'),
+			secret('discord', 'Discord', 'chat@example.com'),
+		]);
 
 		await api.filterSecrets('其他服务');
 
 		const list = document.getElementById('secretsList');
 		expect(list.querySelector('.service-group-title').textContent).toBe('其他服务');
+		expect(list.querySelector('.service-group-count').textContent).toBe('2 个');
 		expect(list.querySelectorAll('h3').map((node) => node.textContent)).toEqual(['GitHub', 'Discord']);
+	});
+
+	it('shows no heading when no service has two or more accounts', async () => {
+		const { api, document } = createHarness();
+		api.restoreViewModePreference();
+		api.setSecrets([secret('github', 'GitHub', 'code@example.com'), secret('discord', 'Discord', 'chat@example.com')]);
+		await api.renderFilteredSecrets();
+
+		const list = document.getElementById('secretsList');
+		expect(list.classList.contains('is-grouped')).toBe(true);
+		expect(list.querySelectorAll('.service-group-header')).toHaveLength(0);
+		expect(list.querySelectorAll('.service-group-grid')).toHaveLength(1);
+		expect(list.querySelectorAll('.secret-card')).toHaveLength(2);
+
+		// Adding a second account of a service brings the headings back.
+		api.setSecrets([
+			secret('github', 'GitHub', 'code@example.com'),
+			secret('github-work', 'GitHub', 'work@example.com'),
+			secret('discord', 'Discord', 'chat@example.com'),
+		]);
+		await api.renderFilteredSecrets();
+		expect(list.querySelectorAll('.service-group-title').map((node) => node.textContent)).toEqual(['GitHub', '其他服务']);
 	});
 
 	it('does not copy failed eight-digit OTP placeholders', async () => {

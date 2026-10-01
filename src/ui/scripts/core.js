@@ -580,7 +580,11 @@ export function getCoreCode() {
       '</div>';
     }
 
-    function createServiceGroupSection(group, index) {
+    function createServiceGroupSection(group, index, showHeader = true) {
+      const cardsHTML = group.items.map(secret => createSecretCard(secret)).join('');
+      if (!showHeader) {
+        return '<div class="service-group"><div class="service-group-grid">' + cardsHTML + '</div></div>';
+      }
       const headingId = 'service-group-heading-' + index;
       const hasFilteredCount = Boolean(currentSearchQuery) && group.matchedCount !== group.totalCount;
       const countText = hasFilteredCount
@@ -595,7 +599,7 @@ export function getCoreCode() {
           '<h2 class="service-group-title" id="' + headingId + '">' + escapeHTML(group.name) + '</h2>' +
           '<span class="service-group-count" aria-label="' + escapeHTML(countLabel) + '">' + countText + '</span>' +
         '</div>' +
-        '<div class="service-group-grid">' + group.items.map(secret => createSecretCard(secret)).join('') + '</div>' +
+        '<div class="service-group-grid">' + cardsHTML + '</div>' +
       '</section>';
     }
 
@@ -671,7 +675,10 @@ export function getCoreCode() {
 
       if (isGroupedView) {
         const serviceGroups = groupSecretsByServiceFamily(sortedSecrets, secrets, currentGroupSortType);
-        secretsList.innerHTML = serviceGroups.map((group, index) => createServiceGroupSection(group, index)).join('');
+        // When no service has two or more accounts, every account is in "Other services";
+        // a single heading above the whole list would only repeat the total.
+        const onlyUngrouped = serviceGroups.length === 1 && serviceGroups[0].isOther && serviceGroups[0].totalCount === secrets.length;
+        secretsList.innerHTML = serviceGroups.map((group, index) => createServiceGroupSection(group, index, !onlyUngrouped)).join('');
       } else {
         secretsList.innerHTML = sortedSecrets.map(secret => createSecretCard(secret)).join('');
       }
