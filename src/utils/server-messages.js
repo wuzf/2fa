@@ -522,6 +522,12 @@ export const serverMessages = [
 	['请求的页面不存在', '請求的頁面不存在', 'The requested page does not exist'],
 	['服务器错误', '伺服器錯誤', 'Server error'],
 	['请求处理失败，请稍后重试', '請求處理失敗，請稍後重試', 'Unable to process the request. Please try again later.'],
+	['存储服务暂时不可用', '儲存服務暫時無法使用', 'Secret storage is temporarily unavailable'],
+	[
+		'无法确认本次修改是否已保存，请刷新后重试',
+		'無法確認這次修改是否已儲存，請重新整理後重試',
+		'Could not confirm whether this change was saved. Refresh and try again.',
+	],
 	['无效路径', '無效路徑', 'Invalid path'],
 	['缺少密钥ID', '缺少金鑰 ID', 'Secret ID is missing'],
 	['路径中的密钥ID编码无效', '路徑中的金鑰 ID 編碼無效', 'The secret ID in the path is not correctly encoded'],

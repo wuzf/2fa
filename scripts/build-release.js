@@ -166,6 +166,12 @@ wrangler kv namespace create SECRETS_KV
 - Variable name: \`SECRETS_KV\`
 - KV namespace: 首次部署选择刚创建的 namespace；升级时保留原 namespace
 
+### 2.5 同时修改的保护（Durable Object）
+
+仓库中的 \`wrangler.toml\` 还声明了 Durable Object \`SECRETS_STORE\`：读写密钥的请求都交给它依次处理，避免多台设备同时修改时互相覆盖。一键部署、Workers Builds 和 \`npm run deploy\` 会自动创建它。
+
+直接粘贴 \`worker.js\` 或不带配置执行 \`wrangler deploy worker.js\` 时不会创建这个绑定。应用照常可用，但只有同一个实例收到的请求会依次处理，多台设备同时修改时仍可能丢失其中一次修改。
+
 ### 3. 配置密钥（推荐）
 
 \`\`\`bash

@@ -1501,6 +1501,8 @@
 	"The requested page does not exist": "Trang được yêu cầu không tồn tại",
 	"Server error": "Lỗi máy chủ",
 	"Unable to process the request. Please try again later.": "Không thể xử lý yêu cầu. Vui lòng thử lại sau.",
+	"Secret storage is temporarily unavailable": "Kho lưu trữ khóa tạm thời không khả dụng",
+	"Could not confirm whether this change was saved. Refresh and try again.": "Không thể xác nhận thay đổi này đã được lưu hay chưa. Hãy tải lại trang và thử lại.",
 	"Invalid path": "Đường dẫn không hợp lệ",
 	"Secret ID is missing": "Khóa bí mật ID bị thiếu",
 	"Unable to load configuration": "Không thể tải cấu hình",

@@ -41,6 +41,11 @@
                    │
                    ▼
 ┌─────────────────────────────────────────────────────┐
+│   Durable Object SecretsStore（依次处理密钥读写）    │
+└──────────────────┬──────────────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────────┐
 │        Cloudflare KV（数据存储层）                   │
 │   全球分布式键值存储 + 自动加密 + 低延迟             │
 └─────────────────────────────────────────────────────┘
@@ -330,6 +335,19 @@ async function saveSecretsToKV(env, secrets, reason) {
 	await triggerBackup(secrets, env, { reason });
 }
 ```
+
+#### 依次处理密钥读写（`storage/secrets-store.js`）
+
+所有密钥存在一份加密的 KV 文档里，每次修改都是「读取整份 → 修改 → 整份写回」。Workers KV 不支持原子更新，两个同时进行的修改会读到同一份旧文档，后写入的一次会覆盖另一次；写入后的一段时间内，KV 还可能返回旧文档。
+
+因此路由不直接调用读写密钥的处理函数，而是调用 `runSecretsOperation(操作名, request, env, ctx)`：
+
+- 绑定了 `SECRETS_STORE` 时，请求转给唯一的 Durable Object `SecretsStore`，按到达顺序逐个执行原来的处理函数。涉及的操作是密钥列表、新增、编辑、删除、批量导入、HOTP 计数器递增与压实、手动备份、恢复备份；定时备份通过 `readSecretsSnapshot()` 读取。
+- `SecretsStore` 执行处理函数时，`env.SECRETS_KV` 换成 `createConsistentKV()`（`storage/consistent-kv.js`）。对 `secrets`、`hotp-counter-epoch` 和 `hotp-counter:*` 这些键，它在 Durable Object 存储里保留最近一次写入的副本，并把每次写入同步到 KV，KV 元数据中记录 Durable Object 的 id 和该键的修订号。读取时同时比较两边：KV 返回的是较旧的修订号时用副本；KV 中的值没有本存储的修订号（例如回滚后旧版本写入的数据）时，采用 KV 中的新值，但已经见过的旧值（按指纹识别）和「键不存在」的缓存结果不会覆盖副本。其他键原样读写 KV。
+- 没有绑定时（例如直接粘贴 `dist/worker.js`），处理函数在收到请求的实例里执行，修改只在该实例内依次处理。
+- 修改请求无法送达 Durable Object 时返回 503「无法确认本次修改是否已保存，请刷新后重试」；读取请求改为直接读取 KV。
+
+账户数据始终完整保存在 `SECRETS_KV` 中，旧版本和没有绑定的部署读取的都是同一份数据。
 
 #### 请求限流集成
 
@@ -1211,7 +1229,7 @@ export function getBackupManager(env) {
 
 ### 水平扩展
 
-- ✅ 无状态设计：每个请求独立处理
+- ✅ 无状态设计：每个请求独立处理；读写密钥的请求由 Durable Object `SecretsStore` 依次处理
 - ✅ 全球分布：自动在边缘节点运行
 - ✅ 自动扩缩容：根据流量自动调整
 

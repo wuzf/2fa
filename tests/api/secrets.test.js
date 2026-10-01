@@ -807,12 +807,11 @@ describe('API Secrets Module', () => {
       expect(secrets[0].secret).toBe('JBSWY3DPEHPK3PXP'); // 解密后的明文
     });
 
-    it('并发添加密钥应该正确处理', async () => {
+    it('依次添加的多个密钥都应保存', async () => {
       const env = createMockEnv();
 
-      // Note: Due to KV race conditions, concurrent adds might not work as expected
-      // In production, this would be mitigated by Cloudflare's eventual consistency
-      // For testing, we run them sequentially to verify each add works
+      // The handlers read, edit and write the whole document, so they are not atomic on
+      // their own; simultaneous changes are covered by tests/storage/secrets-store.test.js.
       await handleAddSecret(createMockRequest({ name: 'GitHub', secret: 'JBSWY3DPEHPK3PXP' }), env);
       await handleAddSecret(createMockRequest({ name: 'GitLab', secret: 'MFRGGZDFMZTWQ2LK' }), env);
       await handleAddSecret(createMockRequest({ name: 'Bitbucket', secret: 'KRSXG5CTMVRXEZLU' }), env);

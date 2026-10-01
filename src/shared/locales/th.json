@@ -1501,6 +1501,8 @@
 	"The requested page does not exist": "ไม่มีหน้าที่ร้องขอ",
 	"Server error": "ข้อผิดพลาดของเซิร์ฟเวอร์",
 	"Unable to process the request. Please try again later.": "ไม่สามารถดำเนินการตามคำขอได้ โปรดลองอีกครั้งในภายหลัง",
+	"Secret storage is temporarily unavailable": "ที่เก็บคีย์ไม่พร้อมใช้งานชั่วคราว",
+	"Could not confirm whether this change was saved. Refresh and try again.": "ไม่สามารถยืนยันได้ว่าการเปลี่ยนแปลงนี้ถูกบันทึกแล้วหรือไม่ รีเฟรชหน้าแล้วลองอีกครั้ง",
 	"Invalid path": "พาธไม่ถูกต้อง",
 	"Secret ID is missing": "คีย์ลับ ID หายไป",
 	"Unable to load configuration": "ไม่สามารถโหลดการกำหนดค่าได้",

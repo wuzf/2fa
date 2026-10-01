@@ -19,7 +19,7 @@
 2. 登录 Cloudflare 账户，点击 **Deploy** 等待部署完成
 3. 记下您的 Worker URL（如 `https://2fa-xxxx.workers.dev`）
 
-> 项目 `wrangler.toml` 已显式声明 `SECRETS_KV`，Wrangler 会在首次部署时自动创建所需 KV 并在后续部署中复用，无需手动创建。
+> 项目 `wrangler.toml` 已显式声明 `SECRETS_KV` 和 Durable Object `SECRETS_STORE`，Wrangler 会在首次部署时自动创建它们并在后续部署中复用，无需手动创建。
 > 如果您在 Cloudflare Dashboard 中手动配置 Git 构建命令，**部署命令请使用 `npm run deploy`，不要直接写 `npx wrangler deploy`**，以保留项目的版本注入流程。
 > 在 Workers Builds 中构建时，`npm run deploy` 按 Cloudflare 提供的实际 Worker 名称（环境变量 `WRANGLER_CI_OVERRIDE_NAME`）查找已有 KV。即使 Dashboard 中的 Worker 名与 `wrangler.toml` 的 `name` 不同，也不会绑定到同一账户里按配置名创建的其他部署的 KV。
 
@@ -142,11 +142,16 @@ npm run deploy
 
 如需启用 OneDrive / Google Drive 远程备份，配置上表中的 OAuth 变量后，参考 [网盘备份配置指南](CLOUD_DRIVE_SETUP.md) 完成回调地址和授权步骤。
 
-### KV 命名空间
+### 存储绑定
 
-| Binding      | 用途                          | 必需 | 存储的键                                                   |
-| ------------ | ----------------------------- | ---- | ---------------------------------------------------------- |
-| `SECRETS_KV` | 存储 2FA 密钥、备份、密码哈希 | ✅   | `secrets`, `user_password`, `backup_*`, `last_backup_hash` |
+| Binding         | 类型           | 用途                                         | 必需 | 存储的内容                                                 |
+| --------------- | -------------- | -------------------------------------------- | ---- | ---------------------------------------------------------- |
+| `SECRETS_KV`    | KV 命名空间    | 存储 2FA 密钥、备份、密码哈希                | ✅   | `secrets`, `user_password`, `backup_*`, `last_backup_hash` |
+| `SECRETS_STORE` | Durable Object | 依次处理读写密钥的请求，避免同时修改互相覆盖 | 推荐 | `secrets` 和 HOTP 计数器最近一次写入的副本                 |
+
+Workers KV 是最终一致的存储：两个同时进行的修改都会读到同一份旧数据，后写入的一次会覆盖另一次；刚写入后的一段时间内还可能读到旧值。因此读写密钥的请求都交给 `SECRETS_STORE` 依次处理，它在自己的存储里保留最近一次写入的副本，并把每次写入同步到 `SECRETS_KV`。账户数据仍完整保存在 `SECRETS_KV` 中。
+
+`SECRETS_STORE` 使用 SQLite 存储后端，Workers 免费计划可用，由 `wrangler.toml` 中的 `migrations` 在首次部署时创建。没有这个绑定时（例如把 `dist/worker.js` 直接粘贴到 Dashboard）应用照常可用，但只有同一个实例收到的请求会依次处理，多台设备同时修改时仍可能丢失其中一次修改。
 
 ### Cron 触发器
 
@@ -178,7 +183,13 @@ name = "2fa-dev"
 [[env.development.kv_namespaces]]
 binding = "SECRETS_KV"
 id = "your-dev-kv-id"
+
+[[env.development.durable_objects.bindings]]
+name = "SECRETS_STORE"
+class_name = "SecretsStore"
 ```
+
+绑定不会继承，每个环境都要单独声明 `SECRETS_KV` 和 `SECRETS_STORE`；顶层的 `migrations` 会被各环境继承。
 
 ```bash
 npx wrangler secret put ENCRYPTION_KEY --env development  # 为环境单独配置 Secret
@@ -218,6 +229,8 @@ CORS 采用动态同源策略：仅允许与当前请求 Host 同源的来源（
 
 > ⚠️ **升级前请先备份数据**：通过应用内 **批量导出** 或 **还原配置 → 导出备份** 将数据导出到本地。
 > 正常升级**不要**删除 Worker、GitHub 仓库或 KV 命名空间，已配置的 Secrets（含 `ENCRYPTION_KEY`）会继续生效。
+>
+> ⚠️ **切换版本前后各约一分钟内不要修改账户**：从 1.11.0 之前的版本升级、回滚到 1.11.0 之前的版本，以及回滚后再次升级时，请在新版本部署生效的前后各约一分钟内，不要新增、编辑、删除或导入账户，也不要复制 HOTP 验证码。切换时新版本会读取 `SECRETS_KV` 中的数据接手，而刚写入 KV 的修改可能要约一分钟才能在各地读到；这段时间内再做修改，可能覆盖掉切换前一刻的那次修改。部署完成后稍等片刻再使用即可。
 
 ### 一键部署用户：Sync Upstream 工作流
 
@@ -230,7 +243,7 @@ CORS 采用动态同源策略：仅允许与当前请求 Host 同源的来源（
 3. 上游分支保持默认的 `main`，发起一次新运行
 4. 等待同步完成及 Cloudflare 自动部署，之后刷新应用即可
 
-工作流会自动合并您仓库中的 Worker 名称、KV 绑定等部署配置，保留仓库中已有的工作流文件。Cloudflare 会重新部署同一个 Worker；如未自动部署，在 **Deployments** 页面重新部署最新提交。
+工作流会自动合并您仓库中的 Worker 名称、KV 绑定等部署配置，保留仓库中已有的工作流文件。升级到 1.11.0 时会同时带入 `SECRETS_STORE` 绑定和创建它的 `migrations`，部署时自动创建，无需手动操作。Cloudflare 会重新部署同一个 Worker；如未自动部署，在 **Deployments** 页面重新部署最新提交。
 
 **没有 Sync Upstream 入口时**：一键部署创建的仓库可能不包含工作流。此时才需要在自己的仓库中新增 `.github/workflows/sync-upstream.yml`，内容复制自上游文件 <https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，提交一次即可。之后按上面步骤升级。
 
@@ -251,9 +264,41 @@ CORS 采用动态同源策略：仅允许与当前请求 Host 同源的来源（
 ```bash
 git pull origin main
 npm install
-git diff wrangler.toml   # 检查配置变更，确认自己维护的 KV ID、路由等仍然正确
+git diff wrangler.toml   # 检查配置变更，确认自己维护的 KV ID、路由等仍然正确，并保留上游新增的绑定（如 SECRETS_STORE）
 npm run deploy
 ```
+
+### 回滚到 1.11.0 之前的版本
+
+1.11.0 起部署会创建 Durable Object `SecretsStore`。Cloudflare 不允许跨越 Durable Object 类的变更回滚，因此 Dashboard 的 **Deployments** 页面无法回到 1.11.0 之前的版本，需要用命令行部署旧版本：
+
+1. 检出旧版本（例如 `git checkout v1.10.0`），确认它的 `wrangler.toml` 中没有 `SECRETS_STORE` 绑定，并在文件末尾加上：
+
+   ```toml
+   [[migrations]]
+   tag = "v1"
+   new_sqlite_classes = ["SecretsStore"]
+
+   [[migrations]]
+   tag = "rollback-1"
+   deleted_classes = ["SecretsStore"]
+   ```
+
+2. 执行 `npm run deploy`。
+
+账户数据始终完整保存在 `SECRETS_KV` 中，删除这个类只会删掉它保存的副本，旧版本照常读取全部数据。之后再升级时，新版本的 `wrangler.toml` 已有 `v1`，在文件末尾追加：
+
+```toml
+[[migrations]]
+tag = "rollback-1"
+deleted_classes = ["SecretsStore"]
+
+[[migrations]]
+tag = "restore-1"
+new_sqlite_classes = ["SecretsStore"]
+```
+
+升级后的版本会接管旧版本期间写入的数据。这几段迁移记录了线上 Worker 的迁移历史，之后不要删除：Sync Upstream 合并配置时会保留它们，并把上游以后新增的迁移接在后面；无法自动合并时（例如某段迁移和上游的同名迁移内容不同），同步会停止并提示手动合并，不会改动仓库。标签不要用 `v2`、`v3` 这类名字，以免和上游以后的迁移重名；再次回滚时保留已有的迁移，按同样方式追加 `rollback-2`，再升级时追加 `restore-2`。要回到 1.8.0 之前的版本，还需要先完成下一节的压实。
 
 ### 回滚到 1.8.0 之前的版本
 

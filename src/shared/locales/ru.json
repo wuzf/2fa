@@ -1501,6 +1501,8 @@
 	"The requested page does not exist": "Запрошенная страница не существует",
 	"Server error": "Ошибка сервера",
 	"Unable to process the request. Please try again later.": "Невозможно обработать запрос. Пожалуйста, повторите попытку позже.",
+	"Secret storage is temporarily unavailable": "Хранилище ключей временно недоступно",
+	"Could not confirm whether this change was saved. Refresh and try again.": "Не удалось подтвердить, что это изменение сохранено. Обновите страницу и повторите попытку.",
 	"Invalid path": "Неверный путь",
 	"Secret ID is missing": "Отсутствует ID секретного ключа",
 	"Unable to load configuration": "Невозможно загрузить конфигурацию",

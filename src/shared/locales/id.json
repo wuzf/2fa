@@ -1501,6 +1501,8 @@
 	"The requested page does not exist": "Halaman yang diminta tidak ada",
 	"Server error": "Kesalahan server",
 	"Unable to process the request. Please try again later.": "Tidak dapat memproses permintaan. Silakan coba lagi nanti.",
+	"Secret storage is temporarily unavailable": "Penyimpanan kunci untuk sementara tidak tersedia",
+	"Could not confirm whether this change was saved. Refresh and try again.": "Tidak dapat memastikan apakah perubahan ini sudah tersimpan. Muat ulang halaman lalu coba lagi.",
 	"Invalid path": "Jalur tidak valid",
 	"Secret ID is missing": "ID kunci rahasia tidak ada",
 	"Unable to load configuration": "Tidak dapat memuat konfigurasi",

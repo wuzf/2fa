@@ -1501,6 +1501,8 @@
 	"The requested page does not exist": "La page demandée n'existe pas",
 	"Server error": "Erreur de serveur",
 	"Unable to process the request. Please try again later.": "Impossible de traiter la demande. Veuillez réessayer plus tard.",
+	"Secret storage is temporarily unavailable": "Le stockage des clés est temporairement indisponible",
+	"Could not confirm whether this change was saved. Refresh and try again.": "Impossible de confirmer que cette modification a été enregistrée. Actualisez la page et réessayez.",
 	"Invalid path": "Chemin invalide",
 	"Secret ID is missing": "L'ID de la clé secrète est manquant",
 	"Unable to load configuration": "Impossible de charger la configuration",

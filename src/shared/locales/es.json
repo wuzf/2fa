@@ -1501,6 +1501,8 @@
 	"The requested page does not exist": "La página solicitada no existe",
 	"Server error": "Error del servidor",
 	"Unable to process the request. Please try again later.": "No se puede procesar la solicitud. Inténtelo de nuevo más tarde.",
+	"Secret storage is temporarily unavailable": "El almacenamiento de claves no está disponible temporalmente",
+	"Could not confirm whether this change was saved. Refresh and try again.": "No se pudo confirmar si este cambio se guardó. Actualice la página y vuelva a intentarlo.",
 	"Invalid path": "Ruta no válida",
 	"Secret ID is missing": "Falta el ID de la clave secreta",
 	"Unable to load configuration": "No se puede cargar la configuración",

@@ -180,6 +180,8 @@ Set-Cookie: auth_token=<NEW_JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-A
 
 ## 密钥管理 API
 
+同时到达的新增、编辑、删除、批量导入、HOTP 计数器递增和恢复备份按到达顺序依次执行，每个请求都基于前一个请求保存后的数据，不会互相覆盖。
+
 ### 获取所有密钥
 
 **端点**: `GET /api/secrets`
@@ -1919,6 +1921,9 @@ Cache-Control: no-store
 | **409** | Conflict              | 资源冲突（如重复添加） |
 | **429** | Too Many Requests     | 超过限流限制           |
 | **500** | Internal Server Error | 服务器内部错误         |
+| **503** | Service Unavailable   | 存储服务暂时不可用     |
+
+读写密钥的请求由 Durable Object `SECRETS_STORE` 依次处理（见 [部署指南：存储绑定](DEPLOYMENT.md#存储绑定)）。修改请求无法送达它时返回 503，`error` 为 `存储服务暂时不可用`，`message` 为 `无法确认本次修改是否已保存，请刷新后重试`：修改可能已经保存，重试前先刷新列表确认。读取请求在这种情况下改为直接读取 KV，可能暂时看到稍旧的列表。
 
 ### 错误响应格式
 

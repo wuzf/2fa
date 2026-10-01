@@ -4,21 +4,8 @@
  */
 
 // API 处理器
-import {
-	handleGetSecrets,
-	handleAddSecret,
-	handleUpdateSecret,
-	handleDeleteSecret,
-	handleAdvanceHOTPCounter,
-	handleCompactHOTPCounters,
-	handleGenerateOTP,
-	handleBatchAddSecrets,
-	handleBackupSecrets,
-	handleGetBackups,
-	handleRestoreBackup,
-	handleExportBackup,
-	handleExportSecrets,
-} from '../api/secrets/index.js';
+import { handleGenerateOTP, handleGetBackups, handleExportBackup, handleExportSecrets } from '../api/secrets/index.js';
+import { runSecretsOperation } from '../storage/secrets-store.js';
 import { handleFaviconProxy } from '../api/favicon.js';
 import {
 	handleGetWebDAVConfigs,
@@ -283,9 +270,9 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 	if (pathname === '/api/secrets') {
 		switch (method) {
 			case 'GET':
-				return handleGetSecrets(env, request);
+				return runSecretsOperation('secrets.list', request, env, ctx);
 			case 'POST':
-				return handleAddSecret(request, env, ctx);
+				return runSecretsOperation('secrets.add', request, env, ctx);
 			default:
 				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 		}
@@ -294,7 +281,7 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 	// 批量导入API（必须在 /api/secrets/{id} 之前匹配）
 	if (pathname === '/api/secrets/batch') {
 		if (method === 'POST') {
-			return handleBatchAddSecrets(request, env, ctx);
+			return runSecretsOperation('secrets.batch', request, env, ctx);
 		}
 		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 	}
@@ -310,7 +297,7 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 	// 回滚旧版本前显式压实HOTP sidecar（受统一API认证保护）
 	if (pathname === '/api/secrets/counters/compact') {
 		if (method === 'POST') {
-			return handleCompactHOTPCounters(request, env, ctx);
+			return runSecretsOperation('secrets.compact', request, env, ctx);
 		}
 		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 	}
@@ -318,7 +305,7 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 	// HOTP 计数器递增API（必须在 /api/secrets/{id} 之前匹配）
 	if (/^\/api\/secrets\/[^/]+\/counter$/.test(pathname)) {
 		if (method === 'POST') {
-			return handleAdvanceHOTPCounter(request, env, ctx);
+			return runSecretsOperation('secrets.counter', request, env, ctx);
 		}
 		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 	}
@@ -334,9 +321,9 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 
 		switch (method) {
 			case 'PUT':
-				return handleUpdateSecret(request, env, ctx);
+				return runSecretsOperation('secrets.update', request, env, ctx);
 			case 'DELETE':
-				return handleDeleteSecret(request, env, ctx);
+				return runSecretsOperation('secrets.delete', request, env, ctx);
 			default:
 				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 		}
@@ -346,7 +333,7 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 	if (pathname === '/api/backup') {
 		switch (method) {
 			case 'POST':
-				return handleBackupSecrets(request, env, ctx);
+				return runSecretsOperation('backup.create', request, env, ctx);
 			case 'GET':
 				return handleGetBackups(request, env, ctx);
 			default:
@@ -357,7 +344,7 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 	// 恢复备份API
 	if (pathname === '/api/backup/restore') {
 		if (method === 'POST') {
-			return handleRestoreBackup(request, env, ctx);
+			return runSecretsOperation('backup.restore', request, env, ctx);
 		}
 		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 	}

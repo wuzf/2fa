@@ -221,6 +221,7 @@ function createSandbox({ legacy = false, remote = false, workflows = true } = {}
 	write(context.repo, 'obsolete.txt', 'old file to remove\n');
 	write(context.repo, 'scripts/merge-wrangler-config.js', readFileSync(join(projectRoot, 'scripts/merge-wrangler-config.js')));
 	write(context.repo, 'scripts/sync-upstream-compat.js', readFileSync(join(projectRoot, 'scripts/sync-upstream-compat.js')));
+	write(context.repo, 'scripts/merge-migrations.js', readFileSync(join(projectRoot, 'scripts/merge-migrations.js')));
 	if (workflows) {
 		write(context.repo, '.github/workflows/sync-upstream.yml', legacyWorkflow);
 		write(context.repo, '.github/workflows/custom.yml', 'name: User custom workflow\non: workflow_dispatch\n');
@@ -238,6 +239,7 @@ function createSandbox({ legacy = false, remote = false, workflows = true } = {}
 	if (legacy) {
 		write(context.repo, 'scripts/merge-wrangler-config.js', readFileSync(join(fixtureRoot, 'legacy-merge-wrangler-config.js')));
 		safeRemove(context, join(context.repo, 'scripts/sync-upstream-compat.js'));
+		safeRemove(context, join(context.repo, 'scripts/merge-migrations.js'));
 	}
 	git(context, ['add', '-A']);
 	git(context, ['commit', '-m', 'Initial deployed repository']);
@@ -341,6 +343,7 @@ describe('Sync Upstream compatibility using real Git repositories', { timeout: 6
 		const oldUpstream = new Map(context.upstream);
 		oldUpstream.set('scripts/merge-wrangler-config.js', readFileSync(join(fixtureRoot, 'legacy-merge-wrangler-config.js')));
 		oldUpstream.delete('scripts/sync-upstream-compat.js');
+		oldUpstream.delete('scripts/merge-migrations.js');
 		syncFiles(context, oldUpstream);
 		merge(context);
 		const result = commitStep(context, legacyWorkflow, true);

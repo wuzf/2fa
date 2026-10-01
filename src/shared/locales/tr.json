@@ -1501,6 +1501,8 @@
 	"The requested page does not exist": "İstenen sayfa mevcut değil",
 	"Server error": "Sunucu hatası",
 	"Unable to process the request. Please try again later.": "İstek işlenemiyor. Lütfen daha sonra tekrar deneyin.",
+	"Secret storage is temporarily unavailable": "Anahtar deposu geçici olarak kullanılamıyor",
+	"Could not confirm whether this change was saved. Refresh and try again.": "Bu değişikliğin kaydedilip kaydedilmediği doğrulanamadı. Sayfayı yenileyip tekrar deneyin.",
 	"Invalid path": "Geçersiz yol",
 	"Secret ID is missing": "Gizli anahtar ID'si eksik",
 	"Unable to load configuration": "Yapılandırma yüklenemiyor",

@@ -46,6 +46,13 @@ merged = mergeVarsSection(merged, local, '[env.development.vars]', ['SW_VERSION'
 merged = mergeTableArrayBlock(merged, local, '[[kv_namespaces]]', 'SECRETS_KV');
 merged = mergeTableArrayBlock(merged, local, '[[env.development.kv_namespaces]]', 'SECRETS_KV');
 
+// Keep the deployment's migration history. Rolling back below 1.11.0 and
+// upgrading again add migrations (docs/DEPLOYMENT.md); without them Wrangler
+// replays every migration and the deploy fails. Imported only now, after the
+// skipped upstream files above have been repaired.
+const { mergeMigrations } = await import('./merge-migrations.js');
+merged = mergeMigrations(merged, local);
+
 writeFileSync(outputPath, merged, 'utf8');
 
 function normalize(text) {

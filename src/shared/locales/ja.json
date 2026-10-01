@@ -1501,6 +1501,8 @@
 	"The requested page does not exist": "要求されたページは存在しません",
 	"Server error": "サーバーエラー",
 	"Unable to process the request. Please try again later.": "リクエストを処理できません。後でもう一度試してください。",
+	"Secret storage is temporarily unavailable": "キーの保存領域に一時的にアクセスできません",
+	"Could not confirm whether this change was saved. Refresh and try again.": "この変更が保存されたか確認できませんでした。ページを再読み込みしてもう一度お試しください。",
 	"Invalid path": "無効なパス",
 	"Secret ID is missing": "シークレットキー ID がありません",
 	"Unable to load configuration": "設定をロードできません",

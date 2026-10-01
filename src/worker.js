@@ -14,7 +14,7 @@
  */
 
 import { handleRequest, handleCORS } from './router/handler.js';
-import { getAllSecrets } from './api/secrets/shared.js';
+import { readSecretsSnapshot } from './storage/secrets-store.js';
 import { getLogger, createRequestLogger, PerformanceTimer } from './utils/logger.js';
 import { getMonitoring, ErrorSeverity } from './utils/monitoring.js';
 import { pushToAllWebDAV } from './utils/webdav.js';
@@ -27,6 +27,8 @@ import { createBackupEntry, isValidBackupKey, parseBackupTimeFromKey } from './u
 import { generateDataHash, getPendingDataHash, isPendingDataHashFresh, saveDataHash } from './utils/data-hash.js';
 
 export { generateDataHash, saveDataHash } from './utils/data-hash.js';
+// Durable Object class bound as SECRETS_STORE in wrangler.toml.
+export { SecretsStore } from './storage/secrets-store.js';
 
 /**
  * 检查数据是否发生变化
@@ -343,7 +345,7 @@ export default {
 			});
 
 			// 获取所有密钥
-			const secrets = await getAllSecrets(env);
+			const secrets = await readSecretsSnapshot(env);
 			logger.info('获取密钥完成', {
 				secretCount: secrets ? secrets.length : 0,
 			});
