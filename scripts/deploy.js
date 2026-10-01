@@ -27,7 +27,7 @@ import { basename, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 import { injectWorkerVersion } from './deploy-config.js';
-import { applyKvBinding, parseDeploymentArgs, readWorkerNameOverride, resolveKvBinding } from './deploy-namespace.js';
+import { applyKvBinding, parseDeploymentArgs, parseNamespaceList, readWorkerNameOverride, resolveKvBinding } from './deploy-namespace.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -74,7 +74,7 @@ try {
 		modifiedConfig,
 		envName,
 		() =>
-			JSON.parse(
+			parseNamespaceList(
 				execFileSync(
 					process.execPath,
 					[wranglerCli, 'kv', 'namespace', 'list', '--config', wranglerPath, ...(envName ? ['--env', envName] : [])],

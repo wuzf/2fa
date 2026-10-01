@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parse } from 'smol-toml';
-import { applyKvBinding, readWorkerNameOverride, resolveKvBinding } from '../../scripts/deploy-namespace.js';
+import { applyKvBinding, parseNamespaceList, readWorkerNameOverride, resolveKvBinding } from '../../scripts/deploy-namespace.js';
 
 const configured = `name = "vault-app"
 [[kv_namespaces]]
@@ -262,5 +262,28 @@ kv_namespaces=[{binding="SECRETS_KV",id="staging-fixture-id"}]
 
 	it.each(['', '   ', 123, undefined])('rejects an invalid discovered ID: %s', (id) => {
 		expect(() => applyKvBinding(withoutIds, null, { ...existing, id })).toThrow();
+	});
+});
+
+describe('reading the wrangler namespace list', () => {
+	const listed = [namespace('vault-app-secrets-kv')];
+	const json = JSON.stringify(listed, null, 2);
+
+	it('reads a plain JSON list', () => {
+		expect(parseNamespaceList(json)).toEqual(listed);
+	});
+
+	it('skips the proxy notice that wrangler prints before the JSON', () => {
+		const output = "Proxy environment variables detected. We'll use your proxy for fetch requests.\r\n" + json.replace(/\n/g, '\r\n');
+		expect(() => JSON.parse(output)).toThrow();
+		expect(parseNamespaceList(output)).toEqual(listed);
+	});
+
+	it('skips a notice line that starts with a bracket but is not JSON', () => {
+		expect(parseNamespaceList('[notice] something happened\n' + json)).toEqual(listed);
+	});
+
+	it.each(['', 'Proxy environment variables detected.', '{"id": "x"}', '[ not json'])('rejects output without a JSON list: %s', (output) => {
+		expect(() => parseNamespaceList(output)).toThrow('KV 列表响应无效');
 	});
 });

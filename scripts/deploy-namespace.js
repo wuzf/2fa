@@ -52,6 +52,29 @@ export function readWorkerNameOverride(environment = process.env) {
 	return Object.hasOwn(environment, 'WRANGLER_CI_OVERRIDE_NAME') ? environment.WRANGLER_CI_OVERRIDE_NAME : undefined;
 }
 
+/**
+ * Read the output of `wrangler kv namespace list`. Wrangler prints notices such
+ * as "Proxy environment variables detected..." on stdout before the JSON, so
+ * the list starts at the first line that opens a JSON array.
+ */
+export function parseNamespaceList(output) {
+	const lines = String(output).split(/\r?\n/);
+	for (let index = 0; index < lines.length; index += 1) {
+		if (!lines[index].trimStart().startsWith('[')) {
+			continue;
+		}
+		try {
+			const parsed = JSON.parse(lines.slice(index).join('\n'));
+			if (Array.isArray(parsed)) {
+				return parsed;
+			}
+		} catch {
+			// A notice that happens to start with "[": keep looking.
+		}
+	}
+	throw new Error('KV 列表响应无效');
+}
+
 function effectiveWorkerName(configuration, target, envName, workerNameOverride) {
 	if (workerNameOverride !== undefined) {
 		if (typeof workerNameOverride !== 'string' || !workerNameOverride.trim()) {
