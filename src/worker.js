@@ -14,7 +14,7 @@
  */
 
 import { handleRequest, handleCORS } from './router/handler.js';
-import { readSecretsSnapshot } from './storage/secrets-store.js';
+import { cleanupHOTPCounterStates, readSecretsSnapshot } from './storage/secrets-store.js';
 import { getLogger, createRequestLogger, PerformanceTimer } from './utils/logger.js';
 import { getMonitoring, ErrorSeverity } from './utils/monitoring.js';
 import { pushToAllWebDAV } from './utils/webdav.js';
@@ -337,6 +337,17 @@ export default {
 		// 早于任何 KV 读取捕获时间戳：此时刻之前 stage 的 pending hash 必然对应"不晚于我们即将备份的数据"，
 		// 传给 saveDataHash 以便清理分片导入等场景下残留的 pending。
 		const backupStartedAt = Date.now();
+
+		// Independent of the backup below, which may end early when nothing changed.
+		ctx.waitUntil(
+			cleanupHOTPCounterStates(env)
+				.then((deleted) => {
+					if (deleted) {
+						logger.info('已清理不再使用的HOTP计数器记录', { deleted });
+					}
+				})
+				.catch((error) => logger.warn('清理HOTP计数器记录失败', { errorMessage: error.message }, error)),
+		);
 
 		try {
 			logger.info('定时备份任务开始', {

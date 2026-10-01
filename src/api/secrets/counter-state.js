@@ -5,6 +5,8 @@
  * Previous namespaces remain logically inactive: retaining their sidecars keeps
  * interrupted edits and late writes from losing another generation's counter.
  * Records without a namespace continue to use their existing legacy keys.
+ * The scheduled job deletes records no stored secret refers to any more
+ * (deleteInactiveHOTPCounterStates), inside the secrets store.
  */
 
 import { decryptData, encryptData, isEncrypted } from '../../utils/encryption.js';
@@ -182,6 +184,39 @@ export async function deleteHOTPCounterState(env, secret) {
 	}
 	const epoch = await getHOTPCounterEpoch(env);
 	await env.SECRETS_KV.delete(getHOTPCounterStateKey(secret.id, epoch, secret.hotpCounterNamespace));
+}
+
+/**
+ * Delete the counter records that no stored secret reads any more: records of an
+ * earlier epoch, of a namespace replaced by an edit, and of deleted secrets.
+ *
+ * A record becomes active only through a write of the secrets document, so this
+ * must run where no such write can happen meanwhile (inside the secrets store).
+ *
+ * @param {Object} env
+ * @param {Array<Object>} secrets - the current secrets document
+ * @returns {Promise<number>} number of deleted records
+ */
+export async function deleteInactiveHOTPCounterStates(env, secrets) {
+	const epoch = await getHOTPCounterEpoch(env);
+	const active = new Set(
+		secrets
+			.filter((secret) => String(secret?.type || '').toUpperCase() === 'HOTP' && secret?.id !== undefined)
+			.map((secret) => getHOTPCounterStateKey(secret.id, epoch, secret.hotpCounterNamespace)),
+	);
+	let deleted = 0;
+	let cursor;
+	do {
+		const page = await env.SECRETS_KV.list({ prefix: HOTP_COUNTER_STATE_PREFIX, ...(cursor && { cursor }) });
+		for (const { name } of page.keys) {
+			if (!active.has(name)) {
+				await env.SECRETS_KV.delete(name);
+				deleted++;
+			}
+		}
+		cursor = page.list_complete ? null : page.cursor;
+	} while (cursor);
+	return deleted;
 }
 
 export async function rotateHOTPCounterEpoch(env) {

@@ -355,7 +355,13 @@ export async function handleDeleteSecret(request, env, ctx) {
 
 		// 保存到 KV (自动加密、排序、触发备份)
 		await saveSecretsToKV(env, existingSecrets, 'secret-deleted', {}, ctx);
-		await deleteHOTPCounterState(env, deletedSecret);
+		try {
+			await deleteHOTPCounterState(env, deletedSecret);
+		} catch (cleanupError) {
+			// The secret is already deleted. Its counter record is no longer referenced by
+			// any secret and is removed by the next counter cleanup.
+			logger.warn('删除HOTP计数器记录失败，密钥已删除', { secretId: deletedSecret.id, errorMessage: cleanupError.message });
+		}
 
 		logger.info('密钥删除成功', {
 			operation: 'handleDeleteSecret',

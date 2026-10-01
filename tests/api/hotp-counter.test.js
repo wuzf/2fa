@@ -782,7 +782,8 @@ describe('HOTP counter sidecar API', () => {
 				return originalDelete(key);
 			});
 
-			expect((await handleDeleteSecret(deleteRequest(), failureEnv)).status).toBe(500);
+			// The secret itself is deleted, so the request succeeds; only the unreferenced record stays.
+			expect((await handleDeleteSecret(deleteRequest(), failureEnv)).status).toBe(200);
 			expect(await failureEnv.SECRETS_KV.get('secrets', 'text')).not.toBeNull();
 			expect(await failureEnv.SECRETS_KV.get(sidecarKey)).not.toBeNull();
 			expect(await handleGetSecrets(failureEnv).then((response) => response.json())).toEqual([]);

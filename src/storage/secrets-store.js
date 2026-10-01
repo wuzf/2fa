@@ -26,7 +26,7 @@ import {
 	handleUpdateSecret,
 } from '../api/secrets/index.js';
 import { getAllSecrets } from '../api/secrets/shared.js';
-import { HOTP_COUNTER_EPOCH_KEY, HOTP_COUNTER_STATE_PREFIX } from '../api/secrets/counter-state.js';
+import { deleteInactiveHOTPCounterStates, HOTP_COUNTER_EPOCH_KEY, HOTP_COUNTER_STATE_PREFIX } from '../api/secrets/counter-state.js';
 import { KV_KEYS } from '../utils/constants.js';
 import { createErrorResponse } from '../utils/response.js';
 import { getLogger } from '../utils/logger.js';
@@ -55,6 +55,9 @@ const OPERATIONS = {
 	'backup.restore': { run: handleRestoreBackup },
 	// Internal, used by the scheduled job.
 	'secrets.snapshot': { readOnly: true, run: async (_request, env) => Response.json(await getAllSecrets(env)) },
+	'counters.cleanup': {
+		run: async (_request, env) => Response.json({ deleted: await deleteInactiveHOTPCounterStates(env, await getAllSecrets(env)) }),
+	},
 };
 
 function createSerialQueue() {
@@ -178,6 +181,19 @@ async function fetchInternal(env, operation) {
 		throw new Error(`HTTP ${response.status}`);
 	}
 	return response.json();
+}
+
+/**
+ * Delete HOTP counter records that no secret refers to any more. Runs only in the
+ * store: elsewhere a change on another instance could make a record active meanwhile.
+ *
+ * @returns {Promise<number|null>} number of deleted records, or null when skipped
+ */
+export async function cleanupHOTPCounterStates(env) {
+	if (!env.SECRETS_STORE) {
+		return null;
+	}
+	return (await fetchInternal(env, 'counters.cleanup')).deleted;
 }
 
 /** Current secrets for work that has no request, such as the scheduled backup. */
