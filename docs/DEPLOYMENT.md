@@ -20,6 +20,7 @@
 3. 记下您的 Worker URL（如 `https://2fa-xxxx.workers.dev`）
 
 > 项目 `wrangler.toml` 已显式声明 `SECRETS_KV` 和 Durable Object `SECRETS_STORE`，Wrangler 会在首次部署时自动创建它们并在后续部署中复用，无需手动创建。
+> 部署页面的 **Name your KV namespace** 会另外新建一个 KV（默认名为 `2fa`），但它不会被使用：首次部署时 Wrangler 创建并绑定的是 `<Worker 名>-secrets-kv`，账户数据都保存在那里。前者始终为空，可以在 **Workers KV** 页面删除；删除前先在 Worker 的 **设置 → 绑定** 中确认 `SECRETS_KV` 指向的不是它。
 > 如果您在 Cloudflare Dashboard 中手动配置 Git 构建命令，**部署命令请使用 `npm run deploy`，不要直接写 `npx wrangler deploy`**，以保留项目的版本注入流程。
 > 在 Workers Builds 中构建时，`npm run deploy` 按 Cloudflare 提供的实际 Worker 名称（环境变量 `WRANGLER_CI_OVERRIDE_NAME`）查找已有 KV。即使 Dashboard 中的 Worker 名与 `wrangler.toml` 的 `name` 不同，也不会绑定到同一账户里按配置名创建的其他部署的 KV。
 

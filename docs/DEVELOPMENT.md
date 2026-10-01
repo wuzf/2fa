@@ -28,7 +28,7 @@
 ├── 后端 (Worker模块)
 │   ├── 路由处理
 │   ├── API服务
-│   ├── OTP算法（TOTP/HOTP/Steam Guard）
+│   ├── OTP算法（TOTP/HOTP）
 │   ├── JWT 认证
 │   ├── AES-GCM 加密
 │   └── 数据验证
@@ -57,7 +57,7 @@ src/
 │   │   └── otp.js        # OTP 生成
 │   └── favicon.js         # Favicon 代理
 ├── otp/
-│   └── generator.js       # 🔐 TOTP/HOTP/Steam Guard 算法
+│   └── generator.js       # 🔐 TOTP/HOTP 算法
 ├── ui/
 │   ├── page.js           # 🎨 主页面 HTML 生成
 │   ├── quickOtp.js       # 🔢 公开 OTP 输入与验证码页面
@@ -216,19 +216,19 @@ export default {
 
 ### 4. OTP生成模块 (`otp/generator.js`)
 
-**职责**: TOTP/HOTP/Steam Guard 算法实现
+**职责**: TOTP/HOTP 算法实现
 
 **技术规范**:
 
 - **TOTP (RFC 6238)**: 时间步长30秒，HMAC-SHA1/SHA256/SHA512
 - **HOTP (RFC 4226)**: 基于计数器，HMAC-SHA1
-- **Steam Guard**: 自定义5字符编码，字母表 `23456789BCDFGHJKMNPQRTVWXY`
+
+支持 6 位或 8 位数字验证码，不支持 Steam Guard 的 5 位字符验证码。
 
 **核心功能**:
 
 - Base32密钥解码
 - TOTP/HOTP算法实现
-- Steam Guard 编码
 - 时间同步处理
 - OTPAuth URL生成
 
@@ -660,7 +660,7 @@ data_hash → 数据变更检测哈希
   "name": "服务名称",            // 显示名称
   "account": "账户名称",         // 可选的账户信息
   "secret": "BASE32SECRET",     // Base32编码的密钥
-  "type": "totp",               // 类型: totp/hotp/steam
+  "type": "totp",               // 类型: totp/hotp
   "algorithm": "SHA1",          // 哈希算法
   "digits": 6,                  // OTP位数
   "period": 30,                 // 时间步长（秒）
