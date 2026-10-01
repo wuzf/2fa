@@ -22,7 +22,7 @@ Web アプリ、ブラウザー拡張機能、初期設定、公開 OTP ペー�
 
 2FA Verification Assistant をインストール：**[Chrome Web Store](https://chromewebstore.google.com/detail/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/lifeiloiefdlbohelpjajdbopeocalhl)** · **[Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/kmchncmoddhdlbpfoejeahdjhieghklm)** · **[Firefox Add-ons](https://addons.mozilla.org/zh-CN/firefox/addon/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/)**。
 
-対応するブラウザーでインストールリンクを開いてください。インストール後、拡張機能の設定にセルフホストした 2FA インスタンスの URL を入力し、同じブラウザーでそのインスタンスにログインすると、TOTP コードの表示、コピー、入力ができます。自動入力にはサイトごとの許可が必要で、そのサイトで初めてコードを入力するときに許可できます。この拡張機能を使用するには本プロジェクトのデプロイ済みインスタンスが必要で、インターフェースは上記の 15 言語に対応しています。Firefox はデスクトップ版・Android 版ともに 153 以降と通常タブが必要です。デスクトップ版のコンテナータブと両環境のプライベートタブには対応していません。Android 向けの対応は現在のソースコードに含まれていますが、対応版のストア公開は未実施で、Firefox Android の実機検証もまだ行っていません。Firefox Android では拡張機能のキーボードショートカットを利用できません。
+対応するブラウザーでインストールリンクを開いてください。インストール後、拡張機能の設定にセルフホストした 2FA インスタンスの URL を入力し、同じブラウザーでそのインスタンスにログインすると、TOTP コードの表示、コピー、入力ができます。自動入力にはサイトごとの許可が必要で、そのサイトで初めてコードを入力するときに許可できます。この拡張機能を使用するには本プロジェクトのデプロイ済みインスタンスが必要で、インターフェースは上記の 15 言語に対応しています。Firefox はデスクトップ版・Android 版ともに 153 以降と通常タブが必要です。デスクトップ版のコンテナータブと両環境のプライベートタブには対応していません。Firefox Android にはストア版 1.2.0 から対応していますが、実機検証はまだ行っていません。Firefox Android では拡張機能のキーボードショートカットを利用できません。
 
 [インストールと使用方法](../BROWSER_EXTENSION.md) · [Chrome / Edge プライバシーポリシー](../../extension/PRIVACY.md) · [Firefox プライバシーポリシー](../../extension/PRIVACY_FIREFOX.md)（中国語）
 

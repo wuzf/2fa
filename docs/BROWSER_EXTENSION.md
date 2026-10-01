@@ -16,7 +16,7 @@
 
 远程实例使用 HTTPS，未填写协议时会自动补全。连接成功后可以关闭实例网页；默认模式仍需网络和有效登录会话。扩展支持自动检测和手动切换显示语言。桌面端支持 Chrome、Edge 和 Firefox；Firefox 桌面版与 Android 版最低均为 153，仍不支持桌面容器标签页或隐私标签页。
 
-Edge Android 已有用户实测可用。Firefox Android 适配已加入当前源码，尚未完成 Android 实机验证，兼容的商店新版待发布；当前商店版本不一定可在 Android 安装。发布后请在 Firefox Android 的附加组件商店安装兼容的签名版本。Android 通过扩展菜单查看、复制和手动填充验证码，也可按网站授权自动填充；Firefox Android 不提供扩展快捷键。
+Edge Android 已有用户实测可用。Firefox Android 可从附加组件商店安装 1.2.0 及以上版本，尚未完成 Android 实机验证。Android 通过扩展菜单查看、复制和手动填充验证码，也可按网站授权自动填充；Firefox Android 不提供扩展快捷键。
 
 ## 查看、复制与填充
 
@@ -104,7 +104,7 @@ Google 验证页面可根据明确显示的当前邮箱匹配账户；无法确�
 | 无痕 / InPrivate / Firefox 隐私窗口、跨浏览器配置共享 | 不支持                                       |
 | Firefox 桌面容器标签页                                | 不支持                                       |
 | Edge Android                                          | 用户已实测可用                               |
-| Firefox Android 153 及以上                            | 当前源码已适配；待实机验证及商店新版发布     |
+| Firefox Android 153 及以上                            | 商店 1.2.0 起支持；待实机验证                |
 | Firefox Android 扩展快捷键                            | 不提供；使用扩展菜单或已授权的自动填充       |
 | 跨域 iframe、关闭的 Shadow DOM                        | 不支持                                       |
 
@@ -150,7 +150,7 @@ Google 验证页面可根据明确显示的当前邮箱匹配账户；无法确�
 
 - **桌面 Chrome / Edge**：解压安装包，在 `chrome://extensions` 或 `edge://extensions` 打开“开发者模式”，点击“加载已解压的扩展程序”（Edge 为“加载解压缩的扩展”），选择解压出的文件夹，也就是直接包含 `manifest.json` 的那一层。之后不要删除或移动这个文件夹。
 - **桌面 Firefox**：安装包未经 Mozilla 签名，正式版 Firefox 只能临时载入。打开 `about:debugging#/runtime/this-firefox`，点击“临时载入附加组件”，直接选择 zip 文件；浏览器重启后需重新载入。长期使用请从商店安装。
-- **Firefox Android**：普通安装需要兼容 Android 的 Mozilla 签名版本，不能照搬上述桌面临时加载步骤。兼容的商店新版尚待发布；开发者可使用下述 Android 远程调试方式验证源码构建。
+- **Firefox Android**：普通安装需要兼容 Android 的 Mozilla 签名版本，不能照搬上述桌面临时加载步骤。请从附加组件商店安装 1.2.0 及以上版本；开发者可使用下述 Android 远程调试方式验证源码构建。
 
 手动安装的扩展不会自动更新，新版本需重新下载并在扩展管理页重新加载。Chrome / Edge 手动加载的扩展与商店版是两个扩展，分别保存设置，可以同时存在，但同一网站只应启用其中一个的自动填充。Firefox 安装包与商店版使用同一个附加组件 ID：已从商店安装时无需再临时载入；临时载入后，在浏览器重启前会代替商店版。
 
