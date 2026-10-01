@@ -104,6 +104,27 @@ describe('authorized automatic workflow', () => {
 		expect(listTotpAccounts).not.toHaveBeenCalled();
 		expect(generateTotpCode).not.toHaveBeenCalled();
 	});
+	it('fills on any page of a website with a site-wide grant', async () => {
+		values.autofillSites = [{ instanceOrigin: SOURCE, targetOrigin: TARGET, targetPath: '*', pagePath: '/login' }];
+		const targetPath = '/settings/verify';
+		sender.url = `${TARGET}${targetPath}`;
+		chrome.tabs.get.mockResolvedValue({ id: 10, url: sender.url });
+		probeReply.targetPath = targetPath;
+		expect(await send(MESSAGE.AUTO_STATUS, { targetPath })).toEqual({ enabled: true });
+		const episodeNonce = createNonce();
+		const flow = await send(MESSAGE.AUTO_DISCOVER, { episodeNonce, targetPath });
+		expect(flow.autoFillAccountId).toBe(ACCOUNT.id);
+		expect(
+			await send(MESSAGE.AUTO_SELECT, { targetPath, episodeNonce, nonce: flow.nonce, accountId: ACCOUNT.id, automatic: true }),
+		).toEqual({ status: 'filled' });
+		expect(fills()[0][1]).toMatchObject({ expectedTargetPath: targetPath });
+	});
+	it('does not let a site-wide grant cover another port or scheme of the host', async () => {
+		values.autofillSites = [{ instanceOrigin: SOURCE, targetOrigin: `${TARGET}:8443`, targetPath: '*', pagePath: '/login' }];
+		expect(await send(MESSAGE.AUTO_STATUS)).toEqual({ enabled: false });
+		await expect(discover()).rejects.toMatchObject({ code: 'PERMISSION_REQUIRED' });
+		expect(listTotpAccounts).not.toHaveBeenCalled();
+	});
 	it('does not reuse a site-wide legacy grant or fetch accounts on another path', async () => {
 		delete values.autofillSites[0].targetPath;
 		expect(await send(MESSAGE.AUTO_STATUS)).toEqual({ enabled: false });

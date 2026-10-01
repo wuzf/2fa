@@ -22,7 +22,7 @@
 
 安裝 2FA 驗證助手：**[Chrome Web Store](https://chromewebstore.google.com/detail/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/lifeiloiefdlbohelpjajdbopeocalhl)** · **[Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/kmchncmoddhdlbpfoejeahdjhieghklm)** · **[Firefox Add-ons](https://addons.mozilla.org/zh-CN/firefox/addon/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/)**。
 
-請使用對應瀏覽器開啟安裝連結。安裝後，在擴充功能設定中填寫自己的 2FA 實例網址，並在同一瀏覽器中登入實例，即可查看、複製及填入 TOTP 驗證碼；自動填入需在目標驗證頁面單獨啟用並授權。擴充功能需搭配已部署的本專案使用，介面支援上述 15 種語言。Firefox 桌面版與 Android 版均要求 153 及以上版本，並使用一般分頁；不支援桌面容器分頁及兩端的隱私分頁。Android 適配已加入目前原始碼，相容的商店新版尚待發布，尚未完成 Firefox Android 實機驗證。Firefox Android 不提供擴充功能快捷鍵。Edge Android 已有使用者實測可用。
+請使用對應瀏覽器開啟安裝連結。安裝後，在擴充功能設定中填寫自己的 2FA 實例網址，並在同一瀏覽器中登入實例，即可查看、複製及填入 TOTP 驗證碼；自動填入按網站授權，可在首次填入時一併啟用。擴充功能需搭配已部署的本專案使用，介面支援上述 15 種語言。Firefox 桌面版與 Android 版均要求 153 及以上版本，並使用一般分頁；不支援桌面容器分頁及兩端的隱私分頁。Android 適配已加入目前原始碼，相容的商店新版尚待發布，尚未完成 Firefox Android 實機驗證。Firefox Android 不提供擴充功能快捷鍵。Edge Android 已有使用者實測可用。
 
 [安裝與使用指南](../BROWSER_EXTENSION.md) · [Chrome / Edge 隱私權政策](../../extension/PRIVACY.md) · [Firefox 隱私權政策](../../extension/PRIVACY_FIREFOX.md)（簡體中文）
 

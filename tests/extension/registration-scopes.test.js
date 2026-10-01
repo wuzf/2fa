@@ -207,6 +207,25 @@ describe('registration changes affect only their source and target pages', () =>
 		expect(chrome.tabs.sendMessage.mock.invocationCallOrder[0]).toBeLessThan(chrome.scripting.executeScript.mock.invocationCallOrder[0]);
 	});
 
+	it('refreshes only the origin whose page grants become one site-wide grant', async () => {
+		values.autofillSites = [site(), site(TARGET, '/backup'), site(OTHER_TARGET)];
+		await reconcileAutofillScripts();
+		clearEffects();
+		values.autofillSites = [site(OTHER_TARGET), { ...site(TARGET, '*'), pagePath: '/totp' }];
+
+		await reconcileAutofillScripts();
+
+		expect(stopped(MESSAGE.AUTO_STOP)).toEqual([1]);
+		expect(started('automatic.js')).toEqual([1]);
+		expectNoRegistrationWrites();
+		clearEffects();
+		// Moving the recorded page of the same site-wide grant changes nothing it covers.
+		values.autofillSites = [site(OTHER_TARGET), { ...site(TARGET, '*'), pagePath: '/verify' }];
+		await reconcileAutofillScripts();
+		expect(stopped(MESSAGE.AUTO_STOP)).toEqual([]);
+		expect(started('automatic.js')).toEqual([]);
+	});
+
 	it('activates a newly authorized origin without stopping or restarting the existing origin', async () => {
 		await reconcileAutofillScripts();
 		clearEffects();

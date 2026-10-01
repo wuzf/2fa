@@ -477,8 +477,19 @@ button:disabled {
 	overflow-wrap: anywhere;
 }
 
-.site-autofill-path button {
+.site-path-page {
+	display: block;
+	color: var(--colorNeutralForeground2);
+	font-size: 12px;
+	line-height: 16px;
+}
+
+.site-path-actions {
+	display: flex;
 	flex-shrink: 0;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
 }
 
 .site-autofill-state,

@@ -388,6 +388,31 @@ async function clickClosedAutofillRetry(context, page) {
 	}
 }
 
+// The toolbar popup only evaluates expressions. Reads the fill button and the
+// "以后在此网站自动填入" choice below it.
+function fillChoiceState(fillSelector) {
+	return `(() => {
+		const button = document.querySelector(${JSON.stringify(fillSelector)});
+		const input = document.querySelector('#remember-binding');
+		return {
+			fillable: Boolean(button && !button.disabled),
+			hidden: input.closest('label').hidden,
+			automatic: input.closest('label').textContent.includes('以后在此网站自动填入'),
+			checked: input.checked,
+			autofill: document.querySelector('#autofill-site').checked,
+		};
+	})()`;
+}
+
+// Lets a later permissions.request for the pattern succeed without the native prompt.
+async function allowHostPermission(context, extensionId, pattern) {
+	const manager = await context.newPage();
+	await manager.goto('chrome://extensions/');
+	await expect.poll(() => manager.evaluate(() => typeof chrome.developerPrivate?.addHostPermission)).toBe('function');
+	await manager.evaluate(({ id, host }) => chrome.developerPrivate.addHostPermission(id, host), { id: extensionId, host: pattern });
+	await manager.close();
+}
+
 async function authorizeJumpserverThroughPopup({ context, options, extensionId, target }, { suppressPopupFill = true } = {}) {
 	const targetOrigin = new URL(target.url()).origin;
 	const targetPattern = targetOrigin + '/*';
@@ -415,12 +440,12 @@ async function authorizeJumpserverThroughPopup({ context, options, extensionId, 
 				})()`),
 			)
 			.toBe(true);
-		expect(await popup.evaluate(`document.querySelector('#autofill-site').closest('label').textContent`)).toContain('在此页面自动填充');
+		expect(await popup.evaluate(`document.querySelector('#autofill-site').closest('label').textContent`)).toContain('在此网站自动填充');
 		beforeClick = await target.evaluate(() => ({ value: document.querySelector('input[name="code"]').value, ...window.fixtureState }));
 		await popup.click('#autofill-site');
 		await expect
 			.poll(() => popup.evaluate(`chrome.runtime.sendMessage({type:'GET_AUTOFILL_SITES'}).then(response => response.data?.sites || [])`))
-			.toContainEqual(expect.objectContaining({ targetOrigin, targetPath: JUMPSERVER_PATH }));
+			.toContainEqual(expect.objectContaining({ targetOrigin, targetPath: '*', pagePath: JUMPSERVER_PATH }));
 		await expect.poll(() => popup.evaluate(`document.querySelector('#autofill-site').checked`)).toBe(true);
 	} finally {
 		await popup.close();
@@ -808,7 +833,8 @@ for (const brand of ['chrome', 'edge']) {
 							status: 'pending',
 							instanceOrigin,
 							targetOrigin: JUMPSERVER,
-							targetPath: JUMPSERVER_PATH,
+							targetPath: '*',
+							pagePath: JUMPSERVER_PATH,
 							expectedTarget: expect.objectContaining({ targetPath: JUMPSERVER_PATH }),
 						});
 					await expect.poll(() => popup.evaluate(`document.querySelector('#autofill-site').checked`)).toBe(true);
@@ -826,14 +852,15 @@ for (const brand of ['chrome', 'edge']) {
 				await page.bringToFront();
 				await expect
 					.poll(async () => (await send({ type: 'GET_AUTOFILL_SITES' })).data.sites)
-					.toEqual([{ instanceOrigin, targetOrigin: JUMPSERVER, targetPath: JUMPSERVER_PATH }]);
+					.toEqual([{ instanceOrigin, targetOrigin: JUMPSERVER, targetPath: '*', pagePath: JUMPSERVER_PATH }]);
 				await assertFilled(page, jumpserver, { selector: JUMPSERVER_INPUT });
 				expect(await page.evaluate(() => window.fixtureState)).toMatchObject({ submits: 0, automaticInputs: 1 });
 				expect((await options.evaluate(() => chrome.permissions.getAll())).origins.sort()).toEqual(['http://127.0.0.1/*', pattern].sort());
+				// The grant covers the whole website, including the other paths of a login flow.
 				for (const path of ['/other/mfa/', JUMPSERVER_PATH + 'child']) {
 					const other = await context.newPage();
 					await other.goto(JUMPSERVER + path);
-					await expectUnfilled(other, JUMPSERVER_INPUT);
+					await assertFilled(other, jumpserver, { selector: JUMPSERVER_INPUT });
 				}
 			},
 			{ pregrantTargets: false, toolbarAction: true },
@@ -875,7 +902,7 @@ for (const brand of ['chrome', 'edge']) {
 					expect(beforeClick).toMatchObject({ value: '', submits: 0, automaticInputs: 0 });
 					await expect(page.locator(JUMPSERVER_INPUT)).toHaveValue('');
 					expect((await send({ type: 'GET_AUTOFILL_SITES' })).data.sites).toEqual([
-						{ instanceOrigin, targetOrigin: JUMPSERVER, targetPath: JUMPSERVER_PATH },
+						{ instanceOrigin, targetOrigin: JUMPSERVER, targetPath: '*', pagePath: JUMPSERVER_PATH },
 					]);
 					releaseSecretResponses();
 					await assertFilled(page, jumpserver, { selector: JUMPSERVER_INPUT });
@@ -918,7 +945,7 @@ for (const brand of ['chrome', 'edge']) {
 				expect(afterClick.submits).toBe(0);
 				expect(afterClick.automaticInputs).toBe(1);
 				expect((await send({ type: 'GET_AUTOFILL_SITES' })).data.sites).toEqual([
-					{ instanceOrigin, targetOrigin: JUMPSERVER, targetPath: JUMPSERVER_PATH },
+					{ instanceOrigin, targetOrigin: JUMPSERVER, targetPath: '*', pagePath: JUMPSERVER_PATH },
 				]);
 				const timingPath = testInfo.outputPath('jumpserver-first-authorization.json');
 				writeFileSync(timingPath, JSON.stringify({ beforeClick, afterClick }, null, 2));
@@ -957,7 +984,7 @@ for (const brand of ['chrome', 'edge']) {
 				expect(await page.evaluate(() => window.fixtureState)).toMatchObject({ submits: 0, automaticInputs: 1 });
 				expect((await options.evaluate(() => chrome.storage.local.get('bindings'))).bindings || []).toEqual([]);
 				expect((await send({ type: 'GET_AUTOFILL_SITES' })).data.sites).toEqual([
-					{ instanceOrigin, targetOrigin: JUMPSERVER, targetPath: JUMPSERVER_PATH },
+					{ instanceOrigin, targetOrigin: JUMPSERVER, targetPath: '*', pagePath: JUMPSERVER_PATH },
 				]);
 				await page.screenshot({ path: testInfo.outputPath('jumpserver-https-filled.png'), fullPage: true });
 				const repeated = await openTarget(JUMPSERVER);
@@ -989,7 +1016,7 @@ for (const brand of ['chrome', 'edge']) {
 		);
 	});
 
-	test(`${brand} authorizes an HTTP JumpServer IP through the real popup and automatically fills only its saved scope without submitting`, async ({
+	test(`${brand} authorizes an HTTP JumpServer IP through the real popup and automatically fills only that website without submitting`, async ({
 		browserName: _browserName,
 	}, testInfo) => {
 		const jumpserver = record('jumpserver', '172.16.0.10 堡垒机');
@@ -1006,7 +1033,7 @@ for (const brand of ['chrome', 'edge']) {
 				await authorizeJumpserverThroughPopup({ context, options, extensionId, target: page });
 				await assertFilled(page, jumpserver, { selector: JUMPSERVER_INPUT });
 				expect(await page.evaluate(() => window.fixtureState)).toMatchObject({ submits: 0, automaticInputs: 1 });
-				const savedSite = { instanceOrigin, targetOrigin: JUMPSERVER_HTTP, targetPath: JUMPSERVER_PATH };
+				const savedSite = { instanceOrigin, targetOrigin: JUMPSERVER_HTTP, targetPath: '*', pagePath: JUMPSERVER_PATH };
 				expect((await send({ type: 'GET_AUTOFILL_SITES' })).data.sites).toEqual([savedSite]);
 				expect((await options.evaluate(() => chrome.storage.local.get('autofillSites'))).autofillSites).toEqual([savedSite]);
 				expect((await options.evaluate(() => chrome.storage.local.get('bindings'))).bindings || []).toEqual([]);
@@ -1020,11 +1047,12 @@ for (const brand of ['chrome', 'edge']) {
 					await expectUnfilled(unrelated, JUMPSERVER_INPUT);
 					await expect(unrelated.locator('[data-twofa-autofill]')).toHaveCount(0);
 				}
+				expect(requestPaths.length).toBe(requestsBeforeUnauthorizedPages);
+				// Another path of the authorized website is covered by the same grant.
 				const otherPath = await context.newPage();
 				await otherPath.goto(JUMPSERVER_HTTP + '/other/mfa/');
-				await expectUnfilled(otherPath, JUMPSERVER_INPUT);
-				await expect(otherPath.locator('[data-twofa-autofill]')).toHaveCount(0);
-				expect(requestPaths.length).toBe(requestsBeforeUnauthorizedPages);
+				await assertFilled(otherPath, jumpserver, { selector: JUMPSERVER_INPUT });
+				expect(await otherPath.evaluate(() => window.fixtureState)).toMatchObject({ submits: 0, automaticInputs: 1 });
 			},
 			{ pregrantTargets: false, toolbarAction: true },
 		);
@@ -1107,6 +1135,117 @@ for (const brand of ['chrome', 'edge']) {
 				await assertFilled(page, bob, { selector: JUMPSERVER_INPUT });
 				expect(await page.evaluate(() => window.fixtureState)).toMatchObject({ submits: 0, automaticInputs: 1 });
 				expect((await options.evaluate(() => chrome.storage.local.get('bindings'))).bindings || []).toEqual([]);
+			},
+			{ pregrantTargets: false, toolbarAction: true },
+		);
+	});
+
+	test(`${brand} turns on website autofill and remembers the account with the first manual fill`, async ({
+		browserName: _browserName,
+	}) => {
+		const alice = record('jumpserver-alice', '172.16.0.10 堡垒机');
+		const bob = record('jumpserver-bob', '172.16.0.10 JumpServer', { secret: SECOND_SECRET });
+		await withAutomaticFixture(
+			brand,
+			[alice, bob],
+			async ({ context, options, extensionId, instanceOrigin, send, openTarget, assertFilled }) => {
+				const page = await openTarget(JUMPSERVER);
+				await expectUnfilled(page, JUMPSERVER_INPUT);
+				const pattern = JUMPSERVER + '/*';
+				expect(await options.evaluate((origin) => chrome.permissions.contains({ origins: [origin] }), pattern)).toBe(false);
+				await allowHostPermission(context, extensionId, pattern);
+				const popup = await openToolbarPopup(context, extensionId, page);
+				try {
+					const fill = `.account-card[data-account-id="${bob.id}"] .account-fill`;
+					// Two accounts match, so the popup fills nothing by itself. The
+					// website remembers no account yet: the choice starts checked.
+					await expect
+						.poll(() => popup.evaluate(fillChoiceState(fill)))
+						.toEqual({ fillable: true, hidden: false, automatic: true, checked: true, autofill: false });
+					// The trusted click on Fill itself asks for the website permission.
+					await popup.click(fill);
+					// The popup closes itself shortly after reporting both results.
+					await expect
+						.poll(() => popup.evaluate(`document.querySelector('#status').textContent`), { intervals: [100] })
+						.toContain('验证码已填入，以后此网站会自动填入');
+				} finally {
+					await popup.close();
+				}
+				await assertFilled(page, bob, { selector: JUMPSERVER_INPUT });
+				expect((await send({ type: 'GET_AUTOFILL_SITES' })).data.sites).toEqual([
+					{ instanceOrigin, targetOrigin: JUMPSERVER, targetPath: '*', pagePath: JUMPSERVER_PATH },
+				]);
+				expect((await options.evaluate(() => chrome.storage.local.get('bindings'))).bindings).toEqual([
+					{ instanceOrigin, targetOrigin: JUMPSERVER, accountId: bob.id },
+				]);
+				expect((await options.evaluate(() => chrome.permissions.getAll())).origins.sort()).toEqual(['http://127.0.0.1/*', pattern].sort());
+				// Later visits to any page of the website fill the remembered account.
+				for (const path of [JUMPSERVER_PATH, '/other/mfa/']) {
+					const later = await context.newPage();
+					await later.goto(JUMPSERVER + path);
+					await assertFilled(later, bob, { selector: JUMPSERVER_INPUT });
+					await expect(later.locator('[data-twofa-autofill]')).toHaveCount(0);
+					expect(await later.evaluate(() => window.fixtureState)).toMatchObject({ submits: 0, automaticInputs: 1 });
+				}
+				const neighbor = await openTarget(JUMPSERVER_NEIGHBOR);
+				await expectUnfilled(neighbor, JUMPSERVER_INPUT);
+			},
+			{ pregrantTargets: false, toolbarAction: true },
+		);
+	});
+
+	test(`${brand} keeps the account chosen while filling when the popup closes during the permission prompt`, async ({
+		browserName: _browserName,
+	}) => {
+		const alice = record('jumpserver-alice', '172.16.0.10 堡垒机');
+		const bob = record('jumpserver-bob', '172.16.0.10 JumpServer', { secret: SECOND_SECRET });
+		await withAutomaticFixture(
+			brand,
+			[alice, bob],
+			async ({ context, options, extensionId, instanceOrigin, send, openTarget, assertFilled }) => {
+				const page = await openTarget(JUMPSERVER);
+				await expectUnfilled(page, JUMPSERVER_INPUT);
+				const pattern = JUMPSERVER + '/*';
+				const popup = await openToolbarPopup(context, extensionId, page);
+				try {
+					const fill = `.account-card[data-account-id="${bob.id}"] .account-fill`;
+					await expect
+						.poll(() => popup.evaluate(fillChoiceState(fill)))
+						.toEqual({ fillable: true, hidden: false, automatic: true, checked: true, autofill: false });
+					await popup.evaluate(`(() => {
+						// The pending promise models the permission prompt. The browser
+						// closes the popup before it sends the fill itself.
+						chrome.permissions.request = details => {
+							window.fixturePendingPermission = details;
+							return new Promise(() => {});
+						};
+						const send = chrome.runtime.sendMessage.bind(chrome.runtime);
+						chrome.runtime.sendMessage = message => message?.type === 'FILL_ACCOUNT' ? new Promise(() => {}) : send(message);
+					})()`);
+					await popup.click(fill);
+					await expect.poll(() => popup.evaluate('window.fixturePendingPermission')).toEqual({ origins: [pattern] });
+					await expect
+						.poll(() => options.evaluate(async () => (await chrome.storage.session.get('autofillAuthorization')).autofillAuthorization))
+						.toMatchObject({ status: 'pending', targetPath: '*', pagePath: JUMPSERVER_PATH, rememberAccountId: bob.id });
+				} finally {
+					await popup.close();
+				}
+				await expectUnfilled(page, JUMPSERVER_INPUT);
+				expect((await send({ type: 'GET_AUTOFILL_SITES' })).data.sites).toEqual([]);
+				expect((await options.evaluate(() => chrome.storage.local.get('bindings'))).bindings || []).toEqual([]);
+				await allowHostPermission(context, extensionId, pattern);
+				expect(await options.evaluate((origin) => chrome.permissions.request({ origins: [origin] }), pattern)).toBe(true);
+				await page.bringToFront();
+				await expect
+					.poll(async () => (await send({ type: 'GET_AUTOFILL_SITES' })).data.sites)
+					.toEqual([{ instanceOrigin, targetOrigin: JUMPSERVER, targetPath: '*', pagePath: JUMPSERVER_PATH }]);
+				expect((await options.evaluate(() => chrome.storage.local.get('bindings'))).bindings).toEqual([
+					{ instanceOrigin, targetOrigin: JUMPSERVER, accountId: bob.id },
+				]);
+				// The open page fills the chosen account instead of asking again.
+				await assertFilled(page, bob, { selector: JUMPSERVER_INPUT });
+				await expect(page.locator('[data-twofa-autofill]')).toHaveCount(0);
+				expect(await page.evaluate(() => window.fixtureState)).toMatchObject({ submits: 0, automaticInputs: 1 });
 			},
 			{ pregrantTargets: false, toolbarAction: true },
 		);
@@ -1246,11 +1385,12 @@ for (const brand of ['chrome', 'edge']) {
 			await popup.locator('#autofill-site').click();
 			await expect
 				.poll(async () => (await send({ type: 'GET_AUTOFILL_SITES' })).data?.sites)
-				.toContainEqual({ instanceOrigin, targetOrigin: GITHUB, targetPath: '/login/empty' });
+				.toContainEqual({ instanceOrigin, targetOrigin: GITHUB, targetPath: '*', pagePath: '/login/empty' });
 			await popup.close();
 			await target.bringToFront();
+			// The website grant follows the SPA to a path other than the one it was opened on.
 			await target.evaluate(() => {
-				window.history.pushState({}, '', '/login/empty?step=second');
+				window.history.pushState({}, '', '/sessions/two-factor?step=second');
 				window.mountOtp('single');
 			});
 			await assertFilled(target, github);

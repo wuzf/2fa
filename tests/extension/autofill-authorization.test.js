@@ -78,6 +78,100 @@ afterEach(() => {
 	delete globalThis.chrome;
 });
 
+describe('site-wide grants asked for in the popup', () => {
+	const ACCOUNT = { id: 'github', name: 'GitHub', account: 'alice@example.com', type: 'TOTP', digits: 6 };
+	function siteMessage(extra = {}) {
+		return { ...message, targetPath: '*', pagePath: PATH, ...extra };
+	}
+	beforeEach(() => {
+		enable.mockImplementation(async (intent, guard) => {
+			await guard();
+			sites = [{ instanceOrigin: intent.instanceOrigin, targetOrigin: intent.targetOrigin, targetPath: '*', pagePath: intent.pagePath }];
+			return { instanceOrigin: intent.instanceOrigin, sites };
+		});
+	});
+
+	it('keeps the page the grant is made on and checks that page, not the marker', async () => {
+		expect(await api.beginAutofillAuthorization(siteMessage(), generation, enable)).toMatchObject({ status: 'pending' });
+		expect(values[KEY]).toEqual({
+			requestId: message.requestId,
+			instanceOrigin: SOURCE,
+			mode: 'offline',
+			targetOrigin: TARGET,
+			targetPath: '*',
+			pagePath: PATH,
+			expectedTarget: message.expectedTarget,
+			createdAt: expect.any(Number),
+			status: 'pending',
+		});
+		granted = true;
+		expect(await api.completeAutofillAuthorization(undefined, enable)).toMatchObject({ status: 'enabled', sites });
+		expect(enable).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ targetPath: '*', pagePath: PATH, enabled: true, expectedTarget: message.expectedTarget }),
+			expect.any(Function),
+		);
+		expect(mocks.sendDocumentMessage).toHaveBeenLastCalledWith(7, 'document-7', expect.any(Object), 'TARGET_CHANGED');
+	});
+
+	it.each([
+		['without a page', { pagePath: undefined }],
+		['with the marker as its page', { pagePath: '*' }],
+		['with a page other than the expected target', { pagePath: '/settings' }],
+		['with a noncanonical page', { pagePath: '/login?token=secret' }],
+	])('rejects a site-wide request %s before saving an intent', async (_label, change) => {
+		await expect(api.beginAutofillAuthorization(siteMessage(change), generation, enable)).rejects.toMatchObject({
+			code: 'INVALID_REQUEST',
+		});
+		expect(values[KEY]).toBeUndefined();
+	});
+
+	it('rejects a site-wide request after the tab left the page it was asked on', async () => {
+		chrome.tabs.get.mockResolvedValue({ id: 7, url: `${TARGET}/settings` });
+		await expect(api.beginAutofillAuthorization(siteMessage(), generation, enable)).rejects.toMatchObject({ code: 'TARGET_CHANGED' });
+		expect(values[KEY]).toBeUndefined();
+	});
+
+	it('does not count a page grant of the origin as the enabled site-wide grant', async () => {
+		granted = true;
+		await api.beginAutofillAuthorization(siteMessage(), generation, enable);
+		sites = [{ instanceOrigin: SOURCE, targetOrigin: TARGET, targetPath: PATH }];
+		await expect(api.completeAutofillAuthorization(message.requestId, enable)).rejects.toMatchObject({ code: 'REQUEST_EXPIRED' });
+	});
+
+	it('keeps only the id of the account a popup fill asks to remember', async () => {
+		await api.beginAutofillAuthorization(siteMessage({ rememberAccount: ACCOUNT }), generation, enable);
+		expect(values[KEY]).toMatchObject({ rememberAccountId: 'github' });
+		expect(JSON.stringify(values[KEY])).not.toContain('alice@example.com');
+		expect(JSON.stringify(values[KEY])).not.toContain('GitHub');
+		granted = true;
+		await api.completeAutofillAuthorization(undefined, enable);
+		expect(enable).toHaveBeenCalledWith(expect.objectContaining({ rememberAccountId: 'github' }), expect.any(Function));
+	});
+
+	it('also keeps the login email where the website tells accounts apart by it', async () => {
+		const google = 'https://accounts.google.com';
+		chrome.tabs.get.mockResolvedValue({ id: 7, url: `${google}/login` });
+		mocks.sendDocumentMessage.mockResolvedValue({ ok: true, origin: google, targetPath: PATH });
+		const request = siteMessage({
+			targetOrigin: google,
+			expectedTarget: { ...message.expectedTarget, origin: google },
+			rememberAccount: { ...ACCOUNT, name: 'Google' },
+		});
+		await api.beginAutofillAuthorization(request, generation, enable);
+		expect(values[KEY]).toMatchObject({ rememberAccountId: 'github', rememberAccountEmail: 'alice@example.com' });
+	});
+
+	it.each([null, 'github', { id: 'github' }, { ...ACCOUNT, type: 'HOTP' }])(
+		'rejects an invalid account to remember: %j',
+		async (account) => {
+			await expect(api.beginAutofillAuthorization(siteMessage({ rememberAccount: account }), generation, enable)).rejects.toMatchObject({
+				code: 'INVALID_REQUEST',
+			});
+			expect(values[KEY]).toBeUndefined();
+		},
+	);
+});
+
 describe('background-owned automatic-fill permission intent', () => {
 	it.each([undefined, null, '', 'login', '/login?token=secret'])(
 		'rejects a missing or noncanonical path before saving an intent: %s',

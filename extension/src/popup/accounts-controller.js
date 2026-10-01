@@ -19,6 +19,7 @@ export function createAccountsController({
 	onFill,
 	onPreviewState,
 	onError,
+	autofillScope = () => null,
 }) {
 	let closed = false;
 	let viewValid = false;
@@ -132,18 +133,27 @@ export function createAccountsController({
 		return session.flow?.boundAccountIds || (session.flow?.boundAccountId ? [session.flow.boundAccountId] : []);
 	}
 
-	// "Remember account" names the account about to be filled: the card the user
-	// last selected, otherwise the first card (the Enter target). Only deliberate
+	// The checkbox names the account about to be filled: the card the user last
+	// selected, otherwise the first card (the Enter target). Only deliberate
 	// actions select a card: clicking it, arrow keys, Enter, filling it, or a
 	// pointer over its fill button. Passing a star, a card's empty space or, with
 	// Tab, the buttons of later cards on the way to the checkbox selects nothing.
-	// Until the user changes it, the checkbox shows whether that account is
-	// remembered here. A change made by the user is an explicit choice for the
-	// next fill, whichever card that fills.
+	// Where this page can be authorized, it reads "Autofill {name} on this
+	// website": filling with it checked remembers the account and, without a
+	// grant yet, asks for one in the same click. Otherwise it reads "Remember
+	// {name}". Until the user changes it, it is checked for the account
+	// remembered here, and on a website that can be authorized and remembers no
+	// account yet. A change made by the user is an explicit choice for the next
+	// fill, whichever card that fills.
 	let rememberTargetId = null;
 	let rememberDefaultId = null;
 	let rememberVisible = new Map();
 	let rememberChoice = null;
+	let rememberChoices = null;
+	function automaticRemember() {
+		const scope = autofillScope();
+		return scope === 'none' || scope === 'site';
+	}
 	function rememberTarget() {
 		return rememberTargetId !== null && rememberVisible.has(rememberTargetId) ? rememberTargetId : rememberDefaultId;
 	}
@@ -151,11 +161,17 @@ export function createAccountsController({
 		if (rememberChoice) {
 			return rememberChoice.checked;
 		}
-		return accountId !== null && boundAccountIds().includes(accountId);
+		const bound = boundAccountIds();
+		return accountId !== null && (bound.includes(accountId) || (bound.length === 0 && automaticRemember()));
 	}
-	function rememberLabel(account) {
+	function rememberLabel(account, automatic) {
 		if (!account) {
-			return t('popupRememberTitle');
+			return t(automatic ? 'popupAutoAccountTitle' : 'popupRememberTitle');
+		}
+		if (automatic) {
+			return account.account
+				? t('popupAutoAccountDetail', { name: account.name, account: account.account })
+				: t('popupAutoAccount', { name: account.name });
 		}
 		return account.account
 			? t('popupRememberAccountDetail', { name: account.name, account: account.account })
@@ -163,12 +179,20 @@ export function createAccountsController({
 	}
 	function renderRememberState() {
 		const targetId = rememberTarget();
+		const automatic = automaticRemember();
 		elements.remember.checked = rememberFor(targetId);
 		// Read the visible choices, so the label is right before their cards exist.
-		const label = rememberLabel(targetId === null ? null : rememberVisible.get(targetId));
+		const label = rememberLabel(targetId === null ? null : rememberVisible.get(targetId), automatic);
 		elements.rememberTitle.textContent = label;
 		// The label may be cut with an ellipsis; the title keeps the full text.
 		elements.rememberTitle.title = label;
+		const hint = automatic ? 'popupAutoAccountHint' : 'popupRememberHint';
+		const description = automatic ? 'popupAutoAccountDescription' : 'popupRememberDescription';
+		const control = elements.remember.closest('label');
+		control.setAttribute('data-i18n-title', hint);
+		control.title = t(hint);
+		elements.rememberDescription.setAttribute('data-i18n', description);
+		elements.rememberDescription.textContent = t(description);
 	}
 	function selectRememberTarget(accountId) {
 		if (accountId !== rememberTargetId) {
@@ -182,6 +206,7 @@ export function createAccountsController({
 	}
 
 	function renderRememberChoice(visibleChoices) {
+		rememberChoices = visibleChoices;
 		rememberVisible = new Map(visibleChoices.map((choice) => [choice.account.id, choice.account]));
 		rememberDefaultId = visibleChoices[0]?.account.id ?? null;
 		renderRememberState();
@@ -194,9 +219,15 @@ export function createAccountsController({
 			siteChoices.length === 1 &&
 			siteChoices[0].account.id === session.flow.autoFillAccountId &&
 			visibleChoices.every((choice) => choice.account.id === session.flow.autoFillAccountId);
+		// Automatic fills already choose a unique match, so remembering it is
+		// hidden. A page without a grant keeps the checkbox: it also asks for one.
 		elements.remember.closest('label').hidden =
 			session.flow.canFill === false ||
-			(bound.length === 0 && !elements.remember.checked && accountScope === 'site' && Boolean(uniqueSiteMatch));
+			(autofillScope() !== 'none' &&
+				bound.length === 0 &&
+				rememberChoice?.checked !== true &&
+				accountScope === 'site' &&
+				Boolean(uniqueSiteMatch));
 	}
 
 	function updateCard(card, state) {
@@ -797,11 +828,23 @@ export function createAccountsController({
 			selectRememberTarget(accountId);
 			return rememberFor(accountId);
 		},
+		/** Whether filling this account also asks for this website's grant. */
+		authorizesAutofill(accountId) {
+			selectRememberTarget(accountId);
+			return autofillScope() === 'none' && !elements.remember.closest('label').hidden && rememberFor(accountId);
+		},
+		/** Re-render the checkbox after this page's grants change. */
+		renderRemember() {
+			if (isCurrentView() && rememberChoices) {
+				renderRememberChoice(rememberChoices);
+			}
+		},
 		configure(view) {
 			viewValid = true;
 			if (!view) {
 				resetRemember();
 			}
+			rememberChoices = null;
 			accountScope = view?.scope || (session.flow.canFill === false ? 'all' : 'site');
 			elements.search.value = view?.query || '';
 			elements.searchClear.hidden = true;

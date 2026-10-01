@@ -48,7 +48,7 @@ export function isPrivateIPv4Host(host) {
 }
 
 // Target-site grants are distinct from permissions to read the 2FA vault.
-// HTTP and HTTPS targets both require explicit site and page-path authorization.
+// HTTP and HTTPS targets both require explicit authorization of an exact origin.
 export function normalizeAutofillTargetOrigin(value) {
 	return normalizeTargetOrigin(value);
 }
@@ -88,6 +88,25 @@ export function autofillPathFromUrl(value) {
 	} catch {
 		return null;
 	}
+}
+
+// A saved grant covers either one page path or, with this marker, every path
+// of its exact origin. The marker is never a page path, so it cannot collide.
+export const AUTOFILL_SITE_SCOPE = '*';
+
+export function normalizeAutofillScope(value) {
+	return value === AUTOFILL_SITE_SCOPE ? value : normalizeAutofillPath(value);
+}
+
+// Returns 'site', 'page' or null for one page of an exact target origin.
+export function autofillCoverage(sites, instanceOrigin, targetOrigin, targetPath) {
+	const grants = (Array.isArray(sites) ? sites : []).filter(
+		(site) => site?.instanceOrigin === instanceOrigin && site.targetOrigin === targetOrigin,
+	);
+	if (grants.some((site) => site.targetPath === AUTOFILL_SITE_SCOPE)) {
+		return 'site';
+	}
+	return grants.some((site) => site.targetPath === targetPath) ? 'page' : null;
 }
 
 export function originToPermissionPattern(origin) {

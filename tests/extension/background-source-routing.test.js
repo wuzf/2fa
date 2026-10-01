@@ -42,6 +42,7 @@ import { reconcileSourceWatcher } from '../../extension/src/background/source-re
 const sites = vi.hoisted(() => ({
 	readAutofillSites: vi.fn(),
 	setAutofillSite: vi.fn(),
+	restoreAutofillSites: vi.fn(),
 	isPermissionPatternInUse: vi.fn(),
 	pruneRevokedAutofillSites: vi.fn(),
 }));
@@ -60,6 +61,7 @@ const workflow = vi.hoisted(() => ({
 	checkInstance: vi.fn(),
 	openInstance: vi.fn(),
 	fillBoundAccountFromCommand: vi.fn(),
+	rememberAccountBinding: vi.fn(),
 	disableOfflineCache: vi.fn(),
 	importWebOfflineCache: vi.fn(),
 	sendDocumentMessage: vi.fn(),
@@ -121,6 +123,8 @@ beforeEach(async () => {
 	saveSettings.mockReset().mockResolvedValue(undefined);
 	sites.readAutofillSites.mockReset().mockResolvedValue([]);
 	sites.setAutofillSite.mockReset().mockResolvedValue([]);
+	sites.restoreAutofillSites.mockReset().mockResolvedValue([]);
+	workflow.rememberAccountBinding.mockReset().mockResolvedValue(undefined);
 	sites.isPermissionPatternInUse.mockReset().mockResolvedValue(false);
 	sites.pruneRevokedAutofillSites.mockReset().mockResolvedValue([]);
 	reconcileAutofillScripts.mockReset().mockResolvedValue(undefined);
@@ -444,7 +448,7 @@ describe('automatic site configuration message boundary', () => {
 			ok: true,
 			data: { instanceOrigin: INSTANCE, sites: [SITE] },
 		});
-		expect(sites.setAutofillSite).toHaveBeenCalledExactlyOnceWith(INSTANCE, TARGET, PATH, true);
+		expect(sites.setAutofillSite).toHaveBeenCalledExactlyOnceWith(INSTANCE, TARGET, PATH, true, { pagePath: PATH });
 		expect(chrome.permissions.remove).not.toHaveBeenCalled();
 	});
 
@@ -500,7 +504,7 @@ describe('automatic site configuration message boundary', () => {
 		expect(sites.setAutofillSite).not.toHaveBeenCalled();
 		pending.resolve();
 		await Promise.all([saved, changed]);
-		expect(sites.setAutofillSite).toHaveBeenCalledExactlyOnceWith('https://new.example', TARGET, PATH, true);
+		expect(sites.setAutofillSite).toHaveBeenCalledExactlyOnceWith('https://new.example', TARGET, PATH, true, { pagePath: PATH });
 	});
 
 	it.each([MESSAGE.SAVE_INSTANCE, MESSAGE.CLEAR_OFFLINE])('waits for a pending site change before %s', async (type) => {
@@ -682,26 +686,137 @@ describe('shared automatic site permission lifecycle', () => {
 	);
 
 	it('rolls back only a newly added path if script registration fails, preserving a sibling path', async () => {
-		sites.readAutofillSites.mockResolvedValue([{ ...SITE, targetPath: '/settings' }]);
+		const sibling = { ...SITE, targetPath: '/settings' };
+		sites.readAutofillSites.mockResolvedValue([sibling]);
+		sites.setAutofillSite.mockResolvedValue([sibling, SITE]);
 		reconcileAutofillScripts.mockRejectedValueOnce(new Error('Registration failed'));
 		expect(await send({ type: MESSAGE.SET_AUTOFILL_SITE, ...SITE, enabled: true })).toMatchObject({
 			ok: false,
 			error: { code: 'AUTO_UNAVAILABLE' },
 		});
-		expect(sites.setAutofillSite.mock.calls).toEqual([
-			[INSTANCE, TARGET, PATH, true],
-			[INSTANCE, TARGET, PATH, false],
-		]);
+		expect(sites.setAutofillSite).toHaveBeenCalledExactlyOnceWith(INSTANCE, TARGET, PATH, true, { pagePath: PATH });
+		expect(sites.restoreAutofillSites).toHaveBeenCalledExactlyOnceWith(INSTANCE, TARGET, [sibling]);
+		expect(reconcileAutofillScripts).toHaveBeenCalledTimes(2);
 	});
 
 	it('keeps an existing exact-path authorization when a registration refresh fails', async () => {
 		sites.readAutofillSites.mockResolvedValue([SITE]);
+		sites.setAutofillSite.mockResolvedValue([SITE]);
 		reconcileAutofillScripts.mockRejectedValueOnce(new Error('Registration failed'));
 		expect(await send({ type: MESSAGE.SET_AUTOFILL_SITE, ...SITE, enabled: true })).toMatchObject({
 			ok: false,
 			error: { code: 'AUTO_UNAVAILABLE' },
 		});
-		expect(sites.setAutofillSite).toHaveBeenCalledExactlyOnceWith(INSTANCE, TARGET, PATH, true);
+		expect(sites.setAutofillSite).toHaveBeenCalledExactlyOnceWith(INSTANCE, TARGET, PATH, true, { pagePath: PATH });
+		expect(sites.restoreAutofillSites).not.toHaveBeenCalled();
+	});
+
+	it('puts back the page grants a site-wide grant replaced when registration fails', async () => {
+		const pages = [SITE, { ...SITE, targetPath: '/settings' }];
+		const wholeSite = { instanceOrigin: INSTANCE, targetOrigin: TARGET, targetPath: '*', pagePath: PATH };
+		sites.readAutofillSites.mockResolvedValue(pages);
+		sites.setAutofillSite.mockResolvedValue([wholeSite]);
+		reconcileAutofillScripts.mockRejectedValueOnce(new Error('Registration failed'));
+		expect(
+			await send({ type: MESSAGE.SET_AUTOFILL_SITE, ...SITE, targetPath: '*', pagePath: PATH, enabled: true }, 'popup.html'),
+		).toMatchObject({ ok: false, error: { code: 'AUTO_UNAVAILABLE' } });
+		expect(sites.setAutofillSite).toHaveBeenCalledExactlyOnceWith(INSTANCE, TARGET, '*', true, { pagePath: PATH });
+		expect(sites.restoreAutofillSites).toHaveBeenCalledExactlyOnceWith(INSTANCE, TARGET, pages);
+	});
+
+	it('saves a site-wide grant with the page it was made on, checked against the live page', async () => {
+		const wholeSite = { instanceOrigin: INSTANCE, targetOrigin: TARGET, targetPath: '*', pagePath: PATH };
+		sites.setAutofillSite.mockResolvedValue([wholeSite]);
+		const expectedTarget = { tabId: 10, documentId: 'doc-10', origin: TARGET, targetPath: PATH };
+		expect(
+			await send(
+				{ type: MESSAGE.SET_AUTOFILL_SITE, ...SITE, targetPath: '*', pagePath: PATH, enabled: true, expectedTarget },
+				'popup.html',
+			),
+		).toEqual({ ok: true, data: { instanceOrigin: INSTANCE, sites: [wholeSite] } });
+		expect(sites.setAutofillSite).toHaveBeenCalledExactlyOnceWith(INSTANCE, TARGET, '*', true, { pagePath: PATH });
+		expect(workflow.sendDocumentMessage).toHaveBeenCalledWith(10, 'doc-10', { type: MESSAGE.TARGET_PING }, 'TARGET_CHANGED');
+	});
+
+	it.each([
+		['without the page it is made on', { pagePath: undefined }],
+		['with a page that is not a path', { pagePath: '*' }],
+		['with a non-canonical page', { pagePath: '/login?token=secret' }],
+	])('rejects a site-wide grant %s', async (_label, change) => {
+		expect(await send({ type: MESSAGE.SET_AUTOFILL_SITE, ...SITE, targetPath: '*', enabled: true, ...change })).toMatchObject({
+			ok: false,
+			error: { code: 'INVALID_REQUEST' },
+		});
+		expect(sites.setAutofillSite).not.toHaveBeenCalled();
+	});
+
+	it('rejects a site-wide grant when the live page is not the recorded one', async () => {
+		chrome.tabs.get.mockResolvedValue({ id: 10, url: `${TARGET}/settings` });
+		const expectedTarget = { tabId: 10, documentId: 'doc-10', origin: TARGET, targetPath: PATH };
+		expect(
+			await send({ type: MESSAGE.SET_AUTOFILL_SITE, ...SITE, targetPath: '*', pagePath: PATH, enabled: true, expectedTarget }),
+		).toMatchObject({ ok: false, error: { code: 'TARGET_CHANGED' } });
+		expect(sites.setAutofillSite).not.toHaveBeenCalled();
+	});
+
+	it('turns a site-wide grant off without a page', async () => {
+		expect(await send({ type: MESSAGE.SET_AUTOFILL_SITE, ...SITE, targetPath: '*', enabled: false })).toMatchObject({ ok: true });
+		expect(sites.setAutofillSite).toHaveBeenCalledExactlyOnceWith(INSTANCE, TARGET, '*', false, { pagePath: undefined });
+		expect(clearPendingFlow).toHaveBeenCalled();
+	});
+
+	it('keeps the popup fill that asked for a grant and remembers its account before automatic fills start', async () => {
+		await send({ type: MESSAGE.BEGIN_AUTOFILL_AUTHORIZATION, requestId: 'a'.repeat(36) }, 'popup.html');
+		const enable = authorization.beginAutofillAuthorization.mock.calls[0][2];
+		const wholeSite = { instanceOrigin: INSTANCE, targetOrigin: TARGET, targetPath: '*', pagePath: PATH };
+		sites.setAutofillSite.mockResolvedValue([wholeSite]);
+		clearPendingFlow.mockClear();
+		const result = await enable({
+			instanceOrigin: INSTANCE,
+			targetOrigin: TARGET,
+			targetPath: '*',
+			pagePath: PATH,
+			enabled: true,
+			rememberAccountId: 'github',
+			expectedTarget: { tabId: 10, documentId: 'doc-10', origin: TARGET, targetPath: PATH },
+		});
+		expect(result).toEqual({ instanceOrigin: INSTANCE, sites: [wholeSite] });
+		expect(clearPendingFlow).not.toHaveBeenCalled();
+		expect(workflow.rememberAccountBinding).toHaveBeenCalledExactlyOnceWith({
+			instanceOrigin: INSTANCE,
+			targetOrigin: TARGET,
+			accountId: 'github',
+			accountEmail: undefined,
+		});
+		// An open page's automatic fill must already find the chosen account.
+		const remembered = workflow.rememberAccountBinding.mock.invocationCallOrder[0];
+		expect(remembered).toBeGreaterThan(sites.setAutofillSite.mock.invocationCallOrder.at(-1));
+		expect(remembered).toBeLessThan(reconcileAutofillScripts.mock.invocationCallOrder.at(-1));
+	});
+
+	it('keeps a saved grant when remembering its account fails, and remembers nothing when the grant is not saved', async () => {
+		await send({ type: MESSAGE.BEGIN_AUTOFILL_AUTHORIZATION, requestId: 'a'.repeat(36) }, 'popup.html');
+		const enable = authorization.beginAutofillAuthorization.mock.calls[0][2];
+		const intent = { ...SITE, targetPath: '*', pagePath: PATH, enabled: true, rememberAccountId: 'github' };
+		workflow.rememberAccountBinding.mockRejectedValueOnce(new Error('storage unavailable'));
+		await expect(enable(intent)).resolves.toMatchObject({ instanceOrigin: INSTANCE });
+		workflow.rememberAccountBinding.mockClear();
+		sites.setAutofillSite.mockRejectedValueOnce(Object.assign(new Error('Permission required'), { code: 'PERMISSION_REQUIRED' }));
+		await expect(enable(intent)).rejects.toBeDefined();
+		expect(workflow.rememberAccountBinding).not.toHaveBeenCalled();
+	});
+
+	it('keeps the remembered account when starting automatic fills fails after the grant is saved', async () => {
+		await send({ type: MESSAGE.BEGIN_AUTOFILL_AUTHORIZATION, requestId: 'a'.repeat(36) }, 'popup.html');
+		const enable = authorization.beginAutofillAuthorization.mock.calls[0][2];
+		const intent = { ...SITE, targetPath: '*', pagePath: PATH, enabled: true, rememberAccountId: 'github' };
+		sites.readAutofillSites.mockResolvedValue([]);
+		sites.setAutofillSite.mockResolvedValue([{ ...SITE, targetPath: '*', pagePath: PATH }]);
+		reconcileAutofillScripts.mockRejectedValueOnce(new Error('Registration failed'));
+		await expect(enable(intent)).rejects.toMatchObject({ code: 'AUTO_UNAVAILABLE' });
+		// The user asked to remember the account, as a fill without the grant does.
+		expect(workflow.rememberAccountBinding).toHaveBeenCalledOnce();
+		expect(sites.restoreAutofillSites).toHaveBeenCalledExactlyOnceWith(INSTANCE, TARGET, []);
 	});
 
 	it('still prunes revoked policies and source secrets when permission-intent cleanup fails', async () => {
@@ -802,16 +917,17 @@ describe('shared automatic site permission lifecycle', () => {
 	it('still stops automatic runners when the browser refuses removal of a managed host grant', async () => {
 		chrome.permissions.remove.mockRejectedValue(new Error('Cannot remove required permission'));
 		expect(await send({ type: MESSAGE.SET_AUTOFILL_SITE, ...SITE, enabled: false })).toMatchObject({ ok: true });
-		expect(sites.setAutofillSite).toHaveBeenCalledWith(INSTANCE, TARGET, PATH, false);
+		expect(sites.setAutofillSite).toHaveBeenCalledWith(INSTANCE, TARGET, PATH, false, { pagePath: PATH });
 		expect(reconcileAutofillScripts).toHaveBeenCalledOnce();
 	});
 	it('rolls back newly enabled policy when script registration fails', async () => {
+		sites.setAutofillSite.mockResolvedValue([SITE]);
 		reconcileAutofillScripts.mockRejectedValueOnce(new Error('Registration failed'));
 		expect(await send({ type: MESSAGE.SET_AUTOFILL_SITE, ...SITE, enabled: true })).toMatchObject({
 			ok: false,
 			error: { code: 'AUTO_UNAVAILABLE' },
 		});
-		expect(sites.setAutofillSite).toHaveBeenLastCalledWith(INSTANCE, TARGET, PATH, false);
+		expect(sites.restoreAutofillSites).toHaveBeenCalledExactlyOnceWith(INSTANCE, TARGET, []);
 		expect(reconcileAutofillScripts).toHaveBeenCalledTimes(2);
 	});
 	it('checks the actual document before saving a popup authorization', async () => {

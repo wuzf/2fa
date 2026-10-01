@@ -194,21 +194,30 @@ for (const browserTarget of ['chrome', 'edge']) {
 					expect(await target.evaluate(() => window.fixtureState)).toEqual({ inputEvents: 0, submits: 0 });
 				}
 				const rememberChoice = popup.locator('label:has(#remember-binding)');
+				// The no-input fill above kept the default choice checked. Although the
+				// page had no code field and the code was copied instead, it remembered
+				// the account and turned on autofill for the website, as the choice says.
+				const filledEarlier = scenario.name === 'no-input';
+				const expectedBindings = filledEarlier
+					? [...bindings, { instanceOrigin, targetOrigin: scenario.origin, accountId: 'github-alice' }]
+					: bindings;
+				await expect
+					.poll(async () => (await worker.evaluate(() => chrome.storage.local.get('bindings'))).bindings)
+					.toEqual(expectedBindings);
+				// The other websites have no autofill grant, so the choice also asks for
+				// one and stays visible, even for a unique match. It starts checked for
+				// the remembered account, or on a website that remembers none.
+				await expect(rememberChoice).toBeVisible();
+				await expect(rememberChoice).toContainText('以后在此网站自动填入');
+				await expect(popup.locator('#remember-binding')).toBeChecked();
+				await expect(popup.locator('#autofill-site')).toBeChecked({ checked: filledEarlier });
 				if (scenario.name === 'unique-service' || scenario.name === 'no-input') {
-					await expect(rememberChoice).toBeHidden();
-					await expect(popup.locator('#remember-binding')).not.toBeChecked();
 					await popup.locator('#scope-all').evaluate((button) => button.click());
 					await expect(rememberChoice).toBeVisible();
 					await expect(popup.locator('.account-card')).toHaveCount(2);
 					await popup.locator('#scope-site').evaluate((button) => button.click());
-					await expect(rememberChoice).toBeHidden();
-				} else {
 					await expect(rememberChoice).toBeVisible();
-					if (scenario.name === 'unique-binding') {
-						await expect(popup.locator('#remember-binding')).toBeChecked();
-					} else {
-						await expect(popup.locator('#remember-binding')).not.toBeChecked();
-					}
+				} else {
 					if (scenario.name === 'multiple') {
 						await popup.setViewportSize({ width: 380, height: 600 });
 						const automaticChoice = popup.locator('label:has(#autofill-site)');
@@ -232,7 +241,11 @@ for (const browserTarget of ['chrome', 'edge']) {
 						await expect(rememberChoice).toBeVisible();
 					}
 				}
-				expect((await worker.evaluate(() => chrome.storage.local.get('bindings'))).bindings).toEqual(bindings);
+				expect((await worker.evaluate(() => chrome.storage.local.get('bindings'))).bindings).toEqual(expectedBindings);
+				const websiteGrant = { instanceOrigin, targetOrigin: scenario.origin, targetPath: '*', pagePath: '/sessions/two-factor' };
+				expect((await worker.evaluate(() => chrome.storage.local.get('autofillSites'))).autofillSites || []).toEqual(
+					filledEarlier ? [websiteGrant] : [],
+				);
 				if (scenario.name === 'unique-service' || scenario.name === 'unique-binding') {
 					await popup
 						.locator('.account-fill')
@@ -240,6 +253,15 @@ for (const browserTarget of ['chrome', 'edge']) {
 						.evaluate((button) => button.click());
 					await expect(target.locator('#otp')).toHaveValue(await generateTotp(SECRET, TIME));
 					expect(await target.evaluate(() => window.fixtureState)).toEqual({ inputEvents: 1, submits: 0 });
+					// The host permission is already granted here, so filling with the
+					// choice checked remembers the account and turns on website autofill.
+					const accountId = scenario.name === 'unique-service' ? 'github-alice' : 'private-alice';
+					await expect
+						.poll(async () => (await worker.evaluate(() => chrome.storage.local.get('bindings'))).bindings)
+						.toEqual([bindings[0], { instanceOrigin, targetOrigin: scenario.origin, accountId }]);
+					await expect
+						.poll(async () => (await worker.evaluate(() => chrome.storage.local.get('autofillSites'))).autofillSites)
+						.toEqual([websiteGrant]);
 				}
 			} finally {
 				await context?.close();

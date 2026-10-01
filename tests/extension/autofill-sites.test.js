@@ -5,6 +5,7 @@ import {
 	isPermissionPatternInUse,
 	pruneRevokedAutofillSites,
 	readAutofillSites,
+	restoreAutofillSites,
 	setAutofillSite,
 } from '../../extension/src/shared/autofill-sites.js';
 import { originToPermissionPattern, targetOriginToPermissionPattern } from '../../extension/src/shared/origin.js';
@@ -437,6 +438,139 @@ describe('autofill site preferences', () => {
 		await hasAutofillSite(INSTANCE, TARGET, '/totp');
 		await isPermissionPatternInUse(originToPermissionPattern(TARGET), INSTANCE);
 		expect(new Set(chrome.storage.local.get.mock.calls.map(([key]) => key))).toEqual(new Set(['settings', 'autofillSites']));
+	});
+});
+
+describe('site-wide autofill grants', () => {
+	const WHOLE = { instanceOrigin: INSTANCE, targetOrigin: TARGET, targetPath: '*', pagePath: '/totp' };
+	const page = (targetPath, targetOrigin = TARGET) => ({ instanceOrigin: INSTANCE, targetOrigin, targetPath });
+
+	it('covers every path of the exact origin and records the page it was made on', async () => {
+		expect(await setAutofillSite(INSTANCE, TARGET, '*', true, { pagePath: '/totp' })).toEqual([WHOLE]);
+		for (const path of ['/totp', '/', '/settings/2fa', '/#/mfa']) {
+			expect(await hasAutofillSite(INSTANCE, TARGET, path)).toBe(true);
+		}
+		permissions.add(targetOriginToPermissionPattern('http://login.example'));
+		permissions.add(targetOriginToPermissionPattern('https://sub.login.example'));
+		for (const origin of [`${TARGET}:8443`, 'https://sub.login.example', 'http://login.example']) {
+			expect(await hasAutofillSite(INSTANCE, origin, '/totp')).toBe(false);
+		}
+		expect(values.autofillSites).toEqual([WHOLE]);
+	});
+
+	it('never treats the site marker as a live page path', async () => {
+		await setAutofillSite(INSTANCE, TARGET, '*', true, { pagePath: '/totp' });
+		await expect(hasAutofillSite(INSTANCE, TARGET, '*')).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+	});
+
+	it('does not authorize another instance or a revoked host', async () => {
+		await setAutofillSite(INSTANCE, TARGET, '*', true, { pagePath: '/totp' });
+		values.settings = { instanceOrigin: OTHER_INSTANCE };
+		expect(await hasAutofillSite(INSTANCE, TARGET, '/totp')).toBe(false);
+		values.settings = { instanceOrigin: INSTANCE };
+		permissions.clear();
+		expect(await hasAutofillSite(INSTANCE, TARGET, '/settings')).toBe(false);
+	});
+
+	it('replaces the page grants of its origin, and turning it off removes every grant of the origin', async () => {
+		const other = 'https://other.example';
+		permissions.add(originToPermissionPattern(other));
+		await setAutofillSite(INSTANCE, TARGET, '/a', true);
+		await setAutofillSite(INSTANCE, TARGET, '/b', true);
+		await setAutofillSite(INSTANCE, other, '/a', true);
+		values.autofillSites.push({ ...SITE, instanceOrigin: OTHER_INSTANCE });
+		expect(await setAutofillSite(INSTANCE, TARGET, '*', true, { pagePath: '/a' })).toEqual([
+			page('/a', other),
+			{ ...WHOLE, pagePath: '/a' },
+		]);
+		expect(values.autofillSites).toEqual([page('/a', other), { ...SITE, instanceOrigin: OTHER_INSTANCE }, { ...WHOLE, pagePath: '/a' }]);
+		expect(await setAutofillSite(INSTANCE, TARGET, '*', false)).toEqual([page('/a', other)]);
+		expect(values.autofillSites).toEqual([page('/a', other), { ...SITE, instanceOrigin: OTHER_INSTANCE }]);
+		expect(await hasAutofillSite(INSTANCE, TARGET, '/a')).toBe(false);
+	});
+
+	it('narrows a site-wide grant when its page is enabled on its own', async () => {
+		await setAutofillSite(INSTANCE, TARGET, '*', true, { pagePath: '/totp' });
+		expect(await setAutofillSite(INSTANCE, TARGET, '/totp', true)).toEqual([page('/totp')]);
+		expect(await hasAutofillSite(INSTANCE, TARGET, '/totp')).toBe(true);
+		expect(await hasAutofillSite(INSTANCE, TARGET, '/settings')).toBe(false);
+	});
+
+	it('keeps a site-wide grant when only one page is turned off', async () => {
+		await setAutofillSite(INSTANCE, TARGET, '*', true, { pagePath: '/totp' });
+		expect(await setAutofillSite(INSTANCE, TARGET, '/totp', false)).toEqual([WHOLE]);
+		expect(chrome.storage.local.set).toHaveBeenCalledOnce();
+	});
+
+	it('moves the recorded page when a site-wide grant is made again elsewhere', async () => {
+		await setAutofillSite(INSTANCE, TARGET, '*', true, { pagePath: '/totp' });
+		expect(await setAutofillSite(INSTANCE, TARGET, '*', true, { pagePath: '/verify' })).toEqual([{ ...WHOLE, pagePath: '/verify' }]);
+		await setAutofillSite(INSTANCE, TARGET, '*', true, { pagePath: '/verify' });
+		expect(chrome.storage.local.set).toHaveBeenCalledTimes(2);
+	});
+
+	it.each([undefined, null, '', '*', 'totp', '/totp?token=secret'])(
+		'requires a canonical page for a site-wide grant: %s',
+		async (pagePath) => {
+			await expect(setAutofillSite(INSTANCE, TARGET, '*', true, { pagePath })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+			expect(chrome.storage.local.set).not.toHaveBeenCalled();
+		},
+	);
+
+	it('requires the host permission for a site-wide grant', async () => {
+		permissions.clear();
+		await expect(setAutofillSite(INSTANCE, TARGET, '*', true, { pagePath: '/totp' })).rejects.toMatchObject({
+			code: 'PERMISSION_REQUIRED',
+		});
+		expect(chrome.storage.local.set).not.toHaveBeenCalled();
+	});
+
+	it('ignores and prunes stored site-wide grants without a valid page, keeping valid records', async () => {
+		values.autofillSites = [
+			{ instanceOrigin: INSTANCE, targetOrigin: TARGET, targetPath: '*' },
+			{ ...WHOLE, targetOrigin: 'https://other.example', pagePath: 'totp' },
+			{ ...SITE, pagePath: '/totp' },
+			WHOLE,
+		];
+		expect(await readAutofillSites()).toEqual([page('/totp'), WHOLE]);
+		expect(await pruneRevokedAutofillSites()).toEqual([page('/totp'), WHOLE]);
+		expect(values.autofillSites).toEqual([page('/totp'), WHOLE]);
+	});
+
+	it('does not rewrite a permitted site-wide grant during cleanup', async () => {
+		values.autofillSites = [WHOLE];
+		expect(await pruneRevokedAutofillSites()).toEqual([WHOLE]);
+		expect(chrome.storage.local.set).not.toHaveBeenCalled();
+	});
+
+	it('prunes a site-wide grant with its revoked host permission', async () => {
+		values.autofillSites = [WHOLE];
+		expect(await pruneRevokedAutofillSites([targetOriginToPermissionPattern(TARGET)])).toEqual([]);
+		expect(values.autofillSites).toEqual([]);
+	});
+
+	it("puts back an origin's grants exactly as they were read", async () => {
+		const other = 'https://other.example';
+		permissions.add(originToPermissionPattern(other));
+		await setAutofillSite(INSTANCE, TARGET, '/a', true);
+		await setAutofillSite(INSTANCE, TARGET, '/b', true);
+		await setAutofillSite(INSTANCE, other, '/a', true);
+		const before = await readAutofillSites(INSTANCE);
+		await setAutofillSite(INSTANCE, TARGET, '*', true, { pagePath: '/a' });
+		expect(await restoreAutofillSites(INSTANCE, TARGET, before)).toEqual([page('/a', other), page('/a'), page('/b')]);
+		expect(await hasAutofillSite(INSTANCE, TARGET, '/c')).toBe(false);
+		expect(await restoreAutofillSites(INSTANCE, TARGET, [])).toEqual([page('/a', other)]);
+		values.settings = { instanceOrigin: OTHER_INSTANCE };
+		await expect(restoreAutofillSites(INSTANCE, TARGET, before)).rejects.toMatchObject({ code: 'REQUEST_EXPIRED' });
+	});
+
+	it('counts a site-wide grant as one record against the limit', async () => {
+		values.autofillSites = [
+			...Array.from({ length: 126 }, (_, index) => page('/totp', `https://site-${index}.example`)),
+			page('/a'),
+			page('/b'),
+		];
+		expect(await setAutofillSite(INSTANCE, TARGET, '*', true, { pagePath: '/a' })).toHaveLength(127);
 	});
 });
 

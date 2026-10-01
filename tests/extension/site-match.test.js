@@ -31,6 +31,32 @@ describe('automatic website account choice', () => {
 		['https://www.instagram.com', 'Instagram'],
 		['https://www.npmjs.com', 'npm'],
 		['https://pypi.org', 'PyPI'],
+		['https://www.v2ex.com', 'V2EX'],
+		['https://www.dropbox.com', 'Dropbox'],
+		['https://www.reddit.com', 'Reddit'],
+		['https://www.twitch.tv', 'Twitch'],
+		['https://www.epicgames.com', 'Epic Games'],
+		['https://www.paypal.com', 'PayPal'],
+		['https://login.coinbase.com', 'Coinbase'],
+		['https://accounts.binance.com', 'Binance.com'],
+		['https://www.kraken.com', 'Kraken'],
+		['https://www.amazon.com', 'Amazon'],
+		['https://signin.aws.amazon.com', 'Amazon Web Services'],
+		['https://signin.aws.amazon.com', 'AWS'],
+		['https://login.yahoo.com', 'Yahoo'],
+		['https://account.proton.me', 'Proton Mail'],
+		['https://accounts.firefox.com', 'Firefox'],
+		['https://vault.bitwarden.eu', 'Bitwarden'],
+		['https://id.atlassian.com', 'Atlassian'],
+		['https://dashboard.stripe.com', 'Stripe'],
+		['https://cloud.digitalocean.com', 'Digital Ocean'],
+		['https://id.heroku.com', 'Heroku'],
+		['https://login.docker.com', 'Docker'],
+		['https://vercel.com', 'Vercel'],
+		['https://huggingface.co', 'Hugging Face'],
+		['https://auth.openai.com', 'OpenAI'],
+		['https://www.namecheap.com', 'Namecheap'],
+		['https://accounts.hetzner.com', 'Hetzner'],
 	])('automatically chooses the unique %s / %s account and includes it in the popup', (targetOrigin, name) => {
 		const state = flow({ targetOrigin, accounts: [{ ...github, name }, other] });
 		expect(chooseAutoFillAccountId(state)).toBe(github.id);
@@ -69,6 +95,38 @@ describe('automatic website account choice', () => {
 			expect(chooseAutoFillAccountId(flow({ targetOrigin, accounts: [{ ...github, name: 'Cloudflare' }] }))).toBeNull();
 		},
 	);
+
+	it.each([
+		['https://tenant.signin.aws.amazon.com', 'AWS'],
+		['https://www.amazon.co.uk', 'Amazon'],
+		['https://aws.amazon.com', 'AWS'],
+		['https://signin.aws.amazon.com', 'Amazon'],
+		['https://www.amazon.com', 'AWS'],
+		['https://team.atlassian.net', 'Atlassian'],
+		['https://stripe.com', 'Stripe'],
+		['https://dropbox.com.evil.example', 'Dropbox'],
+		['https://www.paypal.com:8443', 'PayPal'],
+		['http://vercel.com', 'Vercel'],
+		['https://proton.me', 'Proton'],
+		['https://vault.bitwarden.com.evil.example', 'Bitwarden'],
+	])('keeps an added service manual outside its own login hosts: %s / %s', (targetOrigin, name) => {
+		expect(chooseAutoFillAccountId(flow({ targetOrigin, accounts: [{ ...github, name }, other] }))).toBeNull();
+	});
+
+	it.each([
+		['https://www.amazon.com', 'Amazon', 'Amazon Web Services'],
+		['https://www.dropbox.com', 'Dropbox', 'Dropbox Work'],
+		['https://accounts.firefox.com', 'Firefox', 'Mozilla account'],
+	])('keeps %s manual when a second account may belong to it: %s and %s', (targetOrigin, name, second) => {
+		const state = flow({
+			targetOrigin,
+			accounts: [
+				{ ...github, name },
+				{ ...other, name: second },
+			],
+		});
+		expect(chooseAutoFillAccountId(state)).toBeNull();
+	});
 
 	it('does not select from an unrelated full-vault fallback or a favorite', () => {
 		expect(chooseAutoFillAccountId(flow({ accounts: [other], favoriteAccountIds: [other.id] }))).toBeNull();

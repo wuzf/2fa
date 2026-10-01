@@ -1,5 +1,6 @@
 import { t, tPlural, localizeError } from '../shared/i18n.js';
 import { MESSAGE } from '../shared/protocol.js';
+import { AUTOFILL_SITE_SCOPE } from '../shared/origin.js';
 import { getBindings } from '../shared/storage.js';
 
 // Website policies, remembered accounts and their asynchronous views share one lifecycle.
@@ -86,7 +87,14 @@ export function createSiteSettings({ document, send, setBusy }) {
 		return account ? `${account.name}${account.account ? ` · ${account.account}` : ''}` : t('optionsAccountUnavailable');
 	}
 
-	async function disableSite(site) {
+	// A site-wide grant is shown by its origin, a page grant by origin and path.
+	function grantName(site) {
+		return site.targetPath === AUTOFILL_SITE_SCOPE ? site.targetOrigin : `${site.targetOrigin}${site.targetPath}`;
+	}
+
+	// Turning a grant off, or narrowing a site-wide grant to the page it was
+	// made on: enabling that page replaces the site-wide grant.
+	async function changeSite(site, { limit = false } = {}) {
 		if (optionsBusy || optionsClosed || site.instanceOrigin !== currentOrigin) {
 			return;
 		}
@@ -98,8 +106,8 @@ export function createSiteSettings({ document, send, setBusy }) {
 				type: MESSAGE.SET_AUTOFILL_SITE,
 				instanceOrigin: site.instanceOrigin,
 				targetOrigin: site.targetOrigin,
-				targetPath: site.targetPath,
-				enabled: false,
+				targetPath: limit ? site.pagePath : site.targetPath,
+				enabled: limit,
 			});
 			if (optionsClosed || version !== siteMutationVersion || currentOrigin !== site.instanceOrigin) {
 				return;
@@ -111,7 +119,9 @@ export function createSiteSettings({ document, send, setBusy }) {
 			autofillVersion += 1;
 			autofillLoaded = true;
 			siteErrors.delete('autofill');
-			siteNotice = () => t('optionsAutofillDisabled', { site: `${site.targetOrigin}${site.targetPath}` });
+			siteNotice = limit
+				? () => t('optionsAutofillLimited', { site: site.targetOrigin, page: site.pagePath })
+				: () => t('optionsAutofillDisabled', { site: grantName(site) });
 			renderSiteSettings();
 		} catch (error) {
 			if (!optionsClosed && version === siteMutationVersion && currentOrigin === site.instanceOrigin) {
@@ -222,20 +232,41 @@ export function createSiteSettings({ document, send, setBusy }) {
 			header.append(labels);
 			card.append(header);
 			for (const authorization of site.authorizations.sort((a, b) => a.targetPath.localeCompare(b.targetPath))) {
+				const wholeSite = authorization.targetPath === AUTOFILL_SITE_SCOPE;
 				const pathRow = document.createElement('div');
 				pathRow.className = 'site-autofill-path';
 				pathRow.dataset.path = authorization.targetPath;
 				const path = document.createElement('span');
 				path.className = 'site-path';
-				path.textContent = authorization.targetPath;
+				path.textContent = wholeSite ? t('optionsAutofillWholeSite') : authorization.targetPath;
+				const actions = document.createElement('span');
+				actions.className = 'site-path-actions';
+				if (wholeSite) {
+					const page = document.createElement('span');
+					page.className = 'site-path-page';
+					page.textContent = t('optionsAutofillGrantedPage', { page: authorization.pagePath });
+					path.append(page);
+					const limit = document.createElement('button');
+					limit.type = 'button';
+					limit.className = 'secondary-button autofill-limit';
+					limit.dataset.action = 'limit';
+					limit.textContent = t('optionsLimitToPage');
+					limit.setAttribute('aria-label', t('optionsLimitToPageLabel', { site: site.targetOrigin, page: authorization.pagePath }));
+					limit.title = limit.getAttribute('aria-label');
+					limit.disabled = optionsBusy;
+					limit.addEventListener('click', () => void changeSite(authorization, { limit: true }));
+					actions.append(limit);
+				}
 				const disable = document.createElement('button');
 				disable.type = 'button';
 				disable.className = 'secondary-button autofill-disable';
+				disable.dataset.action = 'disable';
 				disable.textContent = t('optionsDisable');
-				disable.setAttribute('aria-label', t('optionsDisableLabel', { site: `${site.targetOrigin}${authorization.targetPath}` }));
+				disable.setAttribute('aria-label', t('optionsDisableLabel', { site: grantName(authorization) }));
 				disable.disabled = optionsBusy;
-				disable.addEventListener('click', () => void disableSite(authorization));
-				pathRow.append(path, disable);
+				disable.addEventListener('click', () => void changeSite(authorization));
+				actions.append(disable);
+				pathRow.append(path, actions);
 				card.append(pathRow);
 			}
 			if (site.bindings.length) {
@@ -275,6 +306,7 @@ export function createSiteSettings({ document, send, setBusy }) {
 		const active = document.activeElement;
 		const focusedOrigin = elements.siteList.contains(active) ? active.closest('.site-card')?.dataset.origin : null;
 		const focusedPath = active?.closest('.site-autofill-path')?.dataset.path;
+		const focusedAction = active?.dataset?.action;
 		const focusedAccount = active?.closest('.binding-item')?.dataset.accountId;
 		renderSiteSettings();
 		if (!focusedOrigin) {
@@ -285,7 +317,7 @@ export function createSiteSettings({ document, send, setBusy }) {
 			focusedPath !== undefined
 				? [...(card?.querySelectorAll('.site-autofill-path') || [])].find((node) => node.dataset.path === focusedPath)
 				: [...(card?.querySelectorAll('.binding-item') || [])].find((node) => node.dataset.accountId === focusedAccount);
-		const button = row?.querySelector('button');
+		const button = (focusedAction && row?.querySelector(`[data-action="${focusedAction}"]`)) || row?.querySelector('button');
 		if (button && !button.disabled) {
 			button.focus({ preventScroll: true });
 		}

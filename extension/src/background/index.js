@@ -14,13 +14,21 @@ import {
 	targetOriginToPermissionPattern,
 	autofillPathFromUrl,
 	normalizeAutofillPath,
+	normalizeAutofillScope,
+	AUTOFILL_SITE_SCOPE,
 } from '../shared/origin.js';
 import { clearOfflineSource, cancelOfflineRequests } from './offline-source.js';
 import { AUTO_MESSAGES, routeAutomaticMessage, invalidateAutomaticFlows } from './automatic-workflow.js';
 import { reconcileAutofillScripts, observeAutofillRenderer } from './autofill-registration.js';
 import { reconcileSourceWatcher, observeSourceRenderer } from './source-registration.js';
 import { SOURCE_MESSAGES, routeSourceMessage, startSourceUpdates } from './source-updates.js';
-import { readAutofillSites, setAutofillSite, isPermissionPatternInUse, pruneRevokedAutofillSites } from '../shared/autofill-sites.js';
+import {
+	readAutofillSites,
+	setAutofillSite,
+	restoreAutofillSites,
+	isPermissionPatternInUse,
+	pruneRevokedAutofillSites,
+} from '../shared/autofill-sites.js';
 import {
 	clearPendingFlow,
 	getConnectionStatus,
@@ -37,6 +45,7 @@ import {
 	copyAccountCodes,
 	fillAccount,
 	fillBoundAccountFromCommand,
+	rememberAccountBinding,
 	openInstance,
 	startFlow,
 	getAutofillContext,
@@ -122,39 +131,52 @@ async function saveInstanceFromMessage(message) {
 	return { instanceOrigin: nextOrigin };
 }
 
-async function setAutofillSiteFromMessage(message, checkCurrent) {
+// targetPath is one page path or AUTOFILL_SITE_SCOPE. A site-wide grant is
+// made on one page, pagePath, which is also the page the popup checks.
+// beforeActivate runs once the grant is saved, before automatic fills start.
+async function setAutofillSiteFromMessage(message, checkCurrent, { authorization = false, beforeActivate } = {}) {
 	let targetPath;
+	let pagePath;
 	try {
-		targetPath = normalizeAutofillPath(message.targetPath);
+		targetPath = normalizeAutofillScope(message.targetPath);
+		pagePath =
+			targetPath !== AUTOFILL_SITE_SCOPE ? targetPath : message.enabled === true ? normalizeAutofillPath(message.pagePath) : undefined;
 	} catch {
 		throw new ExtensionError('INVALID_REQUEST');
 	}
-	if (targetPath !== message.targetPath) {
+	if (
+		targetPath !== message.targetPath ||
+		(targetPath === AUTOFILL_SITE_SCOPE && pagePath !== undefined && pagePath !== message.pagePath)
+	) {
 		throw new ExtensionError('INVALID_REQUEST');
 	}
 	if (message.enabled && message.expectedTarget) {
 		const target = message.expectedTarget;
 		if (
 			target.origin !== message.targetOrigin ||
-			target.targetPath !== targetPath ||
+			target.targetPath !== pagePath ||
 			!Number.isInteger(target.tabId) ||
 			typeof target.documentId !== 'string'
 		) {
 			throw new ExtensionError('TARGET_CHANGED');
 		}
 		const tab = await chrome.tabs.get(target.tabId);
-		if (tab.incognito || originFromTabUrl(tab.url) !== target.origin || autofillPathFromUrl(tab.url) !== targetPath || tab.pendingUrl) {
+		if (tab.incognito || originFromTabUrl(tab.url) !== target.origin || autofillPathFromUrl(tab.url) !== pagePath || tab.pendingUrl) {
 			throw new ExtensionError('TARGET_CHANGED');
 		}
 		const ping = await sendDocumentMessage(target.tabId, target.documentId, { type: MESSAGE.TARGET_PING }, 'TARGET_CHANGED');
-		if (!ping?.ok || ping.origin !== target.origin || ping.targetPath !== targetPath) {
+		if (!ping?.ok || ping.origin !== target.origin || ping.targetPath !== pagePath) {
 			throw new ExtensionError('TARGET_CHANGED');
 		}
 	}
 	const previousSites = await readAutofillSites(message.instanceOrigin);
 	await checkCurrent?.();
-	const sites = await setAutofillSite(message.instanceOrigin, message.targetOrigin, targetPath, message.enabled);
-	await clearPendingFlow();
+	const sites = await setAutofillSite(message.instanceOrigin, message.targetOrigin, targetPath, message.enabled, { pagePath });
+	// A popup fill that asked for this grant in the same click still owns its
+	// flow. Grants never widen what a flow can do: automatic fills check them again.
+	if (!authorization) {
+		await clearPendingFlow();
+	}
 	if (!message.enabled) {
 		const pattern = targetOriginToPermissionPattern(message.targetOrigin);
 		if (!(await isPermissionPatternInUse(pattern, message.instanceOrigin))) {
@@ -163,17 +185,39 @@ async function setAutofillSiteFromMessage(message, checkCurrent) {
 			await chrome.permissions.remove({ origins: [pattern] }).catch(() => false);
 		}
 	}
+	await beforeActivate?.();
 	try {
 		await checkCurrent?.();
 		await reconcileScripts();
 	} catch {
-		if (message.enabled && !previousSites.some((site) => site.targetOrigin === message.targetOrigin && site.targetPath === targetPath)) {
-			await setAutofillSite(message.instanceOrigin, message.targetOrigin, targetPath, false);
+		const grantsOf = (list) => JSON.stringify(list.filter((site) => site.targetOrigin === message.targetOrigin));
+		if (message.enabled && grantsOf(previousSites) !== grantsOf(sites)) {
+			// Put back the origin's previous grants, including page grants a
+			// site-wide grant replaced.
+			await restoreAutofillSites(message.instanceOrigin, message.targetOrigin, previousSites);
 			await reconcileScripts().catch(() => {});
 		}
 		throw new ExtensionError('AUTO_UNAVAILABLE');
 	}
 	return { instanceOrigin: message.instanceOrigin, sites };
+}
+
+// The popup can ask for a grant while filling an account the user wants filled
+// on this website from now on. The browser may close the popup during the
+// permission prompt, so the grant also remembers that account, before the
+// automatic fill of an open page looks for its account.
+function enableAutofillFromAuthorization(message, checkCurrent) {
+	const beforeActivate = message.rememberAccountId
+		? () =>
+				// Filling saves the same binding; a failure here must not undo the grant.
+				rememberAccountBinding({
+					instanceOrigin: message.instanceOrigin,
+					targetOrigin: message.targetOrigin,
+					accountId: message.rememberAccountId,
+					accountEmail: message.rememberAccountEmail,
+				}).catch(() => {})
+		: undefined;
+	return setAutofillSiteFromMessage(message, checkCurrent, { authorization: true, beforeActivate });
 }
 
 async function routeMessage(message, generation) {
@@ -197,12 +241,12 @@ async function routeMessage(message, generation) {
 		case MESSAGE.CANCEL_AUTOFILL_AUTHORIZATION: {
 			const operation = configurationQueue.then(() => {
 				if (message.type === MESSAGE.BEGIN_AUTOFILL_AUTHORIZATION) {
-					return beginAutofillAuthorization(message, generation, setAutofillSiteFromMessage);
+					return beginAutofillAuthorization(message, generation, enableAutofillFromAuthorization);
 				}
 				if (message.type === MESSAGE.CANCEL_AUTOFILL_AUTHORIZATION) {
 					return cancelAutofillAuthorization(message.requestId);
 				}
-				return completeAutofillAuthorization(message.requestId, setAutofillSiteFromMessage, generation);
+				return completeAutofillAuthorization(message.requestId, enableAutofillFromAuthorization, generation);
 			});
 			configurationQueue = operation.catch(() => {});
 			return operation;
@@ -357,7 +401,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 function queueAutofillReconciliation() {
 	const operation = configurationQueue.then(async () => {
 		await storageReady;
-		await completeAutofillAuthorization(undefined, setAutofillSiteFromMessage).catch(() => {});
+		await completeAutofillAuthorization(undefined, enableAutofillFromAuthorization).catch(() => {});
 		await pruneRevokedAutofillSites();
 		await reconcileScripts();
 	});
@@ -370,7 +414,7 @@ chrome.permissions.onAdded?.addListener(queueAutofillReconciliation);
 // stored intent; its source, document and permissions are checked again.
 const recoveringAuthorization = configurationQueue.then(async () => {
 	await storageReady;
-	await completeAutofillAuthorization(undefined, setAutofillSiteFromMessage);
+	await completeAutofillAuthorization(undefined, enableAutofillFromAuthorization);
 });
 configurationQueue = recoveringAuthorization.catch(() => {});
 

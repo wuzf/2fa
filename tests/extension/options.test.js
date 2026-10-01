@@ -119,8 +119,15 @@ beforeEach(() => {
 				(site) =>
 					site.instanceOrigin !== message.instanceOrigin ||
 					site.targetOrigin !== message.targetOrigin ||
-					(site.targetPath || '/') !== message.targetPath,
+					(message.targetPath !== '*' && (site.targetPath || '/') !== message.targetPath && !(message.enabled && site.targetPath === '*')),
 			);
+			if (message.enabled) {
+				values.autofillSites.push({
+					instanceOrigin: message.instanceOrigin,
+					targetOrigin: message.targetOrigin,
+					targetPath: message.targetPath,
+				});
+			}
 			return {
 				ok: true,
 				data: {
@@ -397,6 +404,67 @@ it('retranslates local permission errors without retrying or saving the rejected
 	expect(values.settings.instanceOrigin).toBe(A);
 	expect(sendMessage.mock.calls.map(([message]) => message.type)).toEqual(['SAVE_LANGUAGE']);
 	expect(chrome.permissions.request).toHaveBeenCalledTimes(1);
+});
+
+it('shows a site-wide grant with the page it was made on, and can narrow it to that page', async () => {
+	values.autofillSites = [{ instanceOrigin: A, targetOrigin: 'https://site-a.example', targetPath: '*', pagePath: '/mfa' }];
+	await openOptions();
+	const card = siteCard('https://site-a.example');
+	const row = card.querySelector('[data-path="*"]');
+	expect(row.querySelector('.site-path').firstChild.textContent).toBe(LOCALES['zh-CN'].optionsAutofillWholeSite);
+	expect(row.querySelector('.site-path-page').textContent).toBe('开启于 /mfa');
+	const limit = row.querySelector('.autofill-limit');
+	expect(limit.textContent).toBe(LOCALES['zh-CN'].optionsLimitToPage);
+	expect(limit.getAttribute('aria-label')).toBe('将 https://site-a.example 的自动填充限制为 /mfa');
+	expect(row.querySelector('.autofill-disable').getAttribute('aria-label')).toBe('停用 https://site-a.example 的自动填充');
+	const bindings = structuredClone(values.bindings);
+	limit.click();
+	await flush();
+	expect(sendMessage).toHaveBeenCalledWith({
+		type: 'SET_AUTOFILL_SITE',
+		instanceOrigin: A,
+		targetOrigin: 'https://site-a.example',
+		targetPath: '/mfa',
+		enabled: true,
+	});
+	expect(values.autofillSites).toEqual([{ instanceOrigin: A, targetOrigin: 'https://site-a.example', targetPath: '/mfa' }]);
+	expect(values.bindings).toEqual(bindings);
+	const narrowed = siteCard('https://site-a.example');
+	expect([...narrowed.querySelectorAll('.site-path')].map((element) => element.textContent)).toEqual(['/mfa']);
+	expect(narrowed.querySelector('.autofill-limit')).toBeNull();
+	expect(document.getElementById('site-status').textContent).toBe('https://site-a.example 现在只在 /mfa 自动填充');
+	expect(chrome.permissions.request).not.toHaveBeenCalled();
+});
+
+it('turns a site-wide grant off by its origin', async () => {
+	values.autofillSites = [{ instanceOrigin: A, targetOrigin: 'https://site-a.example', targetPath: '*', pagePath: '/mfa' }];
+	await openOptions();
+	siteCard('https://site-a.example').querySelector('[data-path="*"] .autofill-disable').click();
+	await flush();
+	expect(sendMessage).toHaveBeenCalledWith({
+		type: 'SET_AUTOFILL_SITE',
+		instanceOrigin: A,
+		targetOrigin: 'https://site-a.example',
+		targetPath: '*',
+		enabled: false,
+	});
+	expect(values.autofillSites).toEqual([]);
+	expect(document.getElementById('site-status').textContent).toBe('已停用 https://site-a.example 的自动填充');
+	expect(siteCard('https://site-a.example').querySelector('.site-autofill-state').textContent).toBe(LOCALES['zh-CN'].optionsAutofillOff);
+});
+
+it('keeps focus on the same site-wide action after an external language change', async () => {
+	values.autofillSites = [{ instanceOrigin: A, targetOrigin: 'https://site-a.example', targetPath: '*', pagePath: '/mfa' }];
+	await openOptions();
+	document.querySelector('.autofill-disable').focus();
+	for (const [listener] of chrome.runtime.onMessage.addListener.mock.calls) {
+		listener({ type: 'LANGUAGE_CHANGED', preference: 'en' }, { id: chrome.runtime.id });
+	}
+	await flush();
+	expect(document.activeElement).toBe(document.querySelector('.autofill-disable'));
+	expect(document.querySelector('.autofill-limit').textContent).toBe('This page only');
+	expect(document.querySelector('.site-path-page').textContent).toBe('Turned on at /mfa');
+	expect(document.querySelector('.site-path').firstChild.textContent).toBe('Entire website');
 });
 
 it.each(['autofill-disable', 'binding-forget'])(

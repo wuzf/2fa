@@ -20,7 +20,10 @@ const elements = Object.fromEntries(
 		template: 'account-card-template',
 		remember: 'remember-binding',
 		rememberTitle: 'remember-title',
+		rememberDescription: 'remember-description',
 		autofill: 'autofill-site',
+		autofillTitle: 'autofill-title',
+		autofillDescription: 'autofill-description',
 		actions: 'actions',
 		retry: 'retry',
 		fillFocused: 'fill-focused',
@@ -177,6 +180,7 @@ const accounts = createAccountsController({
 	onFill: fill,
 	onPreviewState,
 	onError: (error) => setStatus(error, 'error'),
+	autofillScope: () => autofill.coverage(),
 });
 const source = createSourceController({
 	instanceLink: elements.instanceLink,
@@ -219,6 +223,7 @@ const autofill = createAutofillController({
 	setStatus,
 	onInteraction: cancelInitialAutomatic,
 	onRestart: start,
+	onStateChange: () => accounts.renderRemember(),
 });
 function setBusy(value) {
 	busy = value;
@@ -410,6 +415,11 @@ async function fill(account, confirmFocused = false, { automatic = false } = {})
 	if (busy || closed || source.clockRefreshPending || session.flow?.canFill === false) {
 		return;
 	}
+	// "Autofill this account on this website" on a page without a grant asks
+	// for one now, before the first await: the browser only opens its
+	// permission prompt within this click.
+	const authorization =
+		!automatic && !confirmFocused && accounts.authorizesAutofill(account.id) ? autofill.authorizeWithFill(account) : null;
 	accounts.pause();
 	accounts.hideToast();
 	setBusy(true);
@@ -433,7 +443,11 @@ async function fill(account, confirmFocused = false, { automatic = false } = {})
 			// saved choice without creating a new one; if filling fails, the visible
 			// control reflects that choice.
 			const rememberChoice = accounts.rememberFor(account.id);
-			const remember = elements.remember.closest('label').hidden ? boundAccountIds().includes(account.id) : rememberChoice;
+			const remember = authorization
+				? true
+				: elements.remember.closest('label').hidden
+					? boundAccountIds().includes(account.id)
+					: rememberChoice;
 			session.consume();
 			const nonce = session.flow.nonce;
 			if (!automatic) {
@@ -462,8 +476,15 @@ async function fill(account, confirmFocused = false, { automatic = false } = {})
 		filled = true;
 		keepOpenForAuthorization = automatic && canAuthorizeAutofill(session.flow) && !elements.autofill.checked;
 		setStatus(() => t('popupFilled'), 'success');
+		if (authorization) {
+			keepOpenForAuthorization = await reportFillAuthorization(authorization);
+			if (closed) {
+				return;
+			}
+		}
 		if (!keepOpenForAuthorization) {
-			closeTimer = setTimeout(() => window.close(), 450);
+			// Leave time to read that autofill is now on.
+			closeTimer = setTimeout(() => window.close(), authorization ? 1500 : 450);
 		}
 	} catch (error) {
 		if (closed) {
@@ -497,6 +518,24 @@ async function fill(account, confirmFocused = false, { automatic = false } = {})
 			}
 		}
 	}
+}
+// After a fill, tell whether the grant it asked for came through. Resolves to
+// true when the popup should stay open because it did not.
+async function reportFillAuthorization(authorization) {
+	if (authorization.pending) {
+		setStatus(() => t('popupFilledAwaitingAccess'), 'loading');
+	}
+	const outcome = await authorization.done;
+	if (outcome.status === 'enabled') {
+		setStatus(() => t('popupFilledAutofillEnabled'), 'success');
+		return false;
+	}
+	if (outcome.status === 'denied') {
+		setStatus(() => t('popupFilledAutofillDenied'), 'notice');
+	} else if (outcome.status === 'failed') {
+		setStatus(() => t('popupFilledAutofillFailed', { error: localizeError(outcome.error) }), 'error');
+	}
+	return true;
 }
 async function openSource() {
 	cancelInitialAutomatic();

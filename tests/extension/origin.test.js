@@ -10,7 +10,43 @@ import {
 	originToPermissionPattern,
 	targetOriginToPermissionPattern,
 	permissionPatternCoversOrigin,
+	normalizeAutofillScope,
+	autofillCoverage,
+	AUTOFILL_SITE_SCOPE,
 } from '../../extension/src/shared/origin.js';
+
+describe('automatic fill grant scopes', () => {
+	const INSTANCE = 'https://vault.example';
+	const TARGET = 'https://login.example';
+	const grant = (targetPath, extra = {}) => ({ instanceOrigin: INSTANCE, targetOrigin: TARGET, targetPath, ...extra });
+
+	it('accepts the site marker or a canonical page path, and nothing else', () => {
+		expect(normalizeAutofillScope(AUTOFILL_SITE_SCOPE)).toBe('*');
+		expect(normalizeAutofillScope('/login')).toBe('/login');
+		// A literal page path that ends in an asterisk stays one page.
+		expect(normalizeAutofillScope('/*')).toBe('/*');
+		for (const value of [undefined, null, '', '**', 'login', '/login?x=1']) {
+			expect(() => normalizeAutofillScope(value)).toThrow();
+		}
+	});
+
+	it('reports whether a page is covered by the whole site or by its own page grant', () => {
+		expect(autofillCoverage([grant('*', { pagePath: '/a' })], INSTANCE, TARGET, '/anything')).toBe('site');
+		expect(autofillCoverage([grant('/a'), grant('*', { pagePath: '/a' })], INSTANCE, TARGET, '/a')).toBe('site');
+		expect(autofillCoverage([grant('/a')], INSTANCE, TARGET, '/a')).toBe('page');
+		expect(autofillCoverage([grant('/a')], INSTANCE, TARGET, '/b')).toBeNull();
+	});
+
+	it('never lets a grant cover another origin or another instance', () => {
+		const sites = [grant('*', { pagePath: '/a' })];
+		expect(autofillCoverage(sites, INSTANCE, 'https://login.example:8443', '/a')).toBeNull();
+		expect(autofillCoverage(sites, INSTANCE, 'http://login.example', '/a')).toBeNull();
+		expect(autofillCoverage(sites, INSTANCE, 'https://sub.login.example', '/a')).toBeNull();
+		expect(autofillCoverage(sites, 'https://other-vault.example', TARGET, '/a')).toBeNull();
+		expect(autofillCoverage(undefined, INSTANCE, TARGET, '/a')).toBeNull();
+		expect(autofillCoverage([null], INSTANCE, TARGET, '/a')).toBeNull();
+	});
+});
 
 describe('automatic fill page paths', () => {
 	it.each([

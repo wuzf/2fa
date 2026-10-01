@@ -73,7 +73,8 @@ export async function openToolbarPopup(context, extensionId, targetPage) {
 		},
 		close: async () => {
 			cdp.off('Target.receivedMessageFromTarget', receive);
-			await cdp.send('Target.closeTarget', { targetId: popupTarget.targetId });
+			// The popup closes itself shortly after some fills.
+			await cdp.send('Target.closeTarget', { targetId: popupTarget.targetId }).catch(() => {});
 			await cdp.detach();
 		},
 	};

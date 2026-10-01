@@ -1,6 +1,12 @@
 import { t } from '../shared/i18n.js';
 import { MESSAGE, createNonce } from '../shared/protocol.js';
-import { normalizeAutofillTargetOrigin, normalizeAutofillPath, targetOriginToPermissionPattern } from '../shared/origin.js';
+import {
+	normalizeAutofillTargetOrigin,
+	normalizeAutofillPath,
+	targetOriginToPermissionPattern,
+	autofillCoverage,
+	AUTOFILL_SITE_SCOPE,
+} from '../shared/origin.js';
 import { sameFlowTarget } from './flow-session.js';
 
 export function canAuthorizeAutofill(flow) {
@@ -19,34 +25,65 @@ export function canAuthorizeAutofill(flow) {
 	}
 }
 
+function localizedError(key) {
+	return Object.assign(new Error(t(key)), { i18nKey: key });
+}
+
 // Owns the permission UI intent. request() is called in the original click
 // stack, and dispose never cancels an intent already handed to the worker.
-export function createAutofillController({ elements, session, accounts, send, isBusy, setBusy, setStatus, onInteraction, onRestart }) {
+export function createAutofillController({
+	elements,
+	session,
+	accounts,
+	send,
+	isBusy,
+	setBusy,
+	setStatus,
+	onInteraction,
+	onRestart,
+	onStateChange,
+}) {
 	let closed = false;
 	let autofillState = null;
 	let pendingAutofill = null;
 	let recoveryContext = null;
 	let stateVersion = 0;
 	const currentTarget = () => recoveryContext || session.flow;
+	// null until this page's grants are known or when it cannot be authorized;
+	// otherwise 'site', 'page' (a page grant from an earlier version) or 'none'.
+	function coverage(target = currentTarget()) {
+		if (!canAuthorizeAutofill(target) || !autofillState || autofillState.instanceOrigin !== target.instanceOrigin) {
+			return null;
+		}
+		return autofillCoverage(autofillState.sites, target.instanceOrigin, target.targetOrigin, target.targetPath) || 'none';
+	}
+	function setKey(element, attribute, key) {
+		element.setAttribute(attribute === 'text' ? 'data-i18n' : `data-i18n-${attribute}`, key);
+		if (attribute === 'text') {
+			element.textContent = t(key);
+		} else {
+			element.setAttribute(attribute, t(key));
+		}
+	}
 	function renderAutofillState() {
 		const target = currentTarget();
 		const available = canAuthorizeAutofill(target);
-		const loaded = Boolean(autofillState && target && autofillState.instanceOrigin === target.instanceOrigin);
-		elements.autofill.closest('label').hidden = !available;
-		elements.autofill.disabled = isBusy() || !available || !loaded;
+		const scope = coverage(target);
+		const label = elements.autofill.closest('label');
+		label.hidden = !available;
+		elements.autofill.disabled = isBusy() || !available || scope === null;
 		elements.autofill.setAttribute('aria-busy', String(Boolean(pendingAutofill)));
 		elements.autofill.checked =
 			pendingAutofill && sameFlowTarget(pendingAutofill.expectedFlow, target)
 				? pendingAutofill.enabled
-				: Boolean(
-						loaded &&
-						autofillState.sites.some(
-							(site) =>
-								site.instanceOrigin === target.instanceOrigin &&
-								site.targetOrigin === target.targetOrigin &&
-								site.targetPath === target.targetPath,
-						),
-					);
+				: scope === 'site' || scope === 'page';
+		// A page grant keeps its page wording until it is turned off; turning
+		// autofill on always covers the whole website.
+		const page = scope === 'page';
+		setKey(elements.autofillTitle, 'text', page ? 'popupAutofillTitle' : 'popupAutofillSiteTitle');
+		setKey(elements.autofillDescription, 'text', page ? 'popupAutofillDescription' : 'popupAutofillSiteDescription');
+		setKey(label, 'title', page ? 'popupAutofillHint' : 'popupAutofillSiteHint');
+		onStateChange?.();
 	}
 	async function refreshAutofillState(expectedFlow, version) {
 		const currentStateVersion = stateVersion;
@@ -55,7 +92,7 @@ export function createAutofillController({ elements, session, accounts, send, is
 			return;
 		}
 		if (result?.instanceOrigin !== expectedFlow.instanceOrigin || !Array.isArray(result.sites)) {
-			throw Object.assign(new Error(t('popupAutofillInstanceChanged')), { i18nKey: 'popupAutofillInstanceChanged' });
+			throw localizedError('popupAutofillInstanceChanged');
 		}
 		recoveryContext = null;
 		autofillState = result;
@@ -79,65 +116,129 @@ export function createAutofillController({ elements, session, accounts, send, is
 		autofillState = result;
 		renderAutofillState();
 	}
-	async function toggleAutofillSite() {
-		onInteraction();
-		const expectedFlow = currentTarget();
-		const version = session.version;
-		const currentStateVersion = stateVersion;
-		const enabled = elements.autofill.checked;
-		if (isBusy() || closed || !canAuthorizeAutofill(expectedFlow) || autofillState?.instanceOrigin !== expectedFlow.instanceOrigin) {
-			renderAutofillState();
-			return;
-		}
-		const pending = { expectedFlow, enabled };
-		pendingAutofill = pending;
-		accounts.pause();
-		setBusy(true);
-		setStatus(() => (enabled ? t('popupEnablingAutofill') : t('popupDisablingAutofill')), 'loading');
-		let changed = false;
-		let requestId = null;
+	// Must be called in the click's own stack: the worker receives the intent
+	// before the permission prompt opens, because the browser can close this
+	// popup while that prompt is active. Resolves to { status: 'enabled', data },
+	// 'denied', 'closed' or 'failed' with the error; it never rejects.
+	function requestSiteGrant(expectedFlow, extra = {}) {
+		const requestId = createNonce();
+		const prepared = send({
+			type: MESSAGE.BEGIN_AUTOFILL_AUTHORIZATION,
+			requestId,
+			instanceOrigin: expectedFlow.instanceOrigin,
+			mode: expectedFlow.authMode,
+			configurationGeneration: expectedFlow.configurationGeneration,
+			targetOrigin: expectedFlow.targetOrigin,
+			targetPath: AUTOFILL_SITE_SCOPE,
+			pagePath: expectedFlow.targetPath,
+			expectedTarget: {
+				tabId: expectedFlow.targetTabId,
+				documentId: expectedFlow.targetDocumentId,
+				origin: expectedFlow.targetOrigin,
+				targetPath: expectedFlow.targetPath,
+			},
+			...extra,
+		}).then(
+			(data) => ({ data }),
+			(error) => ({ error }),
+		);
+		let permission;
 		try {
-			let result;
-			if (enabled) {
-				requestId = createNonce();
-				// Hand the explicit intent to the worker before opening the permission
-				// prompt. The browser can close this popup while that prompt is active.
-				const prepared = send({
-					type: MESSAGE.BEGIN_AUTOFILL_AUTHORIZATION,
-					requestId,
-					instanceOrigin: expectedFlow.instanceOrigin,
-					mode: expectedFlow.authMode,
-					configurationGeneration: expectedFlow.configurationGeneration,
-					targetOrigin: expectedFlow.targetOrigin,
-					targetPath: expectedFlow.targetPath,
-					expectedTarget: {
-						tabId: expectedFlow.targetTabId,
-						documentId: expectedFlow.targetDocumentId,
-						origin: expectedFlow.targetOrigin,
-						targetPath: expectedFlow.targetPath,
-					},
-				}).then(
-					(data) => ({ data }),
-					(error) => ({ error }),
-				);
-				// No await before request: retain the original click's user activation.
-				const granted = await chrome.permissions.request({ origins: [targetOriginToPermissionPattern(expectedFlow.targetOrigin)] });
-				if (!granted) {
-					await send({ type: MESSAGE.CANCEL_AUTOFILL_AUTHORIZATION, requestId });
-					requestId = null;
-					throw Object.assign(new Error(t('popupAutofillDenied')), { i18nKey: 'popupAutofillDenied' });
+			// No await before request: retain the original click's user activation.
+			permission = chrome.permissions.request({ origins: [targetOriginToPermissionPattern(expectedFlow.targetOrigin)] });
+		} catch (error) {
+			permission = Promise.reject(error);
+		}
+		const cancel = () => send({ type: MESSAGE.CANCEL_AUTOFILL_AUTHORIZATION, requestId }).catch(() => {});
+		return (async () => {
+			try {
+				if (!(await permission)) {
+					await cancel();
+					return { status: 'denied' };
 				}
 				const preparation = await prepared;
 				if (preparation.error) {
 					throw preparation.error;
 				}
 				if (closed) {
+					return { status: 'closed' };
+				}
+				const result = await send({ type: MESSAGE.COMPLETE_AUTOFILL_AUTHORIZATION, requestId });
+				if (result?.status !== 'enabled') {
+					throw localizedError('popupAuthorizationIncomplete');
+				}
+				if (result.instanceOrigin !== expectedFlow.instanceOrigin || !Array.isArray(result.sites)) {
+					throw localizedError('popupInstanceChanged');
+				}
+				return { status: 'enabled', data: result };
+			} catch (error) {
+				await cancel();
+				return { status: 'failed', error };
+			}
+		})();
+	}
+	// A fill click on a page without a grant, with "Autofill this account on
+	// this website" checked. The fill itself continues meanwhile; the worker
+	// also remembers the account when the grant completes.
+	function authorizeWithFill(account) {
+		const expectedFlow = currentTarget();
+		const version = session.version;
+		const currentStateVersion = stateVersion;
+		let pending = true;
+		const done = requestSiteGrant(expectedFlow, { rememberAccount: account }).then((outcome) => {
+			pending = false;
+			if (
+				outcome.status === 'enabled' &&
+				!closed &&
+				currentStateVersion === stateVersion &&
+				version === session.version &&
+				sameFlowTarget(expectedFlow, currentTarget())
+			) {
+				autofillState = outcome.data;
+				renderAutofillState();
+			}
+			return outcome;
+		});
+		return {
+			done,
+			get pending() {
+				return pending;
+			},
+		};
+	}
+	async function toggleAutofillSite() {
+		onInteraction();
+		const expectedFlow = currentTarget();
+		const version = session.version;
+		const currentStateVersion = stateVersion;
+		const enabled = elements.autofill.checked;
+		const scope = coverage(expectedFlow);
+		if (isBusy() || closed || scope === null) {
+			renderAutofillState();
+			return;
+		}
+		// Turning a page grant off keeps the page wording in the messages.
+		const site = enabled || scope !== 'page';
+		const pending = { expectedFlow, enabled };
+		pendingAutofill = pending;
+		accounts.pause();
+		setBusy(true);
+		setStatus(() => t(enabled ? 'popupEnablingAutofill' : site ? 'popupDisablingSiteAutofill' : 'popupDisablingAutofill'), 'loading');
+		let changed = false;
+		try {
+			let result;
+			if (enabled) {
+				const outcome = await requestSiteGrant(expectedFlow);
+				if (outcome.status === 'closed') {
 					return;
 				}
-				result = await send({ type: MESSAGE.COMPLETE_AUTOFILL_AUTHORIZATION, requestId });
-				if (result?.status !== 'enabled') {
-					throw Object.assign(new Error(t('popupAuthorizationIncomplete')), { i18nKey: 'popupAuthorizationIncomplete' });
+				if (outcome.status === 'denied') {
+					throw localizedError('popupAutofillDenied');
 				}
+				if (outcome.status === 'failed') {
+					throw outcome.error;
+				}
+				result = outcome.data;
 			} else {
 				result = await session.serialize(async () => {
 					if (
@@ -146,7 +247,7 @@ export function createAutofillController({ elements, session, accounts, send, is
 						version !== session.version ||
 						!sameFlowTarget(expectedFlow, currentTarget())
 					) {
-						throw Object.assign(new Error(t('popupAuthorizationTargetChanged')), { i18nKey: 'popupAuthorizationTargetChanged' });
+						throw localizedError('popupAuthorizationTargetChanged');
 					}
 					// Revocation only removes the captured policy and must work without
 					// reading accounts. The worker clears the pending nonce after saving.
@@ -155,13 +256,14 @@ export function createAutofillController({ elements, session, accounts, send, is
 						type: MESSAGE.SET_AUTOFILL_SITE,
 						instanceOrigin: expectedFlow.instanceOrigin,
 						targetOrigin: expectedFlow.targetOrigin,
-						targetPath: expectedFlow.targetPath,
+						// Turning a site-wide grant off removes the origin's grants.
+						targetPath: scope === 'site' ? AUTOFILL_SITE_SCOPE : expectedFlow.targetPath,
 						enabled: false,
 					});
 				});
 			}
 			if (result?.instanceOrigin !== expectedFlow.instanceOrigin || !Array.isArray(result.sites)) {
-				throw Object.assign(new Error(t('popupInstanceChanged')), { i18nKey: 'popupInstanceChanged' });
+				throw localizedError('popupInstanceChanged');
 			}
 			changed = true;
 			if (!closed && currentStateVersion === stateVersion && version === session.version && sameFlowTarget(expectedFlow, currentTarget())) {
@@ -174,16 +276,13 @@ export function createAutofillController({ elements, session, accounts, send, is
 					}
 				} else {
 					// Keep the saved result even if subsequent code previews cannot connect.
-					setStatus(() => t('popupAutofillDisabled'), 'success');
+					setStatus(() => t(site ? 'popupSiteAutofillDisabled' : 'popupAutofillDisabled'), 'success');
 					// Revocation advances the configuration generation. Renew authorization
 					// directly: a filtered or unavailable preview cannot renew it for us.
 					await recoverAutofillState(version, () => sameFlowTarget(expectedFlow, currentTarget()), expectedFlow).catch(() => {});
 				}
 			}
 		} catch (error) {
-			if (requestId && !changed) {
-				await send({ type: MESSAGE.CANCEL_AUTOFILL_AUTHORIZATION, requestId }).catch(() => {});
-			}
 			if (!closed && currentStateVersion === stateVersion && version === session.version) {
 				setStatus(error, 'error');
 				elements.actions.hidden = false;
@@ -210,6 +309,8 @@ export function createAutofillController({ elements, session, accounts, send, is
 		render: renderAutofillState,
 		refresh: refreshAutofillState,
 		recover: recoverAutofillState,
+		coverage: () => coverage(),
+		authorizeWithFill,
 		reset() {
 			stateVersion += 1;
 			autofillState = null;

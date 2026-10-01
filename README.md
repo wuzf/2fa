@@ -22,7 +22,7 @@
 
 安装「2FA 验证助手」：**[Chrome 应用商店](https://chromewebstore.google.com/detail/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/lifeiloiefdlbohelpjajdbopeocalhl)** · **[Microsoft Edge 商店](https://microsoftedge.microsoft.com/addons/detail/kmchncmoddhdlbpfoejeahdjhieghklm)** · **[Firefox 附加组件商店](https://addons.mozilla.org/zh-CN/firefox/addon/2fa-%E9%AA%8C%E8%AF%81%E5%8A%A9%E6%89%8B/)**。
 
-请使用对应浏览器打开安装链接。安装后，在扩展设置中填写自己的 2FA 实例地址，并在同一浏览器中登录实例，即可查看、复制和填充 TOTP 验证码；自动填充需在目标验证页面单独开启并授权。扩展需配合已部署的本项目使用，界面支持上述 15 种语言。Firefox 桌面版与 Android 版均要求 153 及以上版本，并使用普通标签页；不支持桌面容器标签页和两端的隐私标签页。Android 适配已加入当前源码，兼容的商店新版待发布，尚未完成 Firefox Android 实机验证。Firefox Android 不提供扩展快捷键。Edge Android 已有用户实测可用。
+请使用对应浏览器打开安装链接。安装后，在扩展设置中填写自己的 2FA 实例地址，并在同一浏览器中登录实例，即可查看、复制和填充 TOTP 验证码；自动填充按网站授权，可在首次填充时一并开启。扩展需配合已部署的本项目使用，界面支持上述 15 种语言。Firefox 桌面版与 Android 版均要求 153 及以上版本，并使用普通标签页；不支持桌面容器标签页和两端的隐私标签页。Android 适配已加入当前源码，兼容的商店新版待发布，尚未完成 Firefox Android 实机验证。Firefox Android 不提供扩展快捷键。Edge Android 已有用户实测可用。
 
 [安装与使用指南](docs/BROWSER_EXTENSION.md) · [Chrome / Edge 隐私政策](extension/PRIVACY.md) · [Firefox 隐私政策](extension/PRIVACY_FIREFOX.md)
 
@@ -196,7 +196,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 ### Chrome / Edge / Firefox 验证码辅助填充
 
-在目标网站点击扩展选择账户，或按 `Ctrl+Shift+U` 填入已绑定账户的当前 TOTP。按页面授权后，可自动检测验证码框并填充；多个账户匹配时显示选择面板。支持单框和 6/8 格输入，不主动提交表单。
+在目标网站点击扩展选择账户，或按 `Ctrl+Shift+U` 填入已绑定账户的当前 TOTP。为网站授权后，可在该网站自动检测验证码框并填充；多个账户匹配时显示选择面板。支持单框和 6/8 格输入，不主动提交表单。
 
 扩展使用网页登录会话，支持明确启用离线缓存，均无需保持主网页打开。网页登录模式在后台临时读取密钥，离线模式则在本机保留独立密钥缓存，断网后仍可取码。种子不传给弹窗或目标网站，离线缓存没有额外密码加密。支持开放 Shadow DOM 与同源 iframe；暂不支持 HOTP、跨域 iframe、关闭的 Shadow DOM 或隐私模式。
 

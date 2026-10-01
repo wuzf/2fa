@@ -3,6 +3,9 @@ import {
 	normalizeInstanceOrigin,
 	normalizeAutofillTargetOrigin,
 	normalizeAutofillPath,
+	normalizeAutofillScope,
+	AUTOFILL_SITE_SCOPE,
+	autofillCoverage,
 	originToPermissionPattern,
 	targetOriginToPermissionPattern,
 	permissionPatternCoversOrigin,
@@ -33,20 +36,42 @@ function normalizeOrigin(value, normalize = normalizeInstanceOrigin) {
 	}
 }
 
-function normalizeSite(instanceOrigin, targetOrigin, targetPath) {
-	const site = {
+function normalizeScope(instanceOrigin, targetOrigin, targetPath) {
+	const scope = {
 		instanceOrigin: normalizeOrigin(instanceOrigin),
 		targetOrigin: normalizeOrigin(targetOrigin, normalizeAutofillTargetOrigin),
-		targetPath: normalizeOrigin(targetPath, normalizeAutofillPath),
+		targetPath: normalizeOrigin(targetPath, normalizeAutofillScope),
 	};
-	if (site.instanceOrigin === site.targetOrigin) {
+	if (scope.instanceOrigin === scope.targetOrigin) {
 		throw policyError('INVALID_REQUEST', 'error_AUTOFILL_SELF');
+	}
+	return scope;
+}
+
+// A site-wide grant also keeps the page where it was made, so the settings page
+// can narrow it back to that page. A page grant has exactly three fields.
+function normalizeSite(instanceOrigin, targetOrigin, targetPath, pagePath) {
+	const site = normalizeScope(instanceOrigin, targetOrigin, targetPath);
+	if (site.targetPath === AUTOFILL_SITE_SCOPE) {
+		site.pagePath = normalizeOrigin(pagePath, normalizeAutofillPath);
 	}
 	return site;
 }
 
 function sameSite(left, right) {
 	return left.instanceOrigin === right.instanceOrigin && left.targetOrigin === right.targetOrigin && left.targetPath === right.targetPath;
+}
+
+function sameOrigin(left, right) {
+	return left.instanceOrigin === right.instanceOrigin && left.targetOrigin === right.targetOrigin;
+}
+
+function sameRecord(stored, site) {
+	return (
+		sameSite(stored || {}, site) &&
+		stored.pagePath === site.pagePath &&
+		Object.keys(stored).length === (site.targetPath === AUTOFILL_SITE_SCOPE ? 4 : 3)
+	);
 }
 
 async function requireCurrentInstance(instanceOrigin) {
@@ -76,7 +101,7 @@ export async function readAutofillSites(instanceOrigin) {
 	for (const item of result[STORAGE_KEY]) {
 		try {
 			// Older origin-only grants must never become a wildcard or a root-page grant.
-			const site = normalizeSite(item?.instanceOrigin, item?.targetOrigin, item?.targetPath);
+			const site = normalizeSite(item?.instanceOrigin, item?.targetOrigin, item?.targetPath, item?.pagePath);
 			const key = JSON.stringify([site.instanceOrigin, site.targetOrigin, site.targetPath]);
 			if (!seen.has(key)) {
 				seen.add(key);
@@ -92,10 +117,39 @@ export async function readAutofillSites(instanceOrigin) {
 	return source === undefined ? sites : sites.filter((site) => site.instanceOrigin === source);
 }
 
+function nextSites(sites, site, enabled) {
+	if (site.targetPath === AUTOFILL_SITE_SCOPE) {
+		// One site-wide grant replaces the origin's page grants; turning it off
+		// removes every grant of the origin.
+		const others = sites.filter((item) => !sameOrigin(item, site));
+		return enabled ? [...others, site] : others;
+	}
+	if (!enabled) {
+		return sites.filter((item) => !sameSite(item, site));
+	}
+	// Enabling one page of a site-wide origin narrows the grant to that page.
+	const kept = sites.filter((item) => !sameOrigin(item, site) || item.targetPath !== AUTOFILL_SITE_SCOPE);
+	return kept.some((item) => sameSite(item, site)) ? kept : [...kept, site];
+}
+
+async function writeSites(instanceOrigin, sites, next) {
+	// Permissions/storage reads can yield while the user switches instances.
+	await requireCurrentInstance(instanceOrigin);
+	if (JSON.stringify(next) !== JSON.stringify(sites)) {
+		await chrome.storage.local.set({ [STORAGE_KEY]: next });
+	}
+	return next.filter((item) => item.instanceOrigin === instanceOrigin);
+}
+
 // Permission requests/removal belong to the caller so shared host permissions survive.
 // Resolve to the current instance's saved sites after the requested change.
-export async function setAutofillSite(instanceOrigin, targetOrigin, targetPath, enabled) {
-	const site = normalizeSite(instanceOrigin, targetOrigin, targetPath);
+// targetPath is a page path or AUTOFILL_SITE_SCOPE; a site-wide grant needs
+// the page it was made on as pagePath.
+export async function setAutofillSite(instanceOrigin, targetOrigin, targetPath, enabled, { pagePath } = {}) {
+	const site =
+		enabled === true
+			? normalizeSite(instanceOrigin, targetOrigin, targetPath, pagePath)
+			: normalizeScope(instanceOrigin, targetOrigin, targetPath);
 	if (typeof enabled !== 'boolean') {
 		throw policyError('INVALID_REQUEST', 'error_AUTOFILL_TOGGLE_INVALID');
 	}
@@ -105,17 +159,28 @@ export async function setAutofillSite(instanceOrigin, targetOrigin, targetPath, 
 			throw policyError('PERMISSION_REQUIRED', 'error_AUTOFILL_PERMISSION');
 		}
 		const sites = await readAutofillSites();
-		const exists = sites.some((item) => sameSite(item, site));
-		if (enabled && !exists && sites.length === MAX_SITES) {
+		const next = nextSites(sites, site, enabled);
+		if (enabled && next.length > MAX_SITES) {
 			throw policyError('INVALID_REQUEST', 'error_AUTOFILL_LIMIT');
 		}
-		const next = enabled ? (exists ? sites : [...sites, site]) : sites.filter((item) => !sameSite(item, site));
-		// Permissions/storage reads can yield while the user switches instances.
-		await requireCurrentInstance(site.instanceOrigin);
-		if (enabled !== exists) {
-			await chrome.storage.local.set({ [STORAGE_KEY]: next });
-		}
-		return next.filter((item) => item.instanceOrigin === site.instanceOrigin);
+		return writeSites(site.instanceOrigin, sites, next);
+	});
+}
+
+// Puts back one origin's grants exactly as they were read before a change
+// whose follow-up work failed. The permission check already passed for them.
+export async function restoreAutofillSites(instanceOrigin, targetOrigin, previous) {
+	const origin = {
+		instanceOrigin: normalizeOrigin(instanceOrigin),
+		targetOrigin: normalizeOrigin(targetOrigin, normalizeAutofillTargetOrigin),
+	};
+	const restored = previous
+		.filter((item) => sameOrigin(item, origin))
+		.map((item) => normalizeSite(item.instanceOrigin, item.targetOrigin, item.targetPath, item.pagePath));
+	return serializeWrite(async () => {
+		await requireCurrentInstance(origin.instanceOrigin);
+		const sites = await readAutofillSites();
+		return writeSites(origin.instanceOrigin, sites, [...sites.filter((item) => !sameOrigin(item, origin)), ...restored]);
 	});
 }
 
@@ -140,9 +205,7 @@ export function pruneRevokedAutofillSites(removedPatterns = []) {
 		// Clean obsolete origin-only records as part of startup/revocation cleanup.
 		if (
 			raw !== undefined &&
-			(!Array.isArray(raw) ||
-				raw.length !== next.length ||
-				raw.some((site, index) => !sameSite(site || {}, next[index]) || Object.keys(site).length !== 3))
+			(!Array.isArray(raw) || raw.length !== next.length || raw.some((site, index) => !sameRecord(site, next[index])))
 		) {
 			await chrome.storage.local.set({ [STORAGE_KEY]: next });
 		}
@@ -151,13 +214,14 @@ export function pruneRevokedAutofillSites(removedPatterns = []) {
 }
 
 // Saved preferences from an inactive instance or a revoked permission never authorize work.
+// targetPath is the live page path; a site-wide grant covers every path of its origin.
 export async function hasAutofillSite(instanceOrigin, targetOrigin, targetPath) {
-	const site = normalizeSite(instanceOrigin, targetOrigin, targetPath);
+	const site = normalizeScope(instanceOrigin, targetOrigin, normalizeOrigin(targetPath, normalizeAutofillPath));
 	if ((await getSettings()).instanceOrigin !== site.instanceOrigin) {
 		return false;
 	}
 	const sites = await readAutofillSites(site.instanceOrigin);
-	if (!sites.some((item) => sameSite(item, site)) || !(await hasPermission(site.targetOrigin))) {
+	if (!autofillCoverage(sites, site.instanceOrigin, site.targetOrigin, site.targetPath) || !(await hasPermission(site.targetOrigin))) {
 		return false;
 	}
 	return (await getSettings()).instanceOrigin === site.instanceOrigin;
