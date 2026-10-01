@@ -82,7 +82,13 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 Рабочий процесс автоматически сохраняет имя Worker, привязки KV и общие настройки развёртывания вашего репозитория, затем повторно развёртывает **тот же Worker**. Существующие файлы рабочих процессов в репозитории также сохраняются.
 
-> **Если Sync Upstream отсутствует**: репозиторий, созданный при развёртывании одним нажатием, может не содержать рабочих процессов. Только в этом случае добавьте `.github/workflows/sync-upstream.yml` в свой репозиторий, скопируйте его содержимое из <https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml> и создайте один коммит. Затем выполните описанные выше шаги обновления.
+> **Если Sync Upstream отсутствует**: при развёртывании одним нажатием папка `.github/workflows` не копируется при импорте репозитория, поэтому в новом репозитории нет рабочих процессов и перед первым обновлением нужно добавить эту точку входа. Замените `OWNER/REPO` в ссылке ниже на свой репозиторий (например, `alice/2fa`) и откройте её в браузере. GitHub заполнит имя и содержимое файла; нажмите **Commit changes**:
+>
+> ```text
+> https://github.com/OWNER/REPO/new/main?filename=.github/workflows/sync-upstream.yml&value=%23%20Save%20as%20.github%2Fworkflows%2Fsync-upstream.yml%20in%20your%20repository.%0A%23%20The%20upgrade%20steps%20come%20from%20wuzf%2F2fa%2C%20so%20this%20file%20never%20needs%20updating.%0Aname%3A%20Sync%20Upstream%0A%0Aon%3A%0A%20%20workflow_dispatch%3A%0A%20%20%20%20inputs%3A%0A%20%20%20%20%20%20upstream_ref%3A%0A%20%20%20%20%20%20%20%20description%3A%20Upstream%20branch%20or%20tag%20to%20sync%0A%20%20%20%20%20%20%20%20required%3A%20false%0A%20%20%20%20%20%20%20%20default%3A%20main%0A%0Apermissions%3A%0A%20%20contents%3A%20write%0A%0Ajobs%3A%0A%20%20sync%3A%0A%20%20%20%20uses%3A%20wuzf%2F2fa%2F.github%2Fworkflows%2Fsync-upstream.yml%40main%0A%20%20%20%20with%3A%0A%20%20%20%20%20%20upstream_ref%3A%20%24%7B%7B%20inputs.upstream_ref%20%7D%7D%0A
+> ```
+>
+> Можно также самостоятельно создать `.github/workflows/sync-upstream.yml` и скопировать содержимое из <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml>. Точка входа занимает всего несколько строк, а шаги обновления берутся из исходного репозитория, поэтому её никогда не нужно менять. Затем выполните описанные выше шаги обновления.
 
 > **Если предыдущее обновление завершилось ошибкой `without workflows permission`**: после публикации исправления в ветке `main` исходного репозитория существующие рабочие процессы **Sync Upstream**, содержащие шаг автоматического объединения конфигурации развёртывания, смогут выполнить обновление по инструкции выше без правки YAML и настройки PAT. Запустите новое выполнение с `main`; старые теги выпусков не содержат исправления. В остальных случаях см. [устранение проблем при обновлении](docs/DEPLOYMENT.md#升级故障排查) (на китайском языке).
 

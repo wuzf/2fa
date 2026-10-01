@@ -246,7 +246,13 @@ CORS 采用动态同源策略：仅允许与当前请求 Host 同源的来源（
 
 工作流会自动合并您仓库中的 Worker 名称、KV 绑定等部署配置，保留仓库中已有的工作流文件。升级到 1.11.0 时会同时带入 `SECRETS_STORE` 绑定和创建它的 `migrations`，部署时自动创建，无需手动操作。Cloudflare 会重新部署同一个 Worker；如未自动部署，在 **Deployments** 页面重新部署最新提交。
 
-**没有 Sync Upstream 入口时**：一键部署创建的仓库可能不包含工作流。此时才需要在自己的仓库中新增 `.github/workflows/sync-upstream.yml`，内容复制自上游文件 <https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，提交一次即可。之后按上面步骤升级。
+**没有 Sync Upstream 入口时**：一键部署导入仓库时不会复制 `.github/workflows`，所以新建的仓库里没有这个工作流，第一次升级前要先补上。把下面链接里的 `OWNER/REPO` 换成您的仓库（例如 `alice/2fa`）后在浏览器打开，GitHub 会填好文件名和内容，点 **Commit changes** 即可：
+
+```text
+https://github.com/OWNER/REPO/new/main?filename=.github/workflows/sync-upstream.yml&value=%23%20Save%20as%20.github%2Fworkflows%2Fsync-upstream.yml%20in%20your%20repository.%0A%23%20The%20upgrade%20steps%20come%20from%20wuzf%2F2fa%2C%20so%20this%20file%20never%20needs%20updating.%0Aname%3A%20Sync%20Upstream%0A%0Aon%3A%0A%20%20workflow_dispatch%3A%0A%20%20%20%20inputs%3A%0A%20%20%20%20%20%20upstream_ref%3A%0A%20%20%20%20%20%20%20%20description%3A%20Upstream%20branch%20or%20tag%20to%20sync%0A%20%20%20%20%20%20%20%20required%3A%20false%0A%20%20%20%20%20%20%20%20default%3A%20main%0A%0Apermissions%3A%0A%20%20contents%3A%20write%0A%0Ajobs%3A%0A%20%20sync%3A%0A%20%20%20%20uses%3A%20wuzf%2F2fa%2F.github%2Fworkflows%2Fsync-upstream.yml%40main%0A%20%20%20%20with%3A%0A%20%20%20%20%20%20upstream_ref%3A%20%24%7B%7B%20inputs.upstream_ref%20%7D%7D%0A
+```
+
+也可以手动新建 `.github/workflows/sync-upstream.yml`，内容复制自 <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml>。这个入口只有十几行，实际的升级步骤由上游的 Sync Upstream 工作流提供，以后不用再更新它。提交入口后 Cloudflare 会按当前版本重新部署一次，这是正常现象。之后按上面步骤升级。已有完整版入口的仓库不用改动；换成这个短入口后，以后同步流程的修复也会自动生效。
 
 工作流运行摘要中会展示 `wrangler.toml` 与上游的 diff，如果您维护了特殊配置，可据此确认合并结果。
 
@@ -258,7 +264,7 @@ CORS 采用动态同源策略：仅允许与当前请求 Host 同源的来源（
 
 **提示 `refusing to allow a GitHub App to create or update workflow ... without workflows permission`**：这是旧同步流程尝试更新工作流文件时触发的权限错误。修复发布到上游 `main` 后，包含 **Merge deployment config**（自动合并部署配置）步骤的现有 **Sync Upstream** 工作流会自动获得兼容修复，包括 [Issue #18](https://github.com/wuzf/2fa/issues/18) 对应的版本。直接选择 `main`，通过 **Run workflow** 发起一次新运行即可，无需手动修改 YAML、增加令牌权限或配置 PAT。不要选择不含修复的旧版本标签。
 
-同步会保留您仓库中原有的工作流文件，因此上游新增的统计等工作流不会影响应用升级。极早期、不包含自动合并部署配置步骤的入口无法自动获得这个修复，需要先将入口更新为上面的上游文件；完全没有入口的仓库也需要先完成一次安装。
+同步会保留您仓库中原有的工作流文件，因此上游新增的统计等工作流不会影响应用升级。极早期、不包含自动合并部署配置步骤的入口无法自动获得这个修复，需要先把入口换成上面的短入口；完全没有入口的仓库按上面的方法补上即可。
 
 ### 命令行部署用户
 

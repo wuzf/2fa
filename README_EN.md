@@ -82,7 +82,13 @@ One-click deploy creates an independent repository (not a Fork). Upgrades are do
 
 The workflow automatically preserves your repository's Worker name, KV bindings, and common deployment settings, and redeploys **the same Worker**. Existing workflow files in your repository are also preserved.
 
-> **If Sync Upstream is missing**: A repository created by one-click deploy may not include workflows. Only in that case, add `.github/workflows/sync-upstream.yml` to your repository, copy its contents from <https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>, and commit it once. Then follow the upgrade steps above.
+> **If Sync Upstream is missing**: One-click deploy does not copy `.github/workflows` when it imports the repository, so a new repository has no workflows and needs this entry before the first upgrade. Replace `OWNER/REPO` in the link below with your repository (for example `alice/2fa`) and open it in your browser. GitHub fills in the file name and contents; click **Commit changes**:
+>
+> ```text
+> https://github.com/OWNER/REPO/new/main?filename=.github/workflows/sync-upstream.yml&value=%23%20Save%20as%20.github%2Fworkflows%2Fsync-upstream.yml%20in%20your%20repository.%0A%23%20The%20upgrade%20steps%20come%20from%20wuzf%2F2fa%2C%20so%20this%20file%20never%20needs%20updating.%0Aname%3A%20Sync%20Upstream%0A%0Aon%3A%0A%20%20workflow_dispatch%3A%0A%20%20%20%20inputs%3A%0A%20%20%20%20%20%20upstream_ref%3A%0A%20%20%20%20%20%20%20%20description%3A%20Upstream%20branch%20or%20tag%20to%20sync%0A%20%20%20%20%20%20%20%20required%3A%20false%0A%20%20%20%20%20%20%20%20default%3A%20main%0A%0Apermissions%3A%0A%20%20contents%3A%20write%0A%0Ajobs%3A%0A%20%20sync%3A%0A%20%20%20%20uses%3A%20wuzf%2F2fa%2F.github%2Fworkflows%2Fsync-upstream.yml%40main%0A%20%20%20%20with%3A%0A%20%20%20%20%20%20upstream_ref%3A%20%24%7B%7B%20inputs.upstream_ref%20%7D%7D%0A
+> ```
+>
+> You can also create `.github/workflows/sync-upstream.yml` yourself and copy its contents from <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml>. The entry is only a few lines; the upgrade steps come from upstream, so it never needs updating. Then follow the upgrade steps above.
 
 > **If an earlier upgrade failed with `without workflows permission`**: Once the fix is published to upstream `main`, existing **Sync Upstream** workflows with the automatic deployment config merge step can upgrade using the steps above, without editing YAML or configuring a PAT. Start a new run with `main`; older release tags do not include the fix. For other cases, see [upgrade troubleshooting](docs/DEPLOYMENT.md#升级故障排查) (Chinese).
 

@@ -82,6 +82,14 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 工作流程會自動保留你目前儲存庫裡的 Worker 名稱、KV 綁定與常見部署設定，並重新部署**同一個 Worker**。儲存庫中已有的工作流程檔案也會一併保留。
 
+> **沒有 Sync Upstream 入口時**：一鍵部署匯入儲存庫時不會複製 `.github/workflows`，所以新建立的儲存庫裡沒有這個工作流程，第一次升級前要先補上。把下面連結裡的 `OWNER/REPO` 換成你的儲存庫（例如 `alice/2fa`）後在瀏覽器開啟，GitHub 會填好檔名和內容，點選 **Commit changes** 即可：
+>
+> ```text
+> https://github.com/OWNER/REPO/new/main?filename=.github/workflows/sync-upstream.yml&value=%23%20Save%20as%20.github%2Fworkflows%2Fsync-upstream.yml%20in%20your%20repository.%0A%23%20The%20upgrade%20steps%20come%20from%20wuzf%2F2fa%2C%20so%20this%20file%20never%20needs%20updating.%0Aname%3A%20Sync%20Upstream%0A%0Aon%3A%0A%20%20workflow_dispatch%3A%0A%20%20%20%20inputs%3A%0A%20%20%20%20%20%20upstream_ref%3A%0A%20%20%20%20%20%20%20%20description%3A%20Upstream%20branch%20or%20tag%20to%20sync%0A%20%20%20%20%20%20%20%20required%3A%20false%0A%20%20%20%20%20%20%20%20default%3A%20main%0A%0Apermissions%3A%0A%20%20contents%3A%20write%0A%0Ajobs%3A%0A%20%20sync%3A%0A%20%20%20%20uses%3A%20wuzf%2F2fa%2F.github%2Fworkflows%2Fsync-upstream.yml%40main%0A%20%20%20%20with%3A%0A%20%20%20%20%20%20upstream_ref%3A%20%24%7B%7B%20inputs.upstream_ref%20%7D%7D%0A
+> ```
+>
+> 也可以手動新增 `.github/workflows/sync-upstream.yml`，內容複製自 <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml>。這個入口只有十幾行，升級步驟由上游提供，以後不必再更新它。之後依照上面步驟升級。
+
 ---
 
 ## 📖 使用指南

@@ -82,7 +82,13 @@ La distribuzione con un clic crea un repository indipendente (non un Fork). Gli 
 
 Il workflow preserva automaticamente il nome del Worker, le associazioni KV e le impostazioni di distribuzione comuni del repository e ridistribuisce **lo stesso Worker**. Vengono conservati anche i file dei workflow già presenti nel repository.
 
-> **Se Sync Upstream non è presente**: un repository creato con la distribuzione con un clic potrebbe non includere i workflow. Solo in questo caso, aggiungi `.github/workflows/sync-upstream.yml` al repository, copia il contenuto da <https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml> e crea un commit. Poi segui i passaggi di aggiornamento indicati sopra.
+> **Se Sync Upstream non è presente**: la distribuzione con un clic non copia `.github/workflows` quando importa il repository, quindi un repository nuovo non contiene workflow e ha bisogno di questo punto di ingresso prima del primo aggiornamento. Sostituisci `OWNER/REPO` nel link qui sotto con il tuo repository (ad esempio `alice/2fa`) e aprilo nel browser. GitHub compila nome e contenuto del file; fai clic su **Commit changes**:
+>
+> ```text
+> https://github.com/OWNER/REPO/new/main?filename=.github/workflows/sync-upstream.yml&value=%23%20Save%20as%20.github%2Fworkflows%2Fsync-upstream.yml%20in%20your%20repository.%0A%23%20The%20upgrade%20steps%20come%20from%20wuzf%2F2fa%2C%20so%20this%20file%20never%20needs%20updating.%0Aname%3A%20Sync%20Upstream%0A%0Aon%3A%0A%20%20workflow_dispatch%3A%0A%20%20%20%20inputs%3A%0A%20%20%20%20%20%20upstream_ref%3A%0A%20%20%20%20%20%20%20%20description%3A%20Upstream%20branch%20or%20tag%20to%20sync%0A%20%20%20%20%20%20%20%20required%3A%20false%0A%20%20%20%20%20%20%20%20default%3A%20main%0A%0Apermissions%3A%0A%20%20contents%3A%20write%0A%0Ajobs%3A%0A%20%20sync%3A%0A%20%20%20%20uses%3A%20wuzf%2F2fa%2F.github%2Fworkflows%2Fsync-upstream.yml%40main%0A%20%20%20%20with%3A%0A%20%20%20%20%20%20upstream_ref%3A%20%24%7B%7B%20inputs.upstream_ref%20%7D%7D%0A
+> ```
+>
+> Puoi anche creare `.github/workflows/sync-upstream.yml` a mano e copiarne il contenuto da <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml>. Il punto di ingresso è di poche righe; i passaggi di aggiornamento arrivano dal repository originale, quindi non va mai aggiornato. Poi segui i passaggi di aggiornamento indicati sopra.
 
 > **Se un aggiornamento precedente è fallito con `without workflows permission`**: una volta pubblicata la correzione nel ramo upstream `main`, i workflow **Sync Upstream** esistenti che includono il passaggio di unione automatica della configurazione di distribuzione possono eseguire l'aggiornamento con i passaggi sopra, senza modificare YAML né configurare un PAT. Avvia una nuova esecuzione con `main`; i tag delle versioni precedenti non includono la correzione. Per gli altri casi, consulta la [risoluzione dei problemi di aggiornamento](docs/DEPLOYMENT.md#升级故障排查) (in cinese).
 

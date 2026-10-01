@@ -82,7 +82,13 @@ Tek tıkla dağıtım bağımsız bir depo oluşturur (Fork değildir). Yükselt
 
 İş akışı, deponuzun Worker adını, KV bağlamalarını ve yaygın dağıtım ayarlarını otomatik olarak korur ve **aynı Worker'ı** yeniden dağıtır. Deponuzdaki mevcut iş akışı dosyaları da korunur.
 
-> **Sync Upstream yoksa**: Tek tıkla dağıtımla oluşturulan depo iş akışlarını içermeyebilir. Yalnızca bu durumda deponuza `.github/workflows/sync-upstream.yml` dosyasını ekleyin, içeriğini <https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml> adresinden kopyalayın ve bir kez commit yapın. Ardından yukarıdaki yükseltme adımlarını izleyin.
+> **Sync Upstream yoksa**: Tek tıkla dağıtım, depoyu içe aktarırken `.github/workflows` klasörünü kopyalamaz; bu nedenle yeni oluşturulan depoda iş akışı bulunmaz ve ilk yükseltmeden önce bu giriş dosyasının eklenmesi gerekir. Aşağıdaki bağlantıda `OWNER/REPO` kısmını kendi deponuzla (örneğin `alice/2fa`) değiştirip tarayıcıda açın. GitHub dosya adını ve içeriğini doldurur; **Commit changes** düğmesine tıklayın:
+>
+> ```text
+> https://github.com/OWNER/REPO/new/main?filename=.github/workflows/sync-upstream.yml&value=%23%20Save%20as%20.github%2Fworkflows%2Fsync-upstream.yml%20in%20your%20repository.%0A%23%20The%20upgrade%20steps%20come%20from%20wuzf%2F2fa%2C%20so%20this%20file%20never%20needs%20updating.%0Aname%3A%20Sync%20Upstream%0A%0Aon%3A%0A%20%20workflow_dispatch%3A%0A%20%20%20%20inputs%3A%0A%20%20%20%20%20%20upstream_ref%3A%0A%20%20%20%20%20%20%20%20description%3A%20Upstream%20branch%20or%20tag%20to%20sync%0A%20%20%20%20%20%20%20%20required%3A%20false%0A%20%20%20%20%20%20%20%20default%3A%20main%0A%0Apermissions%3A%0A%20%20contents%3A%20write%0A%0Ajobs%3A%0A%20%20sync%3A%0A%20%20%20%20uses%3A%20wuzf%2F2fa%2F.github%2Fworkflows%2Fsync-upstream.yml%40main%0A%20%20%20%20with%3A%0A%20%20%20%20%20%20upstream_ref%3A%20%24%7B%7B%20inputs.upstream_ref%20%7D%7D%0A
+> ```
+>
+> `.github/workflows/sync-upstream.yml` dosyasını kendiniz oluşturup içeriğini <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml> adresinden de kopyalayabilirsiniz. Giriş dosyası yalnızca birkaç satırdır; yükseltme adımları üst depodan gelir, bu yüzden hiç güncellenmesi gerekmez. Ardından yukarıdaki yükseltme adımlarını izleyin.
 
 > **Önceki bir yükseltme `without workflows permission` hatasıyla başarısız olduysa**: Düzeltme kaynak deponun `main` dalında yayımlandığında, otomatik dağıtım yapılandırması birleştirme adımına sahip mevcut **Sync Upstream** iş akışları, YAML düzenlemeden veya PAT yapılandırmadan yukarıdaki adımlarla yükseltme yapabilir. `main` ile yeni bir çalıştırma başlatın; eski sürüm etiketleri düzeltmeyi içermez. Diğer durumlar için [yükseltme sorunlarını giderme](docs/DEPLOYMENT.md#升级故障排查) bölümüne bakın (Çince).
 

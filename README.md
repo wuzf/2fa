@@ -82,7 +82,13 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 工作流会自动保留你当前仓库里的 Worker 名称、KV 绑定和常见部署配置，并重新部署**同一个 Worker**。仓库中已有的工作流文件也会保留。
 
-> **没有 Sync Upstream 入口时**：一键部署创建的仓库可能不包含工作流。此时才需要在自己的仓库中新增 `.github/workflows/sync-upstream.yml`，内容复制自上游文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次。之后按上面步骤升级。
+> **没有 Sync Upstream 入口时**：一键部署导入仓库时不会复制 `.github/workflows`，所以新建的仓库里没有这个工作流，第一次升级前要先补上。把下面链接里的 `OWNER/REPO` 换成你的仓库（例如 `alice/2fa`）后在浏览器打开，GitHub 会填好文件名和内容，点 **Commit changes** 即可：
+>
+> ```text
+> https://github.com/OWNER/REPO/new/main?filename=.github/workflows/sync-upstream.yml&value=%23%20Save%20as%20.github%2Fworkflows%2Fsync-upstream.yml%20in%20your%20repository.%0A%23%20The%20upgrade%20steps%20come%20from%20wuzf%2F2fa%2C%20so%20this%20file%20never%20needs%20updating.%0Aname%3A%20Sync%20Upstream%0A%0Aon%3A%0A%20%20workflow_dispatch%3A%0A%20%20%20%20inputs%3A%0A%20%20%20%20%20%20upstream_ref%3A%0A%20%20%20%20%20%20%20%20description%3A%20Upstream%20branch%20or%20tag%20to%20sync%0A%20%20%20%20%20%20%20%20required%3A%20false%0A%20%20%20%20%20%20%20%20default%3A%20main%0A%0Apermissions%3A%0A%20%20contents%3A%20write%0A%0Ajobs%3A%0A%20%20sync%3A%0A%20%20%20%20uses%3A%20wuzf%2F2fa%2F.github%2Fworkflows%2Fsync-upstream.yml%40main%0A%20%20%20%20with%3A%0A%20%20%20%20%20%20upstream_ref%3A%20%24%7B%7B%20inputs.upstream_ref%20%7D%7D%0A
+> ```
+>
+> 也可以手动新建 `.github/workflows/sync-upstream.yml`，内容复制自 <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml>。这个入口只有十几行，升级步骤由上游提供，以后不用再更新它。之后按上面步骤升级。
 
 > **之前因 `without workflows permission` 升级失败**：修复发布到上游 `main` 后，已有自动合并部署配置步骤的 **Sync Upstream** 可以直接按上面步骤升级，无需修改 YAML 或配置 PAT。请选择 `main` 发起新运行，不要选择不含修复的旧版本标签。其他情况见[升级故障排查](docs/DEPLOYMENT.md#升级故障排查)。
 

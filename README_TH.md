@@ -82,7 +82,13 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 เวิร์กโฟลว์จะรักษาชื่อ Worker การผูก KV และการตั้งค่าการติดตั้งทั่วไปของที่เก็บโค้ดคุณไว้โดยอัตโนมัติ แล้วติดตั้งใหม่บน **Worker เดิม** รวมถึงเก็บไฟล์เวิร์กโฟลว์ที่มีอยู่ในที่เก็บโค้ดไว้ด้วย
 
-> **หากไม่พบ Sync Upstream**: ที่เก็บโค้ดที่สร้างด้วยการติดตั้งแบบคลิกเดียวอาจไม่มีเวิร์กโฟลว์ ในกรณีนี้เท่านั้น ให้เพิ่ม `.github/workflows/sync-upstream.yml` ลงในที่เก็บโค้ดของคุณ คัดลอกเนื้อหาจาก <https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml> แล้วคอมมิตหนึ่งครั้ง จากนั้นทำตามขั้นตอนอัปเกรดด้านบน
+> **หากไม่พบ Sync Upstream**: การติดตั้งแบบคลิกเดียวจะไม่คัดลอก `.github/workflows` ตอนนำเข้าที่เก็บโค้ด ที่เก็บโค้ดที่สร้างใหม่จึงไม่มีเวิร์กโฟลว์ และต้องเพิ่มจุดเริ่มต้นนี้ก่อนอัปเกรดครั้งแรก ให้แทนที่ `OWNER/REPO` ในลิงก์ด้านล่างด้วยที่เก็บโค้ดของคุณ (เช่น `alice/2fa`) แล้วเปิดในเบราว์เซอร์ GitHub จะกรอกชื่อไฟล์และเนื้อหาให้ จากนั้นคลิก **Commit changes**:
+>
+> ```text
+> https://github.com/OWNER/REPO/new/main?filename=.github/workflows/sync-upstream.yml&value=%23%20Save%20as%20.github%2Fworkflows%2Fsync-upstream.yml%20in%20your%20repository.%0A%23%20The%20upgrade%20steps%20come%20from%20wuzf%2F2fa%2C%20so%20this%20file%20never%20needs%20updating.%0Aname%3A%20Sync%20Upstream%0A%0Aon%3A%0A%20%20workflow_dispatch%3A%0A%20%20%20%20inputs%3A%0A%20%20%20%20%20%20upstream_ref%3A%0A%20%20%20%20%20%20%20%20description%3A%20Upstream%20branch%20or%20tag%20to%20sync%0A%20%20%20%20%20%20%20%20required%3A%20false%0A%20%20%20%20%20%20%20%20default%3A%20main%0A%0Apermissions%3A%0A%20%20contents%3A%20write%0A%0Ajobs%3A%0A%20%20sync%3A%0A%20%20%20%20uses%3A%20wuzf%2F2fa%2F.github%2Fworkflows%2Fsync-upstream.yml%40main%0A%20%20%20%20with%3A%0A%20%20%20%20%20%20upstream_ref%3A%20%24%7B%7B%20inputs.upstream_ref%20%7D%7D%0A
+> ```
+>
+> หรือจะสร้าง `.github/workflows/sync-upstream.yml` เองแล้วคัดลอกเนื้อหาจาก <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml> ก็ได้ จุดเริ่มต้นนี้มีเพียงไม่กี่บรรทัด ขั้นตอนอัปเกรดดึงมาจากที่เก็บโค้ดต้นทาง จึงไม่ต้องแก้ไขอีก จากนั้นทำตามขั้นตอนอัปเกรดด้านบน
 
 > **หากการอัปเกรดก่อนหน้านี้ล้มเหลวด้วยข้อความ `without workflows permission`**: หลังจากเผยแพร่การแก้ไขไปยัง `main` ของต้นทางแล้ว เวิร์กโฟลว์ **Sync Upstream** เดิมที่มีขั้นตอนรวมการตั้งค่าการติดตั้งอัตโนมัติจะอัปเกรดตามขั้นตอนด้านบนได้ โดยไม่ต้องแก้ YAML หรือตั้งค่า PAT ให้เริ่มการรันใหม่ด้วย `main` เพราะแท็กรีลีสเก่ายังไม่มีการแก้ไขนี้ สำหรับกรณีอื่น ดู[การแก้ปัญหาการอัปเกรด](docs/DEPLOYMENT.md#升级故障排查) (ภาษาจีน)
 

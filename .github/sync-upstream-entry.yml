@@ -1,0 +1,20 @@
+# Save as .github/workflows/sync-upstream.yml in your repository.
+# The upgrade steps come from wuzf/2fa, so this file never needs updating.
+name: Sync Upstream
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: Upstream branch or tag to sync
+        required: false
+        default: main
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    uses: wuzf/2fa/.github/workflows/sync-upstream.yml@main
+    with:
+      upstream_ref: ${{ inputs.upstream_ref }}

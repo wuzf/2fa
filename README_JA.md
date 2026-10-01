@@ -82,7 +82,13 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 ワークフローはリポジトリの Worker 名、KV バインディング、一般的なデプロイ設定を自動で保持し、**同じ Worker** に再デプロイします。リポジトリに既存のワークフローファイルも保持されます。
 
-> **Sync Upstream が見つからない場合**：ワンクリックデプロイで作成したリポジトリには、ワークフローが含まれていないことがあります。その場合に限り、リポジトリに `.github/workflows/sync-upstream.yml` を追加し、<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml> から内容をコピーして一度コミットしてください。その後、上記の手順でアップグレードできます。
+> **Sync Upstream が見つからない場合**：ワンクリックデプロイはリポジトリを取り込む際に `.github/workflows` をコピーしないため、新しく作成したリポジトリにはワークフローがなく、最初のアップグレードの前にこのエントリーを追加する必要があります。下のリンクの `OWNER/REPO` を自分のリポジトリ（例：`alice/2fa`）に置き換えてブラウザーで開くと、GitHub がファイル名と内容を入力します。**Commit changes** をクリックしてください：
+>
+> ```text
+> https://github.com/OWNER/REPO/new/main?filename=.github/workflows/sync-upstream.yml&value=%23%20Save%20as%20.github%2Fworkflows%2Fsync-upstream.yml%20in%20your%20repository.%0A%23%20The%20upgrade%20steps%20come%20from%20wuzf%2F2fa%2C%20so%20this%20file%20never%20needs%20updating.%0Aname%3A%20Sync%20Upstream%0A%0Aon%3A%0A%20%20workflow_dispatch%3A%0A%20%20%20%20inputs%3A%0A%20%20%20%20%20%20upstream_ref%3A%0A%20%20%20%20%20%20%20%20description%3A%20Upstream%20branch%20or%20tag%20to%20sync%0A%20%20%20%20%20%20%20%20required%3A%20false%0A%20%20%20%20%20%20%20%20default%3A%20main%0A%0Apermissions%3A%0A%20%20contents%3A%20write%0A%0Ajobs%3A%0A%20%20sync%3A%0A%20%20%20%20uses%3A%20wuzf%2F2fa%2F.github%2Fworkflows%2Fsync-upstream.yml%40main%0A%20%20%20%20with%3A%0A%20%20%20%20%20%20upstream_ref%3A%20%24%7B%7B%20inputs.upstream_ref%20%7D%7D%0A
+> ```
+>
+> `.github/workflows/sync-upstream.yml` を自分で作成し、<https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml> から内容をコピーしてもかまいません。このエントリーは十数行だけで、アップグレードの手順はアップストリームから読み込まれるため、今後更新する必要はありません。その後、上記の手順でアップグレードできます。
 
 > **以前のアップグレードが `without workflows permission` で失敗した場合**：修正がアップストリームの `main` に公開された後は、デプロイ設定の自動マージ処理を含む既存の **Sync Upstream** ワークフローで、上記の手順によるアップグレードが可能です。YAML の編集や PAT の設定は不要です。`main` を指定して新しい実行を開始してください。古いリリースタグにはこの修正は含まれません。それ以外の場合は[アップグレードのトラブルシューティング](docs/DEPLOYMENT.md#升级故障排查)（中国語）を参照してください。
 

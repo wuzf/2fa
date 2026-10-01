@@ -7,6 +7,15 @@ on:
         description: Upstream branch or tag to sync
         required: false
         default: main
+  # One-click repositories have no workflows, so they add the short entry in
+  # .github/sync-upstream-entry.yml, which calls this workflow.
+  workflow_call:
+    inputs:
+      upstream_ref:
+        description: Upstream branch or tag to sync
+        required: false
+        default: main
+        type: string
 
 permissions:
   contents: write

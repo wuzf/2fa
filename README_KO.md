@@ -82,7 +82,13 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 워크플로는 저장소의 Worker 이름, KV 바인딩, 일반 배포 설정을 자동으로 보존하고 **동일한 Worker**에 다시 배포합니다. 저장소에 이미 있는 워크플로 파일도 보존됩니다.
 
-> **Sync Upstream이 없는 경우**: 원클릭 배포로 생성한 저장소에는 워크플로가 없을 수 있습니다. 이 경우에만 저장소에 `.github/workflows/sync-upstream.yml`을 추가하고, <https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>의 내용을 복사해 한 번 커밋하세요. 그런 다음 위 업그레이드 절차를 따르세요.
+> **Sync Upstream이 없는 경우**: 원클릭 배포는 저장소를 가져올 때 `.github/workflows`를 복사하지 않으므로, 새로 생성된 저장소에는 워크플로가 없고 첫 업그레이드 전에 이 진입점을 추가해야 합니다. 아래 링크의 `OWNER/REPO`를 자신의 저장소(예: `alice/2fa`)로 바꿔 브라우저에서 열면 GitHub가 파일 이름과 내용을 채워 줍니다. **Commit changes**를 클릭하세요:
+>
+> ```text
+> https://github.com/OWNER/REPO/new/main?filename=.github/workflows/sync-upstream.yml&value=%23%20Save%20as%20.github%2Fworkflows%2Fsync-upstream.yml%20in%20your%20repository.%0A%23%20The%20upgrade%20steps%20come%20from%20wuzf%2F2fa%2C%20so%20this%20file%20never%20needs%20updating.%0Aname%3A%20Sync%20Upstream%0A%0Aon%3A%0A%20%20workflow_dispatch%3A%0A%20%20%20%20inputs%3A%0A%20%20%20%20%20%20upstream_ref%3A%0A%20%20%20%20%20%20%20%20description%3A%20Upstream%20branch%20or%20tag%20to%20sync%0A%20%20%20%20%20%20%20%20required%3A%20false%0A%20%20%20%20%20%20%20%20default%3A%20main%0A%0Apermissions%3A%0A%20%20contents%3A%20write%0A%0Ajobs%3A%0A%20%20sync%3A%0A%20%20%20%20uses%3A%20wuzf%2F2fa%2F.github%2Fworkflows%2Fsync-upstream.yml%40main%0A%20%20%20%20with%3A%0A%20%20%20%20%20%20upstream_ref%3A%20%24%7B%7B%20inputs.upstream_ref%20%7D%7D%0A
+> ```
+>
+> `.github/workflows/sync-upstream.yml`을 직접 만들고 <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml>의 내용을 복사해도 됩니다. 이 진입점은 몇 줄뿐이며 업그레이드 단계는 업스트림에서 가져오므로 앞으로 수정할 필요가 없습니다. 그런 다음 위 업그레이드 절차를 따르세요.
 
 > **이전 업그레이드가 `without workflows permission` 오류로 실패한 경우**: 수정 사항이 업스트림 `main`에 반영된 후에는 배포 설정 자동 병합 단계가 포함된 기존 **Sync Upstream** 워크플로로 위 절차에 따라 업그레이드할 수 있습니다. YAML을 수정하거나 PAT를 설정할 필요가 없습니다. `main`으로 새 실행을 시작하세요. 이전 릴리스 태그에는 수정 사항이 포함되어 있지 않습니다. 그 외의 경우는 [업그레이드 문제 해결](docs/DEPLOYMENT.md#升级故障排查)(중국어)을 참고하세요.
 

@@ -82,7 +82,13 @@ Triển khai bằng một lần nhấp tạo ra một kho mã độc lập (khô
 
 Quy trình tự động giữ nguyên tên Worker, liên kết KV và các cài đặt triển khai phổ biến trong kho mã của bạn, rồi triển khai lại **chính Worker đó**. Các tệp quy trình hiện có trong kho mã cũng được giữ nguyên.
 
-> **Nếu không có Sync Upstream**: Kho mã được tạo bằng triển khai một lần nhấp có thể không chứa các quy trình. Chỉ trong trường hợp này, hãy thêm `.github/workflows/sync-upstream.yml` vào kho mã, sao chép nội dung từ <https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml> và tạo một commit. Sau đó làm theo các bước nâng cấp bên trên.
+> **Nếu không có Sync Upstream**: Triển khai một lần nhấp không sao chép `.github/workflows` khi nhập kho mã, nên kho mã mới tạo không có quy trình nào và cần thêm tệp khởi chạy này trước lần nâng cấp đầu tiên. Thay `OWNER/REPO` trong liên kết dưới đây bằng kho mã của bạn (ví dụ `alice/2fa`) rồi mở trong trình duyệt. GitHub sẽ điền sẵn tên và nội dung tệp; nhấn **Commit changes**:
+>
+> ```text
+> https://github.com/OWNER/REPO/new/main?filename=.github/workflows/sync-upstream.yml&value=%23%20Save%20as%20.github%2Fworkflows%2Fsync-upstream.yml%20in%20your%20repository.%0A%23%20The%20upgrade%20steps%20come%20from%20wuzf%2F2fa%2C%20so%20this%20file%20never%20needs%20updating.%0Aname%3A%20Sync%20Upstream%0A%0Aon%3A%0A%20%20workflow_dispatch%3A%0A%20%20%20%20inputs%3A%0A%20%20%20%20%20%20upstream_ref%3A%0A%20%20%20%20%20%20%20%20description%3A%20Upstream%20branch%20or%20tag%20to%20sync%0A%20%20%20%20%20%20%20%20required%3A%20false%0A%20%20%20%20%20%20%20%20default%3A%20main%0A%0Apermissions%3A%0A%20%20contents%3A%20write%0A%0Ajobs%3A%0A%20%20sync%3A%0A%20%20%20%20uses%3A%20wuzf%2F2fa%2F.github%2Fworkflows%2Fsync-upstream.yml%40main%0A%20%20%20%20with%3A%0A%20%20%20%20%20%20upstream_ref%3A%20%24%7B%7B%20inputs.upstream_ref%20%7D%7D%0A
+> ```
+>
+> Bạn cũng có thể tự tạo `.github/workflows/sync-upstream.yml` và sao chép nội dung từ <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml>. Tệp này chỉ vài dòng; các bước nâng cấp lấy từ kho gốc nên không bao giờ cần cập nhật. Sau đó làm theo các bước nâng cấp bên trên.
 
 > **Nếu lần nâng cấp trước thất bại với lỗi `without workflows permission`**: Sau khi bản sửa được đưa lên nhánh `main` của kho nguồn, các quy trình **Sync Upstream** hiện có bước tự động hợp nhất cấu hình triển khai có thể nâng cấp theo các bước bên trên mà không cần sửa YAML hoặc cấu hình PAT. Bắt đầu lượt chạy mới với `main`; các thẻ phát hành cũ không chứa bản sửa. Với trường hợp khác, xem [khắc phục sự cố nâng cấp](docs/DEPLOYMENT.md#升级故障排查) (tiếng Trung).
 

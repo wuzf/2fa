@@ -82,7 +82,13 @@ Penerapan sekali klik membuat repositori mandiri (bukan Fork). Pembaruan dilakuk
 
 Alur kerja ini otomatis mempertahankan nama Worker, binding KV, serta pengaturan penerapan umum repositori Anda, dan menerapkan ulang **Worker yang sama**. Berkas alur kerja yang sudah ada di repositori juga dipertahankan.
 
-> **Jika Sync Upstream tidak ada**: Repositori yang dibuat melalui penerapan sekali klik mungkin tidak menyertakan alur kerja. Hanya dalam kondisi ini, tambahkan `.github/workflows/sync-upstream.yml` ke repositori Anda, salin isinya dari <https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>, lalu lakukan commit sekali. Setelah itu, ikuti langkah pembaruan di atas.
+> **Jika Sync Upstream tidak ada**: Penerapan sekali klik tidak menyalin `.github/workflows` saat mengimpor repositori, sehingga repositori baru tidak memiliki alur kerja dan memerlukan entri ini sebelum pembaruan pertama. Ganti `OWNER/REPO` pada tautan di bawah dengan repositori Anda (misalnya `alice/2fa`), lalu buka di peramban. GitHub akan mengisi nama dan isi berkas; klik **Commit changes**:
+>
+> ```text
+> https://github.com/OWNER/REPO/new/main?filename=.github/workflows/sync-upstream.yml&value=%23%20Save%20as%20.github%2Fworkflows%2Fsync-upstream.yml%20in%20your%20repository.%0A%23%20The%20upgrade%20steps%20come%20from%20wuzf%2F2fa%2C%20so%20this%20file%20never%20needs%20updating.%0Aname%3A%20Sync%20Upstream%0A%0Aon%3A%0A%20%20workflow_dispatch%3A%0A%20%20%20%20inputs%3A%0A%20%20%20%20%20%20upstream_ref%3A%0A%20%20%20%20%20%20%20%20description%3A%20Upstream%20branch%20or%20tag%20to%20sync%0A%20%20%20%20%20%20%20%20required%3A%20false%0A%20%20%20%20%20%20%20%20default%3A%20main%0A%0Apermissions%3A%0A%20%20contents%3A%20write%0A%0Ajobs%3A%0A%20%20sync%3A%0A%20%20%20%20uses%3A%20wuzf%2F2fa%2F.github%2Fworkflows%2Fsync-upstream.yml%40main%0A%20%20%20%20with%3A%0A%20%20%20%20%20%20upstream_ref%3A%20%24%7B%7B%20inputs.upstream_ref%20%7D%7D%0A
+> ```
+>
+> Anda juga dapat membuat `.github/workflows/sync-upstream.yml` sendiri dan menyalin isinya dari <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml>. Entri ini hanya beberapa baris; langkah pembaruannya berasal dari repositori upstream, jadi tidak perlu diperbarui lagi. Setelah itu, ikuti langkah pembaruan di atas.
 
 > **Jika pembaruan sebelumnya gagal dengan `without workflows permission`**: Setelah perbaikan dipublikasikan ke `main` upstream, alur kerja **Sync Upstream** yang sudah memiliki langkah penggabungan konfigurasi penerapan otomatis dapat memperbarui dengan langkah di atas tanpa mengedit YAML atau mengonfigurasi PAT. Mulai eksekusi baru dengan `main`; tag rilis lama tidak menyertakan perbaikan ini. Untuk kasus lainnya, lihat [pemecahan masalah pembaruan](docs/DEPLOYMENT.md#升级故障排查) (bahasa Tionghoa).
 
