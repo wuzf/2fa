@@ -49,6 +49,8 @@ export function getStateCode() {
       secretLoadGeneration += 1;
       secretRenderGeneration += 1;
       secretReadsBlocked = blocked;
+      // The hidden-accounts notice belongs to the session that read them.
+      if (typeof renderHiddenSecretsNotice === 'function') renderHiddenSecretsNotice();
       return secretSessionGeneration;
     }
     let saveQueue = Promise.resolve(); // 保存操作队列，确保串行执行避免并发覆盖

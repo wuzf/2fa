@@ -181,6 +181,7 @@ export function getI18nCode() {
       if (typeof syncSecretDialogTranslations === 'function' && document.getElementById('modalTitle')) syncSecretDialogTranslations();
       if (typeof refreshSettingsLanguage === 'function') refreshSettingsLanguage();
       if (typeof refreshPwaLanguage === 'function') refreshPwaLanguage();
+      if (typeof renderHiddenSecretsNotice === 'function') renderHiddenSecretsNotice();
       if (typeof refreshVersionLanguage === 'function') refreshVersionLanguage();
       if (typeof refreshBrowserExtensionLanguage === 'function') refreshBrowserExtensionLanguage();
       if (typeof refreshToolsTranslations === 'function') refreshToolsTranslations();

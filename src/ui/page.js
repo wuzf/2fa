@@ -264,6 +264,16 @@ function getHTMLBody() {
         <p id="offlineQueueFeedback" role="status" hidden></p>
         <ul id="offlineQueueList" class="offline-queue-list" hidden></ul>
       </section>
+
+      <section id="hiddenSecrets" class="offline-queue" aria-label="未显示的账户" hidden data-i18n-aria-label="pageHiddenAccounts">
+        <div class="offline-queue-header">
+          <span id="hiddenSecretsSummary"></span>
+          <div class="offline-queue-actions">
+            <button id="hiddenSecretsToggle" type="button" class="btn btn-secondary btn-sm" aria-expanded="false" aria-controls="hiddenSecretsList" onclick="toggleHiddenSecretsDetails()" hidden data-i18n="offlineQueueView">查看</button>
+          </div>
+        </div>
+        <ul id="hiddenSecretsList" class="offline-queue-list" hidden></ul>
+      </section>
       
       <div id="loading" class="loading">
         <div data-i18n="loadingSecrets">正在加载密钥...</div>

@@ -274,8 +274,39 @@ export function getCoreCode() {
     function filterUsableServerSecrets(value) {
       if (!Array.isArray(value)) return null;
       const ids = new Set();
-      const usable = value.filter(item => isUsableSecretRecord(item, ids));
-      return { secrets: usable, hiddenCount: value.length - usable.length };
+      const hidden = [];
+      const usable = value.filter(item => {
+        if (isUsableSecretRecord(item, ids)) return true;
+        hidden.push(item);
+        return false;
+      });
+      const idCounts = new Map();
+      value.forEach(item => {
+        if (item && typeof item === 'object' && typeof item.id === 'string') idCounts.set(item.id, (idCounts.get(item.id) || 0) + 1);
+      });
+      return { secrets: usable, hiddenCount: hidden.length, hidden: hidden.map(item => describeHiddenSecretRecord(item, idCounts)) };
+    }
+
+    // What the hidden-accounts notice shows for a record the page left out. The
+    // server deletes the first record with the id, so only a text id that no other
+    // record uses can be deleted from the notice.
+    function describeHiddenSecretRecord(item, idCounts) {
+      const record = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
+      const secret = typeof record.secret === 'string' ? record.secret.replace(/\\s/g, '') : '';
+      const id = record.id;
+      const uniqueTextId = typeof id === 'string' && id.length > 0 && idCounts.get(id) === 1;
+      // Everything isUsableSecretRecord() checks except the OTP parameters.
+      const wellFormed = (uniqueTextId || (Number.isSafeInteger(id) && id >= 0)) &&
+        !/[\\s"'<>&\\\\]/.test(String(id)) && typeof record.name === 'string' &&
+        (record.account == null || typeof record.account === 'string') &&
+        /^[A-Z2-7]+=*$/i.test(secret) && secret.replace(/=+$/, '').length >= 2 &&
+        (record.type == null || typeof record.type === 'string');
+      return {
+        id: uniqueTextId ? id : null,
+        name: typeof record.name === 'string' ? record.name : '',
+        account: typeof record.account === 'string' ? record.account : '',
+        reason: wellFormed ? 'unsupported' : 'invalid',
+      };
     }
 
     let hiddenSecretsNotice = null;
@@ -297,8 +328,33 @@ export function getCoreCode() {
       }
     }
 
-    function announceHiddenSecrets(hiddenCount, sessionGeneration) {
+    // Details of the hidden accounts, known only after a server read.
+    let hiddenSecretRecords = { session: null, records: [] };
+    function getHiddenSecretRecords() {
+      return isSecretSessionCurrent(hiddenSecretRecords.session) ? hiddenSecretRecords.records : [];
+    }
+
+    function forgetHiddenSecret(id, sessionGeneration) {
+      if (!isSecretSessionCurrent(sessionGeneration)) return;
+      // Like commitSecretListChange: reads started before this confirmed delete
+      // must not bring the account back.
+      secretLoadGeneration += 1;
+      // A read that finished meanwhile may already have left it out.
+      if (!getHiddenSecretRecords().some(record => record.id === id)) return;
+      const records = getHiddenSecretRecords().filter(record => record.id !== id);
+      hiddenSecretRecords = { session: sessionGeneration, records };
+      hiddenSecretsCount = { session: sessionGeneration, count: Math.max(0, getHiddenSecretsCount() - 1) };
+      hiddenSecretsNotice = sessionGeneration + ':' + hiddenSecretsCount.count;
+      cacheSecretsLocally();
+      if (typeof renderHiddenSecretsNotice === 'function') renderHiddenSecretsNotice();
+    }
+
+    function announceHiddenSecrets(hiddenCount, sessionGeneration, records) {
       hiddenSecretsCount = { session: sessionGeneration, count: hiddenCount || 0 };
+      if (Array.isArray(records) || !hiddenCount) {
+        hiddenSecretRecords = { session: sessionGeneration, records: Array.isArray(records) ? records : [] };
+      }
+      if (typeof renderHiddenSecretsNotice === 'function') renderHiddenSecretsNotice();
       if (!hiddenCount) {
         hiddenSecretsNotice = null;
         return;
@@ -451,7 +507,7 @@ export function getCoreCode() {
         secrets = loaded.secrets;
         secretsReadInvalid = false;
         if (typeof syncLanguagePreferenceAfterAuth === 'function') void syncLanguagePreferenceAfterAuth();
-        announceHiddenSecrets(loaded.hiddenCount, sessionGeneration);
+        announceHiddenSecrets(loaded.hiddenCount, sessionGeneration, loaded.hidden);
         cacheSecretsLocally();
         await renderLoadedSecretsIfChanged();
       } catch (error) {
