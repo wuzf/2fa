@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { assertReleaseWorktree, RELEASE_CHECKS, runReleaseChecks } from '../../scripts/release.js';
+import { assertReleaseWorktree, RELEASE_CHECKS, runReleaseChecks, setLockfileVersion } from '../../scripts/release.js';
 
 const notes = 'docs/releases/v1.0.1.md';
 let fixture;
@@ -283,4 +283,39 @@ describe('release script aborts on a failed check without leaving changes', () =
 		expect(result.stderr).toContain('工作区出现了新的改动');
 		expect(result.stderr).toContain('src/work file.js');
 	}, 30000);
+});
+
+describe('lockfile version update', () => {
+	const lockfile = {
+		name: '2fa',
+		version: '1.0.0',
+		lockfileVersion: 3,
+		requires: true,
+		packages: {
+			'': { name: '2fa', version: '1.0.0', dependencies: { a: '^1.0.0' } },
+			'node_modules/@esbuild/linux-x64': { version: '0.25.0', cpu: ['x64'], os: ['linux'], libc: ['glibc'], optional: true },
+			'node_modules/a': { version: '1.0.0' },
+		},
+	};
+	const text = JSON.stringify(lockfile, null, 2) + '\n';
+
+	it('changes only the version of the project', () => {
+		const updated = setLockfileVersion(text, '1.0.1');
+		const before = text.split('\n');
+		const after = updated.split('\n');
+		expect(after.filter((line, index) => line !== before[index])).toEqual(['  "version": "1.0.1",', '      "version": "1.0.1",']);
+		expect(JSON.parse(updated).packages['node_modules/@esbuild/linux-x64'].libc).toEqual(['glibc']);
+		expect(JSON.parse(updated).packages['node_modules/a'].version).toBe('1.0.0');
+	});
+
+	it('accepts a lockfile checked out with CRLF line endings', () => {
+		expect(setLockfileVersion(text.replace(/\n/g, '\r\n'), '1.0.1')).toBe(setLockfileVersion(text, '1.0.1'));
+	});
+
+	it('rejects a lockfile that npm did not write', () => {
+		expect(() => setLockfileVersion(JSON.stringify(lockfile), '1.0.1')).toThrow('不是 npm 的标准格式');
+		const { packages, ...withoutPackages } = lockfile;
+		expect(packages).toBeDefined();
+		expect(() => setLockfileVersion(JSON.stringify(withoutPackages, null, 2) + '\n', '1.0.1')).toThrow('缺少项目版本字段');
+	});
 });
