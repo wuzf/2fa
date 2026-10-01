@@ -4,9 +4,9 @@
 
 <!-- README_LANGUAGE_NAV_START -->
 
-**[简体中文](README.md)** · [繁體中文](README_TC.md) · [English](README_EN.md) · [日本語](README_JA.md) · [한국어](README_KO.md) ·
-[Deutsch](README_DE.md) · [Français](README_FR.md) · [Español](README_ES.md) · [Português (Brasil)](README_PT_BR.md) · [Italiano](README_IT.md) ·
-[Русский](README_RU.md) · [Türkçe](README_TR.md) · [Bahasa Indonesia](README_ID.md) · [Tiếng Việt](README_VI.md) · [ไทย](README_TH.md)
+**[简体中文](README.md)** · [繁體中文](docs/zh-TW/README.md) · [English](docs/en/README.md) · [日本語](docs/ja/README.md) · [한국어](docs/ko/README.md) ·
+[Deutsch](docs/de/README.md) · [Français](docs/fr/README.md) · [Español](docs/es/README.md) · [Português (Brasil)](docs/pt-BR/README.md) · [Italiano](docs/it/README.md) ·
+[Русский](docs/ru/README.md) · [Türkçe](docs/tr/README.md) · [Bahasa Indonesia](docs/id/README.md) · [Tiếng Việt](docs/vi/README.md) · [ไทย](docs/th/README.md)
 
 <!-- README_LANGUAGE_NAV_END -->
 

@@ -8,9 +8,9 @@ A two-factor authentication key management system built on Cloudflare Workers. F
 
 <!-- README_LANGUAGE_NAV_START -->
 
-[简体中文](README.md) · [繁體中文](README_TC.md) · **[English](README_EN.md)** · [日本語](README_JA.md) · [한국어](README_KO.md) ·
-[Deutsch](README_DE.md) · [Français](README_FR.md) · [Español](README_ES.md) · [Português (Brasil)](README_PT_BR.md) · [Italiano](README_IT.md) ·
-[Русский](README_RU.md) · [Türkçe](README_TR.md) · [Bahasa Indonesia](README_ID.md) · [Tiếng Việt](README_VI.md) · [ไทย](README_TH.md)
+[简体中文](../../README.md) · [繁體中文](../zh-TW/README.md) · **[English](README.md)** · [日本語](../ja/README.md) · [한국어](../ko/README.md) ·
+[Deutsch](../de/README.md) · [Français](../fr/README.md) · [Español](../es/README.md) · [Português (Brasil)](../pt-BR/README.md) · [Italiano](../it/README.md) ·
+[Русский](../ru/README.md) · [Türkçe](../tr/README.md) · [Bahasa Indonesia](../id/README.md) · [Tiếng Việt](../vi/README.md) · [ไทย](../th/README.md)
 
 <!-- README_LANGUAGE_NAV_END -->
 
@@ -24,13 +24,13 @@ Install 2FA Verification Assistant: **[Chrome Web Store](https://chromewebstore.
 
 Open the installation link in the corresponding browser. After installation, enter your self-hosted 2FA instance URL in the extension settings and sign in to that instance in the same browser to view, copy, and fill TOTP codes. Automatic filling requires separate permission for each verification page. The extension requires a deployed instance of this project, and its interface supports the 15 languages listed above. Firefox desktop and Android require version 153 or later and normal tabs; desktop container tabs and private tabs on either platform are not supported. Android compatibility changes are in the current source; the compatible store release is pending, and Firefox for Android has not yet been tested on a physical device. Firefox for Android does not provide extension keyboard shortcuts. A user has confirmed that the extension works in Edge for Android.
 
-[Installation and usage guide](docs/BROWSER_EXTENSION.md) · [Chrome / Edge privacy policy](extension/PRIVACY.md) · [Firefox privacy policy](extension/PRIVACY_FIREFOX.md) (Chinese)
+[Installation and usage guide](../BROWSER_EXTENSION.md) · [Chrome / Edge privacy policy](../../extension/PRIVACY.md) · [Firefox privacy policy](../../extension/PRIVACY_FIREFOX.md) (Chinese)
 
 ## 📸 Screenshots
 
-|                    Desktop                     |                    Tablet                    |                    Mobile                    |
-| :--------------------------------------------: | :------------------------------------------: | :------------------------------------------: |
-| ![Desktop](docs/images/screenshot-desktop.png) | ![Tablet](docs/images/screenshot-tablet.png) | ![Mobile](docs/images/screenshot-mobile.png) |
+|                   Desktop                    |                   Tablet                   |                   Mobile                   |
+| :------------------------------------------: | :----------------------------------------: | :----------------------------------------: |
+| ![Desktop](../images/screenshot-desktop.png) | ![Tablet](../images/screenshot-tablet.png) | ![Mobile](../images/screenshot-mobile.png) |
 
 ## 🚀 Quick Deployment
 
@@ -90,13 +90,13 @@ The workflow automatically preserves your repository's Worker name, KV bindings,
 >
 > You can also create `.github/workflows/sync-upstream.yml` yourself and copy its contents from <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml>. The entry is only a few lines; the upgrade steps come from upstream, so it never needs updating. Then follow the upgrade steps above.
 
-> **If an earlier upgrade failed with `without workflows permission`**: Once the fix is published to upstream `main`, existing **Sync Upstream** workflows with the automatic deployment config merge step can upgrade using the steps above, without editing YAML or configuring a PAT. Start a new run with `main`; older release tags do not include the fix. For other cases, see [upgrade troubleshooting](docs/DEPLOYMENT.md#升级故障排查) (Chinese).
+> **If an earlier upgrade failed with `without workflows permission`**: Once the fix is published to upstream `main`, existing **Sync Upstream** workflows with the automatic deployment config merge step can upgrade using the steps above, without editing YAML or configuring a PAT. Start a new run with `main`; older release tags do not include the fix. For other cases, see [upgrade troubleshooting](../DEPLOYMENT.md#升级故障排查) (Chinese).
 
 This approach does not affect existing Workers, KV bindings, or Secrets. **If you've already set `ENCRYPTION_KEY`, you don't need to re-enter it during upgrades; if you haven't set it, you can still use this upgrade process.**
 
 > ⚠️ `ENCRYPTION_KEY` is the master key for decrypting existing data. Please make sure to save it to a password manager when first created. Cloudflare Secrets cannot be viewed after saving; normal upgrades don't require re-entry, but if you delete it without saving the original value, existing encrypted data cannot be recovered.
 
-> ⚠️ **Rolling back to a version before 1.8.0**: Since 1.8.0, HOTP counter increments are stored separately from the main data. Before rolling back, call the compaction endpoint once to write the counters back; otherwise HOTP counters revert to their values at upgrade time. See [rollback steps](docs/DEPLOYMENT.md#回滚到-180-之前的版本) (Chinese). Deployments that only use TOTP are not affected.
+> ⚠️ **Rolling back to a version before 1.8.0**: Since 1.8.0, HOTP counter increments are stored separately from the main data. Before rolling back, call the compaction endpoint once to write the counters back; otherwise HOTP counters revert to their values at upgrade time. See [rollback steps](../DEPLOYMENT.md#回滚到-180-之前的版本) (Chinese). Deployments that only use TOTP are not affected.
 
 #### Checking the Merge Result
 
@@ -172,7 +172,7 @@ Add and manage remote backup targets in **Settings → Sync Settings**.
 
 Remote backups store the same backup content generated by the app. If `ENCRYPTION_KEY` was configured when the backup was created, the remote file is encrypted ciphertext too; restoring it requires keeping the same `ENCRYPTION_KEY` in the Worker.
 
-Detailed setup steps: [Cloud Drive Setup](docs/CLOUD_DRIVE_SETUP.md) (currently Chinese).
+Detailed setup steps: [Cloud Drive Setup](../CLOUD_DRIVE_SETUP.md) (currently Chinese).
 
 ### Settings
 
@@ -200,7 +200,7 @@ Click the extension to select an account, or press `Ctrl+Shift+U` to fill the cu
 
 After signing in to the 2FA instance in the same browser profile and granting instance access, you can close the instance tab. By default, the extension reads secrets through the valid session and computes codes in background memory for each task; sign in again when the session expires. Explicitly enabling offline use saves an independent local secret cache so codes remain available without a network connection or an open instance tab. The cache has no additional password encryption. Authorized extension code can read the entire secret list, but seeds are never sent to the popup or target site. Open Shadow DOM and same-origin iframe fields are supported; HOTP, cross-origin iframes, closed Shadow DOM, and private browsing are not supported.
 
-See the [installation and usage guide](docs/BROWSER_EXTENSION.md), [Chrome / Edge privacy notice](extension/PRIVACY.md), and [Firefox privacy notice](extension/PRIVACY_FIREFOX.md) (currently Chinese).
+See the [installation and usage guide](../BROWSER_EXTENSION.md), [Chrome / Edge privacy notice](../../extension/PRIVACY.md), and [Firefox privacy notice](../../extension/PRIVACY_FIREFOX.md) (currently Chinese).
 
 ## 🔒 Security
 
@@ -226,23 +226,23 @@ TOTP pages show both the current and next codes, each available to copy, and upd
 
 ## 📚 More Documentation
 
-| Document                                       | Description                                                            |
-| ---------------------------------------------- | ---------------------------------------------------------------------- |
-| [Deployment Guide](docs/DEPLOYMENT.md)         | Manual deployment, KV config, Secrets                                  |
-| [Cloud Drive Setup](docs/CLOUD_DRIVE_SETUP.md) | OneDrive / Google Drive setup steps (Chinese)                          |
-| [API Reference](docs/API_REFERENCE.md)         | Complete API endpoint documentation                                    |
-| [Architecture](docs/ARCHITECTURE.md)           | System architecture & technical design                                 |
-| [Development Guide](docs/DEVELOPMENT.md)       | Local development, testing, code style                                 |
-| [PWA Guide](docs/PWA_GUIDE.md)                 | PWA installation & offline features                                    |
-| [Browser Extension](docs/BROWSER_EXTENSION.md) | Chrome / Edge / Firefox installation, usage, and permissions (Chinese) |
+| Document                                     | Description                                                            |
+| -------------------------------------------- | ---------------------------------------------------------------------- |
+| [Deployment Guide](../DEPLOYMENT.md)         | Manual deployment, KV config, Secrets                                  |
+| [Cloud Drive Setup](../CLOUD_DRIVE_SETUP.md) | OneDrive / Google Drive setup steps (Chinese)                          |
+| [API Reference](../API_REFERENCE.md)         | Complete API endpoint documentation                                    |
+| [Architecture](../ARCHITECTURE.md)           | System architecture & technical design                                 |
+| [Development Guide](../DEVELOPMENT.md)       | Local development, testing, code style                                 |
+| [PWA Guide](../PWA_GUIDE.md)                 | PWA installation & offline features                                    |
+| [Browser Extension](../BROWSER_EXTENSION.md) | Chrome / Edge / Firefox installation, usage, and permissions (Chinese) |
 
 ## 🤝 Contributing
 
-Welcome to submit [Issues](https://github.com/wuzf/2fa/issues) and [Pull Requests](https://github.com/wuzf/2fa/pulls). For development details, see the [Development Guide](docs/DEVELOPMENT.md).
+Welcome to submit [Issues](https://github.com/wuzf/2fa/issues) and [Pull Requests](https://github.com/wuzf/2fa/pulls). For development details, see the [Development Guide](../DEVELOPMENT.md).
 
 ## 📄 License
 
-[MIT License](LICENSE)
+[MIT License](../../LICENSE)
 
 ## 🌟 Star History
 

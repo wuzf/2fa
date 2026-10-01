@@ -8,9 +8,9 @@ Cloudflare Workers üzerinde çalışan bir iki faktörlü kimlik doğrulama ana
 
 <!-- README_LANGUAGE_NAV_START -->
 
-[简体中文](README.md) · [繁體中文](README_TC.md) · [English](README_EN.md) · [日本語](README_JA.md) · [한국어](README_KO.md) ·
-[Deutsch](README_DE.md) · [Français](README_FR.md) · [Español](README_ES.md) · [Português (Brasil)](README_PT_BR.md) · [Italiano](README_IT.md) ·
-[Русский](README_RU.md) · **[Türkçe](README_TR.md)** · [Bahasa Indonesia](README_ID.md) · [Tiếng Việt](README_VI.md) · [ไทย](README_TH.md)
+[简体中文](../../README.md) · [繁體中文](../zh-TW/README.md) · [English](../en/README.md) · [日本語](../ja/README.md) · [한국어](../ko/README.md) ·
+[Deutsch](../de/README.md) · [Français](../fr/README.md) · [Español](../es/README.md) · [Português (Brasil)](../pt-BR/README.md) · [Italiano](../it/README.md) ·
+[Русский](../ru/README.md) · **[Türkçe](README.md)** · [Bahasa Indonesia](../id/README.md) · [Tiếng Việt](../vi/README.md) · [ไทย](../th/README.md)
 
 <!-- README_LANGUAGE_NAV_END -->
 
@@ -24,13 +24,13 @@ Web uygulaması, tarayıcı eklentileri, ilk kurulum, herkese açık OTP sayfala
 
 Yükleme bağlantısını ilgili tarayıcıda açın. Yükledikten sonra eklenti ayarlarına kendi barındırdığınız 2FA kurulumunun URL'sini girin ve TOTP kodlarını görüntülemek, kopyalamak ve doldurmak için aynı tarayıcıda bu kuruluma giriş yapın. Otomatik doldurma, her doğrulama sayfası için ayrı izin gerektirir. Eklenti, bu projenin dağıtılmış bir kurulumunu gerektirir ve arayüzü yukarıda listelenen 15 dili destekler. Firefox masaüstü ve Android sürümleri için 153 veya üzeri ve normal sekmeler gerekir; masaüstündeki kapsayıcı sekmeleri ve her iki platformdaki özel sekmeler desteklenmez. Android uyarlamaları mevcut kaynak kodunda yer alır; uyumlu mağaza sürümü henüz yayımlanmamıştır ve Android için Firefox henüz fiziksel bir cihazda test edilmemiştir. Android için Firefox, eklenti klavye kısayolları sunmaz.
 
-[Yükleme ve kullanım kılavuzu](docs/BROWSER_EXTENSION.md) · [Chrome / Edge gizlilik politikası](extension/PRIVACY.md) · [Firefox gizlilik politikası](extension/PRIVACY_FIREFOX.md) (Çince)
+[Yükleme ve kullanım kılavuzu](../BROWSER_EXTENSION.md) · [Chrome / Edge gizlilik politikası](../../extension/PRIVACY.md) · [Firefox gizlilik politikası](../../extension/PRIVACY_FIREFOX.md) (Çince)
 
 ## 📸 Ekran görüntüleri
 
-|                    Masaüstü                     |                    Tablet                    |                    Mobil                    |
-| :---------------------------------------------: | :------------------------------------------: | :-----------------------------------------: |
-| ![Masaüstü](docs/images/screenshot-desktop.png) | ![Tablet](docs/images/screenshot-tablet.png) | ![Mobil](docs/images/screenshot-mobile.png) |
+|                   Masaüstü                    |                   Tablet                   |                   Mobil                   |
+| :-------------------------------------------: | :----------------------------------------: | :---------------------------------------: |
+| ![Masaüstü](../images/screenshot-desktop.png) | ![Tablet](../images/screenshot-tablet.png) | ![Mobil](../images/screenshot-mobile.png) |
 
 ## 🚀 Hızlı dağıtım
 
@@ -90,13 +90,13 @@ Tek tıkla dağıtım bağımsız bir depo oluşturur (Fork değildir). Yükselt
 >
 > `.github/workflows/sync-upstream.yml` dosyasını kendiniz oluşturup içeriğini <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml> adresinden de kopyalayabilirsiniz. Giriş dosyası yalnızca birkaç satırdır; yükseltme adımları üst depodan gelir, bu yüzden hiç güncellenmesi gerekmez. Ardından yukarıdaki yükseltme adımlarını izleyin.
 
-> **Önceki bir yükseltme `without workflows permission` hatasıyla başarısız olduysa**: Düzeltme kaynak deponun `main` dalında yayımlandığında, otomatik dağıtım yapılandırması birleştirme adımına sahip mevcut **Sync Upstream** iş akışları, YAML düzenlemeden veya PAT yapılandırmadan yukarıdaki adımlarla yükseltme yapabilir. `main` ile yeni bir çalıştırma başlatın; eski sürüm etiketleri düzeltmeyi içermez. Diğer durumlar için [yükseltme sorunlarını giderme](docs/DEPLOYMENT.md#升级故障排查) bölümüne bakın (Çince).
+> **Önceki bir yükseltme `without workflows permission` hatasıyla başarısız olduysa**: Düzeltme kaynak deponun `main` dalında yayımlandığında, otomatik dağıtım yapılandırması birleştirme adımına sahip mevcut **Sync Upstream** iş akışları, YAML düzenlemeden veya PAT yapılandırmadan yukarıdaki adımlarla yükseltme yapabilir. `main` ile yeni bir çalıştırma başlatın; eski sürüm etiketleri düzeltmeyi içermez. Diğer durumlar için [yükseltme sorunlarını giderme](../DEPLOYMENT.md#升级故障排查) bölümüne bakın (Çince).
 
 Bu yöntem mevcut Workers, KV bağlamaları veya Secrets üzerinde değişiklik yapmaz. **`ENCRYPTION_KEY` daha önce ayarlandıysa yükseltme sırasında yeniden girmeniz gerekmez; ayarlamadıysanız da bu yükseltme yöntemini kullanabilirsiniz.**
 
 > ⚠️ `ENCRYPTION_KEY`, mevcut verilerin şifresini çözmek için kullanılan ana anahtardır. İlk oluşturulduğunda bir parola yöneticisine kaydettiğinizden emin olun. Cloudflare Secrets kaydedildikten sonra görüntülenemez; normal yükseltmelerde tekrar girilmeleri gerekmez, ancak özgün değeri kaydetmeden anahtarı silerseniz mevcut şifreli veriler kurtarılamaz.
 
-> ⚠️ **1.8.0 öncesi bir sürüme geri dönme**: 1.8.0'dan itibaren HOTP sayaç artışları ana veriden ayrı saklanır. Geri dönmeden önce sayaçları ana veriye geri yazmak için sıkıştırma uç noktasını bir kez çağırın; aksi halde HOTP sayaçları yükseltme anındaki değerlerine döner. [Geri dönüş adımları](docs/DEPLOYMENT.md#回滚到-180-之前的版本) bölümüne bakın (Çince). Yalnızca TOTP kullanan kurulumlar etkilenmez.
+> ⚠️ **1.8.0 öncesi bir sürüme geri dönme**: 1.8.0'dan itibaren HOTP sayaç artışları ana veriden ayrı saklanır. Geri dönmeden önce sayaçları ana veriye geri yazmak için sıkıştırma uç noktasını bir kez çağırın; aksi halde HOTP sayaçları yükseltme anındaki değerlerine döner. [Geri dönüş adımları](../DEPLOYMENT.md#回滚到-180-之前的版本) bölümüne bakın (Çince). Yalnızca TOTP kullanan kurulumlar etkilenmez.
 
 #### Birleştirme sonucunu kontrol etme
 
@@ -172,7 +172,7 @@ Uzak yedek hedeflerini **Ayarlar → Senkronizasyon ayarları** bölümünden ek
 
 Uzak yedekler, uygulamanın oluşturduğu yedek içeriğinin aynısını saklar. Yedek oluşturulurken `ENCRYPTION_KEY` yapılandırılmışsa uzak dosya da şifreli metindir; geri yüklemek için Worker'da aynı `ENCRYPTION_KEY` değerinin korunması gerekir.
 
-Ayrıntılı kurulum adımları: [Bulut sürücüsü kurulumu](docs/CLOUD_DRIVE_SETUP.md) (şu anda Çince).
+Ayrıntılı kurulum adımları: [Bulut sürücüsü kurulumu](../CLOUD_DRIVE_SETUP.md) (şu anda Çince).
 
 ### Ayarlar
 
@@ -200,7 +200,7 @@ Bir hesap seçmek için eklentiye tıklayın veya önceden bağlanmış bir hesa
 
 Aynı tarayıcı profilinde 2FA kurulumuna giriş yaptıktan ve kurulum erişimine izin verdikten sonra kurulum sekmesini kapatabilirsiniz. Varsayılan olarak eklenti, geçerli oturum üzerinden gizli anahtarları okur ve her görev için kodları arka plan belleğinde hesaplar; oturum süresi dolduğunda yeniden giriş yapın. Çevrimdışı kullanımı açıkça etkinleştirmek, bağımsız bir yerel gizli anahtar önbelleği kaydeder; böylece ağ bağlantısı veya açık bir kurulum sekmesi olmadan kodlar kullanılabilir. Bu önbellek ek bir parolayla şifrelenmez. Yetkili eklenti kodu gizli anahtar listesinin tamamını okuyabilir, ancak gizli anahtarlar hiçbir zaman eklentinin açılır penceresine veya hedef siteye gönderilmez. Açık Shadow DOM ve aynı kökenli iframe alanları desteklenir; HOTP, farklı kökenli iframe'ler, kapalı Shadow DOM ve özel gezinme desteklenmez.
 
-[Yükleme ve kullanım kılavuzuna](docs/BROWSER_EXTENSION.md), [Chrome / Edge gizlilik bildirimine](extension/PRIVACY.md) ve [Firefox gizlilik bildirimine](extension/PRIVACY_FIREFOX.md) bakın (şu anda Çince).
+[Yükleme ve kullanım kılavuzuna](../BROWSER_EXTENSION.md), [Chrome / Edge gizlilik bildirimine](../../extension/PRIVACY.md) ve [Firefox gizlilik bildirimine](../../extension/PRIVACY_FIREFOX.md) bakın (şu anda Çince).
 
 ## 🔒 Güvenlik
 
@@ -226,23 +226,23 @@ TOTP sayfaları hem geçerli hem de sonraki kodu gösterir; her ikisi de kopyala
 
 ## 📚 Diğer belgeler
 
-| Belge                                                | Açıklama                                                     |
-| ---------------------------------------------------- | ------------------------------------------------------------ |
-| [Dağıtım kılavuzu](docs/DEPLOYMENT.md)               | Elle dağıtım, KV yapılandırması, Secrets                     |
-| [Bulut sürücüsü kurulumu](docs/CLOUD_DRIVE_SETUP.md) | OneDrive / Google Drive kurulum adımları (Çince)             |
-| [API başvuru belgesi](docs/API_REFERENCE.md)         | Tüm API uç noktalarının belgeleri                            |
-| [Mimari](docs/ARCHITECTURE.md)                       | Sistem mimarisi ve teknik tasarım                            |
-| [Geliştirme kılavuzu](docs/DEVELOPMENT.md)           | Yerel geliştirme, testler, kod biçemi                        |
-| [PWA kılavuzu](docs/PWA_GUIDE.md)                    | PWA kurulumu ve çevrimdışı özellikler                        |
-| [Tarayıcı eklentisi](docs/BROWSER_EXTENSION.md)      | Chrome / Edge / Firefox yükleme, kullanım ve izinler (Çince) |
+| Belge                                              | Açıklama                                                     |
+| -------------------------------------------------- | ------------------------------------------------------------ |
+| [Dağıtım kılavuzu](../DEPLOYMENT.md)               | Elle dağıtım, KV yapılandırması, Secrets                     |
+| [Bulut sürücüsü kurulumu](../CLOUD_DRIVE_SETUP.md) | OneDrive / Google Drive kurulum adımları (Çince)             |
+| [API başvuru belgesi](../API_REFERENCE.md)         | Tüm API uç noktalarının belgeleri                            |
+| [Mimari](../ARCHITECTURE.md)                       | Sistem mimarisi ve teknik tasarım                            |
+| [Geliştirme kılavuzu](../DEVELOPMENT.md)           | Yerel geliştirme, testler, kod biçemi                        |
+| [PWA kılavuzu](../PWA_GUIDE.md)                    | PWA kurulumu ve çevrimdışı özellikler                        |
+| [Tarayıcı eklentisi](../BROWSER_EXTENSION.md)      | Chrome / Edge / Firefox yükleme, kullanım ve izinler (Çince) |
 
 ## 🤝 Katkıda bulunma
 
-[Issue](https://github.com/wuzf/2fa/issues) ve [Pull Request](https://github.com/wuzf/2fa/pulls) gönderebilirsiniz. Geliştirme ayrıntıları için [Geliştirme kılavuzuna](docs/DEVELOPMENT.md) bakın.
+[Issue](https://github.com/wuzf/2fa/issues) ve [Pull Request](https://github.com/wuzf/2fa/pulls) gönderebilirsiniz. Geliştirme ayrıntıları için [Geliştirme kılavuzuna](../DEVELOPMENT.md) bakın.
 
 ## 📄 Lisans
 
-[MIT Lisansı](LICENSE)
+[MIT Lisansı](../../LICENSE)
 
 ## 🌟 Yıldız geçmişi
 

@@ -8,9 +8,9 @@ Hệ thống quản lý khóa xác thực hai yếu tố được xây dựng tr
 
 <!-- README_LANGUAGE_NAV_START -->
 
-[简体中文](README.md) · [繁體中文](README_TC.md) · [English](README_EN.md) · [日本語](README_JA.md) · [한국어](README_KO.md) ·
-[Deutsch](README_DE.md) · [Français](README_FR.md) · [Español](README_ES.md) · [Português (Brasil)](README_PT_BR.md) · [Italiano](README_IT.md) ·
-[Русский](README_RU.md) · [Türkçe](README_TR.md) · [Bahasa Indonesia](README_ID.md) · **[Tiếng Việt](README_VI.md)** · [ไทย](README_TH.md)
+[简体中文](../../README.md) · [繁體中文](../zh-TW/README.md) · [English](../en/README.md) · [日本語](../ja/README.md) · [한국어](../ko/README.md) ·
+[Deutsch](../de/README.md) · [Français](../fr/README.md) · [Español](../es/README.md) · [Português (Brasil)](../pt-BR/README.md) · [Italiano](../it/README.md) ·
+[Русский](../ru/README.md) · [Türkçe](../tr/README.md) · [Bahasa Indonesia](../id/README.md) · **[Tiếng Việt](README.md)** · [ไทย](../th/README.md)
 
 <!-- README_LANGUAGE_NAV_END -->
 
@@ -24,13 +24,13 @@ Cài đặt 2FA Verification Assistant: **[Chrome Web Store](https://chromewebst
 
 Mở liên kết cài đặt trong trình duyệt tương ứng. Sau khi cài đặt, nhập URL của hệ thống 2FA do bạn tự triển khai vào phần cài đặt tiện ích và đăng nhập vào hệ thống đó trong cùng trình duyệt để xem, sao chép và điền mã TOTP. Tự động điền yêu cầu cấp quyền riêng cho từng trang xác minh. Tiện ích cần một hệ thống đã triển khai từ dự án này và giao diện hỗ trợ 15 ngôn ngữ nêu trên. Firefox trên máy tính và Android đều yêu cầu phiên bản 153 trở lên và tab thông thường; không hỗ trợ tab vùng chứa trên máy tính hoặc tab riêng tư trên cả hai nền tảng. Các thay đổi để tương thích với Android đã có trong mã nguồn hiện tại; phiên bản tương thích trên cửa hàng chưa được phát hành và Firefox cho Android chưa được kiểm chứng trên thiết bị thật. Firefox cho Android không cung cấp phím tắt cho tiện ích mở rộng.
 
-[Hướng dẫn cài đặt và sử dụng](docs/BROWSER_EXTENSION.md) · [Chính sách quyền riêng tư Chrome / Edge](extension/PRIVACY.md) · [Chính sách quyền riêng tư Firefox](extension/PRIVACY_FIREFOX.md) (tiếng Trung)
+[Hướng dẫn cài đặt và sử dụng](../BROWSER_EXTENSION.md) · [Chính sách quyền riêng tư Chrome / Edge](../../extension/PRIVACY.md) · [Chính sách quyền riêng tư Firefox](../../extension/PRIVACY_FIREFOX.md) (tiếng Trung)
 
 ## 📸 Ảnh chụp màn hình
 
-|                    Máy tính                     |                    Máy tính bảng                    |                    Điện thoại                    |
-| :---------------------------------------------: | :-------------------------------------------------: | :----------------------------------------------: |
-| ![Máy tính](docs/images/screenshot-desktop.png) | ![Máy tính bảng](docs/images/screenshot-tablet.png) | ![Điện thoại](docs/images/screenshot-mobile.png) |
+|                   Máy tính                    |                   Máy tính bảng                   |                   Điện thoại                   |
+| :-------------------------------------------: | :-----------------------------------------------: | :--------------------------------------------: |
+| ![Máy tính](../images/screenshot-desktop.png) | ![Máy tính bảng](../images/screenshot-tablet.png) | ![Điện thoại](../images/screenshot-mobile.png) |
 
 ## 🚀 Triển khai nhanh
 
@@ -90,13 +90,13 @@ Quy trình tự động giữ nguyên tên Worker, liên kết KV và các cài 
 >
 > Bạn cũng có thể tự tạo `.github/workflows/sync-upstream.yml` và sao chép nội dung từ <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml>. Tệp này chỉ vài dòng; các bước nâng cấp lấy từ kho gốc nên không bao giờ cần cập nhật. Sau đó làm theo các bước nâng cấp bên trên.
 
-> **Nếu lần nâng cấp trước thất bại với lỗi `without workflows permission`**: Sau khi bản sửa được đưa lên nhánh `main` của kho nguồn, các quy trình **Sync Upstream** hiện có bước tự động hợp nhất cấu hình triển khai có thể nâng cấp theo các bước bên trên mà không cần sửa YAML hoặc cấu hình PAT. Bắt đầu lượt chạy mới với `main`; các thẻ phát hành cũ không chứa bản sửa. Với trường hợp khác, xem [khắc phục sự cố nâng cấp](docs/DEPLOYMENT.md#升级故障排查) (tiếng Trung).
+> **Nếu lần nâng cấp trước thất bại với lỗi `without workflows permission`**: Sau khi bản sửa được đưa lên nhánh `main` của kho nguồn, các quy trình **Sync Upstream** hiện có bước tự động hợp nhất cấu hình triển khai có thể nâng cấp theo các bước bên trên mà không cần sửa YAML hoặc cấu hình PAT. Bắt đầu lượt chạy mới với `main`; các thẻ phát hành cũ không chứa bản sửa. Với trường hợp khác, xem [khắc phục sự cố nâng cấp](../DEPLOYMENT.md#升级故障排查) (tiếng Trung).
 
 Cách này không ảnh hưởng đến Workers, liên kết KV hoặc Secrets hiện có. **Nếu đã thiết lập `ENCRYPTION_KEY`, bạn không cần nhập lại khi nâng cấp; nếu chưa thiết lập, bạn vẫn có thể dùng quy trình nâng cấp này.**
 
 > ⚠️ `ENCRYPTION_KEY` là khóa chính để giải mã dữ liệu hiện có. Hãy lưu vào trình quản lý mật khẩu ngay khi tạo lần đầu. Không thể xem Cloudflare Secrets sau khi lưu; nâng cấp thông thường không cần nhập lại, nhưng nếu xóa khóa mà chưa lưu giá trị gốc, dữ liệu mã hóa hiện có sẽ không thể khôi phục.
 
-> ⚠️ **Quay về phiên bản trước 1.8.0**: Từ 1.8.0, các lần tăng bộ đếm HOTP được lưu riêng với dữ liệu chính. Trước khi quay về phiên bản cũ, gọi điểm cuối hợp nhất dữ liệu một lần để ghi các bộ đếm trở lại dữ liệu chính; nếu không, bộ đếm HOTP sẽ trở về giá trị tại thời điểm nâng cấp. Xem [các bước quay về phiên bản cũ](docs/DEPLOYMENT.md#回滚到-180-之前的版本) (tiếng Trung). Các hệ thống chỉ dùng TOTP không bị ảnh hưởng.
+> ⚠️ **Quay về phiên bản trước 1.8.0**: Từ 1.8.0, các lần tăng bộ đếm HOTP được lưu riêng với dữ liệu chính. Trước khi quay về phiên bản cũ, gọi điểm cuối hợp nhất dữ liệu một lần để ghi các bộ đếm trở lại dữ liệu chính; nếu không, bộ đếm HOTP sẽ trở về giá trị tại thời điểm nâng cấp. Xem [các bước quay về phiên bản cũ](../DEPLOYMENT.md#回滚到-180-之前的版本) (tiếng Trung). Các hệ thống chỉ dùng TOTP không bị ảnh hưởng.
 
 #### Kiểm tra kết quả hợp nhất
 
@@ -172,7 +172,7 @@ Thêm và quản lý các đích sao lưu từ xa trong **Cài đặt → Cài �
 
 Bản sao lưu từ xa lưu cùng nội dung sao lưu mà ứng dụng tạo ra. Nếu `ENCRYPTION_KEY` đã được cấu hình khi tạo bản sao lưu, tệp từ xa cũng là dữ liệu mã hóa; để khôi phục, Worker phải giữ cùng giá trị `ENCRYPTION_KEY`.
 
-Các bước thiết lập chi tiết: [Thiết lập ổ đĩa đám mây](docs/CLOUD_DRIVE_SETUP.md) (hiện bằng tiếng Trung).
+Các bước thiết lập chi tiết: [Thiết lập ổ đĩa đám mây](../CLOUD_DRIVE_SETUP.md) (hiện bằng tiếng Trung).
 
 ### Cài đặt
 
@@ -200,7 +200,7 @@ Nhấp vào tiện ích để chọn tài khoản hoặc nhấn `Ctrl+Shift+U` �
 
 Sau khi đăng nhập vào hệ thống 2FA trong cùng hồ sơ trình duyệt và cấp quyền truy cập hệ thống, bạn có thể đóng tab hệ thống. Theo mặc định, tiện ích đọc khóa bí mật thông qua phiên hợp lệ và tính mã trong bộ nhớ nền cho từng tác vụ; hãy đăng nhập lại khi phiên hết hạn. Chủ động bật sử dụng ngoại tuyến sẽ lưu một bộ nhớ đệm khóa bí mật cục bộ độc lập, giúp mã vẫn khả dụng khi không có kết nối mạng hoặc không mở tab hệ thống. Bộ nhớ đệm không được mã hóa thêm bằng mật khẩu. Mã của tiện ích được cấp quyền có thể đọc toàn bộ danh sách khóa bí mật, nhưng khóa bí mật không bao giờ được gửi đến cửa sổ bật lên của tiện ích hoặc trang đích. Hỗ trợ các ô trong Shadow DOM mở và iframe cùng nguồn; không hỗ trợ HOTP, iframe khác nguồn, Shadow DOM đóng và duyệt web riêng tư.
 
-Xem [hướng dẫn cài đặt và sử dụng](docs/BROWSER_EXTENSION.md), [thông báo quyền riêng tư Chrome / Edge](extension/PRIVACY.md) và [thông báo quyền riêng tư Firefox](extension/PRIVACY_FIREFOX.md) (hiện bằng tiếng Trung).
+Xem [hướng dẫn cài đặt và sử dụng](../BROWSER_EXTENSION.md), [thông báo quyền riêng tư Chrome / Edge](../../extension/PRIVACY.md) và [thông báo quyền riêng tư Firefox](../../extension/PRIVACY_FIREFOX.md) (hiện bằng tiếng Trung).
 
 ## 🔒 Bảo mật
 
@@ -226,23 +226,23 @@ Trang TOTP hiển thị cả mã hiện tại và mã kế tiếp, mỗi mã đ�
 
 ## 📚 Tài liệu khác
 
-| Tài liệu                                             | Mô tả                                                               |
-| ---------------------------------------------------- | ------------------------------------------------------------------- |
-| [Hướng dẫn triển khai](docs/DEPLOYMENT.md)           | Triển khai thủ công, cấu hình KV, Secrets                           |
-| [Thiết lập ổ đĩa đám mây](docs/CLOUD_DRIVE_SETUP.md) | Các bước thiết lập OneDrive / Google Drive (tiếng Trung)            |
-| [Tài liệu tham khảo API](docs/API_REFERENCE.md)      | Tài liệu đầy đủ về các điểm cuối API                                |
-| [Kiến trúc](docs/ARCHITECTURE.md)                    | Kiến trúc hệ thống và thiết kế kỹ thuật                             |
-| [Hướng dẫn phát triển](docs/DEVELOPMENT.md)          | Phát triển cục bộ, kiểm thử, quy cách mã nguồn                      |
-| [Hướng dẫn PWA](docs/PWA_GUIDE.md)                   | Cài đặt PWA và các tính năng ngoại tuyến                            |
-| [Tiện ích trình duyệt](docs/BROWSER_EXTENSION.md)    | Cài đặt, sử dụng và quyền của Chrome / Edge / Firefox (tiếng Trung) |
+| Tài liệu                                           | Mô tả                                                               |
+| -------------------------------------------------- | ------------------------------------------------------------------- |
+| [Hướng dẫn triển khai](../DEPLOYMENT.md)           | Triển khai thủ công, cấu hình KV, Secrets                           |
+| [Thiết lập ổ đĩa đám mây](../CLOUD_DRIVE_SETUP.md) | Các bước thiết lập OneDrive / Google Drive (tiếng Trung)            |
+| [Tài liệu tham khảo API](../API_REFERENCE.md)      | Tài liệu đầy đủ về các điểm cuối API                                |
+| [Kiến trúc](../ARCHITECTURE.md)                    | Kiến trúc hệ thống và thiết kế kỹ thuật                             |
+| [Hướng dẫn phát triển](../DEVELOPMENT.md)          | Phát triển cục bộ, kiểm thử, quy cách mã nguồn                      |
+| [Hướng dẫn PWA](../PWA_GUIDE.md)                   | Cài đặt PWA và các tính năng ngoại tuyến                            |
+| [Tiện ích trình duyệt](../BROWSER_EXTENSION.md)    | Cài đặt, sử dụng và quyền của Chrome / Edge / Firefox (tiếng Trung) |
 
 ## 🤝 Đóng góp
 
-Hoan nghênh bạn gửi [Issue](https://github.com/wuzf/2fa/issues) và [Pull Request](https://github.com/wuzf/2fa/pulls). Để biết chi tiết về phát triển, xem [Hướng dẫn phát triển](docs/DEVELOPMENT.md).
+Hoan nghênh bạn gửi [Issue](https://github.com/wuzf/2fa/issues) và [Pull Request](https://github.com/wuzf/2fa/pulls). Để biết chi tiết về phát triển, xem [Hướng dẫn phát triển](../DEVELOPMENT.md).
 
 ## 📄 Giấy phép
 
-[Giấy phép MIT](LICENSE)
+[Giấy phép MIT](../../LICENSE)
 
 ## 🌟 Lịch sử sao
 

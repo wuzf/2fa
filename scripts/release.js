@@ -5,7 +5,7 @@
  *
  * 版本号唯一数据源是 package.json，其余位置由本脚本同步：
  *   - src/utils/version.js  (APP_VERSION，前端 footer 和新版本检测依赖)
- *   - README.md / README_EN.md  (版本徽章)
+ *   - README.md / docs/en/README.md  (版本徽章)
  *
  * 使用方式：
  *   npm run release:patch          # 1.6.0 → 1.6.1
@@ -50,7 +50,7 @@ const SYNC_TARGETS = [
 		replacement: (v) => `$1${v}$2`,
 	},
 	{
-		file: 'README_EN.md',
+		file: 'docs/en/README.md',
 		pattern: /(badge\/version-)\d+\.\d+\.\d+(-blue)/,
 		replacement: (v) => `$1${v}$2`,
 	},

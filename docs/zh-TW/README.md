@@ -4,9 +4,9 @@
 
 <!-- README_LANGUAGE_NAV_START -->
 
-[简体中文](README.md) · **[繁體中文](README_TC.md)** · [English](README_EN.md) · [日本語](README_JA.md) · [한국어](README_KO.md) ·
-[Deutsch](README_DE.md) · [Français](README_FR.md) · [Español](README_ES.md) · [Português (Brasil)](README_PT_BR.md) · [Italiano](README_IT.md) ·
-[Русский](README_RU.md) · [Türkçe](README_TR.md) · [Bahasa Indonesia](README_ID.md) · [Tiếng Việt](README_VI.md) · [ไทย](README_TH.md)
+[简体中文](../../README.md) · **[繁體中文](README.md)** · [English](../en/README.md) · [日本語](../ja/README.md) · [한국어](../ko/README.md) ·
+[Deutsch](../de/README.md) · [Français](../fr/README.md) · [Español](../es/README.md) · [Português (Brasil)](../pt-BR/README.md) · [Italiano](../it/README.md) ·
+[Русский](../ru/README.md) · [Türkçe](../tr/README.md) · [Bahasa Indonesia](../id/README.md) · [Tiếng Việt](../vi/README.md) · [ไทย](../th/README.md)
 
 <!-- README_LANGUAGE_NAV_END -->
 
@@ -24,13 +24,13 @@
 
 請使用對應瀏覽器開啟安裝連結。安裝後，在擴充功能設定中填寫自己的 2FA 實例網址，並在同一瀏覽器中登入實例，即可查看、複製及填入 TOTP 驗證碼；自動填入需在目標驗證頁面單獨啟用並授權。擴充功能需搭配已部署的本專案使用，介面支援上述 15 種語言。Firefox 桌面版與 Android 版均要求 153 及以上版本，並使用一般分頁；不支援桌面容器分頁及兩端的隱私分頁。Android 適配已加入目前原始碼，相容的商店新版尚待發布，尚未完成 Firefox Android 實機驗證。Firefox Android 不提供擴充功能快捷鍵。Edge Android 已有使用者實測可用。
 
-[安裝與使用指南](docs/BROWSER_EXTENSION.md) · [Chrome / Edge 隱私權政策](extension/PRIVACY.md) · [Firefox 隱私權政策](extension/PRIVACY_FIREFOX.md)（簡體中文）
+[安裝與使用指南](../BROWSER_EXTENSION.md) · [Chrome / Edge 隱私權政策](../../extension/PRIVACY.md) · [Firefox 隱私權政策](../../extension/PRIVACY_FIREFOX.md)（簡體中文）
 
 ## 📸 截圖預覽
 
-|                    桌面端                     |                    平板端                    |                    手機端                    |
-| :-------------------------------------------: | :------------------------------------------: | :------------------------------------------: |
-| ![桌面端](docs/images/screenshot-desktop.png) | ![平板端](docs/images/screenshot-tablet.png) | ![手機端](docs/images/screenshot-mobile.png) |
+|                   桌面端                    |                   平板端                   |                   手機端                   |
+| :-----------------------------------------: | :----------------------------------------: | :----------------------------------------: |
+| ![桌面端](../images/screenshot-desktop.png) | ![平板端](../images/screenshot-tablet.png) | ![手機端](../images/screenshot-mobile.png) |
 
 ## 🚀 快速部署
 
@@ -184,4 +184,4 @@ TOTP 網頁同時顯示目前與下一期驗證碼，均可點選複製，到期
 
 ## 📄 授權條款
 
-本專案採用 [MIT License](LICENSE) 開源授權。
+本專案採用 [MIT License](../../LICENSE) 開源授權。

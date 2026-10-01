@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -9,7 +9,11 @@ const entry = read('.github/sync-upstream-entry.yml');
 const workflow = read('.github/workflows/sync-upstream.yml');
 // One-click repositories add the entry through GitHub's "create file" page, filled from this link.
 const link = `https://github.com/OWNER/REPO/new/main?filename=.github/workflows/sync-upstream.yml&value=${encodeURIComponent(entry)}`;
-const documents = [...readdirSync(projectRoot).filter((name) => /^README(_[A-Z_]+)?\.md$/.test(name)), 'docs/DEPLOYMENT.md'];
+// The translated READMEs live in docs/<language>/README.md.
+const translations = readdirSync(join(projectRoot, 'docs'), { withFileTypes: true })
+	.filter((entry) => entry.isDirectory() && existsSync(join(projectRoot, 'docs', entry.name, 'README.md')))
+	.map((entry) => `docs/${entry.name}/README.md`);
+const documents = ['README.md', ...translations, 'docs/DEPLOYMENT.md'];
 
 describe('Sync Upstream entry for one-click repositories', () => {
 	it('calls the upstream workflow with the dispatch input', () => {

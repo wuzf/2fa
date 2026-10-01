@@ -18,7 +18,7 @@ describe('version utils', () => {
 
 	// 版本号所有写入位置的一致性校验（发版用 npm run release:*，修复不一致用 npm run release:sync）
 	describe('version consistency', () => {
-		it.each(['README.md', 'README_EN.md'])('%s badge should match package.json version', (file) => {
+		it.each(['README.md', 'docs/en/README.md'])('%s badge should match package.json version', (file) => {
 			const content = readFileSync(new URL(`../../${file}`, import.meta.url), 'utf-8');
 			const match = content.match(/badge\/version-(\d+\.\d+\.\d+)-blue/);
 			expect(match, `${file} 应包含版本徽章`).not.toBeNull();

@@ -8,9 +8,9 @@ Un sistema di gestione delle chiavi per l'autenticazione a due fattori basato su
 
 <!-- README_LANGUAGE_NAV_START -->
 
-[简体中文](README.md) · [繁體中文](README_TC.md) · [English](README_EN.md) · [日本語](README_JA.md) · [한국어](README_KO.md) ·
-[Deutsch](README_DE.md) · [Français](README_FR.md) · [Español](README_ES.md) · [Português (Brasil)](README_PT_BR.md) · **[Italiano](README_IT.md)** ·
-[Русский](README_RU.md) · [Türkçe](README_TR.md) · [Bahasa Indonesia](README_ID.md) · [Tiếng Việt](README_VI.md) · [ไทย](README_TH.md)
+[简体中文](../../README.md) · [繁體中文](../zh-TW/README.md) · [English](../en/README.md) · [日本語](../ja/README.md) · [한국어](../ko/README.md) ·
+[Deutsch](../de/README.md) · [Français](../fr/README.md) · [Español](../es/README.md) · [Português (Brasil)](../pt-BR/README.md) · **[Italiano](README.md)** ·
+[Русский](../ru/README.md) · [Türkçe](../tr/README.md) · [Bahasa Indonesia](../id/README.md) · [Tiếng Việt](../vi/README.md) · [ไทย](../th/README.md)
 
 <!-- README_LANGUAGE_NAV_END -->
 
@@ -24,13 +24,13 @@ Installa 2FA Verification Assistant: **[Chrome Web Store](https://chromewebstore
 
 Apri il link di installazione nel browser corrispondente. Dopo l'installazione, inserisci l'URL della tua istanza 2FA ospitata autonomamente nelle impostazioni dell'estensione e accedi all'istanza nello stesso browser per visualizzare, copiare e compilare i codici TOTP. La compilazione automatica richiede un'autorizzazione distinta per ogni pagina di verifica. L'estensione richiede un'istanza distribuita di questo progetto e la sua interfaccia supporta le 15 lingue elencate sopra. Firefox per desktop e Android richiede la versione 153 o successiva e schede normali; le schede contenitore su desktop e le schede anonime su entrambe le piattaforme non sono supportate. Gli adattamenti per Android sono nel codice sorgente attuale; la versione compatibile nello store è in attesa di pubblicazione e Firefox per Android non è ancora stato verificato su un dispositivo fisico. Firefox per Android non offre scorciatoie da tastiera per le estensioni.
 
-[Guida all'installazione e all'uso](docs/BROWSER_EXTENSION.md) · [Informativa sulla privacy per Chrome / Edge](extension/PRIVACY.md) · [Informativa sulla privacy per Firefox](extension/PRIVACY_FIREFOX.md) (in cinese)
+[Guida all'installazione e all'uso](../BROWSER_EXTENSION.md) · [Informativa sulla privacy per Chrome / Edge](../../extension/PRIVACY.md) · [Informativa sulla privacy per Firefox](../../extension/PRIVACY_FIREFOX.md) (in cinese)
 
 ## 📸 Schermate
 
-|                    Computer                     |                    Tablet                    |                    Smartphone                    |
-| :---------------------------------------------: | :------------------------------------------: | :----------------------------------------------: |
-| ![Computer](docs/images/screenshot-desktop.png) | ![Tablet](docs/images/screenshot-tablet.png) | ![Smartphone](docs/images/screenshot-mobile.png) |
+|                   Computer                    |                   Tablet                   |                   Smartphone                   |
+| :-------------------------------------------: | :----------------------------------------: | :--------------------------------------------: |
+| ![Computer](../images/screenshot-desktop.png) | ![Tablet](../images/screenshot-tablet.png) | ![Smartphone](../images/screenshot-mobile.png) |
 
 ## 🚀 Distribuzione rapida
 
@@ -90,13 +90,13 @@ Il workflow preserva automaticamente il nome del Worker, le associazioni KV e le
 >
 > Puoi anche creare `.github/workflows/sync-upstream.yml` a mano e copiarne il contenuto da <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml>. Il punto di ingresso è di poche righe; i passaggi di aggiornamento arrivano dal repository originale, quindi non va mai aggiornato. Poi segui i passaggi di aggiornamento indicati sopra.
 
-> **Se un aggiornamento precedente è fallito con `without workflows permission`**: una volta pubblicata la correzione nel ramo upstream `main`, i workflow **Sync Upstream** esistenti che includono il passaggio di unione automatica della configurazione di distribuzione possono eseguire l'aggiornamento con i passaggi sopra, senza modificare YAML né configurare un PAT. Avvia una nuova esecuzione con `main`; i tag delle versioni precedenti non includono la correzione. Per gli altri casi, consulta la [risoluzione dei problemi di aggiornamento](docs/DEPLOYMENT.md#升级故障排查) (in cinese).
+> **Se un aggiornamento precedente è fallito con `without workflows permission`**: una volta pubblicata la correzione nel ramo upstream `main`, i workflow **Sync Upstream** esistenti che includono il passaggio di unione automatica della configurazione di distribuzione possono eseguire l'aggiornamento con i passaggi sopra, senza modificare YAML né configurare un PAT. Avvia una nuova esecuzione con `main`; i tag delle versioni precedenti non includono la correzione. Per gli altri casi, consulta la [risoluzione dei problemi di aggiornamento](../DEPLOYMENT.md#升级故障排查) (in cinese).
 
 Questo metodo non modifica i Workers, le associazioni KV o i Secrets esistenti. **Se hai già impostato `ENCRYPTION_KEY`, non devi inserirla nuovamente durante gli aggiornamenti; se non l'hai impostata, puoi comunque utilizzare questa procedura.**
 
 > ⚠️ `ENCRYPTION_KEY` è la chiave principale per decifrare i dati esistenti. Salvala in un gestore di password quando la crei. I Secrets di Cloudflare non sono più visibili dopo il salvataggio; i normali aggiornamenti non richiedono di reinserirli, ma se elimini la chiave senza averne conservato il valore originale, i dati cifrati esistenti non possono essere recuperati.
 
-> ⚠️ **Ripristino di una versione precedente alla 1.8.0**: dalla versione 1.8.0, gli incrementi dei contatori HOTP vengono memorizzati separatamente dai dati principali. Prima di tornare a una versione precedente, richiama una volta l'endpoint di compattazione per riscrivere i contatori nei dati principali; altrimenti i contatori HOTP tornano ai valori che avevano al momento dell'aggiornamento. Consulta la [procedura di ripristino della versione](docs/DEPLOYMENT.md#回滚到-180-之前的版本) (in cinese). Le installazioni che utilizzano soltanto TOTP non sono interessate.
+> ⚠️ **Ripristino di una versione precedente alla 1.8.0**: dalla versione 1.8.0, gli incrementi dei contatori HOTP vengono memorizzati separatamente dai dati principali. Prima di tornare a una versione precedente, richiama una volta l'endpoint di compattazione per riscrivere i contatori nei dati principali; altrimenti i contatori HOTP tornano ai valori che avevano al momento dell'aggiornamento. Consulta la [procedura di ripristino della versione](../DEPLOYMENT.md#回滚到-180-之前的版本) (in cinese). Le installazioni che utilizzano soltanto TOTP non sono interessate.
 
 #### Controllare il risultato dell'unione
 
@@ -172,7 +172,7 @@ Aggiungi e gestisci le destinazioni di backup remoto in **Impostazioni → Impos
 
 I backup remoti contengono gli stessi dati di backup generati dall'applicazione. Se `ENCRYPTION_KEY` era configurata al momento della creazione del backup, anche il file remoto contiene dati cifrati; per ripristinarlo occorre mantenere la stessa `ENCRYPTION_KEY` nel Worker.
 
-Istruzioni dettagliate: [Configurazione dell'archiviazione cloud](docs/CLOUD_DRIVE_SETUP.md) (attualmente in cinese).
+Istruzioni dettagliate: [Configurazione dell'archiviazione cloud](../CLOUD_DRIVE_SETUP.md) (attualmente in cinese).
 
 ### Impostazioni
 
@@ -200,7 +200,7 @@ Fai clic sull'estensione per selezionare un account oppure premi `Ctrl+Shift+U` 
 
 Dopo aver effettuato l'accesso all'istanza 2FA nello stesso profilo del browser e aver autorizzato l'accesso all'istanza, puoi chiuderne la scheda. Per impostazione predefinita, l'estensione legge i segreti tramite la sessione valida e calcola i codici nella memoria in background per ogni operazione; accedi nuovamente quando la sessione scade. Attivando esplicitamente l'uso offline viene salvata una cache locale indipendente dei segreti, così i codici restano disponibili senza connessione di rete o senza una scheda dell'istanza aperta. La cache non dispone di cifratura aggiuntiva tramite password. Il codice autorizzato dell'estensione può leggere l'intero elenco dei segreti, ma le chiavi segrete non vengono mai inviate al popup o al sito di destinazione. Sono supportati i campi in Shadow DOM aperti e negli iframe della stessa origine; HOTP, iframe di origine diversa, Shadow DOM chiusi e navigazione privata non sono supportati.
 
-Consulta la [guida all'installazione e all'uso](docs/BROWSER_EXTENSION.md), l'[informativa sulla privacy per Chrome / Edge](extension/PRIVACY.md) e l'[informativa sulla privacy per Firefox](extension/PRIVACY_FIREFOX.md) (attualmente in cinese).
+Consulta la [guida all'installazione e all'uso](../BROWSER_EXTENSION.md), l'[informativa sulla privacy per Chrome / Edge](../../extension/PRIVACY.md) e l'[informativa sulla privacy per Firefox](../../extension/PRIVACY_FIREFOX.md) (attualmente in cinese).
 
 ## 🔒 Sicurezza
 
@@ -226,23 +226,23 @@ Le pagine TOTP mostrano il codice corrente e quello successivo, entrambi copiabi
 
 ## 📚 Altra documentazione
 
-| Documento                                                            | Descrizione                                                                 |
-| -------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| [Guida alla distribuzione](docs/DEPLOYMENT.md)                       | Distribuzione manuale, configurazione KV, Secrets                           |
-| [Configurazione dell'archiviazione cloud](docs/CLOUD_DRIVE_SETUP.md) | Passaggi di configurazione di OneDrive / Google Drive (in cinese)           |
-| [Riferimento API](docs/API_REFERENCE.md)                             | Documentazione completa degli endpoint API                                  |
-| [Architettura](docs/ARCHITECTURE.md)                                 | Architettura del sistema e progettazione tecnica                            |
-| [Guida allo sviluppo](docs/DEVELOPMENT.md)                           | Sviluppo locale, test e stile del codice                                    |
-| [Guida PWA](docs/PWA_GUIDE.md)                                       | Installazione della PWA e funzionalità offline                              |
-| [Estensione del browser](docs/BROWSER_EXTENSION.md)                  | Installazione, uso e autorizzazioni per Chrome / Edge / Firefox (in cinese) |
+| Documento                                                          | Descrizione                                                                 |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| [Guida alla distribuzione](../DEPLOYMENT.md)                       | Distribuzione manuale, configurazione KV, Secrets                           |
+| [Configurazione dell'archiviazione cloud](../CLOUD_DRIVE_SETUP.md) | Passaggi di configurazione di OneDrive / Google Drive (in cinese)           |
+| [Riferimento API](../API_REFERENCE.md)                             | Documentazione completa degli endpoint API                                  |
+| [Architettura](../ARCHITECTURE.md)                                 | Architettura del sistema e progettazione tecnica                            |
+| [Guida allo sviluppo](../DEVELOPMENT.md)                           | Sviluppo locale, test e stile del codice                                    |
+| [Guida PWA](../PWA_GUIDE.md)                                       | Installazione della PWA e funzionalità offline                              |
+| [Estensione del browser](../BROWSER_EXTENSION.md)                  | Installazione, uso e autorizzazioni per Chrome / Edge / Firefox (in cinese) |
 
 ## 🤝 Contributi
 
-Sono benvenuti [Issues](https://github.com/wuzf/2fa/issues) e [Pull Requests](https://github.com/wuzf/2fa/pulls). Per i dettagli sullo sviluppo, consulta la [Guida allo sviluppo](docs/DEVELOPMENT.md).
+Sono benvenuti [Issues](https://github.com/wuzf/2fa/issues) e [Pull Requests](https://github.com/wuzf/2fa/pulls). Per i dettagli sullo sviluppo, consulta la [Guida allo sviluppo](../DEVELOPMENT.md).
 
 ## 📄 Licenza
 
-[Licenza MIT](LICENSE)
+[Licenza MIT](../../LICENSE)
 
 ## 🌟 Cronologia delle stelle
 

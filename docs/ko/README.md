@@ -8,9 +8,9 @@ Cloudflare Workers 기반의 2단계 인증 키 관리 시스템입니다. 무�
 
 <!-- README_LANGUAGE_NAV_START -->
 
-[简体中文](README.md) · [繁體中文](README_TC.md) · [English](README_EN.md) · [日本語](README_JA.md) · **[한국어](README_KO.md)** ·
-[Deutsch](README_DE.md) · [Français](README_FR.md) · [Español](README_ES.md) · [Português (Brasil)](README_PT_BR.md) · [Italiano](README_IT.md) ·
-[Русский](README_RU.md) · [Türkçe](README_TR.md) · [Bahasa Indonesia](README_ID.md) · [Tiếng Việt](README_VI.md) · [ไทย](README_TH.md)
+[简体中文](../../README.md) · [繁體中文](../zh-TW/README.md) · [English](../en/README.md) · [日本語](../ja/README.md) · **[한국어](README.md)** ·
+[Deutsch](../de/README.md) · [Français](../fr/README.md) · [Español](../es/README.md) · [Português (Brasil)](../pt-BR/README.md) · [Italiano](../it/README.md) ·
+[Русский](../ru/README.md) · [Türkçe](../tr/README.md) · [Bahasa Indonesia](../id/README.md) · [Tiếng Việt](../vi/README.md) · [ไทย](../th/README.md)
 
 <!-- README_LANGUAGE_NAV_END -->
 
@@ -24,13 +24,13 @@ Cloudflare Workers 기반의 2단계 인증 키 관리 시스템입니다. 무�
 
 해당 브라우저에서 설치 링크를 여세요. 설치 후 확장 프로그램 설정에 직접 호스팅한 2FA 인스턴스 URL을 입력하고 같은 브라우저에서 해당 인스턴스에 로그인하면 TOTP 코드를 확인, 복사, 입력할 수 있습니다. 자동 입력에는 인증 페이지별로 별도의 권한이 필요합니다. 확장 프로그램을 사용하려면 이 프로젝트의 배포된 인스턴스가 있어야 하며, 인터페이스는 위의 15개 언어를 지원합니다. Firefox 데스크톱 및 Android 버전 모두 153 이상과 일반 탭이 필요합니다. 데스크톱 컨테이너 탭과 두 플랫폼의 사생활 보호 탭은 지원하지 않습니다. Android 호환성 변경은 현재 소스 코드에 포함되어 있지만, 호환되는 스토어 버전은 아직 출시 전이며 Firefox Android 실기기 검증도 완료되지 않았습니다. Firefox Android는 확장 프로그램 키보드 단축키를 제공하지 않습니다.
 
-[설치 및 사용 가이드](docs/BROWSER_EXTENSION.md) · [Chrome / Edge 개인정보 처리방침](extension/PRIVACY.md) · [Firefox 개인정보 처리방침](extension/PRIVACY_FIREFOX.md) (중국어)
+[설치 및 사용 가이드](../BROWSER_EXTENSION.md) · [Chrome / Edge 개인정보 처리방침](../../extension/PRIVACY.md) · [Firefox 개인정보 처리방침](../../extension/PRIVACY_FIREFOX.md) (중국어)
 
 ## 📸 스크린샷
 
-|                    데스크톱                     |                    태블릿                    |                    모바일                    |
-| :---------------------------------------------: | :------------------------------------------: | :------------------------------------------: |
-| ![데스크톱](docs/images/screenshot-desktop.png) | ![태블릿](docs/images/screenshot-tablet.png) | ![모바일](docs/images/screenshot-mobile.png) |
+|                   데스크톱                    |                   태블릿                   |                   모바일                   |
+| :-------------------------------------------: | :----------------------------------------: | :----------------------------------------: |
+| ![데스크톱](../images/screenshot-desktop.png) | ![태블릿](../images/screenshot-tablet.png) | ![모바일](../images/screenshot-mobile.png) |
 
 ## 🚀 빠른 배포
 
@@ -90,13 +90,13 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 >
 > `.github/workflows/sync-upstream.yml`을 직접 만들고 <https://github.com/wuzf/2fa/blob/main/.github/sync-upstream-entry.yml>의 내용을 복사해도 됩니다. 이 진입점은 몇 줄뿐이며 업그레이드 단계는 업스트림에서 가져오므로 앞으로 수정할 필요가 없습니다. 그런 다음 위 업그레이드 절차를 따르세요.
 
-> **이전 업그레이드가 `without workflows permission` 오류로 실패한 경우**: 수정 사항이 업스트림 `main`에 반영된 후에는 배포 설정 자동 병합 단계가 포함된 기존 **Sync Upstream** 워크플로로 위 절차에 따라 업그레이드할 수 있습니다. YAML을 수정하거나 PAT를 설정할 필요가 없습니다. `main`으로 새 실행을 시작하세요. 이전 릴리스 태그에는 수정 사항이 포함되어 있지 않습니다. 그 외의 경우는 [업그레이드 문제 해결](docs/DEPLOYMENT.md#升级故障排查)(중국어)을 참고하세요.
+> **이전 업그레이드가 `without workflows permission` 오류로 실패한 경우**: 수정 사항이 업스트림 `main`에 반영된 후에는 배포 설정 자동 병합 단계가 포함된 기존 **Sync Upstream** 워크플로로 위 절차에 따라 업그레이드할 수 있습니다. YAML을 수정하거나 PAT를 설정할 필요가 없습니다. `main`으로 새 실행을 시작하세요. 이전 릴리스 태그에는 수정 사항이 포함되어 있지 않습니다. 그 외의 경우는 [업그레이드 문제 해결](../DEPLOYMENT.md#升级故障排查)(중국어)을 참고하세요.
 
 이 방식은 기존 Worker, KV 바인딩, Secrets에 영향을 주지 않습니다. **이미 `ENCRYPTION_KEY`를 설정했다면 업그레이드 중 다시 입력할 필요가 없습니다. 아직 설정하지 않았더라도 같은 방식으로 업그레이드할 수 있습니다.**
 
 > ⚠️ `ENCRYPTION_KEY`는 기존 데이터를 복호화하는 마스터 키입니다. 처음 생성할 때 반드시 비밀번호 관리자에 보관하세요. Cloudflare Secrets는 저장 후 값을 확인할 수 없습니다. 일반적인 업그레이드에는 재입력이 필요하지 않지만, 원래 값을 보관하지 않은 채 삭제하면 기존 암호화 데이터를 복구할 수 없습니다.
 
-> ⚠️ **1.8.0 이전 버전으로 롤백**: 1.8.0부터 HOTP 카운터 증가분은 주 데이터와 별도로 저장됩니다. 롤백하기 전에 compaction 엔드포인트를 한 번 호출해 카운터를 주 데이터에 다시 기록하세요. 그렇지 않으면 HOTP 카운터가 업그레이드 당시의 값으로 돌아갑니다. [롤백 절차](docs/DEPLOYMENT.md#回滚到-180-之前的版本)(중국어)를 참고하세요. TOTP만 사용하는 배포에는 영향이 없습니다.
+> ⚠️ **1.8.0 이전 버전으로 롤백**: 1.8.0부터 HOTP 카운터 증가분은 주 데이터와 별도로 저장됩니다. 롤백하기 전에 compaction 엔드포인트를 한 번 호출해 카운터를 주 데이터에 다시 기록하세요. 그렇지 않으면 HOTP 카운터가 업그레이드 당시의 값으로 돌아갑니다. [롤백 절차](../DEPLOYMENT.md#回滚到-180-之前的版本)(중국어)를 참고하세요. TOTP만 사용하는 배포에는 영향이 없습니다.
 
 #### 병합 결과 확인
 
@@ -172,7 +172,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 원격 백업에는 앱이 생성한 백업과 동일한 내용이 저장됩니다. 백업 생성 시 `ENCRYPTION_KEY`가 설정되어 있었다면 원격 파일도 암호문으로 저장됩니다. 복원하려면 Worker에 동일한 `ENCRYPTION_KEY`가 유지되어 있어야 합니다.
 
-자세한 설정 절차: [클라우드 드라이브 설정](docs/CLOUD_DRIVE_SETUP.md)(현재 중국어).
+자세한 설정 절차: [클라우드 드라이브 설정](../CLOUD_DRIVE_SETUP.md)(현재 중국어).
 
 ### 설정
 
@@ -200,7 +200,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 같은 브라우저 프로필에서 2FA 인스턴스에 로그인하고 인스턴스 접근 권한을 부여한 후에는 인스턴스 탭을 닫아도 됩니다. 기본적으로 확장 프로그램은 유효한 세션을 통해 시크릿을 읽고 각 작업에서 백그라운드 메모리로 코드를 계산합니다. 세션이 만료되면 다시 로그인하세요. 오프라인 사용을 명시적으로 켜면 별도의 로컬 시크릿 캐시를 저장하므로 네트워크 연결이나 열린 인스턴스 탭 없이도 코드를 사용할 수 있습니다. 이 캐시에는 추가 비밀번호 암호화가 적용되지 않습니다. 권한을 부여받은 확장 프로그램 코드는 전체 시크릿 목록을 읽을 수 있지만, 시크릿 자체는 팝업이나 대상 사이트로 전송되지 않습니다. 열린 Shadow DOM과 동일 출처 iframe의 입력란을 지원합니다. HOTP, 교차 출처 iframe, 닫힌 Shadow DOM, 사생활 보호 모드는 지원하지 않습니다.
 
-[설치 및 사용 가이드](docs/BROWSER_EXTENSION.md), [Chrome / Edge 개인정보 안내](extension/PRIVACY.md), [Firefox 개인정보 안내](extension/PRIVACY_FIREFOX.md)(현재 중국어)를 참고하세요.
+[설치 및 사용 가이드](../BROWSER_EXTENSION.md), [Chrome / Edge 개인정보 안내](../../extension/PRIVACY.md), [Firefox 개인정보 안내](../../extension/PRIVACY_FIREFOX.md)(현재 중국어)를 참고하세요.
 
 ## 🔒 보안
 
@@ -226,23 +226,23 @@ TOTP 페이지는 현재 코드와 다음 코드를 모두 표시하고 각각 �
 
 ## 📚 추가 문서
 
-| 문서                                                | 설명                                               |
-| --------------------------------------------------- | -------------------------------------------------- |
-| [배포 가이드](docs/DEPLOYMENT.md)                   | 수동 배포, KV 설정, Secrets(중국어)                |
-| [클라우드 드라이브 설정](docs/CLOUD_DRIVE_SETUP.md) | OneDrive / Google Drive 설정 절차(중국어)          |
-| [API 참조](docs/API_REFERENCE.md)                   | 전체 API 엔드포인트 문서(중국어)                   |
-| [아키텍처](docs/ARCHITECTURE.md)                    | 시스템 아키텍처 및 기술 설계(중국어)               |
-| [개발 가이드](docs/DEVELOPMENT.md)                  | 로컬 개발, 테스트, 코드 스타일(중국어)             |
-| [PWA 가이드](docs/PWA_GUIDE.md)                     | PWA 설치 및 오프라인 기능(중국어)                  |
-| [브라우저 확장 프로그램](docs/BROWSER_EXTENSION.md) | Chrome / Edge / Firefox 설치, 사용법, 권한(중국어) |
+| 문서                                              | 설명                                               |
+| ------------------------------------------------- | -------------------------------------------------- |
+| [배포 가이드](../DEPLOYMENT.md)                   | 수동 배포, KV 설정, Secrets(중국어)                |
+| [클라우드 드라이브 설정](../CLOUD_DRIVE_SETUP.md) | OneDrive / Google Drive 설정 절차(중국어)          |
+| [API 참조](../API_REFERENCE.md)                   | 전체 API 엔드포인트 문서(중국어)                   |
+| [아키텍처](../ARCHITECTURE.md)                    | 시스템 아키텍처 및 기술 설계(중국어)               |
+| [개발 가이드](../DEVELOPMENT.md)                  | 로컬 개발, 테스트, 코드 스타일(중국어)             |
+| [PWA 가이드](../PWA_GUIDE.md)                     | PWA 설치 및 오프라인 기능(중국어)                  |
+| [브라우저 확장 프로그램](../BROWSER_EXTENSION.md) | Chrome / Edge / Firefox 설치, 사용법, 권한(중국어) |
 
 ## 🤝 기여하기
 
-[Issue](https://github.com/wuzf/2fa/issues)와 [Pull Request](https://github.com/wuzf/2fa/pulls)를 환영합니다. 개발에 관한 자세한 내용은 [개발 가이드](docs/DEVELOPMENT.md)(중국어)를 참고하세요.
+[Issue](https://github.com/wuzf/2fa/issues)와 [Pull Request](https://github.com/wuzf/2fa/pulls)를 환영합니다. 개발에 관한 자세한 내용은 [개발 가이드](../DEVELOPMENT.md)(중국어)를 참고하세요.
 
 ## 📄 라이선스
 
-[MIT License](LICENSE)
+[MIT License](../../LICENSE)
 
 ## 🌟 스타 기록
 
