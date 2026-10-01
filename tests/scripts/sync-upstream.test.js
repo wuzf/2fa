@@ -403,7 +403,7 @@ describe('Sync Upstream compatibility using real Git repositories', { timeout: 6
 		expect(git(context, ['show', 'origin/main:new-empty.txt']).stdout).toBe('');
 		expect(git(context, ['cat-file', '-e', 'origin/main:obsolete.txt'], true).status).not.toBe(0);
 		expect(git(context, ['diff', context.initialHead, 'origin/main', '--', '.github/workflows']).stdout).toBe('');
-	}, 20000);
+	});
 
 	it.each([
 		['a regular new file', 'src/新 feature.js', 'export const added = true;\n'],
