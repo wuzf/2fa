@@ -593,11 +593,8 @@ export function getQRCodeCode() {
         const secret = params.get('secret');
 
         // 解析类型和高级参数
-        const urlType = url.protocol.replace(':', '').split('//')[1]; // 提取协议后的类型
-        let type = 'TOTP';
-        if (urlType === 'hotp') {
-          type = 'HOTP';
-        }
+        // 类型取自 otpauth:// 之后的部分（上面已校验前缀），url.protocol 只有 "otpauth:"
+        const type = qrCodeData.startsWith('otpauth://hotp/') ? 'HOTP' : 'TOTP';
 
         const digits = parseInt(params.get('digits')) || 6;
         const period = parseInt(params.get('period')) || 30;
