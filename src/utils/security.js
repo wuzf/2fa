@@ -49,6 +49,20 @@ const CONTENT_SECURITY_POLICY = [
 ].join('; ');
 
 /**
+ * 主页面和设置页的安全头
+ * 只禁止被其他网站嵌入（防点击劫持）和 MIME 嗅探。
+ * 不套用 API 的完整 CSP 和 Permissions-Policy：页面要请求 GitHub 检查新版本、用摄像头扫码。
+ * @returns {Object} 响应头
+ */
+export function getPageSecurityHeaders() {
+	return {
+		'Content-Security-Policy': "frame-ancestors 'none'",
+		'X-Frame-Options': 'DENY',
+		'X-Content-Type-Options': 'nosniff',
+	};
+}
+
+/**
  * 检查请求来源是否与当前 Host 同源
  * @param {string} origin - 请求的 Origin header
  * @param {Request} request - HTTP 请求对象

@@ -9,6 +9,7 @@ import { dialogIcon } from './dialogIcons.js';
 import { LOCALES } from './locales/index.js';
 import { getRequestLanguage, normalizeLanguage } from '../utils/i18n.js';
 import { serverMessages, getServerTranslations } from '../utils/server-messages.js';
+import { getPageSecurityHeaders } from '../utils/security.js';
 
 /**
  * 创建首次设置页面
@@ -474,6 +475,7 @@ export async function createSetupPage(request) {
 
 	return new Response(html, {
 		headers: {
+			...getPageSecurityHeaders(),
 			'Content-Type': 'text/html; charset=utf-8',
 			'Content-Language': initialLanguage,
 			'Cache-Control': 'no-cache, no-store, must-revalidate',

@@ -8,6 +8,7 @@ import { getStyles } from './styles/index.js';
 import { getScripts, getCoreScripts } from './scripts/index.js';
 import { dialogIcon } from './dialogIcons.js';
 import { APP_VERSION } from '../utils/version.js';
+import { getPageSecurityHeaders } from '../utils/security.js';
 import { LANGUAGE_OPTIONS, normalizeLanguage } from '../shared/languages.js';
 
 /**
@@ -24,6 +25,7 @@ export async function createMainPage(options = {}) {
 
 	return new Response(html, {
 		headers: {
+			...getPageSecurityHeaders(),
 			'Content-Type': 'text/html',
 			'Cache-Control': 'no-cache, no-store, must-revalidate',
 			Pragma: 'no-cache',
