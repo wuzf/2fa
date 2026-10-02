@@ -35,6 +35,8 @@ export function getImportUICode() {
     let pendingImportPriorSuccessCount = 0;
     let pendingImportPriorFailCount = 0;
     let pendingImportPriorFailures = [];
+    // 之前各轮离线时只进了本机队列的条数，续传完成后仍要提示它们待同步
+    let pendingImportPriorQueuedCount = 0;
     // 进度面板用：首轮进入时记录整批原始总数 + 每轮结束时累加的"已处理"计数，
     // 这样续传时 totalItems/processedItems 与 successCount/failCount 同处一个坐标系，
     // 不再出现 "20 / 20 成功 120 失败 3" 这种本轮分母 + 累计计数的混显
@@ -200,6 +202,7 @@ export function getImportUICode() {
       pendingImportPriorSuccessCount = 0;
       pendingImportPriorFailCount = 0;
       pendingImportPriorFailures = [];
+      pendingImportPriorQueuedCount = 0;
       pendingImportOriginalTotalItems = 0;
       pendingImportPriorProcessedItems = 0;
     }

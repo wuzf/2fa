@@ -400,9 +400,11 @@ export function getExecuteImportCode() {
       const priorSuccessCountAtStart = pendingImportPriorSuccessCount;
       const priorFailCountAtStart = pendingImportPriorFailCount;
       const priorFailuresAtStart = pendingImportPriorFailures.slice();
+      const priorQueuedCountAtStart = pendingImportPriorQueuedCount;
 
       let successCount = 0;
       let failCount = 0;
+      let queuedCount = 0;
       let thisRunFailures = [];
 
       try {
@@ -420,6 +422,7 @@ export function getExecuteImportCode() {
         });
         successCount = importResult.successCount;
         failCount = importResult.failCount;
+        queuedCount = importResult.queuedCount;
 
         importResult.results.forEach(function(itemResult) {
           const resultIndex = typeof itemResult.index === 'number' ? itemResult.index : 0;
@@ -456,6 +459,7 @@ export function getExecuteImportCode() {
           pendingImportPriorSuccessCount = priorSuccessCountAtStart + partialSuccessCount;
           pendingImportPriorFailCount = priorFailCountAtStart + partialFailCount;
           pendingImportPriorFailures = priorFailuresAtStart.concat(newFailures);
+          pendingImportPriorQueuedCount = priorQueuedCountAtStart + (typeof error?.partialQueuedCount === 'number' ? error.partialQueuedCount : 0);
           // 跨轮累计的"已处理"计数：下一轮读它重建进度面板
           pendingImportPriorProcessedItems = priorProcessedItems + processedValidItems;
 
@@ -507,23 +511,33 @@ export function getExecuteImportCode() {
         chunkCount: totalChunks
       });
 
-      if (aggregateFail === 0) {
+      if (priorQueuedCountAtStart + queuedCount > 0) {
+        // 未联网的部分（含之前各轮）只在本机排队，不能报成已导入；同步进度见「未同步更改」
+        showCenterToast('📥', t('coreQueued'));
+      } else if (aggregateFail === 0) {
         showCenterToast('✅', t('transferImported', { count: aggregateSuccess }));
       } else {
         showCenterToast('⚠️', t('transferImportSummary', { success: aggregateSuccess, failed: aggregateFail }));
-        // 把累计失败明细打印出来，方便用户在 devtools 里核对（UI 层没有专门的汇总模态框）
-        aggregateFailures.forEach(function(f) {
-          console.error('❌ 第' + f.line + ' 行导入失败（累计）', f.name, f.error);
-        });
       }
+      aggregateFailures.forEach(function(f) {
+        console.error('❌ 第' + f.line + ' 行导入失败（累计）', f.name, f.error);
+      });
 
       await loadSecrets();
       hideImportModal();
+
+      // 逐条列出失败原因（重复、参数不受支持等），不必打开控制台查看
+      if (aggregateFailures.length > 0) {
+        showImportResultModal(aggregateSuccess, aggregateFail, aggregateFailures.map(function(f) {
+          return { name: f.name, error: f.error };
+        }));
+      }
     }
 
     async function importSecretsInChunks(items, onProgress) {
       let successCount = 0;
       let failCount = 0;
+      let queuedCount = 0;
       const results = [];
       let processedItems = 0;
       const chunks = splitBatchImportItems(items, BULK_IMPORT_CHUNK_SIZE);
@@ -564,6 +578,14 @@ export function getExecuteImportCode() {
 
           if (response.ok) {
             const result = await response.json();
+
+            // 离线时 Service Worker 只把这一片放进本机队列（202），联网后才真正导入
+            if (result && result.queued && result.offline) {
+              queuedCount += chunk.length;
+              processedItems += chunk.length;
+              continue;
+            }
+
             const chunkSuccessCount = typeof result.successCount === 'number' ? result.successCount : chunk.length;
             const chunkFailCount = typeof result.failCount === 'number' ? result.failCount : 0;
 
@@ -612,6 +634,7 @@ export function getExecuteImportCode() {
             {
               partialSuccessCount: successCount,
               partialFailCount: failCount,
+              partialQueuedCount: queuedCount,
               processedItems: processedItems,
               results: results.slice(),
               chunkIndex: currentChunkNumber,
@@ -622,7 +645,7 @@ export function getExecuteImportCode() {
         }
       }
 
-      return { successCount, failCount, results };
+      return { successCount, failCount, queuedCount, results };
     }
 `;
 }

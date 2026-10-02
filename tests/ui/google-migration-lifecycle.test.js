@@ -324,10 +324,12 @@ describe('Google migration dialog lifecycle', () => {
 			const harness = createHarness();
 			const { api, window } = harness;
 			window.pendingMigrationPriorSuccessCount = 4;
+			window.pendingMigrationPriorQueuedCount = 3;
 			const payload = api.generateGoogleMigrationURL([{ name: 'Fresh', account: 'fresh@example.test', secret: secret.secret }]);
 			Object.assign(api, { atob, TextDecoder, hideQRScanner: vi.fn(), showScannerError: vi.fn() });
 			api.processGoogleMigration(payload);
 			expect(window.pendingMigrationPriorSuccessCount).toBe(0);
+			expect(window.pendingMigrationPriorQueuedCount).toBe(0);
 			expect(window.pendingMigrationSecrets.map((item) => item.issuer)).toEqual(['Fresh']);
 		});
 	});
@@ -348,6 +350,42 @@ describe('Google migration dialog lifecycle', () => {
 		await api.confirmGoogleMigration();
 		const saved = JSON.parse(api.authenticatedFetch.mock.calls[0][1].body).secrets.map((item) => item.name);
 		expect(saved).toEqual(titles);
+	});
+
+	it('reports a batch queued by the offline Service Worker as saved for sync, not as imported', async () => {
+		const { api, document } = createHarness();
+		api.authenticatedFetch = vi.fn().mockResolvedValue({
+			ok: true,
+			status: 202,
+			json: async () => ({ success: true, queued: true, offline: true, operationId: 1 }),
+		});
+		api.showGoogleMigrationPreview([secret]);
+		await api.confirmGoogleMigration();
+
+		expect(api.showCenterToast).toHaveBeenLastCalledWith('📥', api.t('coreQueued'));
+		expect(api.showCenterToast).not.toHaveBeenCalledWith('✅', expect.anything());
+		expect(document.getElementById('importResultModal')).toBeNull();
+	});
+
+	it('still reports the entries queued before an interrupted import once the rest is imported', async () => {
+		const { api, window } = createHarness();
+		const chunkSize = LIMITS.BULK_IMPORT_CHUNK_SIZE;
+		const pending = Array.from({ length: chunkSize + 1 }, (_, index) => ({ ...secret, issuer: 'Service ' + index }));
+		api.authenticatedFetch = vi
+			.fn()
+			.mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ success: true, queued: true, offline: true, operationId: 1 }) })
+			.mockResolvedValueOnce({ ok: false, status: 503 })
+			.mockResolvedValueOnce(successResponse());
+		api.showGoogleMigrationPreview(pending);
+		await api.confirmGoogleMigration();
+		expect(window.pendingMigrationSecrets).toEqual([pending[chunkSize]]);
+
+		await api.confirmGoogleMigration();
+
+		expect(api.authenticatedFetch).toHaveBeenCalledTimes(3);
+		expect(api.showCenterToast).toHaveBeenLastCalledWith('📥', api.t('coreQueued'));
+		expect(api.showCenterToast).not.toHaveBeenCalledWith('✅', expect.anything());
+		expect(window.pendingMigrationPriorQueuedCount).toBe(0);
 	});
 
 	it('lists a rejected entry without issuer and name under the name it was sent with', async () => {

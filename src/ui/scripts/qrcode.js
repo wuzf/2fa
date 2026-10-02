@@ -642,8 +642,13 @@ export function getQRCodeCode() {
 
         if (response.ok) {
           const result = await response.json();
-          console.log('密钥保存成功:', result);
-          showCenterToast('✅', t('transferKeyAdded') + newSecret.name);
+          if (result && result.queued && result.offline) {
+            // 离线时只进入本机队列，联网后才真正添加
+            showCenterToast('📥', t('coreQueued'));
+          } else {
+            console.log('密钥保存成功:', result);
+            showCenterToast('✅', t('transferKeyAdded') + newSecret.name);
+          }
           // 刷新密钥列表
           loadSecrets();
 

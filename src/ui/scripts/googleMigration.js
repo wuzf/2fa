@@ -64,6 +64,7 @@ export function getGoogleMigrationCode() {
         window.pendingMigrationPriorSuccessCount = 0;
         window.pendingMigrationPriorFailCount = 0;
         window.pendingMigrationPriorFailures = [];
+        window.pendingMigrationPriorQueuedCount = 0;
         showGoogleMigrationPreview(secrets);
 
       } catch (error) {
@@ -768,6 +769,7 @@ export function getGoogleMigrationCode() {
         window.pendingMigrationPriorSuccessCount = 0;
         window.pendingMigrationPriorFailCount = 0;
         window.pendingMigrationPriorFailures = [];
+        window.pendingMigrationPriorQueuedCount = 0;
       }
     }
 
@@ -910,6 +912,7 @@ export function getGoogleMigrationCode() {
     async function importGoogleMigrationSecretsInChunks(items) {
       let successCount = 0;
       let failCount = 0;
+      let queuedCount = 0;
       const results = [];
       const chunks = splitGoogleMigrationImportItems(items, GOOGLE_MIGRATION_IMPORT_CHUNK_SIZE);
 
@@ -936,6 +939,13 @@ export function getGoogleMigrationCode() {
 
           if (response.ok) {
             const result = await response.json();
+
+            // 离线时 Service Worker 只把这一片放进本机队列（202），联网后才真正导入
+            if (result && result.queued && result.offline) {
+              queuedCount += chunk.length;
+              continue;
+            }
+
             const chunkSuccessCount = typeof result.successCount === 'number' ? result.successCount : chunk.length;
             const chunkFailCount = typeof result.failCount === 'number' ? result.failCount : 0;
 
@@ -957,7 +967,8 @@ export function getGoogleMigrationCode() {
             throw createGoogleMigrationImportError(t('transferRateLimited'), {
               partialSuccessCount: successCount,
               partialFailCount: failCount,
-              processedItems: successCount + failCount,
+              partialQueuedCount: queuedCount,
+              processedItems: successCount + failCount + queuedCount,
               results: results.slice(),
               chunkIndex: chunkIndex + 1,
               chunkCount: chunks.length
@@ -967,7 +978,8 @@ export function getGoogleMigrationCode() {
             throw createGoogleMigrationImportError(t('transferBatchResponseError', { index: (chunkIndex + 1), count: chunks.length }), {
               partialSuccessCount: successCount,
               partialFailCount: failCount,
-              processedItems: successCount + failCount,
+              partialQueuedCount: queuedCount,
+              processedItems: successCount + failCount + queuedCount,
               results: results.slice(),
               chunkIndex: chunkIndex + 1,
               chunkCount: chunks.length
@@ -976,7 +988,8 @@ export function getGoogleMigrationCode() {
           throw createGoogleMigrationImportError(t('transferBatchFailed', { index: (chunkIndex + 1), count: chunks.length, error: await readGoogleMigrationImportErrorMessage(response) }), {
             partialSuccessCount: successCount,
             partialFailCount: failCount,
-            processedItems: successCount + failCount,
+            partialQueuedCount: queuedCount,
+            processedItems: successCount + failCount + queuedCount,
             results: results.slice(),
             chunkIndex: chunkIndex + 1,
             chunkCount: chunks.length
@@ -990,7 +1003,8 @@ export function getGoogleMigrationCode() {
             {
               partialSuccessCount: successCount,
               partialFailCount: failCount,
-              processedItems: successCount + failCount,
+              partialQueuedCount: queuedCount,
+              processedItems: successCount + failCount + queuedCount,
               results: results.slice(),
               chunkIndex: chunkIndex + 1,
               chunkCount: chunks.length,
@@ -1002,7 +1016,7 @@ export function getGoogleMigrationCode() {
         }
       }
 
-      return { successCount, failCount, results };
+      return { successCount, failCount, queuedCount, results };
     }
 
     async function confirmGoogleMigration() {
@@ -1055,6 +1069,8 @@ export function getGoogleMigrationCode() {
       const priorSuccessCountAtStart = typeof window.pendingMigrationPriorSuccessCount === 'number' ? window.pendingMigrationPriorSuccessCount : 0;
       const priorFailCountAtStart = typeof window.pendingMigrationPriorFailCount === 'number' ? window.pendingMigrationPriorFailCount : 0;
       const priorFailuresAtStart = Array.isArray(window.pendingMigrationPriorFailures) ? window.pendingMigrationPriorFailures.slice() : [];
+      // 之前各轮离线时只进了本机队列的条数，续传完成后仍要提示它们待同步
+      const priorQueuedCountAtStart = typeof window.pendingMigrationPriorQueuedCount === 'number' ? window.pendingMigrationPriorQueuedCount : 0;
 
       function buildFailureLine(originalSecret, errMsg) {
         const name = originalSecret ? googleMigrationSavedServiceName(originalSecret) : '';
@@ -1084,11 +1100,16 @@ export function getGoogleMigrationCode() {
           window.pendingMigrationPriorSuccessCount = 0;
           window.pendingMigrationPriorFailCount = 0;
           window.pendingMigrationPriorFailures = [];
+          window.pendingMigrationPriorQueuedCount = 0;
         }
 
-        if (aggregateFail === 0) {
+        if (priorQueuedCountAtStart + importResult.queuedCount > 0) {
+          // 未联网的部分（含之前各轮）只在本机排队，不能报成已导入；同步进度见「未同步更改」
+          showCenterToast('📥', t('coreQueued'));
+        } else if (aggregateFail === 0) {
           showCenterToast('✅', t('transferImported', { count: aggregateSuccess }));
-        } else {
+        }
+        if (aggregateFail > 0) {
           showImportResultModal(aggregateSuccess, aggregateFail, aggregateFailureLines);
         }
       } catch (error) {
@@ -1123,6 +1144,7 @@ export function getGoogleMigrationCode() {
             window.pendingMigrationPriorSuccessCount = aggregateSuccess;
             window.pendingMigrationPriorFailCount = aggregateFail;
             window.pendingMigrationPriorFailures = aggregateFailureLines;
+            window.pendingMigrationPriorQueuedCount = priorQueuedCountAtStart + (typeof error?.partialQueuedCount === 'number' ? error.partialQueuedCount : 0);
           }
 
           if (aggregateSuccess > 0) {
@@ -1140,6 +1162,7 @@ export function getGoogleMigrationCode() {
             window.pendingMigrationPriorSuccessCount = 0;
             window.pendingMigrationPriorFailCount = 0;
             window.pendingMigrationPriorFailures = [];
+            window.pendingMigrationPriorQueuedCount = 0;
           }
 
           if (aggregateFail === 0) {
