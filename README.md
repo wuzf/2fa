@@ -10,7 +10,7 @@
 
 <!-- README_LANGUAGE_NAV_END -->
 
-![Version](https://img.shields.io/badge/version-1.11.0-blue)
+![Version](https://img.shields.io/badge/version-1.12.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Cloudflare%20Workers-orange)
 
