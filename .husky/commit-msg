@@ -1,13 +1,13 @@
 #!/usr/bin/env sh
 
-# Validate conventional commit format
-commit_msg=$(cat "$1")
-pattern="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .{1,72}"
+# Validate the conventional commit format of the subject line (subject at most 72 characters)
+subject=$(head -n 1 "$1")
+pattern="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .{1,72}$"
 
-if ! echo "$commit_msg" | grep -qE "$pattern"; then
+if ! printf '%s\n' "$subject" | grep -qE "$pattern"; then
   echo "❌ Error: Commit message does not follow Conventional Commits format"
   echo ""
-  echo "Format: <type>(<scope>): <subject>"
+  echo "Format: <type>(<scope>): <subject>  (subject at most 72 characters)"
   echo ""
   echo "Types:"
   echo "  feat     - A new feature"
