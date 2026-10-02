@@ -141,6 +141,8 @@ npm run deploy
 | `GOOGLE_DRIVE_CLIENT_SECRET` | 按需 | Google Drive OAuth 客户端密钥                    | Google Cloud Console                                                          |
 | `OAUTH_REDIRECT_BASE_URL`    | 按需 | OAuth 回调基准地址；使用自定义域名时推荐显式配置 | 例如 `https://2fa.example.com`                                                |
 
+`OAUTH_REDIRECT_BASE_URL` 这类普通变量请写进 `wrangler.toml` 的 `[vars]`，或作为 Secret 添加。项目没有启用 `keep_vars`，只在 Dashboard 添加的 Text 变量会在下一次部署时被移除。
+
 如需启用 OneDrive / Google Drive 远程备份，配置上表中的 OAuth 变量后，参考 [网盘备份配置指南](CLOUD_DRIVE_SETUP.md) 完成回调地址和授权步骤。
 
 ### 存储绑定

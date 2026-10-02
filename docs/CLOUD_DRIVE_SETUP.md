@@ -637,11 +637,14 @@ npx wrangler secret put ENCRYPTION_KEY
 
 > ⚠️ **配置完记得把生成的密钥妥善备份到密码管理器里。** 如果之后 `ENCRYPTION_KEY` 丢了，已经加密保存过的 OAuth 凭据、WebDAV 配置、备份文件全部无法解密；程序在这种情况下会直接报错拒绝读取，不会尝试乱猜。
 
-如果你使用自定义域名，建议再配置：
+如果你使用自定义域名，建议在 `wrangler.toml` 已有的 `[vars]` 块里再加一行（开发环境写在 `[env.development.vars]`），然后重新部署：
 
-```text
-OAUTH_REDIRECT_BASE_URL = https://你的应用地址
+```toml
+[vars]
+OAUTH_REDIRECT_BASE_URL = "https://你的应用地址"
 ```
+
+Sync Upstream 和本地合并脚本会保留 `[vars]` 里自己加的变量。也可以执行 `npx wrangler secret put OAUTH_REDIRECT_BASE_URL`，把它存成 Secret。
 
 ### 方式二：Cloudflare Dashboard
 
@@ -679,15 +682,13 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 > ⚠️ 生成的 `ENCRYPTION_KEY` 请立刻备份到密码管理器。丢失密钥 = 现有加密数据无法恢复。
 
-如果用了自定义域名，再新增普通变量（Type = `Text`）：
-
-- `OAUTH_REDIRECT_BASE_URL`
-
-例如：
+如果用了自定义域名，再新增 `OAUTH_REDIRECT_BASE_URL`，Value 例如：
 
 ```text
 https://2fa.example.com
 ```
+
+在 Dashboard 里添加时请把 Type 选为 `Secret`。项目没有启用 `keep_vars`，Type = `Text` 的变量只存在于 Dashboard，下一次部署（包括 Git 自动构建和 Sync Upstream 之后的部署）会把它移除。也可以按[方式一](#方式一命令行)写进 `wrangler.toml` 的 `[vars]`。
 
 ### 最后一步
 
