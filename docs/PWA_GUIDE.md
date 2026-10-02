@@ -256,6 +256,7 @@ PWA (Progressive Web App) 是一种结合网页和原生应用优点的应用技
 | 白名单 CDN 库（jsQR、qrcode-generator） | Stale While Revalidate；命中缓存立即返回并在后台更新                            | 有缓存时继续使用；无缓存且网络失败时加载失败                                       |
 | 其他 `/api/` 请求                       | 网络请求，不缓存响应                                                            | 受支持的密钥写操作可进入离线队列，成功入队返回 202；GET 和不受支持的写操作返回 503 |
 | 其他外部资源                            | Network Only；直接透传，不缓存                                                  | 返回空 404                                                                         |
+| 功能模块 `/modules/*.js`                | Network First；成功响应写入当前版本的运行时缓存                                 | 返回本版本已缓存的模块；从未加载过的模块返回 503 文本响应                          |
 | 其他同源资源                            | Network Only；不读取 Service Worker 缓存                                        | 返回 503 文本响应                                                                  |
 
 安装阶段会尝试预缓存主页、Manifest 和应用图标；Manifest 和图标的后续请求目前仍走“其他同源资源”分支，没有 Service Worker 缓存回退。API 的离线队列只在网络请求抛出错误时启用，服务器返回的 HTTP 错误会直接传回页面。
@@ -457,6 +458,7 @@ Service Worker 版本由部署脚本自动注入。缓存名采用 `2fa-cache-${
    Chrome → F12 → Application → Cache Storage
    查看当前 `2fa-cache-*` 缓存
    确认 jsQR.js 和 qrcode.min.js 已缓存
+   功能模块（/modules/*.js）在 `2fa-runtime-*` 缓存中
    ```
 
 ---
