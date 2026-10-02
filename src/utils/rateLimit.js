@@ -469,6 +469,17 @@ export function getClientIdentifier(request, type = 'ip') {
 }
 
 /**
+ * 生成按操作区分的限流键
+ * 每类操作单独计数，避免删除账户、保存设置等操作用掉登录的配额
+ * @param {string} scope - 操作名，如 'login'、'settings'
+ * @param {string} clientId - 客户端标识（通常是 IP）
+ * @returns {string} 限流键
+ */
+export function scopedRateLimitKey(scope, clientId) {
+	return `${scope}:${clientId}`;
+}
+
+/**
  * Rate Limiting 预设配置（滑动窗口优化版）
  */
 export const RATE_LIMIT_PRESETS = {

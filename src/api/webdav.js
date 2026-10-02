@@ -13,7 +13,13 @@ import {
 	testWebDAVConnection,
 } from '../utils/webdav.js';
 import { getLogger } from '../utils/logger.js';
-import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../utils/rateLimit.js';
+import {
+	checkRateLimit,
+	scopedRateLimitKey,
+	getClientIdentifier,
+	createRateLimitResponse,
+	RATE_LIMIT_PRESETS,
+} from '../utils/rateLimit.js';
 import { createJsonResponse, createErrorResponse } from '../utils/response.js';
 import { validateRequest, webdavConfigSchema, toggleDestinationSchema } from '../utils/validation.js';
 
@@ -78,7 +84,7 @@ export async function handleSaveWebDAVConfig(request, env) {
 
 	try {
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('webdav', clientIP), env, RATE_LIMIT_PRESETS.sensitive);
 
 		if (!rateLimitInfo.allowed) {
 			return createRateLimitResponse(rateLimitInfo, request);
@@ -146,7 +152,7 @@ export async function handleDeleteWebDAVConfig(request, env) {
 
 	try {
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('webdav', clientIP), env, RATE_LIMIT_PRESETS.sensitive);
 
 		if (!rateLimitInfo.allowed) {
 			return createRateLimitResponse(rateLimitInfo, request);
@@ -190,7 +196,7 @@ export async function handleTestWebDAV(request, env) {
 
 	try {
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('webdav', clientIP), env, RATE_LIMIT_PRESETS.sensitive);
 
 		if (!rateLimitInfo.allowed) {
 			return createRateLimitResponse(rateLimitInfo, request);
@@ -240,7 +246,7 @@ export async function handleToggleWebDAV(request, env) {
 
 	try {
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('webdav', clientIP), env, RATE_LIMIT_PRESETS.sensitive);
 
 		if (!rateLimitInfo.allowed) {
 			return createRateLimitResponse(rateLimitInfo, request);

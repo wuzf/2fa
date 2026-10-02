@@ -351,7 +351,7 @@ async function saveSecretsToKV(env, secrets, reason) {
 
 #### 请求限流集成
 
-限流由具体处理函数调用。例如删除密钥使用 `getClientIdentifier(request, 'ip')` 得到 key，再调用 `checkRateLimit(key, env, RATE_LIMIT_PRESETS.sensitive)`；新增和读取密钥当前没有显式限流。路由入口没有统一套用 `api` 或 `global` 预设。各端点实际限制及共享计数规则见 [API 参考](API_REFERENCE.md#rate-limiting)。
+限流由具体处理函数调用。例如删除密钥使用 `getClientIdentifier(request, 'ip')` 得到客户端 IP，再调用 `checkRateLimit(scopedRateLimitKey('delete-secret', clientIP), env, RATE_LIMIT_PRESETS.sensitive)`，每类操作单独计数；新增和读取密钥当前没有显式限流。路由入口没有统一套用 `api` 或 `global` 预设。各端点实际限制及共享计数规则见 [API 参考](API_REFERENCE.md#rate-limiting)。
 
 ---
 

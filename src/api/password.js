@@ -3,7 +3,13 @@
  */
 
 import { createJsonResponse, createErrorResponse } from '../utils/response.js';
-import { checkRateLimit, createRateLimitResponse, getClientIdentifier, RATE_LIMIT_PRESETS } from '../utils/rateLimit.js';
+import {
+	checkRateLimit,
+	scopedRateLimitKey,
+	createRateLimitResponse,
+	getClientIdentifier,
+	RATE_LIMIT_PRESETS,
+} from '../utils/rateLimit.js';
 import { getLogger } from '../utils/logger.js';
 import { validatePasswordStrength, verifyPassword, hashPassword } from '../utils/auth.js';
 import { ValidationError, AuthenticationError, ConfigurationError, ErrorFactory, errorToResponse, logError } from '../utils/errors.js';
@@ -23,7 +29,7 @@ export async function handleChangePassword(request, env) {
 	try {
 		// 速率限制
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('password', clientIP), env, RATE_LIMIT_PRESETS.sensitive);
 
 		if (!rateLimitInfo.allowed) {
 			logger.warn('修改密码速率限制超出', {

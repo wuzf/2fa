@@ -359,6 +359,32 @@ describe('Auth.js Integration Tests', () => {
         }
       }
     });
+
+    it('其他受限操作不占用登录配额', async () => {
+      const clientIP = '127.0.0.2';
+
+      // 退出登录的上限是 10 次/分钟，用满它
+      for (let i = 0; i < 10; i++) {
+        const logoutResponse = await handleLogout(createMockRequest({
+          method: 'POST',
+          pathname: '/api/logout',
+          headers: {
+            'CF-Connecting-IP': clientIP,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Sec-Fetch-Site': 'same-origin'
+          }
+        }), env);
+        expect(logoutResponse.status).toBe(200);
+      }
+
+      const loginResponse = await handleLogin(createMockRequest({
+        method: 'POST',
+        pathname: '/api/login',
+        body: { credential: testPassword },
+        headers: { 'CF-Connecting-IP': clientIP }
+      }), env);
+      expect(loginResponse.status).toBe(200);
+    });
   });
 
   describe('认证中间件集成 (verifyAuth)', () => {
@@ -805,7 +831,7 @@ describe('Auth.js Integration Tests', () => {
       // Step 3: 清空 rate limit 计数器（模拟时间过去）
       // 清理两个版本的 rate limit 数据（固定窗口和滑动窗口）
       await kvStore.delete(`ratelimit:${clientIP}`);      // v1 固定窗口
-      await kvStore.delete(`ratelimit:v2:${clientIP}`);   // v2 滑动窗口
+      await kvStore.delete(`ratelimit:v2:login:${clientIP}`);   // v2 滑动窗口（登录单独计数）
 
       // Step 4: 使用正确密码登录
       const successRequest = createMockRequest({

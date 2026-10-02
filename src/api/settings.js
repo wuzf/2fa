@@ -4,7 +4,13 @@
 
 import { createJsonResponse, createErrorResponse } from '../utils/response.js';
 import { getLogger } from '../utils/logger.js';
-import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../utils/rateLimit.js';
+import {
+	checkRateLimit,
+	scopedRateLimitKey,
+	getClientIdentifier,
+	createRateLimitResponse,
+	RATE_LIMIT_PRESETS,
+} from '../utils/rateLimit.js';
 import { ValidationError, errorToResponse, logError } from '../utils/errors.js';
 import {
 	getSettings,
@@ -101,7 +107,7 @@ export async function handleSaveSettings(request, env) {
 
 	try {
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('settings', clientIP), env, RATE_LIMIT_PRESETS.sensitive);
 
 		if (!rateLimitInfo.allowed) {
 			logger.warn('保存设置速率限制超出', {

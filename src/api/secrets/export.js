@@ -6,7 +6,13 @@ import { buildDownloadContent, normalizeBackupSecrets } from '../../utils/backup
 import { getLogger } from '../../utils/logger.js';
 import { createErrorResponse } from '../../utils/response.js';
 import { getRequestLanguage, normalizeLanguage } from '../../utils/i18n.js';
-import { checkRateLimit, createRateLimitResponse, getClientIdentifier, RATE_LIMIT_PRESETS } from '../../utils/rateLimit.js';
+import {
+	checkRateLimit,
+	scopedRateLimitKey,
+	createRateLimitResponse,
+	getClientIdentifier,
+	RATE_LIMIT_PRESETS,
+} from '../../utils/rateLimit.js';
 
 const EXPORT_FORMATS = ['txt', 'json', 'csv', 'html'];
 export const MAX_EXPORT_REQUEST_BYTES = 2 * 1024 * 1024;
@@ -137,7 +143,11 @@ export async function handleExportSecrets(request, env) {
 
 	try {
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(`${EXPORT_RATE_LIMIT_KEY_PREFIX}:${clientIP}`, env, RATE_LIMIT_PRESETS.sensitive);
+		const rateLimitInfo = await checkRateLimit(
+			scopedRateLimitKey(EXPORT_RATE_LIMIT_KEY_PREFIX, clientIP),
+			env,
+			RATE_LIMIT_PRESETS.sensitive,
+		);
 
 		if (!rateLimitInfo.allowed) {
 			logger.warn('批量导出操作速率限制超出', {

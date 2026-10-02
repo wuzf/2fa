@@ -128,7 +128,7 @@ Set-Cookie: auth_token=<NEW_JWT_TOKEN>; HttpOnly; Secure; SameSite=Strict; Max-A
 
 ## 端点列表
 
-限流列表示当前应用代码实际调用的限流规则；`-` 表示没有显式调用应用限流，不代表每个端点都有独立配额。共享计数方式见 [Rate Limiting](#rate-limiting)。
+限流列表示当前应用代码实际调用的限流规则；`-` 表示没有显式调用应用限流。各类操作分别计数，计数方式见 [Rate Limiting](#rate-limiting)。
 
 | 端点                                               | 方法   | 认证 | 限流   | 描述                         |
 | -------------------------------------------------- | ------ | ---- | ------ | ---------------------------- |
@@ -1438,7 +1438,7 @@ S3 返回相同的外层结构，各目标的 `config` 为：
 }
 ```
 
-S3 的成功消息为 `S3 配置已删除`。缺少 `id` 返回 400，目标不存在返回 404。保存、删除、测试、切换接口均使用 `sensitive` 限流（10 次 / 分钟），共享计数方式见 [Rate Limiting](#rate-limiting)。
+S3 的成功消息为 `S3 配置已删除`。缺少 `id` 返回 400，目标不存在返回 404。保存、删除、测试、切换接口均使用 `sensitive` 限流（10 次 / 分钟），四个接口共用一个 S3 计数，见 [Rate Limiting](#rate-limiting)。
 
 ---
 
@@ -2022,7 +2022,7 @@ Cache-Control: no-store
 | 批量添加密钥 (`POST /api/secrets/batch`)                   | 20 次    | 5 分钟   | `bulk`      |
 | 批量导出密钥 (`POST /api/secrets/export`)                  | 10 次    | 1 分钟   | `sensitive` |
 
-除批量导出使用 `export:<IP>` 外，上表操作均直接使用客户端 IP 作为键，共享 `ratelimit:v2:<IP>` 记录。因此表中数字是处理当前请求时使用的阈值，并非各接口互相独立的配额；不同操作可能相互影响。
+每类操作用 `scopedRateLimitKey(操作名, IP)` 生成自己的键（如 `login:<IP>`、`settings:<IP>`、`export:<IP>`），记录在 `ratelimit:v2:<键>`，因此一类操作不会用掉另一类的配额，例如连续删除账户不会挡住登录。同一类的多个接口共用一个计数：WebDAV 的保存、删除、连接测试、切换启用状态共用 `webdav:<IP>`，S3、OneDrive、Google Drive 同理。
 
 密钥读取/新增/更新、HOTP 计数器操作、备份列表/导出/恢复、系统设置和云盘配置读取、时间校准、Token 刷新、OAuth 回调、Favicon 代理以及公开 OTP 生成，当前没有显式应用限流。`api`（30 次 / 分钟）和 `global`（100 次 / 分钟）虽然定义在预设中，但当前路由未使用这些预设。
 
@@ -2094,7 +2094,7 @@ X-RateLimit-Algorithm: sliding-window
 **实现说明**:
 
 - 基于 Cloudflare KV 存储限流状态
-- 客户端 IP 优先取 `CF-Connecting-IP`，其次为 `X-Real-IP`、`X-Forwarded-For` 的首项；缺失时使用 `unknown`。除批量导出带 `export:` 前缀外，其余已接入限流的操作共享该 IP 的记录
+- 客户端 IP 优先取 `CF-Connecting-IP`，其次为 `X-Real-IP`、`X-Forwarded-For` 的首项；缺失时使用 `unknown`。限流键为 `操作名:IP`，每类操作单独计数
 - KV 自动过期机制确保窗口状态自动清理
 - 限流检查失败时采用 "fail open" 策略（允许请求通过，不影响正常用户）
 

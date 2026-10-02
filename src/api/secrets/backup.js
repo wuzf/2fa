@@ -4,7 +4,13 @@
 
 import { getAllSecrets } from './shared.js';
 import { getLogger } from '../../utils/logger.js';
-import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../../utils/rateLimit.js';
+import {
+	checkRateLimit,
+	scopedRateLimitKey,
+	getClientIdentifier,
+	createRateLimitResponse,
+	RATE_LIMIT_PRESETS,
+} from '../../utils/rateLimit.js';
 import { createJsonResponse, createErrorResponse } from '../../utils/response.js';
 import { getRequestLanguage } from '../../utils/i18n.js';
 import { ValidationError, StorageError, CryptoError, BusinessLogicError, errorToResponse, logError } from '../../utils/errors.js';
@@ -42,7 +48,7 @@ export async function handleBackupSecrets(request, env, ctx) {
 
 	try {
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('backup', clientIP), env, RATE_LIMIT_PRESETS.sensitive);
 
 		if (!rateLimitInfo.allowed) {
 			logger.warn('备份操作速率限制超出', {

@@ -7,7 +7,13 @@
 
 import { getS3Configs, saveS3SingleConfig, deleteS3SingleConfig, getS3Status, testS3Connection } from '../utils/s3.js';
 import { getLogger } from '../utils/logger.js';
-import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../utils/rateLimit.js';
+import {
+	checkRateLimit,
+	scopedRateLimitKey,
+	getClientIdentifier,
+	createRateLimitResponse,
+	RATE_LIMIT_PRESETS,
+} from '../utils/rateLimit.js';
 import { createJsonResponse, createErrorResponse } from '../utils/response.js';
 import { validateRequest, s3ConfigSchema, toggleDestinationSchema } from '../utils/validation.js';
 
@@ -74,7 +80,7 @@ export async function handleSaveS3Config(request, env) {
 
 	try {
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('s3', clientIP), env, RATE_LIMIT_PRESETS.sensitive);
 
 		if (!rateLimitInfo.allowed) {
 			return createRateLimitResponse(rateLimitInfo, request);
@@ -141,7 +147,7 @@ export async function handleDeleteS3Config(request, env) {
 
 	try {
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('s3', clientIP), env, RATE_LIMIT_PRESETS.sensitive);
 
 		if (!rateLimitInfo.allowed) {
 			return createRateLimitResponse(rateLimitInfo, request);
@@ -185,7 +191,7 @@ export async function handleTestS3(request, env) {
 
 	try {
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('s3', clientIP), env, RATE_LIMIT_PRESETS.sensitive);
 
 		if (!rateLimitInfo.allowed) {
 			return createRateLimitResponse(rateLimitInfo, request);
@@ -235,7 +241,7 @@ export async function handleToggleS3(request, env) {
 
 	try {
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('s3', clientIP), env, RATE_LIMIT_PRESETS.sensitive);
 
 		if (!rateLimitInfo.allowed) {
 			return createRateLimitResponse(rateLimitInfo, request);

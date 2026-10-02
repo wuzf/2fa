@@ -23,7 +23,13 @@ import {
 	getOAuthRedirectBase,
 } from '../utils/oauth.js';
 import { getLogger } from '../utils/logger.js';
-import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../utils/rateLimit.js';
+import {
+	checkRateLimit,
+	scopedRateLimitKey,
+	getClientIdentifier,
+	createRateLimitResponse,
+	RATE_LIMIT_PRESETS,
+} from '../utils/rateLimit.js';
 import { createJsonResponse, createErrorResponse } from '../utils/response.js';
 import { validateRequest, cloudDriveConfigSchema, destinationIdSchema, toggleDestinationSchema } from '../utils/validation.js';
 
@@ -324,7 +330,7 @@ export async function handleOneDriveOAuthCallback(request, env) {
 
 async function checkSensitiveRateLimit(request, env) {
 	const clientIP = getClientIdentifier(request, 'ip');
-	const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+	const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('onedrive', clientIP), env, RATE_LIMIT_PRESETS.sensitive);
 	if (!rateLimitInfo.allowed) {
 		return createRateLimitResponse(rateLimitInfo, request);
 	}

@@ -5,7 +5,7 @@
 
 import { createErrorResponse } from './response.js';
 import { getLanguageHeaders, localizeResponseData } from './i18n.js';
-import { checkRateLimit, createRateLimitResponse, getClientIdentifier, RATE_LIMIT_PRESETS } from './rateLimit.js';
+import { checkRateLimit, scopedRateLimitKey, createRateLimitResponse, getClientIdentifier, RATE_LIMIT_PRESETS } from './rateLimit.js';
 import { getAllowedOrigin, getSecurityHeaders } from './security.js';
 import { getLogger } from './logger.js';
 import { getSettings, KV_SETTINGS_KEY, sanitizeLanguage, VALID_LANGUAGES } from './settings.js';
@@ -557,7 +557,7 @@ export async function handleFirstTimeSetup(request, env) {
 	try {
 		// 🛡️ Rate Limiting: 防止暴力破解
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.login);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('setup', clientIP), env, RATE_LIMIT_PRESETS.login);
 
 		if (!rateLimitInfo.allowed) {
 			logger.warn('首次设置速率限制超出', {
@@ -710,7 +710,7 @@ export async function handleLogin(request, env) {
 	try {
 		// 🛡️ Rate Limiting: 防止暴力破解
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.login);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('login', clientIP), env, RATE_LIMIT_PRESETS.login);
 
 		if (!rateLimitInfo.allowed) {
 			logger.warn('登录速率限制超出', {
@@ -945,7 +945,7 @@ export async function handleLogout(request, env) {
 	// 使用 sensitive 预设（10 次/分钟）—— 正常用户登出频率远低于此
 	if (env && env.SECRETS_KV) {
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('logout', clientIP), env, RATE_LIMIT_PRESETS.sensitive);
 
 		if (!rateLimitInfo.allowed) {
 			return createRateLimitResponse(rateLimitInfo, request);

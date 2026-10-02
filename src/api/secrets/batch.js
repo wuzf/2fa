@@ -9,7 +9,13 @@ import { saveSecretsToKV, getAllSecrets } from './shared.js';
 import { getLogger } from '../../utils/logger.js';
 import { validateRequest, batchImportSchema, addSecretSchema, checkDuplicateSecret } from '../../utils/validation.js';
 import { createJsonResponse, createErrorResponse } from '../../utils/response.js';
-import { checkRateLimit, getClientIdentifier, createRateLimitResponse, RATE_LIMIT_PRESETS } from '../../utils/rateLimit.js';
+import {
+	checkRateLimit,
+	scopedRateLimitKey,
+	getClientIdentifier,
+	createRateLimitResponse,
+	RATE_LIMIT_PRESETS,
+} from '../../utils/rateLimit.js';
 import { ValidationError, StorageError, CryptoError, ConfigurationError, errorToResponse, logError } from '../../utils/errors.js';
 import { LIMITS } from '../../utils/constants.js';
 
@@ -35,7 +41,7 @@ export async function handleBatchAddSecrets(request, env, ctx) {
 	try {
 		// 🛡️ Rate Limiting: 防止批量操作滥用
 		const clientIP = getClientIdentifier(request, 'ip');
-		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.bulk);
+		const rateLimitInfo = await checkRateLimit(scopedRateLimitKey('batch-import', clientIP), env, RATE_LIMIT_PRESETS.bulk);
 
 		if (!rateLimitInfo.allowed) {
 			logger.warn('批量添加速率限制超出', {
