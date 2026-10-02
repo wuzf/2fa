@@ -15,7 +15,8 @@
  *   node scripts/release.js --sync # 仅同步（修复各处版本不一致，不提交）
  *
  * 发版流程：
- *   1. 检查 tag 未存在、发布说明已准备、版本相关文件无未提交修改
+ *   1. 检查 tag 未存在、发布说明已准备，且工作区除本次发布说明和未暂存的本地 wrangler.toml 外没有任何改动
+ *      （含未跟踪文件）；发布说明以外的已暂存内容一律拒绝
  *   2. 按 Publish release 工作流的顺序运行 lint、全量测试（--skip-tests 跳过）、Worker 构建和扩展打包；
  *      任一失败即中止，此时尚未改动版本号，也没有提交或 tag
  *   3. 复查工作区，确认上述检查没有产生需要提交的文件（构建产物位于被忽略的 dist/）
@@ -23,7 +24,8 @@
  *   5. 同步 version.js 和 README 徽章
  *   6. 运行版本一致性测试自检
  *   7. 提交版本文件和 docs/releases/v{x.y.z}.md，创建对应 tag
- *   8. 提示手动推送本次 tag；GitHub Actions 检查、构建并发布 Release
+ *   8. 提示手动执行 git push --atomic origin HEAD v{x.y.z}，同时推送发版提交和本次 tag；
+ *      GitHub Actions 检查、构建并发布 Release
  */
 
 import { execSync } from 'child_process';
@@ -280,7 +282,7 @@ function main() {
 	console.log(`\n✅ 本地发版准备完成: ${tag}（版本、发布说明和 tag 均已准备）`);
 	console.log('\n📤 确认发布后，推送代码和本次标签:');
 	console.log(`\n   git push --atomic origin HEAD ${tag}\n`);
-	console.log('GitHub Actions 将检查版本、运行测试、构建 Worker，并发布带三个构建附件的 Release。');
+	console.log('GitHub Actions 将检查版本、运行测试、构建 Worker 和扩展安装包，并发布带这些附件的 Release。');
 	console.log('请确认 Publish release 工作流成功，并核对 Release 说明和附件后再结束发版。');
 }
 
