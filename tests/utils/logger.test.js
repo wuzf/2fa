@@ -797,6 +797,29 @@ describe('Logger System', () => {
       );
     });
 
+    it('logResponse 不应记录登录 Cookie', () => {
+      const logger = new Logger();
+      const requestLogger = createRequestLogger(logger);
+      const response = new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Set-Cookie': 'auth_token=signed.jwt.value; HttpOnly; Secure' }
+      });
+
+      requestLogger.logResponse(null, response);
+
+      const logged = JSON.stringify(console.log.mock.calls);
+      expect(logged).not.toContain('signed.jwt.value');
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('Response sent'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'content-type': 'application/json',
+            'set-cookie': '***REDACTED***'
+          })
+        })
+      );
+    });
+
     it('logResponse 应该记录成功响应', () => {
       const logger = new Logger();
       const requestLogger = createRequestLogger(logger);

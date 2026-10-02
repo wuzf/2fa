@@ -117,7 +117,7 @@ class Logger {
 	 */
 	_sanitizeHeaders(headers) {
 		const sanitized = {};
-		const sensitiveHeaders = ['authorization', 'cookie', 'x-api-key'];
+		const sensitiveHeaders = ['authorization', 'cookie', 'set-cookie', 'x-api-key'];
 
 		if (headers && headers.forEach) {
 			headers.forEach((value, key) => {
@@ -432,7 +432,7 @@ export function createRequestLogger(logger = null) {
 			const responseData = {
 				status: response?.status,
 				statusText: response?.statusText,
-				headers: response?.headers ? Object.fromEntries(response.headers) : {},
+				headers: this._sanitizeHeaders(response?.headers),
 			};
 
 			if (error) {
@@ -452,7 +452,7 @@ export function createRequestLogger(logger = null) {
 
 		_sanitizeHeaders(headers) {
 			const sanitized = {};
-			const sensitiveHeaders = ['authorization', 'cookie', 'x-api-key'];
+			const sensitiveHeaders = ['authorization', 'cookie', 'set-cookie', 'x-api-key'];
 
 			if (headers && headers.forEach) {
 				headers.forEach((value, key) => {
