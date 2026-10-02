@@ -279,9 +279,29 @@ npm run deploy
 
 ### 回滚到 1.11.0 之前的版本
 
-1.11.0 起部署会创建 Durable Object `SecretsStore`。Cloudflare 不允许跨越 Durable Object 类的变更回滚，因此 Dashboard 的 **Deployments** 页面无法回到 1.11.0 之前的版本，需要用命令行部署旧版本：
+1.11.0 起部署会创建 Durable Object `SecretsStore`。Cloudflare 不允许跨越 Durable Object 类的变更回滚，因此 Dashboard 的 **Deployments** 页面无法回到 1.11.0 之前的版本，需要用命令行部署旧版本。
 
-1. 检出旧版本（例如 `git checkout v1.10.0`），确认它的 `wrangler.toml` 中没有 `SECRETS_STORE` 绑定，并在文件末尾加上：
+> ⚠️ **一键部署（Git 自动构建）用户**：
+>
+> - 不要用 Sync Upstream 填写 1.11.0 之前的标签来回滚。旧版本的合并脚本不处理迁移，旧版 `wrangler.toml` 也没有 `SECRETS_STORE` 和 `migrations`，同步后的自动部署会失败：Worker 仍停在 1.11.0，仓库里却已经是旧代码。请克隆自己的仓库，按下面的步骤用命令行回滚。
+> - 命令行回滚后，GitHub 仓库里仍是 1.11.0 的代码，迁移只有 `v1`。之后任何推送或 Sync Upstream 触发的自动构建都会按仓库内容重新部署：Wrangler 找不到线上的 `rollback-1` 标签，会重放全部迁移，结果可能是把 1.11.0 部署回去、撤销回滚，也可能部署失败。回滚期间请在 Worker 的 **Settings → Build** 中断开 Git 仓库连接，或者确保不推送、不运行 Sync Upstream。
+> - 决定再升级时，先在仓库的 `wrangler.toml` 末尾追加下文「之后再升级」的两段迁移并提交，再恢复连接或运行 Sync Upstream。
+
+命令行回滚步骤：
+
+1. 检出旧版本，例如 v1.10.0。命令行部署用户在自己的克隆中执行 `git fetch --tags` 和 `git checkout v1.10.0`。一键部署生成的仓库没有上游的版本标签，克隆后先取标签：
+
+   ```bash
+   git fetch https://github.com/wuzf/2fa.git tag v1.10.0 --no-tags
+   git checkout v1.10.0
+   ```
+
+2. 把旧版 `wrangler.toml` 指向正在运行的 Worker。旧版配置写的是 `name = "2fa"`，也没有 KV ID，原样部署会部署到名为 `2fa` 的 Worker，并绑定按这个名称找到或新建的 KV，而不是回滚当前实例。部署前按当前部署改好：
+   - `name`：Cloudflare **Workers & Pages** 列表中这个实例的 Worker 名称。
+   - `[[kv_namespaces]]`（`binding = "SECRETS_KV"`）下加上 `id`：在 Worker 的 **Settings → Bindings** 中查看 `SECRETS_KV` 绑定的命名空间，到 KV 页面复制它的 ID，也可以用 `npx wrangler kv namespace list` 查看。
+   - `routes`、`[triggers]` 和 `[vars]` 中自己加的变量：与当前部署保持一致。命令行部署用户照抄自己 1.11.0 的 `wrangler.toml`；一键部署用户对照自己仓库里的 `wrangler.toml` 和 Worker 的 **Settings → Domains & Routes**。
+
+   确认文件中没有 `SECRETS_STORE` 绑定，然后在文件末尾加上：
 
    ```toml
    [[migrations]]
@@ -293,7 +313,7 @@ npm run deploy
    deleted_classes = ["SecretsStore"]
    ```
 
-2. 执行 `npm run deploy`。
+3. 执行 `npm ci` 和 `npm run deploy`（未登录 Cloudflare 时先执行 `npx wrangler login`），确认部署输出中的 Worker 名称与 Dashboard 中的实例一致。
 
 账户数据始终完整保存在 `SECRETS_KV` 中，删除这个类只会删掉它保存的副本，旧版本照常读取全部数据。之后再升级时，新版本的 `wrangler.toml` 已有 `v1`，在文件末尾追加：
 
