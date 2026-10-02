@@ -52,6 +52,8 @@ export function getOneDriveToolCode() {
 
     let _oneDriveDestinationState = null;
     let _oneDriveLoadVersion = 0;
+    // 表单每次打开、换成另一个目标或关闭时加一，迟到的保存结果据此判断表单是否还是原来那个
+    let _oneDriveFormVersion = 0;
 
     async function loadOneDriveDestinations(preserveForm = false) {
       const loadVersion = ++_oneDriveLoadVersion;
@@ -152,6 +154,7 @@ export function getOneDriveToolCode() {
     }
 
     function showOneDriveForm(id) {
+      _oneDriveFormVersion++;
       const formArea = document.getElementById('oneDriveFormArea');
       const addBtn = document.getElementById('oneDriveAddBtn');
       formArea.style.display = 'block';
@@ -165,6 +168,7 @@ export function getOneDriveToolCode() {
     }
 
     function hideOneDriveForm() {
+      _oneDriveFormVersion++;
       document.getElementById('oneDriveFormArea').style.display = 'none';
       const addBtn = document.getElementById('oneDriveAddBtn');
       if (addBtn && addBtn.dataset.canAdd !== 'false') {
@@ -243,7 +247,7 @@ export function getOneDriveToolCode() {
       }
     }
 
-    async function authorizeOneDriveDest(id) {
+    async function authorizeOneDriveDest(id, options = {}) {
       let targetId = id;
       const authBtn = document.getElementById('oneDriveAuthorizeBtn');
       const hadFormButton = !!authBtn;
@@ -257,10 +261,19 @@ export function getOneDriveToolCode() {
       }
 
       try {
-        if (!targetId) {
-          const saved = await _upsertOneDriveConfig();
+        if (options.saveForm) {
+          const formVersion = _oneDriveFormVersion;
+          const saved = await _upsertOneDriveConfig().catch((error) => {
+            showCenterToast('❌', t('toolSyncSaveError', { message: error.message }));
+            return null;
+          });
           if (!saved) return;
           targetId = saved.id;
+          // 记住新建目标的 id，授权启动失败后再点会更新同一目标，而不是再新建一个；
+          // 保存期间表单已关闭或换成别的目标时不回写，以免下次保存改到这个目标
+          if (formVersion === _oneDriveFormVersion) {
+            document.getElementById('oneDriveEditId').value = targetId;
+          }
         }
 
         const popup = window.open('about:blank', 'onedrive-oauth', 'width=560,height=720');

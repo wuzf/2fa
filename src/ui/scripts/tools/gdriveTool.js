@@ -52,6 +52,8 @@ export function getGoogleDriveToolCode() {
 
     let _googleDriveDestinationState = null;
     let _googleDriveLoadVersion = 0;
+    // 表单每次打开、换成另一个目标或关闭时加一，迟到的保存结果据此判断表单是否还是原来那个
+    let _googleDriveFormVersion = 0;
 
     async function loadGoogleDriveDestinations(preserveForm = false) {
       const loadVersion = ++_googleDriveLoadVersion;
@@ -152,6 +154,7 @@ export function getGoogleDriveToolCode() {
     }
 
     function showGoogleDriveForm(id) {
+      _googleDriveFormVersion++;
       const formArea = document.getElementById('googleDriveFormArea');
       const addBtn = document.getElementById('googleDriveAddBtn');
       formArea.style.display = 'block';
@@ -165,6 +168,7 @@ export function getGoogleDriveToolCode() {
     }
 
     function hideGoogleDriveForm() {
+      _googleDriveFormVersion++;
       document.getElementById('googleDriveFormArea').style.display = 'none';
       const addBtn = document.getElementById('googleDriveAddBtn');
       if (addBtn && addBtn.dataset.canAdd !== 'false') {
@@ -243,7 +247,7 @@ export function getGoogleDriveToolCode() {
       }
     }
 
-    async function authorizeGoogleDriveDest(id) {
+    async function authorizeGoogleDriveDest(id, options = {}) {
       let targetId = id;
       const authBtn = document.getElementById('googleDriveAuthorizeBtn');
       const hadFormButton = !!authBtn;
@@ -257,10 +261,19 @@ export function getGoogleDriveToolCode() {
       }
 
       try {
-        if (!targetId) {
-          const saved = await _upsertGoogleDriveConfig();
+        if (options.saveForm) {
+          const formVersion = _googleDriveFormVersion;
+          const saved = await _upsertGoogleDriveConfig().catch((error) => {
+            showCenterToast('❌', t('toolSyncSaveError', { message: error.message }));
+            return null;
+          });
           if (!saved) return;
           targetId = saved.id;
+          // 记住新建目标的 id，授权启动失败后再点会更新同一目标，而不是再新建一个；
+          // 保存期间表单已关闭或换成别的目标时不回写，以免下次保存改到这个目标
+          if (formVersion === _googleDriveFormVersion) {
+            document.getElementById('googleDriveEditId').value = targetId;
+          }
         }
 
         const popup = window.open('about:blank', 'gdrive-oauth', 'width=560,height=720');

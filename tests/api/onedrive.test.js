@@ -10,7 +10,7 @@ import {
 	handleToggleOneDrive,
 } from '../../src/api/onedrive.js';
 import { createOAuthState } from '../../src/utils/oauth.js';
-import { saveOneDriveSingleConfig } from '../../src/utils/onedrive.js';
+import { completeOneDriveAuthorization, getOneDriveConfigs, saveOneDriveSingleConfig } from '../../src/utils/onedrive.js';
 
 class MockKV {
 	constructor() {
@@ -330,6 +330,42 @@ describe('OneDrive API', () => {
 		const listData = await listResponse.json();
 		expect(listData.destinations[0].authorized).toBe(true);
 		expect(listData.destinations[0].enabled).toBe(true);
+	});
+
+	it('should keep a paused OneDrive destination paused when its edited form is saved and reauthorized', async () => {
+		const createResponse = await handleSaveOneDriveConfig(createMockRequest({ name: 'Work OneDrive', folderPath: '/2FA-Backups' }), env);
+		const { id } = await createResponse.json();
+		await saveOneDriveSingleConfig(env, {
+			id,
+			authorized: true,
+			enabled: false,
+			refreshToken: 'old-refresh-token',
+			accessToken: 'old-access-token',
+			accessTokenExpiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+		});
+
+		// "保存并授权" saves the form first; the OAuth callback then stores the new tokens.
+		const saveResponse = await handleSaveOneDriveConfig(createMockRequest({ id, name: 'Renamed OneDrive', folderPath: '/new-path' }), env);
+		expect(saveResponse.status).toBe(200);
+		expect((await getOneDriveConfigs(env))[0]).toMatchObject({ enabled: false, authorized: true, refreshToken: 'old-refresh-token' });
+
+		await completeOneDriveAuthorization(env, {
+			id,
+			tokenData: {
+				accessToken: 'fresh-access-token',
+				refreshToken: 'fresh-refresh-token',
+				accessTokenExpiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+			},
+			profile: { displayName: 'Drive User', email: 'drive@example.com' },
+		});
+
+		const listData = await (await handleGetOneDriveConfigs(createMockRequest({}, 'GET'), env)).json();
+		expect(listData.destinations[0]).toMatchObject({
+			name: 'Renamed OneDrive',
+			enabled: false,
+			authorized: true,
+			config: { folderPath: '/new-path' },
+		});
 	});
 
 	it('should route expired OneDrive state failures back to the original app origin', async () => {

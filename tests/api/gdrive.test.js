@@ -10,7 +10,7 @@ import {
 	handleToggleGoogleDrive,
 } from '../../src/api/gdrive.js';
 import { createOAuthState } from '../../src/utils/oauth.js';
-import { saveGoogleDriveSingleConfig } from '../../src/utils/gdrive.js';
+import { completeGoogleDriveAuthorization, getGoogleDriveConfigs, saveGoogleDriveSingleConfig } from '../../src/utils/gdrive.js';
 
 class MockKV {
 	constructor() {
@@ -338,6 +338,48 @@ describe('Google Drive API', () => {
 		const listData = await listResponse.json();
 		expect(listData.destinations[0].authorized).toBe(true);
 		expect(listData.destinations[0].enabled).toBe(true);
+	});
+
+	it('should keep a paused Google Drive destination paused when its edited form is saved and reauthorized', async () => {
+		const createResponse = await handleSaveGoogleDriveConfig(
+			createMockRequest({ name: 'Primary Google Drive', folderPath: '/2FA-Backups' }),
+			env,
+		);
+		const { id } = await createResponse.json();
+		await saveGoogleDriveSingleConfig(env, {
+			id,
+			authorized: true,
+			enabled: false,
+			refreshToken: 'old-refresh-token',
+			accessToken: 'old-access-token',
+			accessTokenExpiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+		});
+
+		// "保存并授权" saves the form first; the OAuth callback then stores the new tokens.
+		const saveResponse = await handleSaveGoogleDriveConfig(
+			createMockRequest({ id, name: 'Renamed Google Drive', folderPath: '/new-path' }),
+			env,
+		);
+		expect(saveResponse.status).toBe(200);
+		expect((await getGoogleDriveConfigs(env))[0]).toMatchObject({ enabled: false, authorized: true, refreshToken: 'old-refresh-token' });
+
+		await completeGoogleDriveAuthorization(env, {
+			id,
+			tokenData: {
+				accessToken: 'fresh-access-token',
+				refreshToken: 'fresh-refresh-token',
+				accessTokenExpiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+			},
+			profile: { displayName: 'Drive User', email: 'drive@example.com' },
+		});
+
+		const listData = await (await handleGetGoogleDriveConfigs(createMockRequest({}, 'GET'), env)).json();
+		expect(listData.destinations[0]).toMatchObject({
+			name: 'Renamed Google Drive',
+			enabled: false,
+			authorized: true,
+			config: { folderPath: '/new-path' },
+		});
 	});
 
 	it('should return warning popup when Google Drive auth succeeds but auto test upload fails', async () => {

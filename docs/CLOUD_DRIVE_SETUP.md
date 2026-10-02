@@ -816,7 +816,7 @@ Google Drive 授权已保存，但自动连接测试失败：Google Drive API �
 
 原因：你只配置了 OAuth 凭据（Client ID / Secret），但没有在 Google Cloud 项目里启用 `Google Drive API`。授权流程只检验凭据合法性，不会检查 Drive API 是否开通。
 
-处理办法：**回去执行「第 3 步：启用 Google Drive API」**。打开 `https://console.cloud.google.com/apis/library/drive.googleapis.com`（记得在右上角确认是你 OAuth 客户端所在的那个项目），点蓝色的 `Enable`，等页面跳到 `API/Service Details` 并显示 `Status: Enabled` 后，回到应用重新点「保存并授权」即可（不需要再跑一遍 OAuth 流程，应用会自动重试连接测试）。
+处理办法：**回去执行「第 3 步：启用 Google Drive API」**。打开 `https://console.cloud.google.com/apis/library/drive.googleapis.com`（记得在右上角确认是你 OAuth 客户端所在的那个项目），点蓝色的 `Enable`，等页面跳到 `API/Service Details` 并显示 `Status: Enabled` 后，回到应用重新点「保存并授权」，再完成一次授权即可；授权完成后应用会自动重新测试连接。
 
 ### 7. 授权页弹出 `ENCRYPTION_KEY 未配置，... 凭据将以明文存储`
 
