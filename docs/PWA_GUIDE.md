@@ -456,7 +456,7 @@ Service Worker 版本由部署脚本自动注入。缓存名采用 `2fa-cache-${
    ```
    Chrome → F12 → Application → Cache Storage
    查看当前 `2fa-cache-*` 缓存
-   确认 jsQR.min.js 和 qrcode.min.js 已缓存
+   确认 jsQR.js 和 qrcode.min.js 已缓存
    ```
 
 ---

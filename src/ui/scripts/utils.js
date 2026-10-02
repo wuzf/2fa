@@ -14,16 +14,24 @@ export function getUtilsCode() {
     // ========== 工具函数模块 ==========
 
     // ==================== 第三方脚本按需加载 ====================
-    // jsQR (~130KB) 和 qrcode-generator (~20KB) 改为按需加载，
+    // jsQR (~250KB) 和 qrcode-generator (~20KB) 改为按需加载，
     // 仅在用户点开扫码/生成二维码相关功能时才下载，避免阻塞首屏。
+    // 两个脚本都固定版本并带 SRI 摘要，CDN 返回的内容与摘要不符时浏览器拒绝执行。
+    // jsQR 的 npm 包没有 .min.js，jsDelivr 临时压缩出的文件会随压缩器更新而变化，
+    // 摘要固定不住，所以加载包内的原文件。
+    const JSQR_URL = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+    const JSQR_INTEGRITY = 'sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx';
+    const QRCODE_GENERATOR_URL = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+    const QRCODE_GENERATOR_INTEGRITY = 'sha384-mZT2gIty7ZDdOGkxfP6joZcYdMW1Jvj9dRlfpTmaJAKKXTqzygtB22k7FLe+KZC1';
     const __scriptLoadCache = new Map();
-    function loadScriptOnce(url) {
+    function loadScriptOnce(url, integrity) {
       if (__scriptLoadCache.has(url)) return __scriptLoadCache.get(url);
       const promise = new Promise((resolve, reject) => {
         const s = document.createElement('script');
         s.src = url;
         s.async = true;
         s.crossOrigin = 'anonymous';
+        if (integrity) s.integrity = integrity;
         s.onload = () => resolve();
         s.onerror = () => {
           __scriptLoadCache.delete(url); // 失败后允许下次重试
@@ -36,11 +44,11 @@ export function getUtilsCode() {
     }
     async function ensureJsQR() {
       if (typeof jsQR !== 'undefined') return;
-      await loadScriptOnce('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
+      await loadScriptOnce(JSQR_URL, JSQR_INTEGRITY);
     }
     async function ensureQRCodeGen() {
       if (typeof qrcode !== 'undefined') return;
-      await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js');
+      await loadScriptOnce(QRCODE_GENERATOR_URL, QRCODE_GENERATOR_INTEGRITY);
     }
     // 暴露到 window 供懒加载模块（lazy modules）共享
     window.ensureJsQR = ensureJsQR;

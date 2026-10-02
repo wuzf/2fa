@@ -83,7 +83,7 @@ const STATIC_RESOURCES = [
 
 // 外部 CDN 资源（Service Worker 会自动缓存）
 const CDN_RESOURCES = [
-  'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
+  'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js',
   'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js'
 ];
 
