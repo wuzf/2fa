@@ -388,7 +388,6 @@ export async function handleExportBackup(request, env, backupKey) {
 		const decoded = await decodeBackupEntry(backupContent, env, {
 			backupKey,
 			metadata: keyEntry?.metadata,
-			strict: true,
 		});
 		logDecodedEntryIssues(logger, backupKey, decoded);
 		if (decoded.partial) {
@@ -474,11 +473,11 @@ export async function handleRestoreBackup(request, env, ctx) {
 		}
 
 		const { backupKey, backupContent, metadata, preview: isPreview, source } = restoreSource;
-		// The entry checks are the same for KV backups and uploaded files.
+		// The entry checks are the same for KV backups and uploaded files: broken entries are
+		// skipped and make the backup partial, they never fail the decoding.
 		const decoded = await decodeBackupEntry(backupContent, env, {
 			backupKey,
 			metadata,
-			strict: true,
 		});
 		logDecodedEntryIssues(logger, backupKey, decoded);
 		const unsupportedCount = getUnsupportedEntryCount(decoded);

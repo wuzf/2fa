@@ -2686,7 +2686,7 @@ describe('Backup API Module', () => {
       expect(data.error).toContain('备份内容为空');
     });
 
-    it('应该拒绝预览和恢复包含无效 TXT 条目的备份', async () => {
+    it('应该在预览中把无效 TXT 条目标记为不完整并阻止恢复', async () => {
       const env = createMockEnv();
       const backupKey = 'backup_2026-04-15_00-00-00-000-invalid.txt';
 
@@ -2714,8 +2714,11 @@ describe('Backup API Module', () => {
       }, 'POST', 'https://example.com/api/backup/restore'), env);
       const previewData = await previewResp.json();
 
-      expect(previewResp.status).toBe(400);
-      expect(previewData.error).toContain('解析失败');
+      expect(previewResp.status).toBe(200);
+      expect(previewData.data.partial).toBe(true);
+      expect(previewData.data.skippedInvalidCount).toBe(1);
+      expect(previewData.data.count).toBe(1);
+      expect(previewData.data.warnings.slice(1)).toEqual(['第 2 条（未命名）：不是有效的 OTPAuth URL']);
 
       const restoreResp = await handleRestoreBackup(createMockRequest({
         backupKey,
@@ -2725,7 +2728,8 @@ describe('Backup API Module', () => {
       const secretsAfterFailure = await getAllSecrets(env);
 
       expect(restoreResp.status).toBe(400);
-      expect(restoreData.error).toContain('解析失败');
+      expect(restoreData.error).toBe('备份不完整');
+      expect(restoreData.warnings).toEqual(['第 2 条（未命名）：不是有效的 OTPAuth URL']);
       expect(secretsAfterFailure).toHaveLength(1);
       expect(secretsAfterFailure[0].name).toBe('Current');
     });

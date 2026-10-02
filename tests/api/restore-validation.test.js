@@ -6,7 +6,7 @@ import { handleDeleteSecret, handleUpdateSecret } from '../../src/api/secrets/cr
 import { getAllSecrets, saveSecretsToKV } from '../../src/api/secrets/shared.js';
 import { createBackupEntry } from '../../src/utils/backup-format.js';
 import { generateDataHash } from '../../src/utils/data-hash.js';
-import { decryptData } from '../../src/utils/encryption.js';
+import { decryptData, encryptData } from '../../src/utils/encryption.js';
 
 class MockKV {
 	constructor() {
@@ -264,6 +264,174 @@ describe('restore validation of account parameters', () => {
 		expect(skippedRestore).not.toHaveProperty('warnings');
 		expect((await restoreBackup({ backupKey: skipped.backupKey, preview: true })).data.warnings).toEqual([summary('恢复或导出')]);
 		expect((await getAllSecrets(env)).map((secret) => secret.name)).toEqual(['Current']);
+	});
+
+	describe('entries without a valid secret that the backup does not count', () => {
+		const broken = { ...VALID_SECRET, id: 'broken', name: 'Broken', secret: '***' };
+		const fiveDigits = { ...VALID_SECRET, id: 'five', name: 'Five digits', secret: 'MFRGGZDFMZTWQ2LK', digits: 5 };
+		const brokenLine = '第 2 条（Broken）：缺少有效密钥';
+		const summary = (count, action) => `该备份在创建或解析时已跳过 ${count} 条无效密钥，无法保证数据完整，已阻止${action}`;
+		const csvHeader = '服务名称,账户信息,密钥,类型,位数,周期(秒),算法,计数器';
+		const githubUrl = 'otpauth://totp/GitHub:user%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=GitHub';
+		const githubRow = '"GitHub","user@example.com","JBSWY3DPEHPK3PXP","TOTP",6,30,"SHA1",0';
+
+		async function storeBackup(env, backupKey, backupContent, metadata) {
+			await env.SECRETS_KV.put(backupKey, backupContent, { metadata: { created: '2026-04-17T00:00:00.000Z', ...metadata } });
+		}
+
+		it('skips them in the preview, restore and export of every format and source', async () => {
+			const env = createMockEnv();
+			// E.g. files edited by hand: the content has entries without a valid secret, and no
+			// skippedInvalidCount in the file or the KV metadata counts them.
+			const html = await createBackupEntry(
+				[VALID_SECRET, { ...broken, secret: 'MFRGGZDFMZTWQ2LK' }],
+				{},
+				{ format: 'html', reason: 'manual' },
+			);
+			const uploads = [
+				{
+					format: 'json',
+					backupContent: JSON.stringify({ skippedInvalidCount: 0, secrets: [VALID_SECRET, broken, fiveDigits] }),
+					count: 2,
+					skipped: [brokenLine],
+					// Entries after a skipped one keep their position in the backup.
+					unsupported: ['第 3 条（Five digits）：验证码位数仅支持6位或8位'],
+				},
+				{
+					format: 'txt',
+					backupContent: [
+						githubUrl,
+						'otpauth://totp/Broken?secret=***&issuer=Broken',
+						// The port makes the URL itself unreadable.
+						'otpauth://totp:99999/Port?secret=JBSWY3DPEHPK3PXP&issuer=Port',
+					].join('\n'),
+					count: 1,
+					skipped: [brokenLine, '第 3 条（未命名）：不是有效的 OTPAuth URL'],
+				},
+				{
+					format: 'csv',
+					backupContent: [csvHeader, githubRow, '"Broken","","***","TOTP",6,30,"SHA1",0'].join('\n'),
+					count: 1,
+					skipped: [brokenLine],
+				},
+				// The embedded JSON is read, not the visible table.
+				{ format: 'html', backupContent: html.backupContent.replaceAll('MFRGGZDFMZTWQ2LK', '***'), count: 1, skipped: [brokenLine] },
+			];
+			await saveSecretsToKV(env, [CURRENT_SECRET], 'test');
+
+			for (const { format, backupContent, count, skipped, unsupported = [] } of uploads) {
+				const backupFileName = `backup_2026-04-17_00-00-00-000-edited.${format}`;
+				const previewResponse = await handleRestoreBackup(createMockRequest({ backupFileName, backupContent, preview: true }), env);
+				const preview = await previewResponse.json();
+
+				expect(previewResponse.status, format).toBe(200);
+				expect(preview.data, format).toMatchObject({
+					partial: true,
+					skippedInvalidCount: skipped.length,
+					count,
+					warnings: [summary(skipped.length, '恢复或导出'), ...skipped],
+					unsupportedWarnings: unsupported,
+				});
+
+				const restoreResponse = await handleRestoreBackup(createMockRequest({ backupFileName, backupContent }), env);
+				expect(restoreResponse.status, format).toBe(400);
+				expect(await restoreResponse.json(), format).toMatchObject({
+					error: '备份不完整',
+					message: summary(skipped.length, '恢复'),
+					warnings: skipped,
+				});
+			}
+
+			const stored = [
+				['backup_2026-04-17_00-00-00-000-stored.json', JSON.stringify({ secrets: [VALID_SECRET, broken] }), { format: 'json', count: 2 }],
+				// A legacy encrypted backup holds the secrets list itself.
+				[
+					'backup_2026-04-17_00-00-00-000-legacy.json',
+					await encryptData({ timestamp: '2026-04-17T00:00:00.000Z', secrets: [VALID_SECRET, broken] }, env),
+					{ format: 'json', encrypted: true },
+				],
+			];
+			for (const [backupKey, backupContent, metadata] of stored) {
+				await storeBackup(env, backupKey, backupContent, { ...metadata, skippedInvalidCount: 0 });
+
+				const preview = await (await handleRestoreBackup(createMockRequest({ backupKey, preview: true }), env)).json();
+				expect(preview.data, backupKey).toMatchObject({
+					partial: true,
+					skippedInvalidCount: 1,
+					count: 1,
+					warnings: [summary(1, '恢复或导出'), brokenLine],
+				});
+
+				const restoreResponse = await handleRestoreBackup(createMockRequest({ backupKey }), env);
+				expect(restoreResponse.status, backupKey).toBe(400);
+				expect(await restoreResponse.json(), backupKey).toMatchObject({
+					error: '备份不完整',
+					message: summary(1, '恢复'),
+					warnings: [brokenLine],
+				});
+
+				const exportResponse = await handleExportBackup(
+					createMockRequest({}, 'GET', `https://example.com/api/backup/export/${backupKey}?format=json`),
+					env,
+					backupKey,
+				);
+				expect(exportResponse.status, backupKey).toBe(400);
+				expect(await exportResponse.json(), backupKey).toMatchObject({
+					error: '备份不完整',
+					message: summary(1, '导出'),
+					warnings: [brokenLine],
+				});
+			}
+
+			const english = await (
+				await handleRestoreBackup(
+					createMockRequest({ backupKey: stored[0][0] }, 'POST', 'https://example.com/api/backup/restore?lang=en'),
+					env,
+				)
+			).json();
+			expect(english.warnings).toEqual(['Entry 2 (Broken): A valid secret is missing']);
+			expect((await getAllSecrets(env)).map((secret) => secret.name)).toEqual(['Current']);
+		});
+
+		it('leaves complete backups of every format and source restorable, and still refuses to create such a backup', async () => {
+			const env = createMockEnv();
+			const html = await createBackupEntry([VALID_SECRET], {}, { format: 'html', reason: 'manual' });
+			const uploads = {
+				json: JSON.stringify({ skippedInvalidCount: 0, secrets: [VALID_SECRET] }),
+				txt: githubUrl,
+				csv: [csvHeader, githubRow].join('\n'),
+				html: html.backupContent,
+			};
+
+			for (const [format, backupContent] of Object.entries(uploads)) {
+				await saveSecretsToKV(env, [CURRENT_SECRET], 'test');
+				const backupFileName = `backup_2026-04-17_00-00-00-000-complete.${format}`;
+				const preview = await (await handleRestoreBackup(createMockRequest({ backupFileName, backupContent, preview: true }), env)).json();
+				expect(preview.data, format).toMatchObject({ partial: false, skippedInvalidCount: 0, count: 1, warnings: [] });
+
+				const restoreResponse = await handleRestoreBackup(createMockRequest({ backupFileName, backupContent }), env);
+				expect(restoreResponse.status, format).toBe(200);
+				expect(
+					(await getAllSecrets(env)).map((secret) => secret.name),
+					format,
+				).toEqual(['GitHub']);
+			}
+
+			const backupKey = 'backup_2026-04-17_00-00-00-000-legacy.json';
+			await storeBackup(env, backupKey, await encryptData({ secrets: [VALID_SECRET] }, env), { format: 'json', encrypted: true });
+			const exportResponse = await handleExportBackup(
+				createMockRequest({}, 'GET', `https://example.com/api/backup/export/${backupKey}?format=json`),
+				env,
+				backupKey,
+			);
+			expect(exportResponse.status).toBe(200);
+			expect(JSON.parse(await exportResponse.text())).toMatchObject({ count: 1, skippedInvalidCount: 0 });
+
+			// Creating a backup keeps refusing entries without a valid secret.
+			await expect(createBackupEntry([VALID_SECRET, broken], env, { format: 'json', strict: true })).rejects.toThrow(
+				'备份包含无效密钥，已阻止生成',
+			);
+		});
 	});
 
 	it('lists at most 10 lines per warning list, the last one counting the entries not shown', async () => {

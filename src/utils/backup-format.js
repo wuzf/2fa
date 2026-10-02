@@ -326,7 +326,6 @@ export async function decodeBackupEntry(backupContent, env, options = {}) {
 	const metadata = options.metadata || {};
 	const backupKey = options.backupKey || '';
 	const encrypted = typeof options.encrypted === 'boolean' ? options.encrypted : String(backupContent || '').startsWith('v1:');
-	const strict = options.strict === true;
 
 	if (!backupContent) {
 		throw new Error('备份内容为空');
@@ -352,7 +351,6 @@ export async function decodeBackupEntry(backupContent, env, options = {}) {
 				{
 					timestamp: decrypted.timestamp,
 					reason: decrypted.reason,
-					strict,
 				},
 			);
 			return finalizeDecodedBackup(
@@ -366,16 +364,7 @@ export async function decodeBackupEntry(backupContent, env, options = {}) {
 
 		if (Array.isArray(decrypted?.secrets)) {
 			const timestamp = decrypted.timestamp || metadata.created || parseBackupTimeFromKey(backupKey);
-			const invalidSecrets = [];
-			let secrets;
-			try {
-				secrets = normalizeBackupSecrets(decrypted.secrets, timestamp, {
-					strict,
-					onInvalid: (item) => invalidSecrets.push(item),
-				});
-			} catch (error) {
-				throw new Error(`解析失败：${error.message}`);
-			}
+			const { secrets, entryNumbers, rejectedSecrets } = decodeBackupSecretList(decrypted.secrets, timestamp);
 
 			return finalizeDecodedBackup(
 				excludeNonRestorableSecrets({
@@ -384,9 +373,11 @@ export async function decodeBackupEntry(backupContent, env, options = {}) {
 					reason: decrypted.reason || 'legacy',
 					count: secrets.length,
 					secrets,
+					entryNumbers,
+					rejectedSecrets,
 					encrypted: true,
 					content: JSON.stringify(decrypted, null, 2),
-					skippedInvalidCount: invalidSecrets.length,
+					skippedInvalidCount: rejectedSecrets.length,
 				}),
 				{ storedSkippedInvalidCount: sanitizeSkippedInvalidCount(metadata.skippedInvalidCount) },
 			);
@@ -398,7 +389,6 @@ export async function decodeBackupEntry(backupContent, env, options = {}) {
 	const format = resolveBackupFormat(metadata.format, getBackupFormatFromKey(backupKey));
 	const decoded = decodeBackupContent(backupContent, format, {
 		timestamp: metadata.created || parseBackupTimeFromKey(backupKey),
-		strict,
 	});
 	return finalizeDecodedBackup(
 		{
@@ -410,9 +400,10 @@ export async function decodeBackupEntry(backupContent, env, options = {}) {
 }
 
 /**
- * Decode backup content. Structurally broken entries are skipped and counted in
- * skippedInvalidCount, so partial-backup handling blocks restoring them. Entries whose OTP
- * parameters are unsupported are kept and listed in unsupportedSecrets.
+ * Decode backup content. Structurally broken entries are skipped, listed in rejectedSecrets and
+ * counted in skippedInvalidCount, so partial-backup handling blocks restoring them; decoding
+ * never fails because of a single entry. Entries whose OTP parameters are unsupported are kept
+ * and listed in unsupportedSecrets.
  */
 export function decodeBackupContent(content, format, options = {}) {
 	return excludeNonRestorableSecrets(decodeBackupContentByFormat(content, format, options));
@@ -483,16 +474,7 @@ function decodeJsonBackupContent(content, options = {}) {
 	}
 
 	const timestamp = jsonData.timestamp || jsonData.exportDate || options.timestamp || new Date().toISOString();
-	const invalidSecrets = [];
-	let secrets;
-	try {
-		secrets = normalizeBackupSecrets(jsonData.secrets, timestamp, {
-			strict: options.strict === true,
-			onInvalid: (item) => invalidSecrets.push(item),
-		});
-	} catch (error) {
-		throw new Error(`解析失败：${error.message}`);
-	}
+	const { secrets, entryNumbers, rejectedSecrets } = decodeBackupSecretList(jsonData.secrets, timestamp);
 
 	return {
 		format: 'json',
@@ -500,9 +482,26 @@ function decodeJsonBackupContent(content, options = {}) {
 		reason: jsonData.reason || options.reason || 'legacy',
 		count: secrets.length,
 		secrets,
+		entryNumbers,
+		rejectedSecrets,
 		content,
-		skippedInvalidCount: sanitizeSkippedInvalidCount(jsonData.skippedInvalidCount) + invalidSecrets.length,
+		skippedInvalidCount: sanitizeSkippedInvalidCount(jsonData.skippedInvalidCount) + rejectedSecrets.length,
 	};
+}
+
+/**
+ * Normalize a backup's secrets list. Entries without a valid secret are left out and listed in
+ * rejectedSecrets; entryNumbers keeps the position of every other entry in the list.
+ */
+function decodeBackupSecretList(rawSecrets, timestamp) {
+	const rejectedSecrets = [];
+	const secrets = normalizeBackupSecrets(rawSecrets, timestamp, {
+		onInvalid: ({ index, name }) => rejectedSecrets.push({ entry: index + 1, name, errors: ['缺少有效密钥'] }),
+	});
+	const rejectedEntries = new Set(rejectedSecrets.map(({ entry }) => entry));
+	const entryNumbers = rawSecrets.map((_, index) => index + 1).filter((entry) => !rejectedEntries.has(entry));
+
+	return { secrets, entryNumbers, rejectedSecrets };
 }
 
 function decodeTextBackupContent(content, options = {}) {
@@ -513,22 +512,22 @@ function decodeTextBackupContent(content, options = {}) {
 		.filter(Boolean);
 
 	const timestamp = options.timestamp || new Date().toISOString();
-	const invalidLines = [];
+	const rejectedSecrets = [];
 	const secrets = [];
 	const entryNumbers = [];
 	lines.forEach((line, index) => {
 		const parsed = parseOTPAuthUrl(line);
 		if (!parsed) {
-			invalidLines.push(index + 1);
+			rejectedSecrets.push({ entry: index + 1, name: '', errors: ['不是有效的 OTPAuth URL'] });
+			return;
+		}
+		if (!isValidBackupSecretValue(parsed.secret)) {
+			rejectedSecrets.push({ entry: index + 1, name: parsed.name, errors: ['缺少有效密钥'] });
 			return;
 		}
 		secrets.push(parsed);
 		entryNumbers.push(index + 1);
 	});
-
-	if (options.strict === true && invalidLines.length > 0) {
-		throw new Error(`解析失败：${buildInvalidBackupRowsError('TXT', invalidLines, '不是有效的 OTPAuth URL')}`);
-	}
 
 	return {
 		format: 'txt',
@@ -537,8 +536,9 @@ function decodeTextBackupContent(content, options = {}) {
 		count: secrets.length,
 		secrets,
 		entryNumbers,
+		rejectedSecrets,
 		content,
-		skippedInvalidCount: extracted.skippedInvalidCount + invalidLines.length,
+		skippedInvalidCount: extracted.skippedInvalidCount + rejectedSecrets.length,
 	};
 }
 
@@ -603,21 +603,22 @@ function decodeCsvBackupContent(content, options = {}) {
 	const timestamp = options.timestamp || new Date().toISOString();
 	const secrets = [];
 	const entryNumbers = [];
-	const invalidRows = [];
+	const rejectedSecrets = [];
 
 	for (let i = 1; i < rows.length; i += 1) {
 		const fields = rows[i];
+		const name = String(fields[serviceIndex] || 'Unknown').trim() || 'Unknown';
 		const cleanSecret = sanitizeBackupSecretValue(fields[secretIndex]);
+		// Entries are numbered among the data rows; the header is row 0.
 		if (!cleanSecret || !isValidBackupSecretValue(cleanSecret)) {
-			invalidRows.push(i + 1);
+			rejectedSecrets.push({ entry: i, name, errors: ['缺少有效密钥'] });
 			continue;
 		}
 
-		// Entries are numbered among the data rows; the header is row 0.
 		entryNumbers.push(i);
 		secrets.push({
 			id: crypto.randomUUID(),
-			name: String(fields[serviceIndex] || 'Unknown').trim() || 'Unknown',
+			name,
 			account: String(fields[accountIndex] || '').trim(),
 			secret: cleanSecret,
 			type: parseBackupType(fields[typeIndex]),
@@ -628,10 +629,6 @@ function decodeCsvBackupContent(content, options = {}) {
 		});
 	}
 
-	if (options.strict === true && invalidRows.length > 0) {
-		throw new Error(`解析失败：${buildInvalidBackupRowsError('CSV', invalidRows, '缺少有效密钥')}`);
-	}
-
 	return {
 		format: 'csv',
 		timestamp,
@@ -639,15 +636,15 @@ function decodeCsvBackupContent(content, options = {}) {
 		count: secrets.length,
 		secrets,
 		entryNumbers,
+		rejectedSecrets,
 		content,
-		skippedInvalidCount: extracted.skippedInvalidCount + invalidRows.length,
+		skippedInvalidCount: extracted.skippedInvalidCount + rejectedSecrets.length,
 	};
 }
 
 function decodeHtmlBackupContent(content, options = {}) {
 	const parseErrors = [];
 	const htmlMetadata = extractHtmlBackupMetadata(content);
-	const fallbackOptions = options.strict === true ? { ...options, strict: false } : options;
 	const embeddedJson = extractEmbeddedJsonFromHtml(content);
 	if (embeddedJson) {
 		try {
@@ -666,7 +663,7 @@ function decodeHtmlBackupContent(content, options = {}) {
 	const embeddedOtpauthUrls = extractOTPAuthUrlsFromHtml(content);
 	if (embeddedOtpauthUrls.length > 0) {
 		try {
-			const decoded = decodeTextBackupContent(embeddedOtpauthUrls.join('\n'), fallbackOptions);
+			const decoded = decodeTextBackupContent(embeddedOtpauthUrls.join('\n'), options);
 			return {
 				...decoded,
 				format: 'html',
@@ -680,7 +677,7 @@ function decodeHtmlBackupContent(content, options = {}) {
 
 	try {
 		return decodeHtmlTableBackupContent(content, {
-			...fallbackOptions,
+			...options,
 			htmlMetadataSkippedInvalidCount: htmlMetadata.skippedInvalidCount,
 		});
 	} catch (error) {
@@ -695,29 +692,25 @@ function decodeHtmlTableBackupContent(content, options = {}) {
 	const htmlMetadataSkippedInvalidCount = sanitizeSkippedInvalidCount(options.htmlMetadataSkippedInvalidCount);
 	const secrets = [];
 	const entryNumbers = [];
-	const invalidRows = [];
+	const rejectedSecrets = [];
 	const rows = extractHtmlTableRows(content);
 
 	rows.forEach((row, index) => {
 		const cells = row.cells;
-		if (cells.length < 3) {
-			invalidRows.push(row.rowNumber || index + 1);
-			return;
-		}
-
-		const cleanSecret = sanitizeBackupSecretValue(cells[2]);
-		if (!cleanSecret || !isValidBackupSecretValue(cleanSecret)) {
-			invalidRows.push(row.rowNumber || index + 1);
-			return;
-		}
-
+		const name = String(cells[0] || 'Unknown').trim() || 'Unknown';
+		const cleanSecret = cells.length < 3 ? '' : sanitizeBackupSecretValue(cells[2]);
 		// Entries are numbered among the data rows (rowNumber also counts the header row).
+		if (!cleanSecret || !isValidBackupSecretValue(cleanSecret)) {
+			rejectedSecrets.push({ entry: index + 1, name, errors: ['缺少有效密钥'] });
+			return;
+		}
+
 		entryNumbers.push(index + 1);
 		const hasCounterColumn = cells.length >= 9;
 		const account = normalizeLegacyHtmlAccount(cells[1]);
 		secrets.push({
 			id: crypto.randomUUID(),
-			name: String(cells[0] || 'Unknown').trim() || 'Unknown',
+			name,
 			account,
 			secret: cleanSecret,
 			type: parseBackupType(cells[3]),
@@ -727,10 +720,6 @@ function decodeHtmlTableBackupContent(content, options = {}) {
 			counter: hasCounterColumn ? parseBackupInteger(cells[7], 0) : 0,
 		});
 	});
-
-	if (options.strict === true && invalidRows.length > 0) {
-		throw new Error(`解析失败：${buildInvalidBackupRowsError('HTML', invalidRows, '缺少有效密钥')}`);
-	}
 
 	if (secrets.length === 0) {
 		throw new Error('解析失败：HTML 备份中未找到可恢复的数据块');
@@ -743,8 +732,9 @@ function decodeHtmlTableBackupContent(content, options = {}) {
 		count: secrets.length,
 		secrets,
 		entryNumbers,
+		rejectedSecrets,
 		content,
-		skippedInvalidCount: htmlMetadataSkippedInvalidCount + invalidRows.length,
+		skippedInvalidCount: htmlMetadataSkippedInvalidCount + rejectedSecrets.length,
 	};
 }
 
@@ -1036,6 +1026,7 @@ function buildOTPAuthUrl(secret) {
 	return `otpauth://totp/${label}?${params.toString()}`;
 }
 
+// Returns null when the line is not a readable otpauth URL. The secret is not checked here.
 function parseOTPAuthUrl(uri) {
 	const normalized = String(uri || '')
 		.trim()
@@ -1044,7 +1035,12 @@ function parseOTPAuthUrl(uri) {
 		return null;
 	}
 
-	const url = new URL(normalized);
+	let url;
+	try {
+		url = new URL(normalized);
+	} catch {
+		return null;
+	}
 	const type = parseBackupType(url.hostname);
 	const rawLabel = url.pathname.replace(/^\//, '');
 	const separatorIndex = rawLabel.indexOf(':');
@@ -1056,10 +1052,6 @@ function parseOTPAuthUrl(uri) {
 	const account = accountFromLabel || (inferredIssuer ? (label && label !== inferredIssuer ? label : '') : label);
 	const issuer = issuerParam || issuerFromLabel || label || 'Unknown';
 	const cleanSecret = sanitizeBackupSecretValue(url.searchParams.get('secret'));
-
-	if (!cleanSecret || !isValidBackupSecretValue(cleanSecret)) {
-		return null;
-	}
 
 	return {
 		id: crypto.randomUUID(),
@@ -1342,8 +1334,9 @@ function excludeNonRestorableSecrets(decoded) {
 		return decoded;
 	}
 
-	// Decoders that drop unreadable rows first report each kept entry's position in the backup.
-	const { entryNumbers, ...rest } = decoded;
+	// Decoders that drop unreadable rows first report each kept entry's position in the backup,
+	// and list the dropped rows (already counted in skippedInvalidCount) in rejectedSecrets.
+	const { entryNumbers, rejectedSecrets: droppedSecrets, ...rest } = decoded;
 	const secrets = [];
 	const rejectedSecrets = [];
 	const unsupportedSecrets = [];
@@ -1371,12 +1364,14 @@ function excludeNonRestorableSecrets(decoded) {
 		secrets.push(id === secret.id ? secret : { ...secret, id });
 	});
 
+	const skippedSecrets = [...(Array.isArray(droppedSecrets) ? droppedSecrets : []), ...rejectedSecrets].sort((a, b) => a.entry - b.entry);
+
 	return {
 		...rest,
 		count: secrets.length,
 		secrets,
 		skippedInvalidCount: sanitizeSkippedInvalidCount(decoded.skippedInvalidCount) + rejectedSecrets.length,
-		...(rejectedSecrets.length > 0 && { rejectedSecrets }),
+		...(skippedSecrets.length > 0 && { rejectedSecrets: skippedSecrets }),
 		...(unsupportedSecrets.length > 0 && { unsupportedSecrets }),
 	};
 }
@@ -1412,16 +1407,6 @@ function finalizeDecodedBackup(decoded, options = {}) {
 		skippedInvalidCount,
 		partial: decoded.partial === true || skippedInvalidCount > 0,
 	};
-}
-
-function buildInvalidBackupRowsError(formatLabel, invalidRows, reason) {
-	const preview = invalidRows
-		.slice(0, 3)
-		.map((rowNumber) => `第 ${rowNumber} 行${reason}`)
-		.join('；');
-	const remainingCount = invalidRows.length - Math.min(invalidRows.length, 3);
-
-	return `备份 ${formatLabel} 数据包含无效条目：${preview}${remainingCount > 0 ? `；另有 ${remainingCount} 行` : ''}`;
 }
 
 function buildInvalidBackupSecretsError(invalidSecrets) {
