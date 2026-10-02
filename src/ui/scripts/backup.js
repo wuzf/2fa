@@ -59,6 +59,7 @@ export function getBackupCode() {
     let backupListCursor = null;
     let backupListHasMore = false;
     let backupListLoading = false;
+    let backupListRequestToken = 0;
     let backupPreviewRequestToken = 0;
     const BACKUP_LIST_PAGE_SIZE = 50;
     const BACKUP_UPLOAD_MAX_BYTES = ${LIMITS.MAX_EXPORT_SIZE};
@@ -239,6 +240,25 @@ export function getBackupCode() {
       });
     }
 
+    // 立即为当前数据创建一份备份（也会推送到已启用的远程存储），完成后刷新列表
+    async function createBackupNow() {
+      const button = document.getElementById('createBackupBtn');
+      if (button) button.disabled = true;
+      try {
+        const response = await authenticatedFetch('/api/backup', { method: 'POST' });
+        if (!response.ok) {
+          throw await readBackupErrorResponse(response);
+        }
+        showCenterToast('✅', t('backupCreatedSuccess'));
+        await loadBackupList();
+      } catch (error) {
+        console.error('创建备份失败:', error);
+        showCenterToast('❌', localizeBackupMessage(error.message));
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+
     async function loadBackupList() {
       return loadBackupListPage();
     }
@@ -256,9 +276,12 @@ export function getBackupCode() {
       const backupSelectElement = document.getElementById('backupSelect');
       const selectedBackupKey = selectedBackup ? selectedBackup.key : '';
 
-      if (!backupSelectElement || backupListLoading) {
+      // A full reload replaces a load in progress (for example the first list load while a new
+      // backup is created), and the older response is ignored; "load more" waits its turn.
+      if (!backupSelectElement || (append && backupListLoading)) {
         return;
       }
+      const requestToken = ++backupListRequestToken;
 
       if (!append) {
         backupListErrorRenderer = null;
@@ -284,6 +307,9 @@ export function getBackupCode() {
         }
 
         const data = await response.json();
+        if (requestToken !== backupListRequestToken) {
+          return;
+        }
         const nextBackups = data.backups || [];
         backupList = append ? backupList.concat(nextBackups) : nextBackups;
         backupListCursor = data.pagination && data.pagination.hasMore ? data.pagination.cursor : null;
@@ -311,6 +337,9 @@ export function getBackupCode() {
 
         updateBackupListPagination();
       } catch (error) {
+        if (requestToken !== backupListRequestToken) {
+          return;
+        }
         console.error('加载备份列表失败:', error);
 
         if (!append) {
@@ -322,8 +351,10 @@ export function getBackupCode() {
           showCenterToast('❌', t('restoreMoreFailed') + ': ' + localizeBackupMessage(error.message));
         }
       } finally {
-        backupListLoading = false;
-        updateBackupListPagination();
+        if (requestToken === backupListRequestToken) {
+          backupListLoading = false;
+          updateBackupListPagination();
+        }
       }
     }
 

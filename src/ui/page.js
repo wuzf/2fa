@@ -557,6 +557,7 @@ function getHTMLBody() {
             </select>
           </div>
           <div class="backup-actions">
+            <button type="button" class="btn btn-outline" onclick="createBackupNow()" id="createBackupBtn" data-i18n="createBackupBtn">立即创建备份</button>
             <button type="button" class="btn btn-outline" onclick="loadBackupList()" data-i18n="restoreRefresh">刷新</button>
             <button type="button" class="btn btn-outline" onclick="exportSelectedBackup()" id="exportBackupBtn" data-i18n="restoreExport" disabled>导出备份</button>
             <input type="file" id="restoreBackupFileInput" accept=".txt,.csv,.json,.html" style="display: none;" onchange="handleRestoreBackupFile(event)">
