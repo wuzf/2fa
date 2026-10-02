@@ -15,6 +15,9 @@ if (!localPath || !upstreamPath || !outputPath) {
 // skipped upstream files before reading wrangler.toml, then merge local settings.
 preserveWorkflowsForSync({ localPath, upstreamPath, outputPath });
 
+// Imported only now, after the skipped upstream files above have been repaired.
+const { mergeMigrations, tableHeaderLines } = await import('./merge-migrations.js');
+
 const local = normalize(readFileSync(localPath, 'utf8'));
 const upstream = normalize(readFileSync(upstreamPath, 'utf8'));
 
@@ -48,9 +51,7 @@ merged = mergeTableArrayBlock(merged, local, '[[env.development.kv_namespaces]]'
 
 // Keep the deployment's migration history. Rolling back below 1.11.0 and
 // upgrading again add migrations (docs/DEPLOYMENT.md); without them Wrangler
-// replays every migration and the deploy fails. Imported only now, after the
-// skipped upstream files above have been repaired.
-const { mergeMigrations } = await import('./merge-migrations.js');
+// replays every migration and the deploy fails.
 merged = mergeMigrations(merged, local);
 
 writeFileSync(outputPath, merged, 'utf8');
@@ -59,18 +60,33 @@ function normalize(text) {
 	return text.replace(/\r\n/g, '\n');
 }
 
+// Top-level keys are read and written only above the first table header: the
+// same key under [env.development] (for example its routes) belongs to that
+// environment and must not reach the production Worker.
+function splitTopLevel(text) {
+	const lines = text.split('\n');
+	const headers = tableHeaderLines(text);
+	const end = lines.findIndex((_line, index) => headers.has(index));
+	if (end === -1) {
+		return { top: text, rest: '' };
+	}
+	const top = lines.slice(0, end).join('\n');
+	return { top, rest: text.slice(top.length) };
+}
+
 function preserveLineAssignment(targetText, sourceText, key) {
-	const sourceLine = extractLineAssignment(sourceText, key);
+	const sourceLine = extractLineAssignment(splitTopLevel(sourceText).top, key);
 	if (!sourceLine) {
 		return targetText;
 	}
 
+	const { top, rest } = splitTopLevel(targetText);
 	const targetPattern = new RegExp(`^${escapeRegex(key)}\\s*=.*$`, 'm');
-	if (targetPattern.test(targetText)) {
-		return targetText.replace(targetPattern, sourceLine);
+	if (targetPattern.test(top)) {
+		return top.replace(targetPattern, sourceLine) + rest;
 	}
 
-	return insertAfterLine(targetText, sourceLine, /^(workers_dev\s*=.*|compatibility_date\s*=.*)$/m);
+	return insertAfterLine(top, sourceLine, /^(workers_dev\s*=.*|compatibility_date\s*=.*)$/m) + rest;
 }
 
 function preserveSectionLineAssignment(targetText, sourceText, header, key) {
@@ -91,21 +107,22 @@ function preserveSectionLineAssignment(targetText, sourceText, header, key) {
 }
 
 function preserveArrayAssignment(targetText, sourceText, key, insertAfterKey = null) {
-	const sourceBlock = extractArrayAssignment(sourceText, key);
+	const sourceBlock = extractArrayAssignment(splitTopLevel(sourceText).top, key);
 	if (!sourceBlock) {
 		return targetText;
 	}
 
-	const targetBlock = extractArrayAssignment(targetText, key);
+	const { top, rest } = splitTopLevel(targetText);
+	const targetBlock = extractArrayAssignment(top, key);
 	if (targetBlock) {
-		return replaceBlock(targetText, targetBlock, sourceBlock);
+		return replaceBlock(top, targetBlock, sourceBlock) + rest;
 	}
 
 	if (insertAfterKey) {
-		return insertAfterLine(targetText, sourceBlock, new RegExp(`^${escapeRegex(insertAfterKey)}\\s*=.*$`, 'm'));
+		return insertAfterLine(top, sourceBlock, new RegExp(`^${escapeRegex(insertAfterKey)}\\s*=.*$`, 'm')) + rest;
 	}
 
-	return targetText + '\n' + sourceBlock + '\n';
+	return top + '\n' + sourceBlock + '\n' + rest;
 }
 
 function preserveSectionBlock(targetText, sourceText, header) {
@@ -224,13 +241,14 @@ function extractTableArrayBlock(text, header, bindingName) {
 
 function extractHeaderBlock(text, header, isArray, predicate = null) {
 	const lines = text.split('\n');
+	const headers = tableHeaderLines(text);
 	for (let start = 0; start < lines.length; start++) {
-		if (lines[start].trim() !== header) {
+		if (!headers.has(start) || lines[start].trim() !== header) {
 			continue;
 		}
 
 		let end = start + 1;
-		while (end < lines.length && !startsNewTomlBlock(lines[end])) {
+		while (end < lines.length && !headers.has(end)) {
 			end++;
 		}
 
@@ -290,11 +308,6 @@ function insertAfterLine(text, block, pattern) {
 
 	const insertionPoint = match.index + match[0].length;
 	return text.slice(0, insertionPoint) + '\n' + block + text.slice(insertionPoint);
-}
-
-function startsNewTomlBlock(line) {
-	const trimmed = line.trim();
-	return trimmed.startsWith('[') && trimmed.endsWith(']');
 }
 
 function escapeRegex(value) {

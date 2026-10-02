@@ -234,3 +234,64 @@ ${history('[[env.development.migrations]]')}`;
 		expect(migrations(merged)).toEqual([v1, rollback, restore]);
 	});
 });
+
+describe('top-level settings next to an environment', () => {
+	const devRoutes = 'routes = [{ pattern = "dev.example.com", custom_domain = true }]\n';
+	const withDevRoutes = (text) => text.replace('name = "2fa-dev"\n', 'name = "2fa-dev"\n' + devRoutes);
+	const withTopRoutes = (text) =>
+		text.replace('main = "src/worker.js"\n', 'main = "src/worker.js"\nroutes = [\n  { pattern = "2fa.example.com", custom_domain = true }\n]\n');
+
+	it.each([
+		['with workers_dev', (text) => text.replace('main = "src/worker.js"\n', 'main = "src/worker.js"\nworkers_dev = true\n')],
+		['without workers_dev', (text) => text],
+	])('does not give the production Worker the routes of the development environment (%s)', (_label, layout) => {
+		const { status, merged } = run(withDevRoutes(layout(template)), layout(template));
+		expect(status).toBe(0);
+		const config = parse(merged);
+		expect(config.routes).toBeUndefined();
+		expect(config.env.development.routes).toEqual([{ pattern: 'dev.example.com', custom_domain: true }]);
+		expect(config.env.development.vars).toEqual({ ENVIRONMENT: 'development' });
+	});
+
+	it('keeps the production routes and the development routes each in their own place', () => {
+		const { status, merged } = run(withDevRoutes(withTopRoutes(template)), template);
+		expect(status).toBe(0);
+		const config = parse(merged);
+		expect(config.routes).toEqual([{ pattern: '2fa.example.com', custom_domain: true }]);
+		expect(config.env.development.routes).toEqual([{ pattern: 'dev.example.com', custom_domain: true }]);
+	});
+
+	it('does not replace a development setting with a production one missing upstream', () => {
+		const local = template.replace('main = "src/worker.js"\n', 'main = "src/worker.js"\nworkers_dev = false\n');
+		const upstream = template.replace('name = "2fa-dev"\n', 'name = "2fa-dev"\nworkers_dev = true\n');
+		const { status, merged } = run(local, upstream);
+		expect(status).toBe(0);
+		const config = parse(merged);
+		expect(config.workers_dev).toBe(false);
+		expect(config.env.development.workers_dev).toBe(true);
+	});
+
+	it('reads the settings after a multi-line string with a bracketed line as top-level settings', () => {
+		const local = template.replace(
+			'name = "2fa"\nmain = "src/worker.js"\n',
+			'description = """\nStatus page\n[Service status]\n"""\nname = "my-2fa"\nmain = "src/worker.js"\nworkers_dev = false\nroutes = [\n  { pattern = "2fa.example.com", custom_domain = true }\n]\n',
+		);
+		const upstream = template.replace('main = "src/worker.js"\n', 'main = "src/worker.js"\nworkers_dev = true\n');
+		const { status, merged } = run(local, upstream);
+		expect(status).toBe(0);
+		const config = parse(merged);
+		expect(config.name).toBe('my-2fa');
+		expect(config.workers_dev).toBe(false);
+		expect(config.routes).toEqual([{ pattern: '2fa.example.com', custom_domain: true }]);
+	});
+
+	it('keeps an environment setting written after a bracketed line inside a multi-line string', () => {
+		const local = template.replace(
+			'name = "2fa-dev"\n',
+			"name = \"2fa-dev\"\nnote = '''\n[draft]\n'''\n" + devRoutes,
+		);
+		const { status, merged } = run(local, template);
+		expect(status).toBe(0);
+		expect(parse(merged).env.development.routes).toEqual([{ pattern: 'dev.example.com', custom_domain: true }]);
+	});
+});

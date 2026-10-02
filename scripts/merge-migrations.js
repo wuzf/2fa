@@ -283,6 +283,22 @@ function parseKey(key) {
 	);
 }
 
+// The line numbers (from 0) of the table headers: a line starting with [ is a
+// header only outside multi-line strings and arrays.
+export function tableHeaderLines(text) {
+	const headers = new Set();
+	let state = { depth: 0, string: null };
+	text.split('\n').forEach((line, index) => {
+		const inValue = state.depth > 0 || state.string;
+		const { code, next } = scan(line, state);
+		state = next;
+		if (!inValue && code.trim().startsWith('[')) {
+			headers.add(index);
+		}
+	});
+	return headers;
+}
+
 // The line without its comment, and the array or string it leaves open.
 function scan(line, { depth, string }) {
 	let code = '';
