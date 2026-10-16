@@ -30,6 +30,8 @@ it.each([
 	'clip-path:inset(100%)',
 	'clip-path:inset(50% 0)',
 	'clip-path:inset(0 100px)',
+	'clip-path:inset(100% round 8px)',
+	'clip-path:inset(50% 0 round 4px)',
 	'position:absolute;clip:rect(0px,0px,0px,0px)',
 	'position:fixed;clip:rect(0px,200px,0px,0px)',
 	'clip-path:circle(0%)',
@@ -52,10 +54,22 @@ it.each([
 	'clip-path:inset(0)',
 	'clip-path:inset(10% 25%)',
 	'clip-path:inset(2px 10px 4px 20px)',
+	'clip-path:inset(0 round 32px)',
+	'clip-path:inset(2px 10px round 4px 8px / 6px)',
+	'clip-path:inset(0px round 12px) border-box',
 	'position:absolute;clip:rect(0px,100px,20px,0px)',
 	'position:static;clip:rect(0px,0px,0px,0px)',
 ])('fills the surviving visible area: %s', (style) => {
 	const { input } = fixture(style);
+	const detected = detectOtpTarget(document);
+	expect(detected.status).toBe('ready');
+	expect(fillOtpTarget(detected.target, '123456').status).toBe('filled');
+	expect(input.value).toBe('123456');
+});
+
+// Meta's dialogs round their corners with "clip-path: inset(0px round 32px)".
+it('fills an input inside an ancestor with rounded corners', () => {
+	const { input } = fixture('clip-path:inset(0px round 32px)', true);
 	const detected = detectOtpTarget(document);
 	expect(detected.status).toBe('ready');
 	expect(fillOtpTarget(detected.target, '123456').status).toBe('filled');

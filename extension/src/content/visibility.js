@@ -90,7 +90,9 @@ function applyCssClipping(areas, element, style) {
 		if (!value || value === 'none' || value === 'auto') {
 			continue;
 		}
-		const match = (inset ? /^inset\(([^()]+)\)(?:\s+border-box)?$/ : /^rect\(([^()]+)\)$/).exec(value);
+		// Rounded corners ("inset(0px round 32px)", common on dialogs) cut only
+		// the corners, so the inset rectangle still bounds the visible area.
+		const match = (inset ? /^inset\(([^()]+?)(?:\s+round\s+.+)?\)(?:\s+border-box)?$/ : /^rect\(([^()]+)\)$/).exec(value);
 		if (!match) {
 			return [];
 		}
