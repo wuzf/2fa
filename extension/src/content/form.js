@@ -1147,7 +1147,14 @@ function isOtherField(node, input) {
 // Returns the hints joined by \u0002: "channel sms" and the like for the
 // delivery instructions of each block, then "delivery sms" and the like for
 // each send or resend action.
-function nearbyChannelHints(
+function nearbyChannelHints(input, options) {
+	return readChallengeHints(input, options).hints;
+}
+
+// The hints of nearbyChannelHints, whether the field, a heading, a legend or a
+// sentence names the authenticator, and strictHints: every delivery
+// instruction and every send or resend action, as if nothing named it.
+function readChallengeHints(
 	input,
 	{ crossFieldset = null, description = input.tagName === 'INPUT' ? describeInput(input) : '', context = '' } = {},
 ) {
@@ -1415,30 +1422,35 @@ function nearbyChannelHints(
 	// being verified).
 	const cardRegion = Boolean(region && !isLayoutContainer(region, input));
 	const openPage = Boolean(region && !cardRegion && !hasOtherEntryField(region, input));
-	const actions = actionHints
-		.filter(
-			({ level, inForm, otherForm, besideField, request, countdown }) =>
-				scope ||
-				inForm ||
-				level <= actionLevel ||
-				((request || countdown) && level <= 2 && level < pageLevel) ||
-				(!region && !otherForm && !besideField && level <= pageBoundary),
-		)
-		.filter(
-			({ level, inForm, otherForm, request, named, besideField, bare }) =>
-				(!request && !((bare || besideField) && strongAuthenticator)) ||
-				(request &&
-					!strongAuthenticator &&
-					!(weakAuthenticator && named) &&
-					(inForm || (!otherForm && (level <= 2 || cardRegion || openPage || (!region && !besideField))))),
-		)
-		.map(({ hint }) => hint);
+	const reachable = actionHints.filter(
+		({ level, inForm, otherForm, besideField, request, countdown }) =>
+			scope ||
+			inForm ||
+			level <= actionLevel ||
+			((request || countdown) && level <= 2 && level < pageLevel) ||
+			(!region && !otherForm && !besideField && level <= pageBoundary),
+	);
+	const actionsFor = (strong, weak) =>
+		reachable
+			.filter(
+				({ level, inForm, otherForm, request, named, besideField, bare }) =>
+					(!request && !((bare || besideField) && strong)) ||
+					(request &&
+						!strong &&
+						!(weak && named) &&
+						(inForm || (!otherForm && (level <= 2 || cardRegion || openPage || (!region && !besideField))))),
+			)
+			.map(({ hint }) => hint);
 	// Another way naming its channel, and a warning not to pass the code on,
 	// are left out only where the field, a heading, a legend or a sentence
 	// names the authenticator.
 	const evidence = strongAuthenticator || weakAuthenticator;
 	const instructions = hints.map((hint) => (evidence ? hint.dropped : hint.kept)).filter(Boolean);
-	return [...instructions, ...actions].join('\u0002');
+	return {
+		hints: [...instructions, ...actionsFor(strongAuthenticator, weakAuthenticator)].join('\u0002'),
+		namesAuthenticator: evidence,
+		strictHints: [...hints.map((hint) => hint.kept).filter(Boolean), ...actionsFor(false, false)].join('\u0002'),
+	};
 }
 
 function containerClassSignals(container) {
@@ -1844,13 +1856,21 @@ function collectSingleCandidates(inputs, groupedInputs, expectedDigits, canUseIn
 			Boolean(deliveryChannel(withoutDeniedDeliveries(descriptor)) || wordingDescribesDelivery(input)) &&
 			(hasOtpSignal || hasAutocomplete || GENERIC_CODE_SIGNAL.test(descriptor));
 		const hasSecurityCodeSignal = SECURITY_CODE_SIGNAL.test(descriptor);
-		const highConfidence =
-			!hasNegativeSignal &&
-			(hasAutocomplete ||
-				hasOtpSignal ||
-				describedChannel ||
-				(hasSecurityCodeSignal && (SUPPORTED_LENGTHS.has(digits) || SUPPORTED_LENGTHS.has(getInputMaxLength(input)))));
-		const channelHints = highConfidence ? nearbyChannelHints(input) : '';
+		const exactLength = SUPPORTED_LENGTHS.has(digits) || SUPPORTED_LENGTHS.has(getInputMaxLength(input));
+		const ownSignal = !hasNegativeSignal && (hasAutocomplete || hasOtpSignal || describedChannel || (hasSecurityCodeSignal && exactLength));
+		let highConfidence = ownSignal;
+		let channelHints = ownSignal ? nearbyChannelHints(input) : '';
+		// A field saying only "code" ("Enter code") is the authenticator's when
+		// wording nearby names the authenticator ("Get your code from your
+		// authentication app"), it takes exactly 6 or 8 characters, and nothing
+		// nearby tells of an SMS or email: no delivery instruction, resend,
+		// countdown or send button of any kind, even one the authenticator
+		// wording would otherwise set aside as another method.
+		if (!ownSignal && !hasNegativeSignal && exactLength && GENERIC_CODE_SIGNAL.test(descriptor)) {
+			const challenge = readChallengeHints(input);
+			highConfidence = challenge.namesAuthenticator && challenge.strictHints === '';
+			channelHints = highConfidence ? challenge.hints : '';
+		}
 		candidates.push({
 			kind: 'single',
 			digits: expectedDigits || digits,
