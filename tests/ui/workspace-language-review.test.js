@@ -137,6 +137,22 @@ describe('independent workspace language review', () => {
 		expect(emptyState.style.display).toBe('block');
 	});
 
+	it('redraws the account list only when the resolved language changes', () => {
+		const { context } = harness();
+		context.initLanguage();
+		runInContext('secrets = [{ id: "account", name: "GitHub", secret: "JBSWY3DPEHPK3PXP" }];', context);
+
+		// The server preference read after login usually repeats the local one.
+		context.setLanguage('zh-CN');
+		context.setLanguage('auto');
+		expect(context.renderSecrets).not.toHaveBeenCalled();
+
+		context.setLanguage('en');
+		expect(context.renderSecrets).toHaveBeenCalledOnce();
+		context.setLanguage('en');
+		expect(context.renderSecrets).toHaveBeenCalledOnce();
+	});
+
 	it('keeps a delete confirmation open, updates its language and renders the account name as plain text', async () => {
 		const { context, document, window } = harness();
 		runInContext('secrets = [{ id: "account", name: "<img src=x onerror=alert(1)>" }];', context);
