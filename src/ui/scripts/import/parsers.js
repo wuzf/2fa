@@ -297,20 +297,36 @@ export function getJSONParserCode() {
     }
 
     function parseAppJSON(jsonData) {
-      return parseStandardJsonEntries(
-        jsonData.secrets || [],
-        secret => ({
-          issuer: secret.name || secret.issuer || secret.issuerExt || '',
-          account: secret.account || secret.label || '',
-          secret: secret.secret || '',
-          type: secret.type || secret.tokenType || 'TOTP',
-          digits: secret.digits || 6,
-          period: secret.period || secret.timeStep || 30,
-          algorithm: secret.algorithm || secret.algo || 'SHA1',
-          counter: secret.counter || 0
-        }),
-        t('transferAppJSON')
-      );
+      // App exports already have separate labels. A round trip through an OTPAuth
+      // label loses empty accounts and mistakes colons inside service names for
+      // the issuer/account separator. Keep the fields separate until submission.
+      const entries = [];
+      (jsonData.secrets || []).forEach((secret, index) => {
+        try {
+          const cleanSecret = normalizeJsonImportSecret(secret.secret);
+          if (!cleanSecret) {
+            console.warn('跳过无密钥的 ' + t('transferAppJSON') + ' 条目 (索引 ' + index + ')');
+            return;
+          }
+          const issuer = secret.name || secret.issuer || secret.issuerExt || '';
+          const account = secret.account ?? secret.label ?? '';
+          const type = normalizeJsonImportType(secret.type || secret.tokenType);
+          entries.push({
+            serviceName: String(issuer || account || 'Unknown'),
+            account: String(account),
+            secret: cleanSecret,
+            type,
+            digits: parseInt(secret.digits, 10) || 6,
+            // As with URI imports, only carry the parameters this OTP type uses.
+            period: type === 'totp' ? parseInt(secret.period || secret.timeStep, 10) || 30 : 30,
+            algorithm: normalizeJsonImportAlgorithm(secret.algorithm || secret.algo),
+            counter: type === 'hotp' ? parseInt(secret.counter, 10) || 0 : 0
+          });
+        } catch (err) {
+          console.error('解析 ' + t('transferAppJSON') + ' 条目失败 (索引 ' + index + '):', err);
+        }
+      });
+      return entries;
     }
 
     function parseFreeOTPPlusJSON(jsonData) {
@@ -555,7 +571,7 @@ export function getJSONParserCode() {
     /**
      * 统一解析支持的 JSON 导入格式
      * @param {Object|Array} jsonData - JSON 数据
-     * @returns {Array<string>} otpauth:// URL 数组
+     * @returns {Array<string|Object>} App JSON fields, or OTPAuth URLs for other formats
      */
     function parseJsonImport(jsonData) {
       if (Array.isArray(jsonData)) {

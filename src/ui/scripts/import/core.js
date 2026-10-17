@@ -158,23 +158,28 @@ export function getPreviewImportCode() {
       }
 
       lines.forEach((line, index) => {
-        const trimmedLine = line.trim();
-        if (!trimmedLine) return;
+        const structuredEntry = line !== null && typeof line === 'object';
+        const trimmedLine = structuredEntry ? '' : line.trim();
+        if (!structuredEntry && !trimmedLine) return;
 
         const item = document.createElement('div');
         item.className = 'import-preview-item';
 
         try {
-          if (trimmedLine.startsWith('otpauth://totp/') || trimmedLine.startsWith('otpauth://hotp/')) {
+          let { serviceName, account, secret, type, digits, period, algorithm, counter } = structuredEntry ? line : {};
+          if (!structuredEntry) {
+            if (!trimmedLine.startsWith('otpauth://totp/') && !trimmedLine.startsWith('otpauth://hotp/')) {
+              throw Object.assign(new Error(t('transferInvalidOTPAuth')), { i18nKey: 'transferInvalidOTPAuth' });
+            }
             const fixedLine = trimmedLine.replace(/&amp%3B/g, '&');
             const url = new URL(fixedLine);
-            const type = url.protocol === 'otpauth:' ? url.hostname : 'totp';
-            const secret = url.searchParams.get('secret');
+            type = url.protocol === 'otpauth:' ? url.hostname : 'totp';
+            secret = url.searchParams.get('secret');
             const issuer = url.searchParams.get('issuer') || '';
-            const digits = parseInt(url.searchParams.get('digits')) || 6;
-            const algorithm = (url.searchParams.get('algorithm') || 'SHA1').toUpperCase();
-            const period = parseInt(url.searchParams.get('period')) || 30;
-            const counter = parseInt(url.searchParams.get('counter')) || 0;
+            digits = parseInt(url.searchParams.get('digits')) || 6;
+            algorithm = (url.searchParams.get('algorithm') || 'SHA1').toUpperCase();
+            period = parseInt(url.searchParams.get('period')) || 30;
+            counter = parseInt(url.searchParams.get('counter')) || 0;
 
             // 检查 Ente Auth 格式的已删除标记
             const codeDisplayParam = url.searchParams.get('codeDisplay');
@@ -199,8 +204,8 @@ export function getPreviewImportCode() {
             }
 
             const pathParts = decodeURIComponent(url.pathname.substring(1)).split(':');
-            let serviceName = issuer;
-            let account = '';
+            serviceName = issuer;
+            account = '';
 
             if (pathParts.length >= 2) {
               serviceName = pathParts[0] || issuer;
@@ -213,45 +218,43 @@ export function getPreviewImportCode() {
                 serviceName = pathParts[0];
               }
             }
+          }
 
-            // Match the server's required-name validation before enabling import.
-            serviceName = serviceName.trim();
+          // Match the server's required-name validation before enabling import.
+          serviceName = serviceName.trim();
 
-            // 清理密钥中的空格和分隔符
-            const cleanedSecret = secret ? secret.replace(/[\\s\\-+]/g, '') : secret;
+          // 清理密钥中的空格和分隔符
+          const cleanedSecret = secret ? secret.replace(/[\\s\\-+]/g, '') : secret;
 
-            if (cleanedSecret && serviceName) {
-              if (validateBase32(cleanedSecret)) {
-                item.className += ' valid';
+          if (cleanedSecret && serviceName) {
+            if (validateBase32(cleanedSecret)) {
+              item.className += ' valid';
 
-                const displayInfo = () => formatImportPreviewName(serviceName, type, digits, period, algorithm);
+              const displayInfo = () => formatImportPreviewName(serviceName, type, digits, period, algorithm);
 
-                setImportPreviewRenderer(item, () =>
-                  '<div class="service-name">' + dialogIcon('check') + ' ' + escapeHTML(displayInfo()) + '</div>' +
-                  '<div class="account-name">' + escapeHTML(account || t('transferNoAccount')) + '</div>');
+              setImportPreviewRenderer(item, () =>
+                '<div class="service-name">' + dialogIcon('check') + ' ' + escapeHTML(displayInfo()) + '</div>' +
+                '<div class="account-name">' + escapeHTML(account || t('transferNoAccount')) + '</div>');
 
-                importPreviewData.push({
-                  serviceName: serviceName,
-                  account: account,
-                  secret: cleanedSecret.toUpperCase(),
-                  type: type,
-                  digits: digits,
-                  period: period,
-                  algorithm: algorithm,
-                  counter: counter,
-                  valid: true,
-                  line: index + 1
-                });
+              importPreviewData.push({
+                serviceName: serviceName,
+                account: account,
+                secret: cleanedSecret.toUpperCase(),
+                type: type,
+                digits: digits,
+                period: period,
+                algorithm: algorithm,
+                counter: counter,
+                valid: true,
+                line: index + 1
+              });
 
-                validCount++;
-              } else {
-                throw Object.assign(new Error(t('transferInvalidBase32')), { i18nKey: 'transferInvalidBase32' });
-              }
+              validCount++;
             } else {
-              throw Object.assign(new Error(t('transferMissingFields')), { i18nKey: 'transferMissingFields' });
+              throw Object.assign(new Error(t('transferInvalidBase32')), { i18nKey: 'transferInvalidBase32' });
             }
           } else {
-            throw Object.assign(new Error(t('transferInvalidOTPAuth')), { i18nKey: 'transferInvalidOTPAuth' });
+            throw Object.assign(new Error(t('transferMissingFields')), { i18nKey: 'transferMissingFields' });
           }
         } catch (error) {
           item.className += ' invalid';

@@ -207,7 +207,6 @@ describe('import module code generation', () => {
 
 	it.each([
 		['tests/fixtures/exports/2fa-secrets-freeotp-plus.json', 87, 'issuer=Adobe'],
-		['tests/fixtures/exports/2fa-secrets-data.json', 87, 'issuer=Adobe'],
 		['tests/fixtures/exports/2fa-secrets-aegis.json', 87, 'issuer=Adobe'],
 		['tests/fixtures/exports/2fa-secrets-bitwarden.json', 87, 'issuer=Adobe'],
 		['tests/fixtures/exports/2fa-secrets-lastpass.json', 87, 'issuer=Adobe'],
@@ -224,6 +223,21 @@ describe('import module code generation', () => {
 		expect(otpauthUrls).toHaveLength(expectedCount);
 		expect(otpauthUrls[0]).toContain('otpauth://totp/');
 		expect(otpauthUrls[0]).toContain(expectedFragment);
+	});
+
+	it('parses app JSON fixtures into separate fields without an OTPAuth label round trip', () => {
+		const api = createImportApi();
+		const jsonData = JSON.parse(readFileSync('tests/fixtures/exports/2fa-secrets-data.json', 'utf8'));
+		const entries = api.parseJsonImport(jsonData);
+		expect(entries).toHaveLength(87);
+		jsonData.secrets.forEach((secret, index) => {
+			expect(entries[index]).toMatchObject({
+				serviceName: secret.name || secret.issuer,
+				account: secret.account || '',
+				secret: secret.secret,
+				type: (secret.type || 'TOTP').toLowerCase(),
+			});
+		});
 	});
 
 	it('parses legacy app JSON entries that only store issuer and exportDate fields', () => {
@@ -245,11 +259,20 @@ describe('import module code generation', () => {
 			],
 		};
 
-		const otpauthUrls = api.parseJsonImport(jsonData);
+		const entries = api.parseJsonImport(jsonData);
 
-		expect(otpauthUrls).toHaveLength(1);
-		expect(otpauthUrls[0]).toContain('otpauth://totp/GitHub:user%40example.com');
-		expect(otpauthUrls[0]).toContain('issuer=GitHub');
+		expect(entries).toEqual([
+			{
+				serviceName: 'GitHub',
+				account: 'user@example.com',
+				secret: 'JBSWY3DPEHPK3PXP',
+				type: 'totp',
+				digits: 6,
+				period: 30,
+				algorithm: 'SHA1',
+				counter: 0,
+			},
+		]);
 	});
 
 	it('parses Bitwarden JSON items with raw Base32 secrets', () => {
