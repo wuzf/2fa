@@ -36,6 +36,10 @@ export const en = {
 	viewModeLabel: 'View Mode',
 	viewModeGrouped: 'Smart Grouping',
 	viewModeFlat: 'Flat List',
+	defaultViewModeTitle: 'Default View Mode',
+	defaultViewModeRemember: 'Remember Last Selection',
+	defaultViewModeDesc:
+		'Choose the view used when refreshing or reopening. You can switch temporarily from the top-right menu. This setting is saved only in this browser.',
 	groupSortLabel: 'Group Sorting',
 	groupSortNameAsc: 'Name A-Z',
 	groupSortNameDesc: 'Name Z-A',

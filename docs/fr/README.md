@@ -126,7 +126,7 @@ Cliquez sur le bouton flottant **➕** en bas à droite :
 - **Copier un code** : cliquer directement sur les chiffres du code.
 - **Gérer les clés** : cliquer sur **⋯** en haut à droite d’une carte → Afficher le QR code / Copier l’URI / Copier le lien de la page / Modifier / Supprimer.
 - **Rechercher** : recherche en temps réel par nom de service ou de compte dans la barre de recherche en haut.
-- **Regroupement intelligent** : regrouper automatiquement les services associés et les comptes multiples, avec la possibilité de revenir à une liste simple.
+- **Regroupement intelligent** : regrouper automatiquement les services associés et les comptes multiples, avec la possibilité de revenir à une liste simple. L’affichage utilisé après une actualisation peut être fixé dans les Préférences.
 - **Trier** : trier par date d’ajout ou par nom.
 - **Thème** : bouton d’action flottant → **Paramètres → Préférences → Mode du thème**, puis choisir clair, sombre ou système.
 

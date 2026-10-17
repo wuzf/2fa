@@ -126,7 +126,7 @@ Nhấp vào nút nổi **➕** ở góc dưới bên phải:
 - **Sao chép mã**: Nhấp trực tiếp vào các chữ số của mã
 - **Quản lý khóa**: Nhấp **⋯** ở góc trên bên phải thẻ → Xem mã QR / Sao chép URI / Sao chép liên kết trang / Sửa / Xóa
 - **Tìm kiếm**: Tìm theo tên dịch vụ hoặc tên tài khoản theo thời gian thực trên thanh tìm kiếm phía trên
-- **Nhóm thông minh**: Tự động nhóm các dịch vụ liên quan và nhiều tài khoản, có tùy chọn chuyển về danh sách không phân nhóm
+- **Nhóm thông minh**: Tự động nhóm các dịch vụ liên quan và nhiều tài khoản, có tùy chọn chuyển về danh sách không phân nhóm; chế độ hiển thị sau khi làm mới có thể được cố định trong Tùy chọn
 - **Sắp xếp**: Sắp xếp theo thời gian thêm hoặc tên
 - **Giao diện**: Nút thao tác nổi → **Cài đặt → Tùy chọn → Chế độ giao diện**, sau đó chọn sáng, tối hoặc theo hệ thống
 

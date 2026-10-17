@@ -1266,6 +1266,16 @@ function getHTMLBody() {
             </div>
             <div class="settings-divider"></div>
             <div class="settings-section">
+              <h3 class="settings-section-title" id="settingsDefaultViewModeTitle" data-i18n="defaultViewModeTitle">默认显示方式</h3>
+              <p class="settings-desc" id="settingsDefaultViewModeDesc" data-i18n="defaultViewModeDesc">选择刷新或重新打开时的显示方式。右上角可临时切换，设置仅保存在当前浏览器。</p>
+              <select id="settingsDefaultViewMode" class="settings-select" aria-labelledby="settingsDefaultViewModeTitle" aria-describedby="settingsDefaultViewModeDesc" onchange="applyDefaultViewModeFromSettings(this.value)">
+                <option value="remember" data-i18n="defaultViewModeRemember">记住上次选择</option>
+                <option value="grouped" data-i18n="viewModeGrouped">智能聚合</option>
+                <option value="flat" data-i18n="viewModeFlat">全部平铺</option>
+              </select>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
               <h3 class="settings-section-title" id="settingsOTPAnimationTitle" data-i18n="otpAnimationTitle">验证码交接动效</h3>
               <select id="settingsOTPAnimationMode" class="settings-select" aria-labelledby="settingsOTPAnimationTitle" onchange="applyOTPAnimationFromSettings(this.value)">
                 <option value="none" data-i18n="animNone">关闭动效</option>

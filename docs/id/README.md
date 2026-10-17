@@ -126,7 +126,7 @@ Klik tombol mengambang **➕** di kanan bawah:
 - **Salin kode**: Klik langsung digit kode
 - **Kelola kunci**: Klik **⋯** di kanan atas kartu → Lihat kode QR / Salin URI / Salin tautan halaman / Edit / Hapus
 - **Cari**: Cari nama layanan atau nama akun secara langsung di bilah pencarian atas
-- **Pengelompokan pintar**: Kelompokkan layanan terkait dan beberapa akun secara otomatis, dengan opsi untuk kembali ke daftar datar
+- **Pengelompokan pintar**: Kelompokkan layanan terkait dan beberapa akun secara otomatis, dengan opsi untuk kembali ke daftar datar; tampilan setelah menyegarkan dapat ditetapkan di Preferensi
 - **Urutkan**: Urutkan berdasarkan waktu penambahan atau nama
 - **Tema**: Tombol tindakan mengambang → **Pengaturan → Preferensi → Mode tema**, lalu pilih terang, gelap, atau mengikuti sistem
 

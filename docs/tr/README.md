@@ -126,7 +126,7 @@ Sağ alt köşedeki **➕** kayan düğmeye tıklayın:
 - **Kodu kopyala**: Doğrudan kodun rakamlarına tıklayın
 - **Anahtarları yönet**: Kartın sağ üstündeki **⋯** simgesine tıklayın → QR kodu görüntüle / URI'yi kopyala / Sayfa bağlantısını kopyala / Düzenle / Sil
 - **Ara**: Üstteki arama çubuğunda hizmet veya hesap adına göre anlık arama yapın
-- **Akıllı gruplama**: İlgili hizmetler ve birden fazla hesap otomatik gruplanır; düz liste görünümüne dönme seçeneği vardır
+- **Akıllı gruplama**: İlgili hizmetler ve birden fazla hesap otomatik gruplanır; düz liste görünümüne dönme seçeneği vardır. Yenilemeden sonraki görünüm Tercihler'den sabitlenebilir
 - **Sırala**: Eklenme zamanına veya ada göre sıralayın
 - **Tema**: Kayan işlem düğmesi → **Ayarlar → Tercihler → Tema modu**, ardından açık, koyu veya sistemi izle seçeneğini belirleyin
 

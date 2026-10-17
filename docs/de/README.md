@@ -126,7 +126,7 @@ Klicken Sie unten rechts auf die schwebende Schaltfläche **➕**:
 - **Code kopieren**: Direkt auf die Ziffern des Codes klicken.
 - **Schlüssel verwalten**: Oben rechts auf einer Karte auf **⋯** klicken → QR-Code anzeigen / URI kopieren / Seitenlink kopieren / Bearbeiten / Löschen.
 - **Suche**: In der Suchleiste oben in Echtzeit nach Dienst- oder Kontonamen suchen.
-- **Intelligente Gruppierung**: Zugehörige Dienste und mehrere Konten automatisch gruppieren; eine Umschaltung zurück zur einfachen Liste ist möglich.
+- **Intelligente Gruppierung**: Zugehörige Dienste und mehrere Konten automatisch gruppieren; eine Umschaltung zurück zur einfachen Liste ist möglich. Die Ansicht nach dem Neuladen lässt sich in den Präferenzen festlegen.
 - **Sortierung**: Nach Hinzufügedatum oder Name sortieren.
 - **Design**: Schwebende Aktionsschaltfläche → **Einstellungen → Präferenzen → Designmodus**, dann hell, dunkel oder System auswählen.
 

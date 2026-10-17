@@ -126,7 +126,7 @@ Clique no botão flutuante **➕** no canto inferior direito:
 - **Copiar código**: clique diretamente nos dígitos do código
 - **Gerenciar chaves**: clique em **⋯** no canto superior direito de um cartão → Ver QR code / Copiar URI / Copiar link da página / Editar / Excluir
 - **Pesquisar**: pesquise em tempo real pelo nome do serviço ou da conta na barra de pesquisa superior
-- **Agrupamento inteligente**: agrupe automaticamente serviços relacionados e várias contas, com a opção de voltar a uma lista simples
+- **Agrupamento inteligente**: agrupe automaticamente serviços relacionados e várias contas, com a opção de voltar a uma lista simples; a visualização usada ao atualizar pode ser fixada em Preferências
 - **Ordenar**: ordene por data de adição ou nome
 - **Tema**: botão flutuante → **Configurações → Preferências → Modo do tema** e escolha claro, escuro ou acompanhar o sistema
 

@@ -16,10 +16,13 @@ const accounts = [
 	{ id: 'outlook', name: 'Outlook', account: 'z@example.com', secret: 'JBSWY3DPEHPK3PXP' },
 ];
 
-function createHarness({ online, viewMode }) {
+function createHarness({ online, viewMode, defaultViewMode }) {
 	document.body.innerHTML = html;
 	localStorage.setItem('2fa-secrets-cache', JSON.stringify({ data: accounts, timestamp: 1 }));
 	localStorage.setItem('2fa-view-mode', viewMode);
+	if (defaultViewMode) {
+		localStorage.setItem('2fa-default-view-mode', defaultViewMode);
+	}
 	localStorage.setItem('2fa-flat-sort-preference', 'newest-first');
 	localStorage.setItem('2fa-group-item-sort-preference', 'account-desc');
 	localStorage.setItem('2fa-group-sort-preference', 'name-desc');
@@ -77,16 +80,20 @@ describe('saved view and sort preferences on cached startup', () => {
 		{ online: false, viewMode: 'flat' },
 		{ online: true, viewMode: 'grouped' },
 		{ online: false, viewMode: 'grouped' },
+		{ online: true, viewMode: 'grouped', defaultViewMode: 'flat' },
+		{ online: false, viewMode: 'grouped', defaultViewMode: 'flat' },
+		{ online: true, viewMode: 'flat', defaultViewMode: 'grouped' },
+		{ online: false, viewMode: 'flat', defaultViewMode: 'grouped' },
 	])(
-		'restores $viewMode before the first cached render (online: $online)',
-		async ({ online, viewMode }) => {
-			const h = createHarness({ online, viewMode });
+		'restores $viewMode / default $defaultViewMode before the first cached render (online: $online)',
+		async ({ online, viewMode, defaultViewMode }) => {
+			const h = createHarness({ online, viewMode, defaultViewMode });
 			h.startPage();
 
 			// Cache rendering is synchronous up to OTP generation. Assert the first
 			// visible cards before an online response can mask a startup-order bug.
 			const list = document.getElementById('secretsList');
-			const grouped = viewMode === 'grouped';
+			const grouped = (defaultViewMode || viewMode) === 'grouped';
 			expect(list.classList.contains('is-grouped')).toBe(grouped);
 			expect(list.style.display).toBe(grouped ? 'block' : 'grid');
 			expect([...list.querySelectorAll('.otp-code')].map((node) => node.id)).toEqual(

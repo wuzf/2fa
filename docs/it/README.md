@@ -126,7 +126,7 @@ Fai clic sul pulsante flottante **➕** in basso a destra:
 - **Copia codice**: fai clic direttamente sulle cifre del codice
 - **Gestisci chiavi**: fai clic su **⋯** in alto a destra di una scheda → Visualizza codice QR / Copia URI / Copia link della pagina / Modifica / Elimina
 - **Ricerca**: cerca in tempo reale per nome del servizio o dell'account nella barra di ricerca superiore
-- **Raggruppamento intelligente**: raggruppa automaticamente i servizi correlati e gli account multipli, con la possibilità di tornare a un elenco semplice
+- **Raggruppamento intelligente**: raggruppa automaticamente i servizi correlati e gli account multipli, con la possibilità di tornare a un elenco semplice; la visualizzazione usata dopo un aggiornamento si può fissare in Preferenze
 - **Ordinamento**: ordina per data di aggiunta o per nome
 - **Tema**: pulsante flottante → **Impostazioni → Preferenze → Modalità tema**, quindi scegli chiaro, scuro o segui il sistema
 

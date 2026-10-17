@@ -126,7 +126,7 @@ Haz clic en el botón flotante **➕** de la esquina inferior derecha:
 - **Copiar código**: haz clic directamente en los dígitos del código.
 - **Gestionar claves**: haz clic en **⋯** en la esquina superior derecha de una tarjeta → Ver código QR / Copiar URI / Copiar enlace de la página / Editar / Eliminar.
 - **Buscar**: busca en tiempo real por nombre del servicio o de la cuenta en la barra de búsqueda superior.
-- **Agrupación inteligente**: agrupa automáticamente servicios relacionados y varias cuentas, con la opción de volver a una lista sin agrupar.
+- **Agrupación inteligente**: agrupa automáticamente servicios relacionados y varias cuentas, con la opción de volver a una lista sin agrupar. La vista que se usa al actualizar se puede fijar en Preferencias.
 - **Ordenar**: ordena por fecha de incorporación o por nombre.
 - **Tema**: botón de acción flotante → **Ajustes → Preferencias → Modo de tema**, y elige claro, oscuro o según el sistema.
 

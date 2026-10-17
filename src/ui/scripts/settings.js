@@ -306,6 +306,11 @@ export function getSettingsCode() {
         radio.checked = radio.value === currentTheme;
       });
 
+      const viewModeSelect = document.getElementById('settingsDefaultViewMode');
+      if (viewModeSelect && typeof getDefaultViewModePreference === 'function') {
+        viewModeSelect.value = getDefaultViewModePreference();
+      }
+
       const animationSelect = document.getElementById('settingsOTPAnimationMode');
       if (animationSelect) {
         animationSelect.value = getOTPAnimationMode();
@@ -358,6 +363,19 @@ export function getSettingsCode() {
     function applyThemeFromSettings(theme) {
       localStorage.setItem('theme', theme);
       applyTheme(theme, true);
+    }
+
+    /**
+     * 设置刷新或重新打开时的默认显示方式，并立即应用。
+     * 右上角的临时切换只更新上次选择，不改变此偏好。
+     */
+    async function applyDefaultViewModeFromSettings(mode) {
+      const appliedMode = setDefaultViewModePreference(mode);
+      const viewModeSelect = document.getElementById('settingsDefaultViewMode');
+      if (viewModeSelect) {
+        viewModeSelect.value = appliedMode;
+      }
+      await selectViewMode(appliedMode === 'remember' ? currentViewMode : appliedMode);
     }
 
     /**

@@ -19,6 +19,7 @@ export function getSearchCode() {
     let currentFlatSortType = 'oldest-first';
     let currentGroupedItemSortType = 'oldest-first';
     let currentViewMode = 'grouped';
+    let defaultViewMode = 'remember';
     let currentGroupSortType = 'name-asc';
     const VALID_VIEW_MODES = ['grouped', 'flat'];
     const VALID_GROUP_SORT_TYPES = ['name-asc', 'name-desc'];
@@ -31,6 +32,24 @@ export function getSearchCode() {
 
     function normalizeViewMode(value) {
       return VALID_VIEW_MODES.includes(value) ? value : 'grouped';
+    }
+
+    function normalizeDefaultViewMode(value) {
+      return VALID_VIEW_MODES.includes(value) ? value : 'remember';
+    }
+
+    function getDefaultViewModePreference() {
+      return defaultViewMode;
+    }
+
+    function setDefaultViewModePreference(value) {
+      defaultViewMode = normalizeDefaultViewMode(value);
+      try {
+        localStorage.setItem('2fa-default-view-mode', defaultViewMode);
+      } catch (e) {
+        console.warn('⚠️ 保存默认显示方式失败:', e);
+      }
+      return defaultViewMode;
     }
 
     function normalizeGroupSortType(value) {
@@ -47,8 +66,12 @@ export function getSearchCode() {
 
     function restoreViewModePreference() {
       try {
-        currentViewMode = normalizeViewMode(localStorage.getItem('2fa-view-mode'));
+        defaultViewMode = normalizeDefaultViewMode(localStorage.getItem('2fa-default-view-mode'));
+        currentViewMode = defaultViewMode === 'remember'
+          ? normalizeViewMode(localStorage.getItem('2fa-view-mode'))
+          : defaultViewMode;
       } catch (e) {
+        defaultViewMode = 'remember';
         currentViewMode = 'grouped';
         console.warn('⚠️ 恢复显示模式失败:', e);
       }
