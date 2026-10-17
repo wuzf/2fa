@@ -17,6 +17,8 @@
  */
 
 const GUIDE = 'Merge them by hand as described in docs/DEPLOYMENT.md ("回滚到 1.11.0 之前的版本").';
+const ASSIGNMENT_PATTERN =
+	/^\s*((?:[A-Za-z0-9_-]+|"(?:[^"\\]|\\.)*"|'[^']*')(?:\s*\.\s*(?:[A-Za-z0-9_-]+|"(?:[^"\\]|\\.)*"|'[^']*'))*)\s*=(.*)$/;
 
 class MigrationMergeError extends Error {}
 
@@ -222,9 +224,7 @@ function readMigrations(text) {
 			}
 			entry = null;
 		} else if (code.trim()) {
-			const match = code.match(
-				/^\s*((?:[A-Za-z0-9_-]+|"(?:[^"\\]|\\.)*"|'[^']*')(?:\s*\.\s*(?:[A-Za-z0-9_-]+|"(?:[^"\\]|\\.)*"|'[^']*'))*)\s*=(.*)$/,
-			);
+			const match = code.match(ASSIGNMENT_PATTERN);
 			if (!match) {
 				stop(index, 'cannot be read');
 			}
@@ -283,20 +283,61 @@ function parseKey(key) {
 	);
 }
 
-// The line numbers (from 0) of the table headers: a line starting with [ is a
-// header only outside multi-line strings and arrays.
-export function tableHeaderLines(text) {
-	const headers = new Set();
+// Headers by line number (from 0), with their decoded path and table kind.
+// A line starting with [ is a header only outside multi-line strings and arrays.
+// Share the same scanner with deployment config merging so comments, whitespace
+// and quoted path segments have the same meaning in both callers.
+export function tableHeaders(text) {
+	const headers = new Map();
 	let state = { depth: 0, string: null };
 	text.split('\n').forEach((line, index) => {
 		const inValue = state.depth > 0 || state.string;
 		const { code, next } = scan(line, state);
 		state = next;
 		if (!inValue && code.trim().startsWith('[')) {
-			headers.add(index);
+			headers.set(index, parseHeader(code.trim(), index));
 		}
 	});
 	return headers;
+}
+
+export function tableHeaderLines(text) {
+	return new Set(tableHeaders(text).keys());
+}
+
+// Complete assignments in one table body (or the top-level prefix). Keep the
+// original text and offsets: values can span lines and contain apparent keys or
+// headers, and their contents must not be decoded and re-serialized by a merge.
+export function tomlAssignments(text) {
+	const assignments = [];
+	let state = { depth: 0, string: null };
+	let entry = null;
+	let offset = 0;
+	text.split('\n').forEach((line, index) => {
+		const inValue = state.depth > 0 || state.string;
+		const { code, next } = scan(line, state);
+		state = next;
+		if (!inValue && code.trim()) {
+			const match = code.match(ASSIGNMENT_PATTERN);
+			if (!match) {
+				throw new Error(`Line ${index + 1} of a wrangler.toml table is not an assignment.`);
+			}
+			entry = { path: parseKey(match[1]), startOffset: offset, valueCode: match[2] };
+		} else if (entry) {
+			entry.valueCode += '\n' + code;
+		}
+		if (entry && !(state.depth > 0 || state.string)) {
+			entry.endOffset = offset + line.length;
+			entry.text = text.slice(entry.startOffset, entry.endOffset);
+			assignments.push(entry);
+			entry = null;
+		}
+		offset += line.length + 1;
+	});
+	if (entry || state.depth > 0 || state.string) {
+		throw new Error('A wrangler.toml assignment ends inside a value.');
+	}
+	return assignments;
 }
 
 // The line without its comment, and the array or string it leaves open.
@@ -309,8 +350,16 @@ function scan(line, { depth, string }) {
 			if (string.startsWith('"') && char === '\\') {
 				code += line[++index] ?? '';
 			} else if (line.startsWith(string, index)) {
-				code += string.slice(1);
-				index += string.length - 1;
+				// A multi-line string may end with four or five quotes: the
+				// first one or two belong to its value, the final three close it.
+				let length = string.length;
+				if (length === 3) {
+					while (length < 5 && line[index + length] === char) {
+						length++;
+					}
+				}
+				code += line.slice(index + 1, index + length);
+				index += length - 1;
 				string = null;
 			}
 			continue;

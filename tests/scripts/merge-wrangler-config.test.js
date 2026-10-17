@@ -295,3 +295,294 @@ describe('top-level settings next to an environment', () => {
 		expect(parse(merged).env.development.routes).toEqual([{ pattern: 'dev.example.com', custom_domain: true }]);
 	});
 });
+
+describe('deployment tables written with other TOML headers', () => {
+	const upstream = template
+		.replace(
+			'[vars]\nENVIRONMENT = "production"',
+			'[triggers]\ncrons = ["0 16 * * *"]\n\n[vars]\nSW_VERSION = "upstream"\nENVIRONMENT = "production"',
+		)
+		.replace(
+			'[env.development.vars]',
+			'[[env.development.kv_namespaces]]\nbinding = "SECRETS_KV"\n\n[env.development.vars]\nSW_VERSION = "upstream-dev"',
+		);
+	const local = upstream
+		.replaceAll('binding = "SECRETS_KV"', 'binding = "SECRETS_KV"\nid = "production-id"\npreview_id = "preview-id"')
+		.replace('crons = ["0 16 * * *"]', 'crons = ["0 */6 * * *"]')
+		.replace('SW_VERSION = "upstream"', 'SW_VERSION = "local-old"\nOAUTH_REDIRECT_BASE_URL = "https://auth.example.com"')
+		.replace('name = "2fa-dev"', 'name = "personal-dev"\nroutes = []')
+		.replace('SW_VERSION = "upstream-dev"', 'SW_VERSION = "local-dev-old"\nLOG_LEVEL = "WARN"')
+		.replace(
+			'[[env.development.kv_namespaces]]\nbinding = "SECRETS_KV"\nid = "production-id"',
+			'[[env.development.kv_namespaces]]\nbinding = "SECRETS_KV"\nid = "development-id"',
+		);
+	const layouts = [
+		['comments', (path) => path, '', ' # deployment settings'],
+		['whitespace', (path) => path.split('.').join(' . '), ' \t', ''],
+		[
+			'basic quoted keys',
+			(path) =>
+				path
+					.split('.')
+					.map((part) => JSON.stringify(part))
+					.join('.'),
+			'',
+			' # quoted',
+		],
+		[
+			'literal quoted keys',
+			(path) =>
+				path
+					.split('.')
+					.map((part) => `'${part}'`)
+					.join(' . '),
+			' ',
+			' # literal',
+		],
+		[
+			'escaped quoted keys',
+			(path) =>
+				path
+					.split('.')
+					.map((part) => `"\\u${part.charCodeAt(0).toString(16).padStart(4, '0')}${part.slice(1)}"`)
+					.join('.'),
+			'',
+			'',
+		],
+	];
+	function restyle(text, formatPath, spacing, comment) {
+		return text.replace(
+			/^(\[\[?)([A-Za-z0-9_.]+)(\]\]?)$/gm,
+			(_line, open, path, close) => `${spacing}${open}${spacing}${formatPath(path)}${spacing}${close}${comment}`,
+		);
+	}
+	function expectPreserved(merged) {
+		const config = parse(merged);
+		expect(config.kv_namespaces).toEqual([{ binding: 'SECRETS_KV', id: 'production-id', preview_id: 'preview-id' }]);
+		expect(config.triggers.crons).toEqual(['0 */6 * * *']);
+		expect(config.vars).toEqual({ ENVIRONMENT: 'production', SW_VERSION: 'upstream', OAUTH_REDIRECT_BASE_URL: 'https://auth.example.com' });
+		expect(config.env.development.name).toBe('personal-dev');
+		expect(config.env.development.routes).toEqual([]);
+		expect(config.env.development.kv_namespaces).toEqual([{ binding: 'SECRETS_KV', id: 'development-id', preview_id: 'preview-id' }]);
+		expect(config.env.development.vars).toEqual({ ENVIRONMENT: 'development', SW_VERSION: 'upstream-dev', LOG_LEVEL: 'WARN' });
+		expect(config.migrations).toEqual([v1]);
+	}
+
+	it.each(layouts)('keeps deployment values when local headers use %s', (_name, formatPath, spacing, comment) => {
+		const source = restyle(local, formatPath, spacing, comment);
+		expect(parse(source).kv_namespaces[0].id).toBe('production-id');
+		const { status, merged } = run(source, upstream);
+		expect(status).toBe(0);
+		expectPreserved(merged);
+	});
+
+	it.each(layouts)('keeps deployment values when upstream headers use %s', (_name, formatPath, spacing, comment) => {
+		const target = restyle(upstream, formatPath, spacing, comment);
+		const { status, merged } = run(local, target);
+		expect(status).toBe(0);
+		expectPreserved(merged);
+		expect(merged).toContain(restyle('[vars]', formatPath, spacing, comment));
+		expect(merged).toContain(restyle('[[kv_namespaces]]', formatPath, spacing, comment));
+		expect(run(merged, target).merged).toBe(merged);
+	});
+
+	it('does not confuse a quoted dotted key with separate path segments', () => {
+		const decoys =
+			'\n["env.development"]\nname = "wrong-dev"\nroutes = ["wrong.example.com/*"]\n\n[["env.development.kv_namespaces"]]\nbinding = "SECRETS_KV"\nid = "wrong-id"\n';
+		const source = local.replace('[env.development]', decoys + '\n[env . "development"] # real environment');
+		const { status, merged } = run(source, upstream);
+		expect(status).toBe(0);
+		expectPreserved(merged);
+	});
+
+	it('ignores header-shaped lines in a multi-line string', () => {
+		const note = 'description = """\n[vars] # not a table\n[[kv_namespaces]]\n"""\n';
+		const source = note + restyle(local, (path) => path, '', ' # actual table');
+		const { status, merged } = run(source, upstream);
+		expect(status).toBe(0);
+		expectPreserved(merged);
+	});
+
+	it('continues past other KV bindings before reading the account database', () => {
+		const source = local.replace(
+			'[[kv_namespaces]]',
+			'[[ kv_namespaces ]] # unrelated\nbinding = "OTHER_KV"\nid = "other-id"\n\n[[ "kv_namespaces" ]] # accounts',
+		);
+		const { status, merged } = run(source, upstream);
+		expect(status).toBe(0);
+		expectPreserved(merged);
+	});
+
+	it.each(['', ' # documented settings'])('replaces the actual tables when a description repeats their entire contents%s', (comment) => {
+		const actualTables = restyle(upstream.slice(upstream.indexOf('[[kv_namespaces]]')), (path) => path, '', comment);
+		const target = 'name = "2fa"\nmain = "src/worker.js"\ndescription = \'\'\'\n' + actualTables + "'''\n\n" + actualTables;
+		const originalDescription = parse(target).description;
+		const { status, merged } = run(local, target);
+		expect(status).toBe(0);
+		expect(parse(merged).description).toBe(originalDescription);
+		expectPreserved(merged);
+	});
+});
+
+describe('deployment assignments containing multi-line strings', () => {
+	function readVars(config, environment) {
+		return environment ? config.env.development.vars : config.vars;
+	}
+	function multilineValue(delimiter, label) {
+		return `${delimiter}\n${label}\n# this is content\ntoken=alpha=beta\n[env.development]\nSW_VERSION = "inside the string"\n${delimiter}`;
+	}
+	const variableCases = [
+		['production basic string', false, '"""'],
+		['production literal string', false, "'''"],
+		['development basic string', true, '"""'],
+		['development literal string', true, "'''"],
+	];
+	it.each(variableCases)('preserves complete local and upstream vars values: %s', (_name, environment, delimiter) => {
+		const header = environment ? '[env.development.vars]' : '[vars]';
+		const source = template.replace(header, `${header} # settings\nSW_VERSION = "local-old"\nTEXT = ${multilineValue(delimiter, 'local text')}`);
+		const upstream = template.replace(
+			header,
+			`${header} # settings\nSW_VERSION = "upstream-version"\nTEXT = ${multilineValue(delimiter, 'upstream text')}\nUPSTREAM_ONLY = ${multilineValue(delimiter, 'upstream-only text')}`,
+		);
+		const expected = {
+			...readVars(parse(upstream), environment),
+			...readVars(parse(source), environment),
+			SW_VERSION: 'upstream-version',
+		};
+		const { status, merged } = run(source, upstream);
+		expect(status).toBe(0);
+		expect(readVars(parse(merged), environment)).toEqual(expected);
+		expect(run(merged, upstream).merged).toBe(merged);
+	});
+
+	function buildCommand(label) {
+		return `build.command = '''\ncat <<'EOF'\n# ${label}\nname = "${label}-generated"\nroutes = ["generated.example.com/*"]\nEOF\n'''\n`;
+	}
+	const environments = [
+		['both real names follow build commands', true, true],
+		['no local name or routes outside the build command', false, true],
+		['no upstream name or routes outside the build command', true, false],
+	];
+	it.each(environments)('only reads and replaces real development assignments: %s', (_name, sourceHasName, targetHasName) => {
+		const source = template.replace(
+			'name = "2fa-dev"\n',
+			buildCommand('local script') + (sourceHasName ? 'name = "personal-dev"\nroutes = []\n' : ''),
+		);
+		const upstream = template.replace(
+			'name = "2fa-dev"\n',
+			buildCommand('upstream script') + (targetHasName ? 'name = "upstream-dev"\nroutes = ["upstream.example.com/*"]\n' : ''),
+		);
+		const expectedUpstream = parse(upstream).env.development;
+		const { status, merged } = run(source, upstream);
+		expect(status).toBe(0);
+		const environment = parse(merged).env.development;
+		expect(environment.build.command).toBe(expectedUpstream.build.command);
+		expect(environment.name).toBe(sourceHasName ? 'personal-dev' : expectedUpstream.name);
+		expect(environment.routes).toEqual(sourceHasName ? [] : expectedUpstream.routes);
+		expect(run(merged, upstream).merged).toBe(merged);
+	});
+
+	it('keeps production assignments outside a build command and does not change the script', () => {
+		const source = template.replace('name = "2fa"\n', buildCommand('local production') + 'name = "personal-auth"\nroutes = []\n');
+		const upstream = template.replace('name = "2fa"\n', buildCommand('upstream production') + 'name = "upstream-auth"\nroutes = ["auth.example.com/*"]\n');
+		const originalScript = parse(upstream).build.command;
+		const { status, merged } = run(source, upstream);
+		expect(status).toBe(0);
+		const config = parse(merged);
+		expect(config.build.command).toBe(originalScript);
+		expect(config.name).toBe('personal-auth');
+		expect(config.routes).toEqual([]);
+		expect(run(merged, upstream).merged).toBe(merged);
+	});
+
+	it('does not invent production settings from a build command', () => {
+		const source = template.replace('name = "2fa"\n', buildCommand('local without top-level name'));
+		const upstream = template.replace('name = "2fa"\n', 'name = "upstream-auth"\nroutes = ["auth.example.com/*"]\n');
+		const { status, merged } = run(source, upstream);
+		expect(status).toBe(0);
+		const config = parse(merged);
+		expect(config.name).toBe('upstream-auth');
+		expect(config.routes).toEqual(['auth.example.com/*']);
+	});
+});
+
+describe('complete TOML values in deployment settings', () => {
+	it('preserves arrays and JSON object vars with nested multi-line text', () => {
+		const source = template.replace(
+			'[vars]',
+			'[vars] # settings\nJSON_DATA = [\n  { label = "local # = [value]", enabled = true },\n  """\n[vars]\nname = "text only"\n# still text\n""",\n]\nOBJECT = { "a=b" = "local", nested = { values = [1, 2] } }',
+		);
+		const upstream = template.replace(
+			'[vars]',
+			'[vars]\nJSON_DATA = ["upstream"]\nOBJECT = { "a=b" = "upstream" }\nUPSTREAM_ONLY = [\n  { label = "# retained = true", values = [3, 4] },\n]',
+		);
+		const { status, merged } = run(source, upstream);
+		expect(status).toBe(0);
+		expect(parse(merged).vars).toEqual({ ...parse(upstream).vars, ...parse(source).vars });
+		expect(run(merged, upstream).merged).toBe(merged);
+	});
+
+	it('matches quoted keys by their decoded path and still protects SW_VERSION', () => {
+		const source = template.replace(
+			'[vars]',
+			'[vars]\n"A=B" = "local equal"\n\'A#B\' = "local hash"\n"A.B" = "local dotted key"\n\'SW_VERSION\' = "local-old"\nnested.value = "local nested"',
+		);
+		const upstream = template.replace(
+			'[vars]',
+			'[vars]\n\'A=B\' = "upstream equal"\n"A#B" = "upstream hash"\n\'A.B\' = "upstream dotted key"\n"SW_VERSION" = "upstream-version"\n"nested.value" = "separate dotted key"',
+		);
+		const { status, merged } = run(source, upstream);
+		expect(status).toBe(0);
+		expect(parse(merged).vars).toEqual({ ...parse(upstream).vars, ...parse(source).vars, SW_VERSION: 'upstream-version' });
+		expect(run(merged, upstream).merged).toBe(merged);
+	});
+
+	it('selects the real KV binding despite binding text in other blocks', () => {
+		const decoys = `[[kv_namespaces]] # unrelated comment
+binding = "COMMENTS"
+# binding = "SECRETS_KV"
+id = "comment-id"
+
+[[kv_namespaces]] # unrelated string
+binding = "STRINGS"
+note = '''
+binding = "SECRETS_KV"
+'''
+id = "string-id"
+
+`;
+		const source = template.replace(
+			'[[kv_namespaces]]\nbinding = "SECRETS_KV"',
+			decoys + '[[kv_namespaces]]\n  \'binding\'\t=\t\'SECRETS_KV\' # actual binding\nid = "account-id"\npreview_id = "preview-id"',
+		);
+		const upstream = template.replace('[[kv_namespaces]]\nbinding = "SECRETS_KV"', decoys + '[[kv_namespaces]]\nbinding="SECRETS_KV"');
+		const originalBlocks = parse(upstream).kv_namespaces;
+		const { status, merged } = run(source, upstream);
+		expect(status).toBe(0);
+		expect(parse(merged).kv_namespaces).toEqual([
+			...originalBlocks.slice(0, 2),
+			{ binding: 'SECRETS_KV', id: 'account-id', preview_id: 'preview-id' },
+		]);
+		expect(run(merged, upstream).merged).toBe(merged);
+	});
+
+	it.each([
+		['basic with four quotes', '"', 4],
+		['basic with five quotes', '"', 5],
+		['literal with four quotes', "'", 4],
+		['literal with five quotes', "'", 5],
+	])('keeps trailing value quotes when a multi-line string closes: %s', (_name, quote, count) => {
+		const value = (label) => `${quote.repeat(3)}\n${label}\n${quote.repeat(count)} # closed here`;
+		const source = template.replace('[env.development.vars]', `[env.development.vars]\nTEXT = ${value('local')}\nAFTER = "local after"`);
+		const upstream = template.replace(
+			'[env.development.vars]',
+			`[env.development.vars]\nTEXT = ${value('upstream')}\nUPSTREAM_ONLY = ${value('retained')}\nAFTER = "upstream after"`,
+		);
+		const localVars = parse(source).env.development.vars;
+		expect(localVars.TEXT).toBe('local\n' + quote.repeat(count - 3));
+		const { status, merged } = run(source, upstream);
+		expect(status).toBe(0);
+		expect(parse(merged).env.development.vars).toEqual({ ...parse(upstream).env.development.vars, ...localVars });
+		expect(run(merged, upstream).merged).toBe(merged);
+	});
+});
