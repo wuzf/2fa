@@ -302,9 +302,7 @@ export function getSearchCode() {
       }
       if (typeof ResizeObserver === 'function') {
         sortMenuResizeObserver = new ResizeObserver(scheduleSortMenuPlacementUpdate);
-        const clockWarning = document.getElementById('clockWarning');
         const searchSection = document.querySelector('.search-section');
-        if (clockWarning) sortMenuResizeObserver.observe(clockWarning);
         if (searchSection) sortMenuResizeObserver.observe(searchSection);
       }
 

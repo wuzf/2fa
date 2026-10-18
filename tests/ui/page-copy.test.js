@@ -21,15 +21,14 @@ describe('settings page copy', () => {
 		expect(html).not.toContain('不会改变内部备份的完整格式');
 	});
 
-	it('renders an accessible clock warning with a manual retry action', async () => {
+	it('keeps clock synchronization in the background without a warning or retry action', async () => {
 		const response = await createMainPage({ lazyLoad: false });
 		const html = await response.text();
 
-		expect(html).toContain('id="clockWarning"');
-		expect(html).toContain('aria-live="polite"');
-		expect(html).toContain('id="clockWarningText"');
-		expect(html).toContain('id="clockSyncRetryButton"');
-		expect(html).toContain('onclick="retryClockSync()"');
+		expect(html).not.toContain('id="clockWarning"');
+		expect(html).not.toContain('id="clockWarningText"');
+		expect(html).not.toContain('id="clockSyncRetryButton"');
+		expect(html).not.toContain('retryClockSync');
 	});
 
 	it('renders accessible automatic grouping and flat view controls', async () => {

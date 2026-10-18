@@ -144,27 +144,6 @@ function getHTMLBody() {
 <body class="fluent-app">
   <div class="container">
     <div class="content">
-      <div
-        id="clockWarning"
-        class="clock-warning"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        hidden
-      >
-        <div class="clock-warning-message">
-          <span class="clock-warning-icon" aria-hidden="true">${dialogIcon('warning')}</span>
-          <span id="clockWarningText" class="clock-warning-text" data-i18n="clockWarningText">本地时间可能不准确，验证码可能无效。</span>
-        </div>
-        <button
-          type="button"
-          id="clockSyncRetryButton"
-          class="clock-sync-retry-button"
-          data-i18n="clockSyncRetryButton"
-          onclick="retryClockSync()"
-        >重新校时</button>
-      </div>
-
       <div class="search-section">
         <div class="search-container">
           <!-- 防止浏览器自动填充的隐藏输入框 -->

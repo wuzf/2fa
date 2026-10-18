@@ -6,7 +6,6 @@ import { localizeDictionary, translateEnglish } from '../../src/shared/locales/i
 import { LOCALES } from '../../src/ui/locales/index.js';
 import { createMainPage } from '../../src/ui/page.js';
 import { getI18nCode } from '../../src/ui/scripts/i18n.js';
-import { getTimeCode } from '../../src/ui/scripts/time.js';
 import { getServiceAggregationCode } from '../../src/ui/scripts/serviceAggregation.js';
 import { SERVICE_LOGOS } from '../../src/ui/config/serviceLogos.js';
 import { getStandardFormatsCode } from '../../src/ui/scripts/export/formats.js';
@@ -122,10 +121,10 @@ describe('independent multilingual core review', () => {
 		}
 	});
 
-	it('formats relative times and sorts service groups with the current locale while retaining group data', () => {
+	it('sorts service groups with the current locale while retaining group data', () => {
 		const ui = uiContext();
 		ui.context.SERVICE_LOGOS = SERVICE_LOGOS;
-		runInContext(getTimeCode() + getServiceAggregationCode(), ui.context);
+		runInContext(getServiceAggregationCode(), ui.context);
 		const records = ['Ångström', 'Zulu', 'École', '中文', 'Äther'].flatMap((name, index) => [
 			{ id: index + '-1', name },
 			{ id: index + '-2', name },
@@ -133,12 +132,6 @@ describe('independent multilingual core review', () => {
 		ui.context.records = records;
 		for (const language of SUPPORTED_LANGUAGES) {
 			ui.context.setLanguage(language);
-			for (const count of [1, 2, 5]) {
-				ui.context.age = count * 60 * 1000;
-				expect(runInContext('trustedClock.formatAge(age)', ui.context)).toBe(
-					new Intl.RelativeTimeFormat(language, { numeric: 'always' }).format(-count, 'minute'),
-				);
-			}
 			const groups = runInContext('groupSecretsByServiceFamily(records, records)', ui.context);
 			expect(groups.map((group) => group.name)).toEqual(
 				[...new Set(records.map((record) => record.name))].sort((a, b) =>

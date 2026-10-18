@@ -193,7 +193,6 @@ export function getI18nCode() {
       if (typeof refreshBackupTranslations === 'function') refreshBackupTranslations();
       if (typeof refreshGoogleMigrationTranslations === 'function') refreshGoogleMigrationTranslations();
       if (typeof refreshQRCodeTranslations === 'function') refreshQRCodeTranslations();
-      if (typeof refreshClockLanguage === 'function') refreshClockLanguage();
       if (typeof refreshAuthLanguage === 'function') refreshAuthLanguage();
       if (typeof refreshConfirmDialogLanguage === 'function') refreshConfirmDialogLanguage();
       if (typeof refreshModuleLoaderLanguage === 'function') refreshModuleLoaderLanguage();

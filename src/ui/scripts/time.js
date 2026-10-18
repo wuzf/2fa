@@ -17,7 +17,6 @@ export function getTimeCode() {
     const CLOCK_SYNC_TIMEOUT_MS = 2500;
     const CLOCK_SYNC_MAX_RTT_MS = 2000;
     const CLOCK_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
-    const CLOCK_SYNC_STALE_MS = 24 * 60 * 60 * 1000;
     const CLOCK_SYNC_SAMPLE_WALL_DRIFT_TOLERANCE_MS = 1000;
     const CLOCK_SYNC_MIN_SERVER_TIME_MS = Date.UTC(2000, 0, 1);
     const CLOCK_SYNC_MAX_SERVER_TIME_MS = Date.UTC(2100, 0, 1);
@@ -38,7 +37,6 @@ export function getTimeCode() {
         this.syncAttemptId = 0;
         this.activeSampleControllers = new Set();
         this.started = false;
-        this.hasSettledSync = false;
         this.loadCachedOffset();
       }
 
@@ -226,18 +224,14 @@ export function getTimeCode() {
         this.localWallAtSyncMs = Date.now();
         this.monotonicEpochAtSyncMs = this.monotonicEpochNow();
         this.status = 'synced';
-        this.hasSettledSync = true;
         this.generation += 1;
         this.persistOffset();
-        this.renderStatus();
         refreshTOTPsAfterClockChange();
         return true;
       }
 
       markSyncFailure() {
-        this.hasSettledSync = true;
         this.status = Number.isFinite(this.offsetMs) ? 'cached' : 'local';
-        this.renderStatus();
       }
 
       hasClockDiscontinuity() {
@@ -260,7 +254,6 @@ export function getTimeCode() {
           this.status = 'local';
         }
         this.generation += 1;
-        this.renderStatus();
         refreshTOTPsAfterClockChange();
         return true;
       }
@@ -278,9 +271,7 @@ export function getTimeCode() {
 
         this.syncPromise = task.finally(() => {
           this.syncPromise = null;
-          this.renderStatus();
         });
-        this.renderStatus();
         return this.syncPromise;
       }
 
@@ -309,55 +300,9 @@ export function getTimeCode() {
         return this.sync();
       }
 
-      getCacheAgeMs() {
-        if (!this.isValidServerTime(this.syncedAtServerMs)) return null;
-        return Math.max(0, this.now() - this.syncedAtServerMs);
-      }
-
-      formatAge(ageMs) {
-        if (!Number.isFinite(ageMs) || ageMs < 60 * 1000) return t('clockJustNow');
-        const format = new Intl.RelativeTimeFormat(typeof getLanguage === 'function' ? getLanguage() : 'en', { numeric: 'always' });
-        if (ageMs < 60 * 60 * 1000) return format.format(-Math.floor(ageMs / (60 * 1000)), 'minute');
-        if (ageMs < 24 * 60 * 60 * 1000) return format.format(-Math.floor(ageMs / (60 * 60 * 1000)), 'hour');
-        return format.format(-Math.floor(ageMs / (24 * 60 * 60 * 1000)), 'day');
-      }
-
-      renderStatus() {
-        if (typeof document === 'undefined') return;
-        const warning = document.getElementById('clockWarning');
-        const text = document.getElementById('clockWarningText');
-        const retryButton = document.getElementById('clockSyncRetryButton');
-        if (!warning || !text) return;
-
-        const ageMs = this.getCacheAgeMs();
-        const isStale = Number.isFinite(ageMs) && ageMs > CLOCK_SYNC_STALE_MS;
-        let message = '';
-
-        // 首次校准落地前不提示：页面刚加载时缓存偏移已生效但校准仍在进行，
-        // 此时提示会在校准成功后立即消失，表现为刷新时的一次闪烁。
-        if (!this.hasSettledSync) {
-          message = '';
-        } else if (this.status === 'local') {
-          message = t('clockUsingDeviceTime');
-        } else if (this.status === 'cached') {
-          const ageText = this.formatAge(ageMs);
-          message = isStale
-            ? t('clockStaleCache', { age: ageText })
-            : t('clockCachedTime', { age: ageText });
-        } else if (isStale) {
-          message = t('clockStaleTime');
-        }
-
-        warning.hidden = !message;
-        warning.classList.toggle('show', Boolean(message));
-        text.textContent = message;
-        if (retryButton) retryButton.disabled = Boolean(this.syncPromise);
-      }
-
       start() {
         if (this.started) return;
         this.started = true;
-        this.renderStatus();
 
         if (typeof window !== 'undefined') {
           window.addEventListener('online', () => this.handleResume());
@@ -366,7 +311,6 @@ export function getTimeCode() {
             if (event.persisted) this.handleResume();
           });
           window.setInterval(() => {
-            this.renderStatus();
             const isVisible = typeof document === 'undefined' || !document.hidden;
             const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
             if (isVisible && isOnline) this.sync();
@@ -384,10 +328,6 @@ export function getTimeCode() {
     }
 
     const trustedClock = new TrustedClock();
-
-    function refreshClockLanguage() {
-      trustedClock.renderStatus();
-    }
 
     function getCorrectedNowMs() {
       return trustedClock.now();
@@ -411,14 +351,6 @@ export function getTimeCode() {
 
     function syncServerTime() {
       return trustedClock.sync();
-    }
-
-    async function retryClockSync() {
-      const success = await trustedClock.sync();
-      if (typeof showCenterToast === 'function') {
-        showCenterToast(success ? '✓' : '!', t(success ? 'clockSyncSuccess' : 'clockSyncFailed'));
-      }
-      return success;
     }
 
     function refreshTOTPsAfterClockChange() {

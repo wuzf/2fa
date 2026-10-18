@@ -465,7 +465,6 @@ export function getVariables() {
       .theme-viewport-transition :is(.service-group-title, .service-group-count),
       .action-submenu.show, .action-submenu.show :is(.submenu-item, .item-icon, .item-text),
       .page-footer, .footer-link, .footer-info, .empty-state, .empty-state h3,
-      .clock-warning, .clock-warning-icon,
       .center-toast.show :is(.toast-content, .toast-icon, .toast-message), .dialog-toast,
       .modal.show, .modal.show :is(
         .modal-content, .modal-header, .settings-tabs, .settings-section, .settings-divider,

@@ -7,7 +7,6 @@ export function getWorkspaceStyles() {
       --workspace-hover: #f0f0f0;
       --workspace-selected: #eff6fc;
       --workspace-brand: #0f6cbd;
-      --workspace-warning: #8a3707;
       --workspace-text: #242424;
       --workspace-muted: #616161;
       --workspace-line: #e0e0e0;
@@ -69,7 +68,6 @@ export function getWorkspaceStyles() {
       --workspace-hover: #383838;
       --workspace-selected: #20384c;
       --workspace-brand: #62abf5;
-      --workspace-warning: #f5b894;
       --workspace-text: #ffffff;
       --workspace-muted: #bdbdbd;
       --workspace-line: #424242;
@@ -84,8 +82,6 @@ export function getWorkspaceStyles() {
     .fluent-app > .container { max-width: 1400px; }
     .fluent-app .content { padding: 24px 24px 40px; text-align: left; }
     .fluent-app .search-section { margin-bottom: 24px; }
-    .fluent-app .clock-warning { background: var(--workspace-surface); border: 1px solid var(--workspace-line); border-left: 3px solid var(--workspace-warning); border-radius: 4px; }
-    .fluent-app .clock-warning-icon { color: var(--workspace-warning); display: flex; }
     .fluent-app .search-action-row { gap: 12px; }
     .fluent-app .search-input-wrapper { border: 1px solid var(--search-border); border-bottom-color: #8a8a8a; border-radius: 4px; }
     .fluent-app .search-input-wrapper:focus-within { border-color: var(--workspace-brand); box-shadow: inset 0 -1px var(--workspace-brand); }
