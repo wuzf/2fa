@@ -1680,5 +1680,11 @@
 	"You have a new notification": "新しい通知があります",
 	"Unable to process this request. Check that you are logged in and retry.": "このリクエストを処理できません。ログインしていることを確認して、再試行してください。",
 	"Companion to github.com/wuzf/2fa. Deploy a 2FA instance, then connect to view, copy and autofill two-factor authentication codes.": "github.com/wuzf/2fa 用。自分でデプロイした 2FA に接続し、2段階認証コードを表示・コピー・自動入力できます。",
-	"Fill the verification code for the account linked to this website": "このサイトに連携したアカウントの認証コードを入力"
+	"Fill the verification code for the account linked to this website": "このサイトに連携したアカウントの認証コードを入力",
+	"Discard unsaved changes?": "未保存の変更を破棄しますか？",
+	"You have unsaved changes. Closing will discard them.": "未保存の変更があります。閉じると変更は失われます。",
+	"Discard and close": "破棄して閉じる",
+	"Keep editing": "編集を続ける",
+	"Save result not yet confirmed": "保存結果がまだ確認できていません",
+	"Closing will not undo saves already submitted. Other unsaved changes will be discarded. Close anyway?": "閉じても、送信済みの保存処理は取り消されません。その他の未保存の変更は破棄されます。それでも閉じますか？"
 }

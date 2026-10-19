@@ -165,6 +165,7 @@ export function getOneDriveToolCode() {
         document.getElementById('oneDriveName').value = '';
         document.getElementById('oneDriveFolderPath').value = '/2FA-Backups';
       }
+      if (typeof markModalSaved === 'function') markModalSaved('oneDriveModal');
     }
 
     function hideOneDriveForm() {
@@ -174,6 +175,7 @@ export function getOneDriveToolCode() {
       if (addBtn && addBtn.dataset.canAdd !== 'false') {
         addBtn.style.display = 'block';
       }
+      if (typeof markModalSaved === 'function') markModalSaved('oneDriveModal');
     }
 
     async function editOneDriveDest(id) {

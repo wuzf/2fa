@@ -2,6 +2,12 @@
  * 简体中文语言包 (Simplified Chinese)
  */
 export const zhCN = {
+	dialogDiscardTitle: '放弃未保存的内容？',
+	dialogDiscardMessage: '还有未保存的内容。关闭后这些内容将丢失。',
+	dialogDiscard: '放弃并关闭',
+	dialogKeepEditing: '继续编辑',
+	dialogSavePendingTitle: '保存结果尚未确认',
+	dialogSavePendingMessage: '关闭不会撤销已提交的保存，其他未保存内容将被放弃。仍要关闭吗？',
 	// 通用
 	ok: '确定',
 	cancel: '取消',

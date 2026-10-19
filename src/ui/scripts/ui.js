@@ -167,11 +167,7 @@ export function getUICode() {
 
     // 模态框管理
     function hideQRModal() {
-      const modal = document.getElementById('qrModal');
-      if (!modal || !modal.classList.contains('show')) return;
-      modal.classList.remove('show');
-      setTimeout(() => modal.style.display = 'none', 300);
-      enableBodyScroll();
+      hideModal('qrModal');
     }
 
     function syncSecretDialogTranslations() {
@@ -210,6 +206,7 @@ export function getUICode() {
     function showSecretModal(onShow) {
       const modal = document.getElementById('secretModal');
       if (!modal) return;
+      if (typeof trackModalClosed === 'function') trackModalClosed(modal);
       const generation = ++secretDialogGeneration;
       secretDialogSubmission = null;
       secretDialogQueuedOperationId = null;
@@ -225,6 +222,7 @@ export function getUICode() {
       secretDialogOpen = true;
       onShow();
       syncSecretDialogTranslations();
+      if (typeof trackModalOpen === 'function') trackModalOpen(modal);
       secretDialogShowTimer = setTimeout(() => {
         if (!secretDialogOpen || secretDialogGeneration !== generation) return;
         secretDialogShowTimer = null;
@@ -244,6 +242,7 @@ export function getUICode() {
     function hideSecretModal() {
       const modal = document.getElementById('secretModal');
       if (!modal || !secretDialogOpen) return;
+      if (typeof trackModalClosed === 'function') trackModalClosed(modal);
       const generation = ++secretDialogGeneration;
       secretDialogOpen = false;
       const submitBtn = document.getElementById('submitBtn');

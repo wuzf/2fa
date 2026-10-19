@@ -1680,5 +1680,11 @@
 	"You have a new notification": "Bạn có thông báo mới",
 	"Unable to process this request. Check that you are logged in and retry.": "Không thể xử lý yêu cầu này. Kiểm tra xem bạn đã đăng nhập chưa và thử lại.",
 	"Companion to github.com/wuzf/2fa. Deploy a 2FA instance, then connect to view, copy and autofill two-factor authentication codes.": "Dành cho github.com/wuzf/2fa. Kết nối máy chủ 2FA tự triển khai để xem, sao chép và tự động điền mã xác thực.",
-	"Fill the verification code for the account linked to this website": "Điền mã xác minh của tài khoản liên kết với trang web này"
+	"Fill the verification code for the account linked to this website": "Điền mã xác minh của tài khoản liên kết với trang web này",
+	"Discard unsaved changes?": "Bỏ các thay đổi chưa lưu?",
+	"You have unsaved changes. Closing will discard them.": "Bạn có các thay đổi chưa lưu. Đóng sẽ làm mất các thay đổi này.",
+	"Discard and close": "Bỏ và đóng",
+	"Keep editing": "Tiếp tục chỉnh sửa",
+	"Save result not yet confirmed": "Kết quả lưu chưa được xác nhận",
+	"Closing will not undo saves already submitted. Other unsaved changes will be discarded. Close anyway?": "Việc đóng sẽ không hủy các yêu cầu lưu đã gửi. Những thay đổi khác chưa lưu sẽ bị loại bỏ. Vẫn đóng?"
 }

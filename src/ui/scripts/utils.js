@@ -55,6 +55,7 @@ export function getUtilsCode() {
     window.ensureQRCodeGen = ensureQRCodeGen;
 
     // ==================== 模态框通用函数 ====================
+    const modalAnimationTimers = new WeakMap();
 
     /**
      * 通用显示模态框函数
@@ -67,12 +68,17 @@ export function getUtilsCode() {
         console.error('模态框不存在:', modalId);
         return;
       }
+      const returnFocus = document.activeElement;
+      const wasOpen = modal.style.display === 'flex' && !modal.inert;
+      clearTimeout(modalAnimationTimers.get(modal));
+      modal.inert = false;
       modal.style.display = 'flex';
-      setTimeout(() => modal.classList.add('show'), 10);
-      disableBodyScroll();
+      modalAnimationTimers.set(modal, setTimeout(() => modal.classList.add('show'), 10));
+      if (!wasOpen) disableBodyScroll();
       if (typeof onShow === 'function') {
         onShow();
       }
+      if (typeof trackModalOpen === 'function') trackModalOpen(modal, returnFocus);
     }
 
     /**
@@ -87,16 +93,19 @@ export function getUtilsCode() {
         return;
       }
       // 幂等守卫：未显示的 modal 不做任何事，避免 body 锁计数被错误减少
-      if (!modal.classList.contains('show')) {
+      if (modal.inert || (!modal.classList.contains('show') && modal.style.display !== 'flex')) {
         return;
       }
+      clearTimeout(modalAnimationTimers.get(modal));
+      if (typeof trackModalClosed === 'function') trackModalClosed(modal);
+      modal.inert = true;
       modal.classList.remove('show');
-      setTimeout(() => {
+      modalAnimationTimers.set(modal, setTimeout(() => {
         modal.style.display = 'none';
         if (typeof onHide === 'function') {
           onHide();
         }
-      }, 300);
+      }, 300));
       enableBodyScroll();
     }
 
@@ -195,6 +204,8 @@ export function getUtilsCode() {
           if (settled) return;
           settled = true;
           confirmDialogTextState = null;
+          clearTimeout(modalAnimationTimers.get(modal));
+          if (typeof trackModalClosed === 'function') trackModalClosed(modal);
           modal.classList.remove('show');
           document.removeEventListener('keydown', onKey);
           cancelBtn.removeEventListener('click', onCancel);
@@ -253,10 +264,12 @@ export function getUtilsCode() {
 
         disableBodyScroll();
         modal.style.display = 'flex';
-        setTimeout(() => {
+        modal.inert = false;
+        if (typeof trackModalOpen === 'function') trackModalOpen(modal, previouslyFocused);
+        modalAnimationTimers.set(modal, setTimeout(() => {
           modal.classList.add('show');
           try { focusTarget.focus(); } catch (_) { /* noop */ }
-        }, 10);
+        }, 10));
       });
     }
 

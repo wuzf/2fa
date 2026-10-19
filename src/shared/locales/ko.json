@@ -1680,5 +1680,11 @@
 	"You have a new notification": "새로운 알림이 왔습니다",
 	"Unable to process this request. Check that you are logged in and retry.": "이 요청을 처리할 수 없습니다. 로그인했는지 확인하고 다시 시도하세요.",
 	"Companion to github.com/wuzf/2fa. Deploy a 2FA instance, then connect to view, copy and autofill two-factor authentication codes.": "github.com/wuzf/2fa용 확장. 직접 배포한 2FA 인스턴스에 연결해 2단계 인증 코드를 보고 복사하거나 자동 입력하세요.",
-	"Fill the verification code for the account linked to this website": "이 웹사이트에 연결된 계정의 인증 코드 입력"
+	"Fill the verification code for the account linked to this website": "이 웹사이트에 연결된 계정의 인증 코드 입력",
+	"Discard unsaved changes?": "저장하지 않은 변경 사항을 버릴까요?",
+	"You have unsaved changes. Closing will discard them.": "저장하지 않은 변경 사항이 있습니다. 닫으면 변경 사항이 사라집니다.",
+	"Discard and close": "버리고 닫기",
+	"Keep editing": "계속 편집",
+	"Save result not yet confirmed": "저장 결과가 아직 확인되지 않았습니다",
+	"Closing will not undo saves already submitted. Other unsaved changes will be discarded. Close anyway?": "닫아도 이미 전송된 저장 요청은 취소되지 않습니다. 저장되지 않은 다른 변경 사항은 삭제됩니다. 그래도 닫으시겠습니까?"
 }

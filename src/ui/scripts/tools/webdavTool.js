@@ -130,12 +130,14 @@ export function getWebdavToolCode() {
         document.getElementById('webdavPassword').placeholder = t('toolSyncPassword');
         document.getElementById('webdavPath').value = '/';
       }
+      if (typeof markModalSaved === 'function') markModalSaved('webdavModal');
     }
 
     function hideWebdavForm() {
       document.getElementById('webdavFormArea').style.display = 'none';
       const addBtn = document.getElementById('webdavAddBtn');
       addBtn.style.display = addBtn.dataset.canAdd === 'false' ? 'none' : 'block';
+      if (typeof markModalSaved === 'function') markModalSaved('webdavModal');
     }
 
     async function editWebdavDest(id) {

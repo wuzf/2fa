@@ -427,6 +427,8 @@ export function getGoogleMigrationCode() {
     }
 
     function revealGoogleMigrationModal(modal) {
+      modal.dataset.dialogKind = modal.id === 'migrationPreviewModal' ? 'form' : 'passive';
+      if (typeof trackModalOpen === 'function') trackModalOpen(modal);
       setTimeout(function() {
         if (modal.isConnected && modal.dataset.closing !== 'true') modal.classList.add('show');
       }, 10);
@@ -436,6 +438,7 @@ export function getGoogleMigrationCode() {
       const modal = document.getElementById(id);
       if (!modal || modal.dataset.closing === 'true') return;
       // The exit animation keeps display:flex until removal; treat it as closed immediately.
+      if (typeof trackModalClosed === 'function') trackModalClosed(modal);
       modal.dataset.closing = 'true';
       modal.inert = true;
       modal.classList.remove('show');
@@ -456,7 +459,9 @@ export function getGoogleMigrationCode() {
         if (refreshedList) refreshedList.scrollTop = scrollTop;
       }
       rerender('exportToGoogleModal', () => showExportToGoogleModal(true));
-      rerender('migrationPreviewModal', () => showGoogleMigrationPreview(window.pendingMigrationSecrets || [], true));
+      // The preview uses data-i18n so applyTranslations updates it in place.
+      // Replacing it would promote it above a pending discard confirmation and
+      // disconnect the close button that the original dismissal is waiting on.
       if (currentGoogleImportResult) rerender('importResultModal', () => showImportResultModal(...currentGoogleImportResult, true));
       if (window.exportQRCodeBatches) rerender('exportQRCodeModal', () => showExportQRCodeModal(window.exportQRCodeBatches, window.exportQRCodeCurrentPage || 0, window.exportQRCodeBatchId));
     }
@@ -489,7 +494,7 @@ export function getGoogleMigrationCode() {
       content.innerHTML =
         '<div class="modal-header">' +
           '<h2>' + escapeHTML(t('transferGoogleExport')) + '</h2>' +
-          '<button class="close-btn" type="button" aria-label="' + escapeHTML(t('transferCloseDialog')) + '" onclick="closeExportToGoogleModal()">' + dialogIcon('close') + '</button>' +
+          '<button class="close-btn" type="button" aria-label="' + escapeHTML(t('transferCloseDialog')) + '" data-dialog-dismiss onclick="closeExportToGoogleModal()">' + dialogIcon('close') + '</button>' +
         '</div>' +
         '<div class="modal-body">' +
           '<p style="margin-bottom: 15px; color: var(--text-secondary);">' + escapeHTML(t('transferSelectExportPrefix')) + '<strong>' + secrets.length + '</strong>' + escapeHTML(t('transferCountClose')) + '</p>' +
@@ -510,7 +515,7 @@ export function getGoogleMigrationCode() {
             }).join('') +
           '</div>' +
           '<div style="display: flex; gap: 10px;">' +
-            '<button class="btn btn-secondary" style="flex: 1;" onclick="closeExportToGoogleModal()">' + escapeHTML(t('cancel')) + '</button>' +
+            '<button class="btn btn-secondary" style="flex: 1;" data-dialog-dismiss onclick="closeExportToGoogleModal()">' + escapeHTML(t('cancel')) + '</button>' +
             '<button class="btn btn-primary" style="flex: 1;" onclick="generateExportQRCodes()">' + escapeHTML(t('transferGenerateQR')) + '</button>' +
           '</div>' +
         '</div>';
@@ -613,7 +618,7 @@ export function getGoogleMigrationCode() {
         '<div class="modal-content fab-modal-sm-content">' +
           '<div class="modal-header">' +
             '<h2>' + escapeHTML(t('transferGoogleScan')) + '</h2>' +
-            '<button class="close-btn" type="button" aria-label="' + escapeHTML(t('transferCloseDialog')) + '" onclick="closeExportQRCodeModal()">' + dialogIcon('close') + '</button>' +
+            '<button class="close-btn" type="button" aria-label="' + escapeHTML(t('transferCloseDialog')) + '" data-dialog-dismiss onclick="closeExportQRCodeModal()">' + dialogIcon('close') + '</button>' +
           '</div>' +
           '<div class="modal-body">' +
             (totalPages > 1 ?
@@ -633,7 +638,7 @@ export function getGoogleMigrationCode() {
                 '<button class="btn btn-secondary" style="flex: 1;" onclick="showExportQRCodePage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages - 1 ? 'disabled' : '') + '>' + escapeHTML(t('transferNext')) + '</button>' +
               '</div>' : ''
             ) +
-            '<button class="btn btn-primary" style="width: 100%;" onclick="closeExportQRCodeModal()">' + escapeHTML(t('completed')) + '</button>' +
+            '<button class="btn btn-primary" style="width: 100%;" data-dialog-dismiss onclick="closeExportQRCodeModal()">' + escapeHTML(t('completed')) + '</button>' +
           '</div>' +
         '</div>';
 
@@ -708,11 +713,11 @@ export function getGoogleMigrationCode() {
       return googleMigrationEntryNames(secret).serviceName || t('transferImportedKey');
     }
 
-    function showGoogleMigrationPreview(parsedSecrets, refreshOnly = false) {
+    function showGoogleMigrationPreview(parsedSecrets) {
       // 幂等：若上一次 closeMigrationPreview 的 300ms 延迟移除还没触发，
       // 先立即移除旧 modal，避免新旧两个同 id modal 在 DOM 中短暂共存
-      replaceGoogleMigrationModal('migrationPreviewModal', refreshOnly);
-      if (!refreshOnly) googleMigrationPreviewGeneration += 1;
+      replaceGoogleMigrationModal('migrationPreviewModal', false);
+      googleMigrationPreviewGeneration += 1;
 
       // 创建预览模态框
       const modal = document.createElement('div');
@@ -725,17 +730,17 @@ export function getGoogleMigrationCode() {
 
       content.innerHTML =
         '<div class="modal-header">' +
-          '<h2>' + escapeHTML(t('transferGoogleImport')) + '</h2>' +
-          '<button class="close-btn" type="button" aria-label="' + escapeHTML(t('transferCloseDialog')) + '" onclick="closeMigrationPreview()">' + dialogIcon('close') + '</button>' +
+          '<h2 data-i18n="transferGoogleImport">' + escapeHTML(t('transferGoogleImport')) + '</h2>' +
+          '<button class="close-btn" type="button" aria-label="' + escapeHTML(t('transferCloseDialog')) + '" data-i18n-aria-label="transferCloseDialog" data-dialog-dismiss onclick="closeMigrationPreview()">' + dialogIcon('close') + '</button>' +
         '</div>' +
         '<div class="modal-body">' +
-          '<p style="margin-bottom: 15px; color: var(--text-secondary);">' + escapeHTML(t('transferMigrationConfirm', { count: parsedSecrets.length })) + '</p>' +
+          '<p data-i18n="transferMigrationConfirm" data-i18n-params="' + escapeHTML(JSON.stringify({ count: parsedSecrets.length })) + '" style="margin-bottom: 15px; color: var(--text-secondary);">' + escapeHTML(t('transferMigrationConfirm', { count: parsedSecrets.length })) + '</p>' +
           '<div class="migration-preview-list" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-primary); border-radius: 8px; margin-bottom: 15px;">' +
             parsedSecrets.map(function(s, i) {
               return '<div class="migration-preview-item" style="padding: 12px; border-bottom: 1px solid var(--border-primary); display: flex; align-items: center; gap: 10px;">' +
                 '<input type="checkbox" id="migrate-' + i + '" checked style="width: 18px; height: 18px;">' +
                 '<div style="flex: 1; min-width: 0;">' +
-                  '<div style="font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHTML(googleMigrationSavedServiceName(s)) + '</div>' +
+                  '<div' + (googleMigrationEntryNames(s).serviceName ? '' : ' data-i18n="transferImportedKey"') + ' style="font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHTML(googleMigrationSavedServiceName(s)) + '</div>' +
                   '<div style="font-size: var(--dialog-caption-size); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHTML(s.name || '') + '</div>' +
                 '</div>' +
                 '<span style="font-size: var(--dialog-caption-size); padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);">' + escapeHTML(s.type || 'TOTP') + '</span>' +
@@ -743,8 +748,8 @@ export function getGoogleMigrationCode() {
             }).join('') +
           '</div>' +
           '<div style="display: flex; gap: 10px;">' +
-            '<button class="btn btn-secondary" style="flex: 1;" onclick="closeMigrationPreview()">' + escapeHTML(t('cancel')) + '</button>' +
-            '<button class="btn btn-primary" style="flex: 1;" onclick="confirmGoogleMigration()">' + escapeHTML(t('transferImportSelected')) + '</button>' +
+            '<button class="btn btn-secondary" style="flex: 1;" data-i18n="cancel" data-dialog-dismiss onclick="closeMigrationPreview()">' + escapeHTML(t('cancel')) + '</button>' +
+            '<button class="btn btn-primary" style="flex: 1;" data-i18n="transferImportSelected" onclick="confirmGoogleMigration()">' + escapeHTML(t('transferImportSelected')) + '</button>' +
           '</div>' +
         '</div>';
 
@@ -755,7 +760,7 @@ export function getGoogleMigrationCode() {
       window.pendingMigrationSecrets = parsedSecrets;
 
       revealGoogleMigrationModal(modal);
-      if (!refreshOnly) disableBodyScroll();
+      disableBodyScroll();
     }
 
     /**
@@ -794,7 +799,7 @@ export function getGoogleMigrationCode() {
       content.innerHTML =
         '<div class="modal-header">' +
           '<h2>' + escapeHTML(t('transferImportResult')) + '</h2>' +
-          '<button class="close-btn" type="button" aria-label="' + escapeHTML(t('transferCloseDialog')) + '" onclick="closeImportResultModal()">' + dialogIcon('close') + '</button>' +
+          '<button class="close-btn" type="button" aria-label="' + escapeHTML(t('transferCloseDialog')) + '" data-dialog-dismiss onclick="closeImportResultModal()">' + dialogIcon('close') + '</button>' +
         '</div>' +
         '<div class="modal-body">' +
           '<div style="text-align: center; margin-bottom: 20px;">' +
@@ -809,7 +814,7 @@ export function getGoogleMigrationCode() {
             '<div style="font-size: var(--dialog-caption-size); color: var(--text-secondary); white-space: pre-wrap; line-height: 1.6;">' + escapeHTML(localizedDetails) + '</div>' +
           '</div>' +
           '<div class="dialog-result-actions">' +
-            '<button class="btn btn-primary" onclick="closeImportResultModal()">' + escapeHTML(t('ok')) + '</button>' +
+            '<button class="btn btn-primary" data-dialog-dismiss onclick="closeImportResultModal()">' + escapeHTML(t('ok')) + '</button>' +
           '</div>' +
         '</div>';
 

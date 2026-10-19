@@ -1680,5 +1680,11 @@
 	"You have a new notification": "У вас новое уведомление",
 	"Unable to process this request. Check that you are logged in and retry.": "Невозможно обработать этот запрос. Убедитесь, что вы вошли в систему, и повторите попытку.",
 	"Companion to github.com/wuzf/2fa. Deploy a 2FA instance, then connect to view, copy and autofill two-factor authentication codes.": "Для github.com/wuzf/2fa: разверните свой сервер и подключитесь для просмотра, копирования и автозаполнения кодов 2FA.",
-	"Fill the verification code for the account linked to this website": "Введите код подтверждения для учетной записи, связанной с этим сайтом."
+	"Fill the verification code for the account linked to this website": "Введите код подтверждения для учетной записи, связанной с этим сайтом.",
+	"Discard unsaved changes?": "Отменить несохранённые изменения?",
+	"You have unsaved changes. Closing will discard them.": "Есть несохранённые изменения. При закрытии они будут потеряны.",
+	"Discard and close": "Отменить и закрыть",
+	"Keep editing": "Продолжить редактирование",
+	"Save result not yet confirmed": "Результат сохранения ещё не подтверждён",
+	"Closing will not undo saves already submitted. Other unsaved changes will be discarded. Close anyway?": "Закрытие не отменит уже отправленные запросы на сохранение. Другие несохранённые изменения будут потеряны. Всё равно закрыть?"
 }

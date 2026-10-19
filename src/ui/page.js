@@ -275,7 +275,7 @@ function getHTMLBody() {
   
   
   <!-- 二维码扫描器模态框 -->
-  <div id="qrScanModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="qrScanModalTitle">
+  <div id="qrScanModal" class="modal fab-modal" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="qrScanModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="qrScanModalTitle" data-i18n="qrScanModalTitle">扫描二维码添加密钥</h2>
@@ -322,11 +322,11 @@ function getHTMLBody() {
   </div>
   
   <!-- 添加/编辑密钥模态框 -->
-  <div id="secretModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div id="secretModal" class="modal fab-modal" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="modalTitle" data-i18n="addSecretTitle">添加新密钥</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideSecretModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideSecretModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
       
       <form id="secretForm" onsubmit="handleSubmit(event)" autocomplete="off">
@@ -409,7 +409,7 @@ function getHTMLBody() {
         </div>
         
         <div class="form-actions">
-          <button type="button" class="btn btn-secondary" onclick="hideSecretModal()" data-i18n="cancel">取消</button>
+          <button type="button" class="btn btn-secondary" data-dialog-dismiss onclick="hideSecretModal()" data-i18n="cancel">取消</button>
           <button type="submit" class="btn btn-primary" id="submitBtn" data-i18n="save">保存</button>
         </div>
       </form>
@@ -417,11 +417,11 @@ function getHTMLBody() {
   </div>
 
   <!-- 批量导入模态框 -->
-  <div id="importModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
+  <div id="importModal" class="modal fab-modal" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
     <div class="modal-content import-modal-compact">
       <div class="modal-header">
         <h2 id="importModalTitle" data-i18n="pageImportTitle">批量导入密钥</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideImportModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideImportModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
 
       <!-- 隐藏的文件输入 -->
@@ -456,7 +456,7 @@ function getHTMLBody() {
 
       <!-- 小提示 -->
       <div class="import-tips">
-        <span class="import-tip"><span data-i18n="pageImportGoogle">从 Google Authenticator 导入？</span><a href="javascript:void(0)" onclick="hideImportModal(); showQRScanner();" data-i18n="pageScanMigration">扫描迁移二维码</a></span>
+        <span class="import-tip"><span data-i18n="pageImportGoogle">从 Google Authenticator 导入？</span><a href="javascript:void(0)" data-dialog-dismiss onclick="hideImportModal(); showQRScanner();" data-i18n="pageScanMigration">扫描迁移二维码</a></span>
       </div>
 
       <!-- 格式说明（可折叠） -->
@@ -508,18 +508,18 @@ function getHTMLBody() {
 
       <!-- 操作按钮 -->
       <div class="form-actions import-form-actions">
-        <button type="button" class="btn btn-secondary" onclick="hideImportModal()" data-i18n="cancel">取消</button>
+        <button type="button" class="btn btn-secondary" data-dialog-dismiss onclick="hideImportModal()" data-i18n="cancel">取消</button>
         <button type="button" class="btn btn-primary" onclick="executeImport()" id="executeImportBtn" disabled data-i18n="pageImport">导入</button>
       </div>
     </div>
   </div>
 
   <!-- 还原配置模态框 -->
-  <div id="restoreModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="restoreModalTitle">
+  <div id="restoreModal" class="modal fab-modal" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="restoreModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="restoreModalTitle" data-i18n="restoreModalTitle">还原配置</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" data-i18n-aria-label="close" onclick="hideRestoreModal()">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-i18n-aria-label="close" data-dialog-dismiss onclick="hideRestoreModal()">${dialogIcon('close')}</button>
       </div>
       
       <div class="restore-instructions">
@@ -562,18 +562,18 @@ function getHTMLBody() {
       </div>
       
       <div class="modal-actions">
-        <button type="button" class="btn btn-outline" onclick="hideRestoreModal()" data-i18n="cancel">取消</button>
+        <button type="button" class="btn btn-outline" data-dialog-dismiss onclick="hideRestoreModal()" data-i18n="cancel">取消</button>
         <button type="button" class="btn btn-danger" onclick="confirmRestore()" id="confirmRestoreBtn" data-i18n="restoreConfirm" disabled>确认还原</button>
       </div>
     </div>
   </div>
   
   <!-- 实用工具模态框 -->
-  <div id="toolsModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="toolsModalTitle">
+  <div id="toolsModal" class="modal fab-modal" data-dialog-kind="passive" role="dialog" aria-modal="true" aria-labelledby="toolsModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="toolsModalTitle" data-i18n="pageTools">实用工具</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideToolsModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideToolsModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
       
       <div class="tools-list">
@@ -629,11 +629,11 @@ function getHTMLBody() {
   </div>
 
   <!-- 二维码生成工具模态框 -->
-  <div id="qrGenerateModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="qrGenerateModalTitle">
+  <div id="qrGenerateModal" class="modal fab-modal" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="qrGenerateModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="qrGenerateModalTitle" data-i18n="toolQrGenTitle">二维码生成</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideQRGenerateModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideQRGenerateModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
       
       <div class="tool-section">
@@ -664,11 +664,11 @@ function getHTMLBody() {
   </div>
   
   <!-- Base32编解码工具模态框 -->
-  <div id="base32Modal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="base32ModalTitle">
+  <div id="base32Modal" class="modal fab-modal" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="base32ModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="base32ModalTitle" data-i18n="toolBase32Title">Base32 编解码</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideBase32Modal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideBase32Modal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
       
       <div class="tool-section">
@@ -712,11 +712,11 @@ function getHTMLBody() {
   </div>
   
   <!-- 时间戳工具模态框 -->
-  <div id="timestampModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="timestampModalTitle">
+  <div id="timestampModal" class="modal fab-modal" data-dialog-kind="passive" role="dialog" aria-modal="true" aria-labelledby="timestampModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="timestampModalTitle" data-i18n="pageTimestampTitle">时间戳工具</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideTimestampModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideTimestampModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
       
       <div class="tool-section">
@@ -758,11 +758,11 @@ function getHTMLBody() {
   </div>
   
   <!-- 密钥检查器模态框 -->
-  <div id="keyCheckModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="keyCheckModalTitle">
+  <div id="keyCheckModal" class="modal fab-modal" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="keyCheckModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="keyCheckModalTitle" data-i18n="toolKeyCheckerTitle">密钥检查器</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideKeyCheckModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideKeyCheckModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
       
       <div class="tool-section">
@@ -790,11 +790,11 @@ function getHTMLBody() {
   </div>
   
   <!-- 二维码解析工具模态框 -->
-  <div id="qrDecodeModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="qrDecodeModalTitle">
+  <div id="qrDecodeModal" class="modal fab-modal" data-dialog-kind="passive" role="dialog" aria-modal="true" aria-labelledby="qrDecodeModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="qrDecodeModalTitle" data-i18n="toolQrDecodeTitle">二维码解析</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideQRDecodeModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideQRDecodeModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
       
       <div class="tool-section">
@@ -844,11 +844,11 @@ function getHTMLBody() {
   </div>
   
   <!-- 密钥生成器模态框 -->
-  <div id="keyGeneratorModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="keyGeneratorModalTitle">
+  <div id="keyGeneratorModal" class="modal fab-modal" data-dialog-kind="passive" role="dialog" aria-modal="true" aria-labelledby="keyGeneratorModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="keyGeneratorModalTitle" data-i18n="toolKeyGenTitle">密钥生成器</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideKeyGeneratorModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideKeyGeneratorModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
       
       <div class="tool-section">
@@ -880,11 +880,11 @@ function getHTMLBody() {
   </div>
 
   <!-- WebDAV 同步配置模态框 -->
-  <div id="webdavModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="webdavModalTitle">
+  <div id="webdavModal" class="modal fab-modal" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="webdavModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="webdavModalTitle" data-i18n="syncWebdavTitle">WebDAV 同步</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideWebdavModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideWebdavModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
 
       <div class="tool-section">
@@ -928,7 +928,7 @@ function getHTMLBody() {
               <button class="btn btn-info" id="webdavTestBtn" onclick="testWebdavConnection()" style="flex: 1;" data-i18n="pageTestConnection">测试连接</button>
               <button class="btn btn-primary" id="webdavSaveBtn" onclick="saveWebdavConfig()" style="flex: 1;" data-i18n="save">保存</button>
             </div>
-            <button class="btn" onclick="hideWebdavForm()" style="width: 100%;" data-i18n="cancel">取消</button>
+            <button class="btn" data-dialog-dismiss onclick="hideWebdavForm()" style="width: 100%;" data-i18n="cancel">取消</button>
           </div>
         </div>
 
@@ -941,11 +941,11 @@ function getHTMLBody() {
   </div>
 
   <!-- S3 同步配置模态框 -->
-  <div id="s3Modal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="s3ModalTitle">
+  <div id="s3Modal" class="modal fab-modal" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="s3ModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="s3ModalTitle" data-i18n="syncS3Title">S3 同步</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideS3Modal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideS3Modal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
 
       <div class="tool-section">
@@ -999,7 +999,7 @@ function getHTMLBody() {
               <button class="btn btn-info" id="s3TestBtn" onclick="testS3Connection()" style="flex: 1;" data-i18n="pageTestConnection">测试连接</button>
               <button class="btn btn-primary" id="s3SaveBtn" onclick="saveS3Config()" style="flex: 1;" data-i18n="save">保存</button>
             </div>
-            <button class="btn" onclick="hideS3Form()" style="width: 100%;" data-i18n="cancel">取消</button>
+            <button class="btn" data-dialog-dismiss onclick="hideS3Form()" style="width: 100%;" data-i18n="cancel">取消</button>
           </div>
         </div>
 
@@ -1012,11 +1012,11 @@ function getHTMLBody() {
   </div>
 
   <!-- OneDrive 同步配置模态框 -->
-  <div id="oneDriveModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="oneDriveModalTitle">
+  <div id="oneDriveModal" class="modal fab-modal" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="oneDriveModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="oneDriveModalTitle" data-i18n="syncOneDriveTitle">OneDrive 同步</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideOneDriveModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideOneDriveModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
 
       <div class="tool-section">
@@ -1044,7 +1044,7 @@ function getHTMLBody() {
               <button class="btn btn-info" id="oneDriveAuthorizeBtn" onclick="authorizeOneDriveDest(document.getElementById('oneDriveEditId').value, { saveForm: true })" style="flex: 1;" data-i18n="pageSaveAuthorize">保存并授权</button>
               <button class="btn btn-primary" id="oneDriveSaveBtn" onclick="saveOneDriveConfig()" style="flex: 1;" data-i18n="save">保存</button>
             </div>
-            <button class="btn" onclick="hideOneDriveForm()" style="width: 100%;" data-i18n="cancel">取消</button>
+            <button class="btn" data-dialog-dismiss onclick="hideOneDriveForm()" style="width: 100%;" data-i18n="cancel">取消</button>
           </div>
         </div>
 
@@ -1057,11 +1057,11 @@ function getHTMLBody() {
   </div>
 
   <!-- Google Drive 同步配置模态框 -->
-  <div id="googleDriveModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="googleDriveModalTitle">
+  <div id="googleDriveModal" class="modal fab-modal" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="googleDriveModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="googleDriveModalTitle" data-i18n="syncGoogleDriveTitle">Google Drive 同步</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideGoogleDriveModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideGoogleDriveModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
 
       <div class="tool-section">
@@ -1089,7 +1089,7 @@ function getHTMLBody() {
               <button class="btn btn-info" id="googleDriveAuthorizeBtn" onclick="authorizeGoogleDriveDest(document.getElementById('googleDriveEditId').value, { saveForm: true })" style="flex: 1;" data-i18n="pageSaveAuthorize">保存并授权</button>
               <button class="btn btn-primary" id="googleDriveSaveBtn" onclick="saveGoogleDriveConfig()" style="flex: 1;" data-i18n="save">保存</button>
             </div>
-            <button class="btn" onclick="hideGoogleDriveForm()" style="width: 100%;" data-i18n="cancel">取消</button>
+            <button class="btn" data-dialog-dismiss onclick="hideGoogleDriveForm()" style="width: 100%;" data-i18n="cancel">取消</button>
           </div>
         </div>
 
@@ -1102,11 +1102,11 @@ function getHTMLBody() {
   </div>
 
   <!-- 设置模态框 -->
-  <div id="settingsModal" class="modal fab-modal-lg" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+  <div id="settingsModal" class="modal fab-modal-lg" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
     <div class="modal-content settings-modal-content">
       <div class="modal-header">
         <h2 id="settingsModalTitle" data-i18n="settingsTitle">设置</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideSettingsModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideSettingsModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
       <div class="settings-layout">
         <div class="settings-tabs">
@@ -1303,16 +1303,16 @@ function getHTMLBody() {
           </div>
         </div>
       </div>
-      <div class="settings-modal-actions"><button type="button" class="btn btn-primary" data-i18n="completed" onclick="hideSettingsModal()">完成</button></div>
+      <div class="settings-modal-actions"><button type="button" class="btn btn-primary" data-i18n="completed" data-dialog-dismiss onclick="hideSettingsModal()">完成</button></div>
     </div>
   </div>
 
   <!-- 二维码模态框 -->
-  <div id="qrModal" class="modal" role="dialog" aria-modal="true" style="display: none;" aria-labelledby="qrTitle">
+  <div id="qrModal" class="modal" data-dialog-kind="passive" role="dialog" aria-modal="true" style="display: none;" aria-labelledby="qrTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="qrTitle" data-i18n="cardMenuQRCode">二维码</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideQRModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideQRModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
 
       <div class="qr-subtitle-section">
@@ -1339,11 +1339,11 @@ function getHTMLBody() {
   </div>
 
   <!-- 导出格式选择模态框 -->
-  <div id="exportFormatModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="exportFormatModalTitle">
+  <div id="exportFormatModal" class="modal fab-modal" data-dialog-kind="passive" role="dialog" aria-modal="true" aria-labelledby="exportFormatModalTitle">
     <div class="modal-content export-modal-compact">
       <div class="modal-header">
         <h2 id="exportFormatModalTitle" data-i18n="exportFormatModalTitle">选择导出格式</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideExportFormatModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideExportFormatModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
 
       <div class="export-summary">
@@ -1508,11 +1508,11 @@ function getHTMLBody() {
   </div>
 
   <!-- 二级格式选择模态框 -->
-  <div id="subFormatModal" class="modal fab-modal-sm" role="dialog" aria-modal="true" aria-labelledby="subFormatTitle">
+  <div id="subFormatModal" class="modal fab-modal-sm" data-dialog-kind="passive" role="dialog" aria-modal="true" aria-labelledby="subFormatTitle">
     <div class="modal-content sub-format-modal">
       <div class="modal-header">
         <h2 id="subFormatTitle" data-i18n="exportFormatModalTitle">选择导出格式</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideSubFormatModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideSubFormatModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
       <div class="sub-format-list" id="subFormatList">
         <!-- 动态生成格式选项 -->
@@ -1521,11 +1521,11 @@ function getHTMLBody() {
   </div>
 
   <!-- FreeOTP 原版导出密码模态框 -->
-  <div id="freeotpExportModal" class="modal fab-modal-sm" role="dialog" aria-modal="true" aria-labelledby="freeotpExportModalTitle">
+  <div id="freeotpExportModal" class="modal fab-modal-sm" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="freeotpExportModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="freeotpExportModalTitle" data-i18n="pageFreeotpExportTitle">FreeOTP 加密导出</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideFreeOTPExportModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideFreeOTPExportModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
 
       <div style="margin-bottom: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 4px; font-size: var(--dialog-body-size);">
@@ -1544,18 +1544,18 @@ function getHTMLBody() {
       </div>
 
       <div class="form-actions">
-        <button type="button" class="btn btn-secondary" onclick="hideFreeOTPExportModal()" data-i18n="cancel">取消</button>
+        <button type="button" class="btn btn-secondary" data-dialog-dismiss onclick="hideFreeOTPExportModal()" data-i18n="cancel">取消</button>
         <button type="button" class="btn btn-primary" onclick="executeFreeOTPExport()" data-i18n="pageEncryptedExport">加密导出</button>
       </div>
     </div>
   </div>
 
   <!-- TOTP Authenticator 导出密码模态框 -->
-  <div id="totpAuthExportModal" class="modal fab-modal-sm" role="dialog" aria-modal="true" aria-labelledby="totpAuthExportModalTitle">
+  <div id="totpAuthExportModal" class="modal fab-modal-sm" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="totpAuthExportModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="totpAuthExportModalTitle" data-i18n="pageTotpAuthExportTitle">TOTP Authenticator 加密导出</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideTOTPAuthExportModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideTOTPAuthExportModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
 
       <div style="margin-bottom: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 4px; font-size: var(--dialog-body-size);">
@@ -1574,18 +1574,18 @@ function getHTMLBody() {
       </div>
 
       <div class="form-actions">
-        <button type="button" class="btn btn-secondary" onclick="hideTOTPAuthExportModal()" data-i18n="cancel">取消</button>
+        <button type="button" class="btn btn-secondary" data-dialog-dismiss onclick="hideTOTPAuthExportModal()" data-i18n="cancel">取消</button>
         <button type="button" class="btn btn-primary" onclick="executeTOTPAuthExport()" data-i18n="pageEncryptedExport">加密导出</button>
       </div>
     </div>
   </div>
 
   <!-- 备份导出格式选择模态框 -->
-  <div id="backupExportFormatModal" class="modal fab-modal" role="dialog" aria-modal="true" aria-labelledby="backupExportFormatModalTitle">
+  <div id="backupExportFormatModal" class="modal fab-modal" data-dialog-kind="passive" role="dialog" aria-modal="true" aria-labelledby="backupExportFormatModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="backupExportFormatModalTitle" data-i18n="pageBackupFormatTitle">选择备份导出格式</h2>
-        <button class="close-btn" type="button" aria-label="关闭弹窗" onclick="hideBackupExportFormatModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
+        <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideBackupExportFormatModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
 
       <div class="export-instructions">
@@ -1618,13 +1618,13 @@ function getHTMLBody() {
       </div>
 
       <div class="form-actions">
-        <button type="button" class="btn btn-secondary" onclick="hideBackupExportFormatModal()" data-i18n="cancel">取消</button>
+        <button type="button" class="btn btn-secondary" data-dialog-dismiss onclick="hideBackupExportFormatModal()" data-i18n="cancel">取消</button>
       </div>
     </div>
   </div>
 
   <!-- 登录模态框 -->
-  <div id="loginModal" class="modal login-modal" role="dialog" aria-modal="true" aria-labelledby="loginModalTitle">
+  <div id="loginModal" class="modal login-modal" data-dialog-kind="form" role="dialog" aria-modal="true" aria-labelledby="loginModalTitle">
     <div class="modal-content login-modal-content">
       <h2 class="login-modal-title" id="loginModalTitle" data-i18n="loginModalTitle">身份验证</h2>
       <p class="login-modal-description">
@@ -1679,7 +1679,7 @@ function getHTMLBody() {
       </div>
       <div id="loginError" class="login-modal-error" role="alert" aria-live="polite"></div>
       <div class="button-group login-modal-actions">
-        <button type="button" onclick="window.location.href='/otp'" class="btn btn-secondary login-modal-cancel-btn" data-i18n="cancel">
+        <button type="button" data-dialog-dismiss onclick="window.location.href='/otp'" class="btn btn-secondary login-modal-cancel-btn" data-i18n="cancel">
           取消
         </button>
         <button type="submit" class="btn btn-primary login-modal-submit-btn" data-i18n="loginSubmitBtn">
@@ -1691,11 +1691,11 @@ function getHTMLBody() {
   </div>
 
   <!-- 浏览器扩展安装指南 -->
-  <div id="browserExtensionModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="browserExtensionTitle" aria-describedby="browserExtensionDescription">
+  <div id="browserExtensionModal" class="modal" data-dialog-kind="passive" role="dialog" aria-modal="true" aria-labelledby="browserExtensionTitle" aria-describedby="browserExtensionDescription">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="browserExtensionTitle" data-i18n="pageExtensionTitle">2FA 验证助手</h2>
-        <button id="browserExtensionClose" class="close-btn" type="button" aria-label="关闭扩展介绍" onclick="hideBrowserExtensionModal()" data-i18n-aria-label="pageExtensionClose">${dialogIcon('close')}</button>
+        <button id="browserExtensionClose" class="close-btn" type="button" aria-label="关闭扩展介绍" data-dialog-dismiss onclick="hideBrowserExtensionModal()" data-i18n-aria-label="pageExtensionClose">${dialogIcon('close')}</button>
       </div>
       <p id="browserExtensionDescription" class="extension-description" data-i18n="pageExtensionDesc">在网站验证页面直接查看和填充验证码，减少来回切换。</p>
       <p id="extensionBrowserHint" class="extension-caption" data-i18n="pageExtensionBrowserHint">支持桌面 Chrome、Edge 和 Firefox（153+），请使用对应浏览器打开商店。</p>

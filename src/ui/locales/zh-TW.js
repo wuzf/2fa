@@ -3,6 +3,12 @@
  * 依據台灣與香港繁體中文習慣術語在地化
  */
 export const zhTW = {
+	dialogDiscardTitle: '放棄尚未儲存的內容？',
+	dialogDiscardMessage: '還有尚未儲存的內容。關閉後這些內容將遺失。',
+	dialogDiscard: '放棄並關閉',
+	dialogKeepEditing: '繼續編輯',
+	dialogSavePendingTitle: '儲存結果尚未確認',
+	dialogSavePendingMessage: '關閉不會撤銷已提交的儲存，其他尚未儲存的內容將被放棄。仍要關閉嗎？',
 	// 通用
 	ok: '確定',
 	cancel: '取消',

@@ -109,10 +109,7 @@ export function getQRCodeCode() {
       setTranslatedText(document.getElementById('qrSubtitle'), secret.account ? 'transferQRAccount' : 'transferQRImportHint', { account: secret.account });
 
       generateQRCodeForModal(currentOTPAuthURL);
-      const modal = document.getElementById('qrModal');
-      modal.style.display = 'flex';
-      setTimeout(() => modal.classList.add('show'), 10);
-      disableBodyScroll();
+      showModal('qrModal');
     }
 
     // 为模态框生成二维码
@@ -191,9 +188,7 @@ export function getQRCodeCode() {
       if (typeof ensureJsQR === 'function') {
         ensureJsQR().catch(() => {/* 失败时下游 typeof jsQR 检查会兜底提示 */});
       }
-      const modal = document.getElementById('qrScanModal');
-      modal.style.display = 'flex';
-      setTimeout(() => modal.classList.add('show'), 10);
+      showModal('qrScanModal');
       initScanModalDragPaste();
 
       // 重置连续扫描状态
@@ -208,17 +203,14 @@ export function getQRCodeCode() {
       }
 
       startQRScanner();
-      disableBodyScroll();
     }
 
     // 隐藏二维码扫描器
     function hideQRScanner() {
       const modal = document.getElementById('qrScanModal');
-      if (!modal || !modal.classList.contains('show')) return;
-      modal.classList.remove('show');
-      setTimeout(() => modal.style.display = 'none', 300);
+      if (!modal || modal.inert || modal.style.display !== 'flex') return;
       stopQRScanner();
-      enableBodyScroll();
+      hideModal('qrScanModal');
 
       // 重置连续扫描状态
       continuousScanMode = false;

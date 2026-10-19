@@ -1680,5 +1680,11 @@
 	"You have a new notification": "Hai una nuova notifica",
 	"Unable to process this request. Check that you are logged in and retry.": "Impossibile elaborare questa richiesta. Controlla di aver effettuato l'accesso e riprova.",
 	"Companion to github.com/wuzf/2fa. Deploy a 2FA instance, then connect to view, copy and autofill two-factor authentication codes.": "Per github.com/wuzf/2fa: crea la tua istanza, connettila e visualizza, copia o compila automaticamente i codici 2FA.",
-	"Fill the verification code for the account linked to this website": "Inserisci il codice di verifica per l'account collegato a questo sito web"
+	"Fill the verification code for the account linked to this website": "Inserisci il codice di verifica per l'account collegato a questo sito web",
+	"Discard unsaved changes?": "Scartare le modifiche non salvate?",
+	"You have unsaved changes. Closing will discard them.": "Ci sono modifiche non salvate. Verranno scartate alla chiusura.",
+	"Discard and close": "Scarta e chiudi",
+	"Keep editing": "Continua a modificare",
+	"Save result not yet confirmed": "Esito del salvataggio non ancora confermato",
+	"Closing will not undo saves already submitted. Other unsaved changes will be discarded. Close anyway?": "La chiusura non annullerà i salvataggi già inviati. Le altre modifiche non salvate verranno eliminate. Chiudere comunque?"
 }

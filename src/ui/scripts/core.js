@@ -189,6 +189,7 @@ export function getCoreCode() {
 
     // 页面加载时获取密钥列表
     document.addEventListener('DOMContentLoaded', function() {
+        if (typeof initModalDismissal === 'function') initModalDismissal();
         if (typeof initLanguage === 'function') {
           initLanguage();
         }
@@ -1741,10 +1742,6 @@ export function getCoreCode() {
           if (trigger) trigger.focus();
           return;
         }
-        hideSecretModal();
-        hideQRModal();
-        hideQRScanner();
-        hideImportModal();
       }
       
       if (e.ctrlKey && e.key === 'd') {

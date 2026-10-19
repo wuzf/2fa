@@ -21,6 +21,8 @@ export function getSettingsCode() {
     let languagePreferenceSynced = false;
     let languageSyncPromise = null;
     let preferenceSaveQueue = Promise.resolve();
+    let defaultExportFormatDirty = false;
+    let defaultExportFormatPending = null;
     const NUMERIC_PREFERENCE_SAVE_DELAY = 500;
     const numericPreferences = {
       jwtExpiryDays: {
@@ -32,6 +34,42 @@ export function getSettingsCode() {
         version: 0, dirty: false, savedValue: null, timer: null, saving: null
       }
     };
+
+    function hasUnsavedSettingsChanges() {
+      return ['settingsCurrentPassword', 'settingsNewPassword', 'settingsConfirmPassword']
+        .some(id => document.getElementById(id)?.value)
+        || defaultExportFormatDirty || Object.values(numericPreferences).some(state => state.dirty);
+    }
+
+    async function flushSettingsBeforeClose(signal) {
+      // A user can keep editing while a save is pending. Wait for a stable
+      // set of edits, so an earlier save cannot trigger a discard prompt
+      // while a newer selection is still being saved in the background.
+      const keys = Object.keys(numericPreferences);
+      while (!signal?.aborted) {
+        const versions = keys.map(key => numericPreferences[key].version);
+        const formatSave = defaultExportFormatPending;
+        await Promise.all([...keys.map(key => saveNumericPreference(key)), formatSave]);
+        if (signal?.aborted) return;
+        if (formatSave === defaultExportFormatPending
+          && keys.every((key, index) => numericPreferences[key].version === versions[index])) return;
+      }
+    }
+
+    function discardSettingsDrafts() {
+      ['settingsCurrentPassword', 'settingsNewPassword', 'settingsConfirmPassword'].forEach(id => {
+        const input = document.getElementById(id);
+        if (input) input.value = '';
+      });
+      for (const state of Object.values(numericPreferences)) {
+        if (state.timer !== null) clearTimeout(state.timer);
+        state.timer = null;
+        state.dirty = false;
+        state.version += 1;
+      }
+      defaultExportFormatDirty = false;
+      defaultExportFormatChangeVersion += 1;
+    }
 
     // Settings are stored together on the server. Serialize writes from all
     // preference controls so one field cannot overwrite another field's update.
@@ -393,10 +431,16 @@ export function getSettingsCode() {
     /**
      * 保存导出偏好格式
      */
-    async function saveDefaultExportFormat() {
+    function saveDefaultExportFormat() {
+      defaultExportFormatPending = saveDefaultExportFormatRequest();
+      return defaultExportFormatPending;
+    }
+
+    async function saveDefaultExportFormatRequest() {
       const formatSelect = document.getElementById('settingsDefaultExportFormat');
       if (!formatSelect) return;
       const selectedFormat = formatSelect.value;
+      defaultExportFormatDirty = true;
       const requestId = ++defaultExportFormatSaveRequestId;
       defaultExportFormatChangeVersion += 1;
 
@@ -412,6 +456,7 @@ export function getSettingsCode() {
         }
 
         if (resp.ok && data.success) {
+          defaultExportFormatDirty = false;
           const savedFormat = (data.settings && data.settings.defaultExportFormat) || selectedFormat;
           formatSelect.value = savedFormat;
           localStorage.setItem('defaultExportFormat', savedFormat);
@@ -501,8 +546,9 @@ export function getSettingsCode() {
       const state = numericPreferences[key];
       if (state.timer !== null) clearTimeout(state.timer);
       state.timer = null;
-      if (!state.dirty || readNumericPreference(key) === null) return;
+      // Even an invalid new draft must wait for a previously submitted save.
       if (state.saving) return state.saving;
+      if (!state.dirty || readNumericPreference(key) === null) return;
 
       state.saving = (async () => {
         while (state.dirty) {

@@ -165,6 +165,7 @@ export function getGoogleDriveToolCode() {
         document.getElementById('googleDriveName').value = '';
         document.getElementById('googleDriveFolderPath').value = '/2FA-Backups';
       }
+      if (typeof markModalSaved === 'function') markModalSaved('googleDriveModal');
     }
 
     function hideGoogleDriveForm() {
@@ -174,6 +175,7 @@ export function getGoogleDriveToolCode() {
       if (addBtn && addBtn.dataset.canAdd !== 'false') {
         addBtn.style.display = 'block';
       }
+      if (typeof markModalSaved === 'function') markModalSaved('googleDriveModal');
     }
 
     async function editGoogleDriveDest(id) {

@@ -12,6 +12,7 @@ function createHarness(secrets) {
 		createElement() {
 			return {
 				style: {},
+				dataset: {},
 				children: [],
 				innerHTML: '',
 				set textContent(value) {

@@ -253,6 +253,7 @@ export function getAuthCode() {
       errorDiv.style.display = 'none';
       tokenInput.value = '';
       setLoginPasswordVisibility(false);
+      if (typeof trackModalOpen === 'function') trackModalOpen(modal);
 
       setTimeout(() => tokenInput.focus(), 100);
 
@@ -270,6 +271,7 @@ export function getAuthCode() {
         clearTimeout(loginModalHideTimer);
       }
 
+      if (typeof trackModalClosed === 'function') trackModalClosed(modal);
       modal.classList.remove('show');
       loginModalHideTimer = setTimeout(() => {
         modal.style.display = 'none';

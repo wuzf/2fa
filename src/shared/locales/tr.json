@@ -1680,5 +1680,11 @@
 	"You have a new notification": "Yeni bir bildiriminiz var",
 	"Unable to process this request. Check that you are logged in and retry.": "Bu istek işlenemiyor. Giriş yaptığınızı kontrol edin ve tekrar deneyin.",
 	"Companion to github.com/wuzf/2fa. Deploy a 2FA instance, then connect to view, copy and autofill two-factor authentication codes.": "github.com/wuzf/2fa için: 2FA sunucunuzu kurup bağlanın; kodları görüntüleyin, kopyalayın ve otomatik doldurun.",
-	"Fill the verification code for the account linked to this website": "Bu web sitesine bağlı hesap için doğrulama kodunu doldurun"
+	"Fill the verification code for the account linked to this website": "Bu web sitesine bağlı hesap için doğrulama kodunu doldurun",
+	"Discard unsaved changes?": "Kaydedilmemiş değişiklikler silinsin mi?",
+	"You have unsaved changes. Closing will discard them.": "Kaydedilmemiş değişiklikler var. Kapatırsanız bu değişiklikler silinir.",
+	"Discard and close": "Sil ve kapat",
+	"Keep editing": "Düzenlemeye devam et",
+	"Save result not yet confirmed": "Kaydetme sonucu henüz doğrulanmadı",
+	"Closing will not undo saves already submitted. Other unsaved changes will be discarded. Close anyway?": "Kapatmak, zaten gönderilmiş kaydetme isteklerini geri almaz. Kaydedilmemiş diğer değişiklikler silinir. Yine de kapatılsın mı?"
 }

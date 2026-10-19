@@ -54,6 +54,7 @@ export function getBrowserExtensionCode() {
     function handleBrowserExtensionKeydown(event) {
       const state = browserExtensionDialog;
       if (!state) return;
+      if (typeof getTopModal === 'function' && getTopModal() !== state.modal) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -75,7 +76,7 @@ export function getBrowserExtensionCode() {
 
     function handleBrowserExtensionFocus(event) {
       const state = browserExtensionDialog;
-      if (state && !state.modal.contains(event.target)) {
+      if (state && (typeof getTopModal !== 'function' || getTopModal() === state.modal) && !state.modal.contains(event.target)) {
         focusBrowserExtensionElement(browserExtensionFocusable(state.modal)[0] || state.modal);
       }
     }
@@ -147,6 +148,7 @@ export function getBrowserExtensionCode() {
       modal.hidden = false;
       modal.style.display = 'flex';
       modal.classList.add('show');
+      if (typeof trackModalOpen === 'function') trackModalOpen(modal, state.returnFocus);
       modal.setAttribute('aria-hidden', 'false');
       modal.setAttribute('tabindex', '-1');
       const trigger = document.getElementById('browserExtensionTrigger');
@@ -169,6 +171,7 @@ export function getBrowserExtensionCode() {
       const state = browserExtensionDialog;
       if (!state) return;
       browserExtensionDialog = null;
+      if (typeof trackModalClosed === 'function') trackModalClosed(state.modal);
       state.modal.removeEventListener('click', handleBrowserExtensionBackdrop);
       document.removeEventListener('keydown', handleBrowserExtensionKeydown, true);
       document.removeEventListener('focusin', handleBrowserExtensionFocus, true);

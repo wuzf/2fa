@@ -132,12 +132,14 @@ export function getS3ToolCode() {
         document.getElementById('s3SecretAccessKey').placeholder = t('toolSyncSecretKey');
         document.getElementById('s3Prefix').value = '';
       }
+      if (typeof markModalSaved === 'function') markModalSaved('s3Modal');
     }
 
     function hideS3Form() {
       document.getElementById('s3FormArea').style.display = 'none';
       const addBtn = document.getElementById('s3AddBtn');
       addBtn.style.display = addBtn.dataset.canAdd === 'false' ? 'none' : 'block';
+      if (typeof markModalSaved === 'function') markModalSaved('s3Modal');
     }
 
     async function editS3Dest(id) {

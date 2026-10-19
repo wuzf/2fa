@@ -1680,5 +1680,11 @@
 	"You have a new notification": "Anda mendapat notifikasi baru",
 	"Unable to process this request. Check that you are logged in and retry.": "Tidak dapat memproses permintaan ini. Periksa apakah Anda sudah masuk dan coba lagi.",
 	"Companion to github.com/wuzf/2fa. Deploy a 2FA instance, then connect to view, copy and autofill two-factor authentication codes.": "Untuk github.com/wuzf/2fa. Siapkan instans 2FA Anda, lalu hubungkan untuk melihat, menyalin, dan mengisi kode otomatis.",
-	"Fill the verification code for the account linked to this website": "Isikan kode verifikasi akun yang terhubung dengan website ini"
+	"Fill the verification code for the account linked to this website": "Isikan kode verifikasi akun yang terhubung dengan website ini",
+	"Discard unsaved changes?": "Buang perubahan yang belum disimpan?",
+	"You have unsaved changes. Closing will discard them.": "Ada perubahan yang belum disimpan. Menutup akan membuangnya.",
+	"Discard and close": "Buang dan tutup",
+	"Keep editing": "Lanjutkan mengedit",
+	"Save result not yet confirmed": "Hasil penyimpanan belum dikonfirmasi",
+	"Closing will not undo saves already submitted. Other unsaved changes will be discarded. Close anyway?": "Menutup tidak akan membatalkan penyimpanan yang sudah dikirim. Perubahan lain yang belum disimpan akan dibuang. Tetap tutup?"
 }
