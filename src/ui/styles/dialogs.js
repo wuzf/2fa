@@ -286,7 +286,34 @@ export function getDialogStyles() {
     .modal .settings-tab-text { white-space: normal; overflow: visible; overflow-wrap: anywhere; hyphens: auto; }
     .modal .settings-tab.active::before { content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--dialog-brand); }
     .modal .settings-content { padding: 8px 24px 24px; }
-    .modal .settings-modal-actions { display: flex; flex-shrink: 0; justify-content: flex-end; padding: 16px 24px; background: var(--dialog-subtle); border-top: 1px solid var(--dialog-line); }
+    .modal .settings-code-toolbar { position: sticky; top: 0; z-index: 3; padding: 8px 0; background: var(--dialog-surface); border-bottom: 1px solid var(--dialog-line); }
+    .modal .settings-code-toolbar:has(#settingsCustomCodeResult:empty):not(:has(button:not([hidden]))) { display: none; }
+    .modal .settings-code-actions { margin: 0; }
+    .modal .settings-code-add-actions { margin-top: 12px; }
+    .modal .settings-code-list { display: grid; gap: 8px; margin-top: 12px; }
+    .modal .settings-code-item { min-width: 0; border: 1px solid var(--dialog-line); border-radius: 6px; background: var(--dialog-surface); scroll-margin-top: 120px; }
+    .modal .settings-code-item-header { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 4px 8px; }
+    .modal .settings-code-summary { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; padding: 8px 4px; border: 0; border-radius: 4px; background: transparent; color: var(--dialog-text); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+    .modal .settings-code-summary::before { content: ''; flex: none; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); }
+    .modal .settings-code-summary[aria-expanded="true"]::before { transform: rotate(45deg); }
+    .modal .settings-code-summary:hover { background: var(--dialog-hover); }
+    .modal .settings-code-summary:focus-visible { outline: 2px solid var(--dialog-brand); outline-offset: 1px; }
+    .modal .settings-code-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .modal .settings-code-body { display: grid; gap: 8px; padding: 12px; border-top: 1px solid var(--dialog-line); }
+    .modal .settings-code-body[hidden] { display: none; }
+    .modal .settings-code-label { display: grid; gap: 6px; font-size: var(--dialog-caption-size); color: var(--dialog-muted); }
+    .modal .settings-code-name { width: 100%; min-width: 0; }
+    .modal .settings-code-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; cursor: pointer; white-space: nowrap; font-size: var(--dialog-caption-size); }
+    .modal .settings-code-toggle input { flex: none; appearance: none; position: relative; width: 32px; height: 18px; margin: 0; border: 1px solid var(--dialog-stroke); border-radius: 12px; background: var(--dialog-subtle); cursor: pointer; }
+    .modal .settings-code-toggle input::before { content: ''; position: absolute; width: 12px; height: 12px; top: 2px; left: 2px; border-radius: 50%; background: var(--dialog-muted); transition: transform .12s ease; }
+    .modal .settings-code-toggle input:checked { background: var(--dialog-brand); border-color: var(--dialog-brand); }
+    .modal .settings-code-toggle input:checked::before { transform: translateX(14px); background: #fff; }
+    .modal .settings-code-toggle input:focus-visible { outline: 2px solid var(--dialog-brand); outline-offset: 3px; }
+    .modal .settings-code-remove { min-width: 44px; padding: 6px 8px; color: var(--dialog-danger); }
+    .modal .settings-code-editor { min-height: 220px; width: 100%; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; line-height: 1.6; }
+    .modal .settings-code-empty { margin: 16px 0; padding: 20px 12px; border: 1px dashed var(--dialog-line); border-radius: 6px; text-align: center; }
+    .modal .settings-code-empty[hidden] { display: none; }
+    .modal .settings-modal-actions { display: flex; flex-shrink: 0; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 24px; background: var(--dialog-subtle); border-top: 1px solid var(--dialog-line); }
     .modal .settings-section-title { font-size: var(--dialog-body-size); }
     .modal .settings-desc { font-size: var(--dialog-caption-size); }
     .modal .settings-panel[data-panel="sync"] .settings-section { margin: 0; }
@@ -469,11 +496,13 @@ export function getDialogStyles() {
       .modal .settings-tabs { width: auto; padding: 0 12px 12px; background: var(--dialog-surface); gap: 4px; }
       .modal .settings-layout { flex-direction: column; }
       .modal .settings-tabs { display: flex; flex-shrink: 0; border-right: 0; }
-      .modal .settings-tab { flex: 1; min-width: 0; }
-      .modal .settings-tab-text { display: inline; }
+      .modal .settings-tab { flex: 1 0 auto; width: auto; min-width: 0; }
+      .modal .settings-tab-text { display: inline; white-space: nowrap; }
       .modal .settings-tab { padding: 8px 10px; justify-content: center; border: 0; margin: 0; font-size: var(--dialog-body-size); }
       .modal .settings-tab.active::before { left: 12px; right: 12px; top: auto; bottom: 0; height: 3px; width: auto; }
       .modal .settings-content { padding: 8px 20px 20px; }
+      .modal .settings-code-item-header { gap: 6px; padding: 4px 6px; }
+      .modal .settings-code-toggle span { display: none; }
       .modal .settings-modal-actions { padding: 14px 20px max(14px, env(safe-area-inset-bottom)); }
       .modal .settings-tab-icon { display: none; }
       .modal .sync-card-header { gap: 8px; }

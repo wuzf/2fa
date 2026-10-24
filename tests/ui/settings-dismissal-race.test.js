@@ -33,6 +33,7 @@ function harness() {
 		HTMLElement: window.HTMLElement,
 		localStorage: window.localStorage,
 		AbortController,
+		Date,
 		setTimeout,
 		clearTimeout,
 		requestAnimationFrame: (fn) => setTimeout(fn, 16),
@@ -79,7 +80,11 @@ describe('settings edits during dismissal', () => {
 		await h.flush();
 		h.selectFormat('csv');
 		h.requests[0].finish();
-		await h.flush(50);
+		await h.flush(1099);
+		expect(h.requests).toHaveLength(1);
+		expect(h.element('confirmDialogModal')).toBeNull();
+		expect(h.element('settingsModal').classList.contains('show')).toBe(true);
+		await h.flush(1);
 		expect(h.requests.map((request) => request.body)).toEqual([{ defaultExportFormat: 'txt' }, { defaultExportFormat: 'csv' }]);
 		expect(h.element('confirmDialogModal')).toBeNull();
 		expect(h.element('settingsModal').classList.contains('show')).toBe(true);
@@ -98,7 +103,10 @@ describe('settings edits during dismissal', () => {
 		await h.flush();
 		h.selectFormat('csv');
 		h.requests[0].finish();
-		await h.flush(50);
+		await h.flush(1099);
+		expect(h.requests).toHaveLength(1);
+		expect(h.element('confirmDialogModal')).toBeNull();
+		await h.flush(1);
 		expect(h.element('confirmDialogModal')).toBeNull();
 		h.requests[1].finish(false);
 		await h.flush(50);
@@ -119,7 +127,10 @@ describe('settings edits during dismissal', () => {
 		h.element('settingsMaxBackups').value = '25';
 		h.api.scheduleNumericPreferenceSave('maxBackups');
 		h.requests[0].finish();
-		await h.flush(50);
+		await h.flush(1099);
+		expect(h.requests).toHaveLength(1);
+		expect(h.element('confirmDialogModal')).toBeNull();
+		await h.flush(1);
 		expect(h.requests.map((request) => request.body)).toEqual([{ jwtExpiryDays: 45 }, { maxBackups: 25 }]);
 		expect(h.element('confirmDialogModal')).toBeNull();
 		h.requests[1].finish();

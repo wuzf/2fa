@@ -9,19 +9,23 @@ import { getScripts, getCoreScripts } from './scripts/index.js';
 import { dialogIcon } from './dialogIcons.js';
 import { APP_VERSION } from '../utils/version.js';
 import { getPageSecurityHeaders } from '../utils/security.js';
+import { getEnabledCustomCode, sanitizeCustomCode } from '../utils/settings.js';
 import { LANGUAGE_OPTIONS, normalizeLanguage } from '../shared/languages.js';
 
 /**
  * 创建主页面（密钥管理界面）
  * @param {Object} options - 配置选项
  * @param {boolean} options.lazyLoad - 是否启用懒加载（默认true）
+ * @param {string} options.customCode - 管理员保存的自定义 HTML、样式及脚本
+ * @param {Array} options.customCodes - 多条自定义代码，按顺序加载启用的条目
  * @returns {Response} HTML响应
  */
 export async function createMainPage(options = {}) {
-	const { lazyLoad = true } = options;
+	const { lazyLoad = true, customCode = '', customCodes } = options;
 
 	// 构建完整的HTML内容
-	const html = buildCompleteHTML(lazyLoad);
+	const enabledCode = customCodes === undefined ? sanitizeCustomCode(customCode) : getEnabledCustomCode({ customCodes });
+	const html = buildCompleteHTML(lazyLoad, enabledCode);
 
 	return new Response(html, {
 		headers: {
@@ -38,8 +42,10 @@ export async function createMainPage(options = {}) {
  * 构建完整的HTML内容
  * @param {boolean} lazyLoad - 是否启用懒加载
  */
-function buildCompleteHTML(lazyLoad = true) {
-	return getHTMLStart() + getStyles() + getHTMLBody() + getHTMLScripts(lazyLoad) + getHTMLEnd();
+function buildCompleteHTML(lazyLoad = true, customCode = '') {
+	// Render trusted administrator code as HTML so native script ordering and
+	// DOMContentLoaded/load handlers work, including external scripts.
+	return getHTMLStart() + getStyles() + getHTMLBody() + getHTMLScripts(lazyLoad) + customCode + getHTMLEnd();
 }
 
 /**
@@ -1122,8 +1128,33 @@ function getHTMLBody() {
             <span class="settings-tab-icon">${dialogIcon('sliders')}</span>
             <span class="settings-tab-text" data-i18n="settingsTabPreferences">偏好设置</span>
           </button>
+          <button type="button" class="settings-tab" data-tab="custom-code" onclick="switchSettingsTab('custom-code')">
+            <span class="settings-tab-icon">${dialogIcon('code')}</span>
+            <span class="settings-tab-text" data-i18n="settingsTabCustomCode">自定义代码</span>
+          </button>
         </div>
         <div class="settings-content">
+          <div class="settings-panel" data-panel="custom-code">
+            <div class="settings-section">
+              <h3 class="settings-section-title" id="settingsCustomCodeTitle" data-i18n="customCodeTitle">自定义代码（包括 style 和 script）</h3>
+              <p class="settings-desc" id="settingsCustomCodeDesc" data-i18n="customCodeDesc">可添加多条 HTML、style 和 script 代码并单独开关。修改会自动保存，并在停止输入后自动刷新生效。</p>
+              <div class="settings-code-toolbar">
+                <div class="settings-code-actions">
+                  <button type="button" class="btn btn-secondary" id="settingsCustomCodeRetry" onclick="retryCustomCodeSave()" data-i18n="customCodeRetry" hidden>重试</button>
+                </div>
+                <div id="settingsCustomCodeResult" class="settings-result" role="status" aria-live="polite"></div>
+              </div>
+              <p id="settingsCustomCodeEmpty" class="settings-code-empty settings-desc" data-i18n="customCodeEmpty" hidden>还没有自定义代码，点击“添加代码”开始。</p>
+              <div id="settingsCustomCodeList" class="settings-code-list" aria-labelledby="settingsCustomCodeTitle" aria-describedby="settingsCustomCodeDesc"></div>
+              <div class="settings-code-actions settings-code-add-actions">
+                <button type="button" class="btn btn-primary" id="settingsCustomCodeAdd" onclick="addCustomCode()" data-i18n="customCodeAdd" hidden disabled>添加代码</button>
+              </div>
+              <div class="settings-info-box">
+                <span data-i18n="customCodeRecovery">代码影响页面使用时，可通过临时禁用入口打开页面并修改。</span>
+                <a href="/?disableCustomCode=1" data-i18n="customCodeRecoveryLink">临时禁用自定义代码</a>
+              </div>
+            </div>
+          </div>
           <!-- 账户安全面板 -->
           <div class="settings-panel active" data-panel="security">
             <div class="settings-section">
@@ -1303,7 +1334,9 @@ function getHTMLBody() {
           </div>
         </div>
       </div>
-      <div class="settings-modal-actions"><button type="button" class="btn btn-primary" data-i18n="completed" data-dialog-dismiss onclick="hideSettingsModal()">完成</button></div>
+      <div class="settings-modal-actions">
+        <button type="button" class="btn btn-primary" data-i18n="completed" data-dialog-dismiss onclick="hideSettingsModal()">完成</button>
+      </div>
     </div>
   </div>
 

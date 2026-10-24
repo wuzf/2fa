@@ -39,12 +39,18 @@ function expectNoSetupWrites(env) {
 
 describe('首次设置语言持久化', () => {
 	it.each([...LANGUAGE_PREFERENCES, ' en '])('保存语言 %j，并保留已有其他设置', async (language) => {
+		const customCode = '<style>body { color: rebeccapurple; }</style>\n';
 		const existing = {
 			jwtExpiryDays: 45,
 			maxBackups: 20,
 			defaultExportFormat: 'csv',
 			customPreference: { enabled: true },
 			language: 'zh-CN',
+			customCode,
+			customCodes: [
+				{ id: 'theme', name: 'Theme', enabled: true, code: customCode },
+				{ id: 'disabled', name: 'Disabled', enabled: false, code: '<script>window.disabled = true;</script>' },
+			],
 		};
 		const env = createEnvironment({ settings: JSON.stringify(existing) });
 
@@ -55,6 +61,21 @@ describe('首次设置语言持久化', () => {
 		expect(response.headers.get('Set-Cookie')).toContain('auth_token=');
 		expect(JSON.parse(await env.SECRETS_KV.get('settings'))).toEqual({ ...existing, language: language.trim() });
 		expect(await checkIfSetupRequired(env)).toBe(false);
+	});
+
+	it('保存语言时为缺少自定义代码的旧设置补齐空默认值', async () => {
+		const existing = { jwtExpiryDays: 45, maxBackups: 20, defaultExportFormat: 'csv', language: 'zh-CN' };
+		const env = createEnvironment({ settings: JSON.stringify(existing) });
+
+		const response = await handleFirstTimeSetup(createSetupRequest({ language: 'en' }), env);
+
+		expect(response.status).toBe(200);
+		expect(JSON.parse(await env.SECRETS_KV.get('settings'))).toEqual({
+			...existing,
+			language: 'en',
+			customCode: '',
+			customCodes: [],
+		});
 	});
 
 	it.each(['unsupported', 'EN', 'zh', '', '   ', null, false, 123, {}, [], ['en']])(

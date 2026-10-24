@@ -5,7 +5,7 @@
 
 // API 处理器
 import { handleGenerateOTP, handleGetBackups, handleExportBackup, handleExportSecrets } from '../api/secrets/index.js';
-import { runSecretsOperation } from '../storage/secrets-store.js';
+import { readSettingsSnapshot, runSecretsOperation } from '../storage/secrets-store.js';
 import { handleFaviconProxy } from '../api/favicon.js';
 import {
 	handleGetWebDAVConfigs,
@@ -32,7 +32,6 @@ import {
 	handleToggleGoogleDrive,
 } from '../api/gdrive.js';
 import { handleChangePassword } from '../api/password.js';
-import { handleGetSettings, handleSaveSettings } from '../api/settings.js';
 import { handleGetTime } from '../api/time.js';
 
 // UI 页面生成器
@@ -134,7 +133,16 @@ export async function handleRequest(request, env, ctx) {
 
 		// 静态路由处理
 		if (pathname === '/' || pathname === '') {
-			return await createMainPage();
+			let customCodes = [];
+			// Recovery mode must remain usable even if saved code hides the UI or throws.
+			if (url.searchParams.get('disableCustomCode') !== '1') {
+				try {
+					customCodes = (await readSettingsSnapshot(env)).customCodes;
+				} catch (error) {
+					logger.warn('读取自定义代码失败，使用默认页面', { errorMessage: error.message });
+				}
+			}
+			return await createMainPage({ customCodes });
 		}
 
 		// PWA Manifest
@@ -370,9 +378,9 @@ async function handleApiRequest(pathname, method, request, env, ctx) {
 	if (pathname === '/api/settings') {
 		switch (method) {
 			case 'GET':
-				return handleGetSettings(request, env);
+				return runSecretsOperation('settings.get', request, env, ctx);
 			case 'POST':
-				return handleSaveSettings(request, env);
+				return runSecretsOperation('settings.save', request, env, ctx);
 			default:
 				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 		}

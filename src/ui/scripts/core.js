@@ -209,6 +209,7 @@ export function getCoreCode() {
           // Cookie 过期由浏览器自动管理，无需定时检查
         }
         initTheme();
+        if (typeof initCustomCodeAutoReload === 'function') initCustomCodeAutoReload();
 
         // 排序 popover 外部点击 / Escape 关闭
         if (typeof initSortDropdownOutsideClose === 'function') {

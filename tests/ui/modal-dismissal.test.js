@@ -23,6 +23,7 @@ function harness() {
 		document,
 		HTMLElement: window.HTMLElement,
 		localStorage: window.localStorage,
+		Date,
 		setTimeout,
 		clearTimeout,
 		AbortController,

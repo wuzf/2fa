@@ -36,15 +36,25 @@ describe('router and secrets store', () => {
 		['POST', '/api/secrets/counters/compact', {}, 'secrets.compact'],
 		['POST', '/api/backup', {}, 'backup.create'],
 		['POST', '/api/backup/restore', {}, 'backup.restore'],
+		['GET', '/api/settings', undefined, 'settings.get'],
+		['POST', '/api/settings', { language: 'en' }, 'settings.save'],
 	])('sends %s %s to the store', async (method, path, body, operation) => {
 		expect(await operationFor(method, path, body)).toEqual([operation]);
 	});
 
 	it.each([
 		['GET', '/api/backup'],
-		['GET', '/api/settings'],
 		['POST', '/api/secrets/export', { format: 'json', secrets: [] }],
 	])('handles %s %s without the store', async (method, path, body) => {
 		expect(await operationFor(method, path, body)).toEqual([]);
+	});
+
+	it('returns 503 for settings reads when the configured store is unavailable', async () => {
+		const env = createStoreEnv();
+		await env.SECRETS_KV.put('settings', JSON.stringify({ customCode: '<style>old-code</style>' }));
+		env.SECRETS_STORE.failFetch = new Error('Durable Object unavailable');
+		const response = await handleRequest(new Request('https://2fa.example.com/api/settings'), env);
+		expect(response.status).toBe(503);
+		expect(await response.text()).not.toContain('old-code');
 	});
 });

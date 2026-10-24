@@ -17,7 +17,7 @@ describe('settings module code generation', () => {
 		expect(code).toContain('const selectedFormat = formatSelect.value;');
 		expect(code).toContain('const requestId = ++defaultExportFormatSaveRequestId;');
 		expect(code).toContain('body: JSON.stringify({ defaultExportFormat: selectedFormat }),');
-		expect(code).toContain('if (requestId !== defaultExportFormatSaveRequestId) {');
+		expect(code).toContain('if (requestId !== defaultExportFormatSaveRequestId || version !== defaultExportFormatChangeVersion) {');
 		expect(code).toContain('const savedFormat = (data.settings && data.settings.defaultExportFormat) || selectedFormat;');
 		expect(code).toContain("t('defaultExportFormatSaved')");
 	});
