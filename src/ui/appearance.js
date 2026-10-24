@@ -7,16 +7,22 @@ const json = (value) =>
 		.replace(/\u2029/g, '\\u2029');
 
 /** Only validated, published snapshots enter the public shell. No raw HTML interpolation. */
-export function getAppearanceHead(snapshot, { buildId = '', safeMode = false } = {}) {
+export function getAppearanceHead(
+	snapshot,
+	{ buildId = '', safeMode = false, shellConfigId = '', adminCodeId = '', recoveryConfigId = '' } = {},
+) {
 	return `<meta name="2fa-build" content="${buildId}">
   <script>
     window.__2FA_BUILD_ID__ = ${json(buildId)};
     window.__2FA_SAFE_MODE__ = ${json(safeMode)};
+    window.__2FA_SHELL_CONFIG_ID__ = ${json(shellConfigId)};
+    window.__2FA_ADMIN_CODE_ID__ = ${json(adminCodeId)};
+    window.__2FA_RECOVERY_CONFIG_ID__ = ${json(recoveryConfigId)};
     window.__2FA_APPEARANCE__ = ${json(snapshot)};
     window.__2FA_BUILTIN_THEMES__ = ${json(getBuiltinThemes())};
     (function() {
       const snapshot = window.__2FA_APPEARANCE__;
-      if (!snapshot || window.__2FA_SAFE_MODE__) return;
+      if (!snapshot || window.__2FA_SAFE_MODE__ || snapshot.kind === 'app' || snapshot.manifest?.themeApiVersion === 2) return;
       const mode = document.documentElement.getAttribute('data-theme') || 'light';
       const tokens = snapshot.manifest?.tokens?.[mode] || {};
       const css = document.createElement('style');
@@ -40,13 +46,14 @@ export function getAppearanceClientCode() {
       setMeta('description', brand.description || (typeof t === 'function' ? t('pageDescription') : '2FA'));
       const revision = snapshot?.revision || 0;
       const manifest = document.querySelector('link[rel="manifest"]');
-      if(manifest) manifest.href = '/manifest.json?appearance=' + revision + '&lang=' + encodeURIComponent(language || 'en');
-      const iconUrl = value => typeof value === 'string' && /^\\/theme-assets\\/[a-f0-9]{64}\\//.test(value) ? value : '';
+      if(manifest) manifest.href = '/manifest.json?appearance=' + revision + '&lang=' + encodeURIComponent(language || 'en') + (window.__2FA_SAFE_MODE__ ? '&safeMode=1' : '');
+      const iconUrl = value => typeof value === 'string' && /^\\/(?:theme-assets|theme-packages)\\/[a-f0-9]{64}\\//.test(value) ? value : '';
       const icon = iconUrl(brand.icon192 || brand.icon512);
+      const defaultIcon = '/icon-192.png' + (window.__2FA_SAFE_MODE__ ? '?safeMode=1' : '');
       document.querySelectorAll('link[rel="icon"],link[rel="shortcut icon"]').forEach(link => {
-        link.href = icon || '/icon-192.png'; link.type = icon ? 'image/png' : 'image/svg+xml';
+        link.href = icon || defaultIcon; link.type = icon ? 'image/png' : 'image/svg+xml';
       });
-      document.querySelectorAll('link[rel="apple-touch-icon"]').forEach(link => { link.href = iconUrl(brand.appleTouchIcon) || icon || '/icon-192.png'; });
+      document.querySelectorAll('link[rel="apple-touch-icon"]').forEach(link => { link.href = iconUrl(brand.appleTouchIcon) || icon || defaultIcon; });
       const login = document.getElementById('loginModal');
       if(login) { let note = document.getElementById('appearanceLoginMessage'); if(!note){note=document.createElement('p');note.id='appearanceLoginMessage';note.className='settings-desc';login.querySelector('.modal-content')?.append(note);} note.textContent=brand.loginText || '';note.hidden=!brand.loginText; }
       let safe = document.getElementById('appearanceSafeBanner');

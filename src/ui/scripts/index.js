@@ -9,7 +9,7 @@ import { getStateCode } from './state.js';
 import { getTimeCode } from './time.js';
 import { getAuthCode } from './auth.js';
 import { getOTPCode } from './otp.js';
-import { getUICode } from './ui.js';
+import { getUICode, getHostFlowsCode } from './ui.js';
 import { getSearchCode } from './search.js';
 import { getExportCode } from './export.js';
 import { getQRCodeCode } from './qrcode.js';
@@ -30,6 +30,11 @@ import { getHiddenSecretsCode } from './hiddenSecrets.js';
 import { getAppearanceClientCode } from '../appearance.js';
 import { getAppearanceRuntimeCode } from './appearanceRuntime.js';
 import { getAppearanceEditorCode } from './appearanceEditor.js';
+import { getOfficialAccountViewCode } from './officialAccountView.js';
+import { getThemeRuntimeCode } from './themeRuntime.js';
+import { getAppThemeHostCode } from './appThemeHost.js';
+import { getAppThemePreviewCode } from './appThemePreview.js';
+import { getAppThemeIntegrationCode } from './appThemeIntegration.js';
 
 export { getI18nCode };
 
@@ -39,7 +44,7 @@ export { getI18nCode };
  * @returns {string} 核心JavaScript代码
  */
 export function getCoreScripts() {
-	return `${getAppearanceClientCode()}${getI18nCode()}${getSharedTransferMessageLocalizerCode()}${getUtilsCode()}${getModalDismissalCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getBrowserExtensionCode()}${getCoreCode()}${getHiddenSecretsCode()}${getServiceAggregationCode()}${getAppearanceRuntimeCode()}${getPWACode()}${getModuleLoaderCode()}${getVersionCheckCode()}`;
+	return `${getAppearanceClientCode()}${getI18nCode()}${getSharedTransferMessageLocalizerCode()}${getUtilsCode()}${getModalDismissalCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getBrowserExtensionCode()}${getCoreCode()}${getHiddenSecretsCode()}${getServiceAggregationCode()}${getAppearanceRuntimeCode()}${getPWACode()}${getModuleLoaderCode()}${getVersionCheckCode()}${getHostFlowsCode()}${getThemeRuntimeCode()}${getOfficialAccountViewCode()}${getAppThemeHostCode()}${getAppThemeIntegrationCode()}`;
 }
 
 /**
@@ -50,7 +55,7 @@ export function getCoreScripts() {
 export function getScripts() {
 	// QRCode must come before GoogleMigration, GoogleMigration must come before Export
 	// because Export calls showExportToGoogleModal from GoogleMigration
-	return `${getAppearanceClientCode()}${getI18nCode()}${getSharedTransferMessageLocalizerCode()}${getUtilsCode()}${getModalDismissalCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getBrowserExtensionCode()}${getQRCodeCode()}${getGoogleMigrationCode()}${getExportCode()}${getImportCode()}${getBackupCode()}${getToolsCode()}${getCoreCode()}${getHiddenSecretsCode()}${getServiceAggregationCode()}${getAppearanceRuntimeCode()}${getAppearanceEditorCode()}${getPWACode()}${getVersionCheckCode()}`;
+	return `${getAppearanceClientCode()}${getI18nCode()}${getSharedTransferMessageLocalizerCode()}${getUtilsCode()}${getModalDismissalCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getBrowserExtensionCode()}${getQRCodeCode()}${getGoogleMigrationCode()}${getExportCode()}${getImportCode()}${getBackupCode()}${getToolsCode()}${getCoreCode()}${getHiddenSecretsCode()}${getServiceAggregationCode()}${getAppearanceRuntimeCode()}${getAppThemePreviewCode()}${getAppearanceEditorCode()}${getPWACode()}${getVersionCheckCode()}${getHostFlowsCode()}${getThemeRuntimeCode()}${getOfficialAccountViewCode()}${getAppThemeHostCode()}${getAppThemeIntegrationCode()}`;
 }
 
 /**
@@ -66,7 +71,7 @@ export function getModuleCode(moduleName) {
 		qrcode: getQRCodeCode,
 		tools: getToolsCode,
 		googleMigration: getGoogleMigrationCode,
-		appearance: getAppearanceEditorCode,
+		appearance: () => getAppThemePreviewCode() + getAppearanceEditorCode(),
 	};
 
 	const moduleGetter = modules[moduleName];

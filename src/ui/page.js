@@ -13,6 +13,7 @@ import { getEnabledCustomCode, sanitizeCustomCode } from '../utils/settings.js';
 import { LANGUAGE_OPTIONS, normalizeLanguage } from '../shared/languages.js';
 import { getAppearanceHead } from './appearance.js';
 import { getBuildId } from '../utils/build.js';
+import { getShellConfigId, getRuntimeTuple, getAdminCodeId } from './runtimeIdentity.js';
 
 /**
  * 创建主页面（密钥管理界面）
@@ -27,7 +28,17 @@ export async function createMainPage(options = {}) {
 
 	// 构建完整的HTML内容
 	const enabledCode = customCodes === undefined ? sanitizeCustomCode(customCode) : getEnabledCustomCode({ customCodes });
-	const html = buildCompleteHTML(lazyLoad, safeMode ? '' : enabledCode, safeMode ? null : appearance, { buildId, safeMode });
+	const adminCodeId = await getAdminCodeId(safeMode ? '' : enabledCode);
+	const shellConfigId = await getShellConfigId({ appearance, adminCodeId, safeMode });
+	const recoveryConfigId = safeMode ? shellConfigId : await getShellConfigId({ safeMode: true });
+	const tuple = getRuntimeTuple(appearance, buildId, safeMode);
+	const html = buildCompleteHTML(safeMode ? false : lazyLoad, safeMode ? '' : enabledCode, safeMode ? null : appearance, {
+		buildId,
+		safeMode,
+		shellConfigId,
+		adminCodeId,
+		recoveryConfigId,
+	});
 
 	return new Response(html, {
 		headers: {
@@ -38,6 +49,10 @@ export async function createMainPage(options = {}) {
 			Expires: '0',
 			'X-2FA-Build': buildId,
 			'X-2FA-Appearance-Revision': String(safeMode ? 0 : appearance?.revision || 0),
+			'X-2FA-SDK-Api-Version': '1',
+			'X-2FA-Package-Id': tuple.packageId || '',
+			'X-2FA-Runtime-Mode': tuple.mode,
+			'X-2FA-Shell-Config': shellConfigId,
 		},
 	});
 }
@@ -50,7 +65,7 @@ function buildCompleteHTML(lazyLoad = true, customCode = '', appearance = null, 
 	// Render trusted administrator code as HTML so native script ordering and
 	// DOMContentLoaded/load handlers work, including external scripts.
 	return (
-		getHTMLStart() +
+		getHTMLStart(context.safeMode) +
 		getAppearanceHead(appearance, context) +
 		getStyles() +
 		getHTMLBody() +
@@ -63,7 +78,8 @@ function buildCompleteHTML(lazyLoad = true, customCode = '', appearance = null, 
 /**
  * HTML文档开始部分
  */
-function getHTMLStart() {
+function getHTMLStart(safeMode = false) {
+	const recoveryQuery = safeMode ? '?safeMode=1' : '';
 	return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -72,7 +88,7 @@ function getHTMLStart() {
   <title>2FA - 密钥管理器</title>
 
   <!-- PWA Manifest -->
-  <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="/manifest.json${recoveryQuery}">
 
   <!-- PWA Meta Tags -->
   <meta name="application-name" content="2FA">
@@ -84,19 +100,19 @@ function getHTMLStart() {
   <meta name="apple-mobile-web-app-title" content="2FA">
   
   <!-- iOS Icons -->
-  <link rel="apple-touch-icon" href="/icon-192.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="/icon-192.png">
-  <link rel="apple-touch-icon" sizes="152x152" href="/icon-192.png">
-  <link rel="apple-touch-icon" sizes="120x120" href="/icon-192.png">
+  <link rel="apple-touch-icon" href="/icon-192.png${recoveryQuery}">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icon-192.png${recoveryQuery}">
+  <link rel="apple-touch-icon" sizes="152x152" href="/icon-192.png${recoveryQuery}">
+  <link rel="apple-touch-icon" sizes="120x120" href="/icon-192.png${recoveryQuery}">
   
   <!-- Favicon -->
-  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
-  <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
-  <link rel="shortcut icon" href="/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png${recoveryQuery}">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png${recoveryQuery}">
+  <link rel="shortcut icon" href="/icon-192.png${recoveryQuery}">
   
   <!-- Microsoft Tiles -->
   <meta name="msapplication-TileColor" content="#2196F3">
-  <meta name="msapplication-TileImage" content="/icon-192.png">
+  <meta name="msapplication-TileImage" content="/icon-192.png${recoveryQuery}">
   <meta name="msapplication-config" content="none">
   
   <!-- PWA Display -->
@@ -160,6 +176,10 @@ function getHTMLStart() {
 function getHTMLBody() {
 	return `
 <body class="fluent-app">
+  <div id="appThemeRuntimeStatus" class="offline-banner show" role="status" hidden></div>
+  <main id="appThemeRoot" hidden></main>
+  <div id="hostThemePanels" hidden></div>
+  <div id="officialThemeRoot">
   <div class="container">
     <div class="content">
       <div class="search-section">
@@ -289,6 +309,7 @@ function getHTMLBody() {
 <button type="button" class="workspace-action" data-i18n="emptyAddBtn" onclick="showAddModal()">添加密钥</button>
       </div>
     </div>
+  </div>
   </div>
   
   
@@ -1775,7 +1796,7 @@ function getHTMLBody() {
   </div>
 
   <!-- 页面底部链接 -->
-  <footer class="page-footer">
+  <footer class="page-footer" id="officialThemeFooter">
     <div class="footer-content">
       <div class="footer-links">
         <a href="https://github.com/wuzf/2fa/blob/main/README.md" target="_blank" rel="noopener noreferrer" class="footer-link" data-i18n="pageDocumentation">
@@ -1806,7 +1827,7 @@ function getHTMLBody() {
 
   <!-- 固定悬浮按钮组 -->
   <!-- 操作菜单按钮 -->
-  <div class="action-menu-float">
+  <div class="action-menu-float" id="officialThemeActions">
     <button class="main-action-button" id="mainActionBtn" aria-label="打开操作菜单" aria-expanded="false" aria-controls="actionSubmenu" onclick="toggleActionMenu()" title="操作菜单" data-i18n-title="pageActions" data-i18n-aria-label="pageOpenActions">
       ${dialogIcon('plus')}
     </button>
@@ -1851,7 +1872,9 @@ function getHTMLBody() {
  * @param {boolean} lazyLoad - 是否启用懒加载模式
  */
 function getHTMLScripts(lazyLoad = true) {
-	const scriptContent = getInlineScripts(lazyLoad);
+	// Embedded preview-document builders contain HTML end tags inside JS strings.
+	// Escape at the final HTML boundary so the parser cannot terminate this script.
+	const scriptContent = getInlineScripts(lazyLoad).replace(/<\/script/gi, '<\\/script');
 	// jsQR / qrcode-generator 改为按需加载（见 utils.js 中的 ensureJsQR / ensureQRCodeGen），
 	// 避免 ~150KB CDN 库阻塞首屏渲染。Service Worker 会在首次请求时按需缓存这两个 URL。
 	return '<script>\n' + scriptContent + '\n</script>';

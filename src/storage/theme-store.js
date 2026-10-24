@@ -11,9 +11,20 @@ import {
 	normalizeAppearance,
 	importAsset,
 	exportTheme,
+	downloadThemeSource,
+	normalizeAppThemeImport,
+	normalizeAppPackage,
+	normalizeAppAppearance,
+	normalizeAsset,
+	assetHashFromUrl,
+	appResourceUrl,
+	exportAppTheme,
+	appResourceHeaders,
 } from '../themes/index.js';
-import { createDefaultAppearance, THEME_OPERATION_HEADER } from '../api/themes.js';
+import { createDefaultAppearance, THEME_OPERATION_HEADER, THEME_PREVIEW_OWNER_HEADER } from '../api/themes.js';
 import { createJsonResponse } from '../utils/response.js';
+import { ThemePreviewCapabilities } from './theme-preview.js';
+import { APP_VERSION } from '../utils/version.js';
 
 export const THEME_OWNER_KEY = 'theme:owner';
 const STATE_KEY = 'theme:state';
@@ -28,6 +39,7 @@ const TTL = 24 * 60 * 60 * 1000;
 const JSON_LIMIT = 1024 * 1024;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const BRAND_ASSETS = ['logo', 'icon192', 'icon512', 'appleTouchIcon', 'background'];
 
 function problem(message, status = 400, code = 'THEME_INVALID', details = {}) {
 	return Object.assign(new Error(message), { status, code, details });
@@ -56,6 +68,7 @@ function initialState() {
 }
 
 function assetInfo(asset, published = false) {
+	asset = { ...asset, ...asset.asset };
 	return {
 		hash: asset.hash,
 		name: asset.name,
@@ -65,12 +78,112 @@ function assetInfo(asset, published = false) {
 	};
 }
 
+function hasRole(blob, role) {
+	return blob?.kind === role || blob?.kinds?.includes(role);
+}
+
+function isApp(pkg) {
+	return pkg?.kind === 'app' || pkg?.manifest?.themeApiVersion === 2;
+}
+
 function appearanceInput(value) {
 	return Object.fromEntries(
 		['packageId', 'themeId', 'settings', 'layout', 'content', 'branding', 'customCss']
 			.filter((key) => value[key] !== undefined)
 			.map((key) => [key, value[key]]),
 	);
+}
+
+function profileKey(pkg) {
+	return (isApp(pkg) ? 'app:' : 'v1:') + (pkg.themeId || pkg.manifest.id);
+}
+
+function compareHostVersions(left, right) {
+	const parse = (value) => {
+		const match = /^(\d+)\.(\d+)\.(\d+)(?:-([^+]+))?(?:\+.*)?$/.exec(value);
+		return { core: match.slice(1, 4).map(BigInt), pre: match[4]?.split('.') };
+	};
+	const a = parse(left),
+		b = parse(right);
+	for (let index = 0; index < 3; index++) {
+		if (a.core[index] !== b.core[index]) {
+			return a.core[index] > b.core[index] ? 1 : -1;
+		}
+	}
+	if (!a.pre || !b.pre) {
+		return a.pre ? -1 : b.pre ? 1 : 0;
+	}
+	for (let index = 0; index < Math.max(a.pre.length, b.pre.length); index++) {
+		const x = a.pre[index],
+			y = b.pre[index];
+		if (x === y) {
+			continue;
+		}
+		if (x === undefined || y === undefined) {
+			return x === undefined ? -1 : 1;
+		}
+		const nx = /^\d+$/.test(x),
+			ny = /^\d+$/.test(y);
+		if (nx !== ny) {
+			return nx ? -1 : 1;
+		}
+		if (nx && BigInt(x) === BigInt(y)) {
+			continue;
+		}
+		return nx ? (BigInt(x) > BigInt(y) ? 1 : -1) : x > y ? 1 : -1;
+	}
+	return 0;
+}
+
+function assertAppHostCompatible(manifest) {
+	if (manifest.sdkApiVersion !== 1) {
+		throw problem('主题 SDK 版本不受支持', 409, 'THEME_UNSUPPORTED_SDK');
+	}
+	if (manifest.minHostVersion && compareHostVersions(APP_VERSION, manifest.minHostVersion) < 0) {
+		throw problem('此主题需要更新版本的 2FA', 409, 'THEME_HOST_VERSION_UNSUPPORTED', {
+			required: manifest.minHostVersion,
+			current: APP_VERSION,
+		});
+	}
+}
+
+function appAppearanceInput(input, pkg) {
+	for (const field of ['layout', 'content', 'customCss']) {
+		if (Object.hasOwn(input, field)) {
+			throw problem('完整前端主题不接受旧版布局或 CSS 设置', 400, 'THEME_UNKNOWN_FIELD', { field });
+		}
+	}
+	const out = Object.fromEntries(
+		['packageId', 'themeId', 'settings', 'branding'].filter((key) => input[key] !== undefined).map((key) => [key, input[key]]),
+	);
+	const local = (value) => {
+		if (typeof value !== 'string') {
+			return value;
+		}
+		const prefix = `/theme-packages/${pkg.packageId}/`;
+		if (value.startsWith(prefix)) {
+			return value.slice(prefix.length);
+		}
+		const hash = assetHashFromUrl(value);
+		const file =
+			hash &&
+			pkg.files.find((candidate) => candidate.hash === hash && (candidate.mime.startsWith('image/') || candidate.mime === 'font/woff2'));
+		return file ? file.path : value;
+	};
+	for (const [group, fields] of [
+		['settings', pkg.manifest.settings.filter((field) => field.type === 'asset').map((field) => field.key)],
+		['branding', BRAND_ASSETS],
+	]) {
+		if (out[group] && typeof out[group] === 'object' && !Array.isArray(out[group])) {
+			out[group] = { ...out[group] };
+			for (const field of fields) {
+				if (Object.hasOwn(out[group], field)) {
+					out[group][field] = local(out[group][field]);
+				}
+			}
+		}
+	}
+	return out;
 }
 
 async function readLimited(request, limit) {
@@ -157,6 +270,7 @@ export class ThemeStore {
 		this.initialization = null;
 		this.readGate = Promise.resolve();
 		this.readers = new Set();
+		this.previews = new ThemePreviewCapabilities(this);
 	}
 
 	enqueue(task) {
@@ -239,11 +353,29 @@ export class ThemeStore {
 	}
 
 	async route(request) {
-		const path = new URL(request.url).pathname;
+		const url = new URL(request.url);
+		const path = url.pathname;
+		const format = url.searchParams.get('format') === 'app' ? 'app' : 'v1';
 		const operation = request.headers.get(THEME_OPERATION_HEADER);
 		if (operation === 'public') {
+			if (!['GET', 'HEAD'].includes(request.method)) {
+				return new Response('Not found', { status: 404 });
+			}
+			const appFile = /^\/theme-packages\/([a-f0-9]{64})\/(.+)$/.exec(path);
+			if (appFile) {
+				return this.readAppFile(appFile[1], appFile[2], request, true);
+			}
 			const match = /^\/theme-assets\/([a-f0-9]{64})\/[^/]+$/.exec(path);
 			return match ? this.readAsset(match[1], request, true) : new Response('Not found', { status: 404 });
+		}
+		if (operation === 'preview') {
+			const match = /^\/theme-preview\/([a-f0-9]{64})\/(.+)$/.exec(path);
+			return match && ['GET', 'HEAD'].includes(request.method)
+				? this.previews.read(match[1], match[2], request)
+				: new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+		}
+		if (operation === 'preview-logout') {
+			return Response.json(await this.previews.revokeOwner(request.headers.get(THEME_PREVIEW_OWNER_HEADER)));
 		}
 		if (operation === 'appearance') {
 			return Response.json((await this.readAppearance()).active);
@@ -255,8 +387,15 @@ export class ThemeStore {
 			await this.checkRate(path);
 		}
 		const json = (body, status = 200) => createJsonResponse(body, status, request, { 'Cache-Control': 'no-store' });
+		if (path === '/api/themes/preview-capabilities' && request.method === 'POST') {
+			return json(await this.previews.create(await readJSON(request), request.headers.get(THEME_PREVIEW_OWNER_HEADER)), 201);
+		}
+		const preview = /^\/api\/themes\/preview-capabilities\/([a-f0-9]{64})$/.exec(path);
+		if (preview && request.method === 'DELETE') {
+			return json(await this.previews.revoke(preview[1], request.headers.get(THEME_PREVIEW_OWNER_HEADER)));
+		}
 		if (path === '/api/themes' && request.method === 'GET') {
-			return json(await this.listThemes());
+			return json(await this.listThemes(format));
 		}
 		if (path === '/api/appearance' && request.method === 'GET') {
 			return json(await this.readAppearance());
@@ -268,10 +407,10 @@ export class ThemeStore {
 			return json(await this.apply(await readJSON(request), true));
 		}
 		if (path === '/api/themes/import' && request.method === 'POST') {
-			return json(await this.install(await readImport(request)), 201);
+			return json(await this.install(await readImport(request), false, format), 201);
 		}
 		if (path === '/api/appearance/restore-inspect' && request.method === 'POST') {
-			return json(await this.install(await readImport(request, true), true), 201);
+			return json(await this.install(await readImport(request, true), true, format), 201);
 		}
 		if (path === '/api/appearance/assets' && request.method === 'POST') {
 			return json(await this.uploadAsset(await readImport(request, true)), 201);
@@ -279,6 +418,10 @@ export class ThemeStore {
 		const privateAsset = /^\/api\/appearance\/assets\/([a-f0-9]{64})$/.exec(path);
 		if (privateAsset && ['GET', 'HEAD'].includes(request.method)) {
 			return this.readAsset(privateAsset[1], request, false);
+		}
+		const privateFile = /^\/api\/themes\/([a-f0-9]{64})\/files\/(.+)$/.exec(path);
+		if (privateFile && ['GET', 'HEAD'].includes(request.method)) {
+			return this.readAppFile(privateFile[1], privateFile[2], request, false);
 		}
 		const theme = /^\/api\/themes\/([^/]+)(\/export)?$/.exec(path);
 		if (theme) {
@@ -336,20 +479,25 @@ export class ThemeStore {
 		return this.readDocument(record.document);
 	}
 
-	async listThemes() {
+	async listThemes(format = 'v1') {
 		const state = await this.state();
-		const themes = getBuiltinThemes().map((pkg) => ({ ...pkg, builtIn: true }));
+		const themes = format === 'app' ? [] : getBuiltinThemes().map((pkg) => ({ ...pkg, builtIn: true }));
 		for (const record of (await this.storage.list({ prefix: PACKAGE })).values()) {
 			if (record.status === 'ready') {
 				const pkg = await this.readDocument(record.document);
-				themes.push({ ...pkg, builtIn: false, installedAt: record.installedAt, source: record.source });
+				if (isApp(pkg) === (format === 'app')) {
+					themes.push({ ...pkg, builtIn: false, installedAt: record.installedAt, source: record.source });
+				}
 			}
 		}
 		for (const theme of themes) {
 			theme.assets = (theme.assets || []).map((asset) => assetInfo(asset));
-			const profile = state.profiles[theme.manifest.id];
+			const profile = state.profiles[profileKey(theme)] || state.profiles[theme.manifest.id];
 			if (profile) {
-				theme.profile = await this.readDocument(profile);
+				const snapshot = await this.readDocument(profile);
+				if (isApp(snapshot) === isApp(theme)) {
+					theme.profile = snapshot;
+				}
 			}
 		}
 		return { themes };
@@ -372,6 +520,15 @@ export class ThemeStore {
 		const reserved = await this.storage.transaction(async (tx) => {
 			const existing = await tx.get(key);
 			if (existing?.status === 'ready') {
+				// A content hash can simultaneously be an app file, a v1 asset and
+				// an internal JSON document. Roles never change the bytes or quota.
+				if (existing.size !== bytes.byteLength || (await digest(await this.readBytes(existing, false, tx))) !== hash) {
+					throw problem('资源校验失败', 400, 'THEME_HASH_MISMATCH');
+				}
+				existing.kinds = [...new Set([existing.kind, ...(existing.kinds || []), kind])];
+				if (kind === 'asset') {
+					existing.asset = { name: asset.name, mime: asset.mime };
+				}
 				// Re-uploading a local draft renews staging without touching public state.
 				existing.expiresAt = Date.now() + TTL;
 				await tx.put(key, existing);
@@ -395,6 +552,7 @@ export class ThemeStore {
 				size: bytes.byteLength,
 				chunks: Math.ceil(bytes.byteLength / CHUNK_SIZE),
 				kind,
+				...(kind === 'asset' ? { asset: { name: asset.name, mime: asset.mime } } : {}),
 				status: 'writing',
 				createdAt: Date.now(),
 				expiresAt: Date.now() + TTL,
@@ -428,7 +586,7 @@ export class ThemeStore {
 		return this.saveBlob({ bytes: encoder.encode(JSON.stringify(value)), mime: 'application/json', name: 'document.json' }, 'document');
 	}
 
-	async readBytes(record, useMirror = false) {
+	async readBytes(record, useMirror = false, storage = this.storage) {
 		if (!record || record.status !== 'ready') {
 			throw problem('主题资源已过期，请从本机草稿重新上传', 404, 'THEME_ASSET_MISSING');
 		}
@@ -444,8 +602,8 @@ export class ThemeStore {
 		}
 		const bytes = new Uint8Array(record.size);
 		for (let index = 0; index < record.chunks; index++) {
-			const chunk = await this.storage.get(`theme:chunk:${record.hash}:${index}`);
-			if (!chunk) {
+			const chunk = await storage.get(`theme:chunk:${record.hash}:${index}`);
+			if (!chunk || chunk.byteLength !== Math.min(CHUNK_SIZE, record.size - index * CHUNK_SIZE)) {
 				throw problem('主题资源不完整，请重新安装', 503, 'THEME_ASSET_INCOMPLETE');
 			}
 			bytes.set(new Uint8Array(chunk), index * CHUNK_SIZE);
@@ -453,13 +611,13 @@ export class ThemeStore {
 		return bytes;
 	}
 
-	async readDocument(hash) {
-		return JSON.parse(decoder.decode(await this.readBytes(await this.storage.get(META + hash))));
+	async readDocument(hash, storage = this.storage) {
+		return JSON.parse(decoder.decode(await this.readBytes(await storage.get(META + hash), false, storage)));
 	}
 
 	async resolveAsset(hash) {
 		const meta = await this.storage.get(META + hash);
-		if (!meta || meta.kind !== 'asset') {
+		if (!hasRole(meta, 'asset')) {
 			throw problem('素材不存在，请从本机草稿重新上传', 404, 'THEME_ASSET_MISSING', { hash });
 		}
 		return { ...assetInfo(meta), bytes: await this.readBytes(meta) };
@@ -467,11 +625,11 @@ export class ThemeStore {
 
 	async readAsset(hash, request, published) {
 		const meta = await this.storage.get(META + hash);
-		if (!meta || meta.status !== 'ready' || meta.kind !== 'asset' || (published && !meta.public)) {
+		if (!meta || meta.status !== 'ready' || !hasRole(meta, 'asset') || (published && !meta.public)) {
 			return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
 		}
 		const headers = {
-			'Content-Type': meta.mime,
+			'Content-Type': assetInfo(meta).mime,
 			'Content-Length': String(meta.size),
 			'Cache-Control': published ? 'public, max-age=31536000, immutable' : 'private, no-store',
 			'X-Content-Type-Options': 'nosniff',
@@ -484,8 +642,158 @@ export class ThemeStore {
 		return new Response(request.method === 'HEAD' ? null : await this.readBytes(meta, published), { headers });
 	}
 
-	async install(input, restore = false) {
-		const pkg = await normalizeThemeImport(input, { restore });
+	async appFileBytes(file, storage = this.storage, role = 'app-file') {
+		const meta = await storage.get(META + file.hash);
+		if (!hasRole(meta, role) || meta.status !== 'ready' || meta.size !== file.size) {
+			throw problem('主题资源不完整，请重新安装', 503, 'THEME_ASSET_INCOMPLETE');
+		}
+		const bytes = await this.readBytes(meta, false, storage);
+		if ((await digest(bytes)) !== file.hash) {
+			throw problem('主题资源校验失败，请重新安装', 503, 'THEME_HASH_MISMATCH');
+		}
+		return bytes;
+	}
+
+	async hydrateAppPackage(pkg, storage = this.storage) {
+		const files = await Promise.all(pkg.files.map(async (file) => [file.path, await this.appFileBytes(file, storage)]));
+		const verified = await normalizeAppPackage(pkg.manifest, new Map(files));
+		if (verified.packageId !== pkg.packageId) {
+			throw problem('主题包校验失败，请重新安装', 503, 'THEME_HASH_MISMATCH');
+		}
+		return verified;
+	}
+
+	async readAppFile(id, path, request, published) {
+		const record = await this.storage.get(PACKAGE + id);
+		const missing = () => new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+		if (record?.status !== 'ready' || (published && record.public !== true)) {
+			return missing();
+		}
+		const pkg = await this.readDocument(record.document);
+		if (!isApp(pkg) || pkg.packageId !== id) {
+			return missing();
+		}
+		// Exact inventory lookup: no decoding, filesystem resolution or MIME
+		// inference from a shared blob's first role can authorize this request.
+		const file = pkg.files.find((item) => item.path === path);
+		if (!file) {
+			return missing();
+		}
+		const bytes = await this.appFileBytes(file);
+		const headers = {
+			...appResourceHeaders(file, { public: published }),
+			'Cache-Control': published ? 'public, max-age=31536000, immutable' : 'private, no-store',
+			ETag: `"${file.hash}"`,
+		};
+		if (request.headers.get('If-None-Match') === headers.ETag) {
+			return new Response(null, { status: 304, headers });
+		}
+		return new Response(request.method === 'HEAD' ? null : bytes, { headers });
+	}
+
+	/** Internal transaction primitive for the future host's snapshot CAS.
+	 * Never routed as an API: P3 installation cannot activate or publish app code.
+	 * The caller must commit its appearance references in this same transaction.
+	 */
+	async markAppPackagePublic(tx, id) {
+		const record = await tx.get(PACKAGE + id);
+		if (record?.status !== 'ready') {
+			throw problem('主题版本不存在', 409, 'THEME_NOT_FOUND');
+		}
+		const pkg = await this.readDocument(record.document, tx);
+		if (!isApp(pkg) || pkg.packageId !== id) {
+			throw problem('不是完整前端主题', 400, 'THEME_INVALID');
+		}
+		await this.hydrateAppPackage(pkg, tx);
+		await tx.put(PACKAGE + id, { ...record, public: true });
+	}
+
+	async prepareAppAppearance(body, { baseUrl } = {}) {
+		const installed = await this.getPackage(body.packageId);
+		if (!isApp(installed)) {
+			throw problem('不是完整前端主题', 400, 'THEME_INVALID');
+		}
+		assertAppHostCompatible(installed.manifest);
+		const pkg = await this.hydrateAppPackage(installed);
+		const input = appAppearanceInput(body, pkg);
+		const hashes = new Set();
+		for (const value of [
+			...pkg.manifest.settings.filter((field) => field.type === 'asset').map((field) => input.settings?.[field.key]),
+			...BRAND_ASSETS.map((field) => input.branding?.[field]),
+		]) {
+			const hash = assetHashFromUrl(value);
+			if (hash) {
+				hashes.add(hash);
+			}
+		}
+		const normalized = await normalizeAppAppearance(pkg, input, {
+			assets: await Promise.all([...hashes].map((hash) => this.resolveAsset(hash))),
+		});
+		const assets = new Map(normalized.assets.map((asset) => [asset.hash, asset]));
+		const branding = { ...normalized.appearance.branding };
+		for (const key of BRAND_ASSETS) {
+			const file = pkg.files.find((file) => file.path === branding[key]);
+			if (file) {
+				const asset = await normalizeAsset(file.bytes, file.path);
+				assets.set(asset.hash, asset);
+				branding[key] = assetInfo(asset, true).url;
+			}
+		}
+		for (const asset of assets.values()) {
+			await this.saveBlob(asset);
+		}
+		const resolveUrl = (value) => {
+			const file = pkg.files.find((file) => file.path === value);
+			if (file) {
+				return baseUrl ? baseUrl + file.path : appResourceUrl(pkg.packageId, file.path);
+			}
+			const asset = assets.get(assetHashFromUrl(value));
+			return baseUrl && asset ? baseUrl + 'appearance-assets/' + asset.name : value;
+		};
+		const settings = { ...normalized.appearance.settings };
+		for (const field of pkg.manifest.settings) {
+			if (field.type === 'asset') {
+				settings[field.key] = resolveUrl(settings[field.key]);
+			}
+		}
+		for (const key of BRAND_ASSETS) {
+			if (Object.hasOwn(branding, key)) {
+				branding[key] = resolveUrl(branding[key]);
+			}
+		}
+		return {
+			assets: [...assets.values()],
+			snapshot: {
+				...normalized.appearance,
+				kind: 'app',
+				manifest: pkg.manifest,
+				package: { id: pkg.manifest.id, name: pkg.manifest.name, version: pkg.manifest.version },
+				baseUrl: baseUrl || `/theme-packages/${pkg.packageId}/`,
+				settings,
+				branding,
+				files: pkg.files.map(({ path, mime, size, hash }) => ({
+					path,
+					mime,
+					size,
+					hash,
+					url: baseUrl ? baseUrl + path : appResourceUrl(pkg.packageId, path),
+				})),
+				resources: [...assets.values()].map((asset) => ({
+					...assetInfo(asset, true),
+					...(baseUrl ? { url: baseUrl + 'appearance-assets/' + asset.name } : {}),
+				})),
+			},
+		};
+	}
+
+	async install(input, restore = false, format = 'v1') {
+		const pkg =
+			format === 'app'
+				? await normalizeAppThemeImport(await downloadThemeSource(input, { restore }))
+				: await normalizeThemeImport(input, { restore });
+		if (pkg.appearance && !restore) {
+			throw problem('请使用外观备份恢复入口导入此文件', 400, 'THEME_RESTORE_REQUIRED');
+		}
 		if (getBuiltinTheme(pkg.packageId)) {
 			throw problem('导入主题不能覆盖内置主题');
 		}
@@ -505,22 +813,37 @@ export class ThemeStore {
 			for (const asset of pkg.appearanceAssets || pkg.assets) {
 				await this.saveBlob(asset);
 			}
-			const normalized = {
-				packageId: pkg.packageId,
-				manifest: pkg.manifest,
-				css: pkg.css,
-				assets: pkg.assets.map((asset) => assetInfo(asset)),
-			};
+			for (const file of pkg.files || []) {
+				await this.saveBlob(file, 'app-file');
+			}
+			const normalized = isApp(pkg)
+				? {
+						kind: 'app',
+						packageId: pkg.packageId,
+						manifest: pkg.manifest,
+						files: pkg.files.map(({ path, mime, size, hash }) => ({ path, mime, size, hash })),
+						assets: [],
+					}
+				: {
+						packageId: pkg.packageId,
+						manifest: pkg.manifest,
+						css: pkg.css,
+						assets: pkg.assets.map((asset) => assetInfo(asset)),
+					};
 			const document = await this.saveDocument(normalized);
+			const previous = await this.storage.get(packageKey);
 			await this.storage.put(packageKey, {
 				status: 'ready',
 				document: document.hash,
-				resources: pkg.assets.map((asset) => asset.hash),
+				resources: [...new Set([...pkg.assets, ...(pkg.files || [])].map((asset) => asset.hash))],
+				...(isApp(pkg) ? { kind: 'app', public: previous?.public === true } : {}),
 				source: input.url || null,
 				installedAt: Date.now(),
 			});
 			let appearance;
-			if (pkg.appearance) {
+			if (pkg.appearance && isApp(pkg)) {
+				appearance = { ...pkg.appearance, resources: pkg.appearanceAssets.map((asset) => assetInfo(asset, true)) };
+			} else if (pkg.appearance) {
 				const result = await normalizeAppearance(pkg, pkg.appearance, { resolveAsset: (hash) => this.resolveAsset(hash) });
 				for (const asset of result.assets) {
 					await this.saveBlob(asset);
@@ -579,6 +902,17 @@ export class ThemeStore {
 	}
 
 	async apply(body, rollback = false) {
+		// HTTP writes already hold fetch()'s queue. Commit directly so publication
+		// shares all validation and transactions without recursively enqueueing.
+		return this.commitAppearance(body, rollback);
+	}
+
+	/** Internal host integration entry; deliberately not selectable by request data. */
+	applyInstalledAppearance(body, rollback = false) {
+		return this.enqueue(() => this.commitAppearance(body, rollback));
+	}
+
+	async commitAppearance(body, rollback = false) {
 		const checked = await this.checkOperation(body, rollback);
 		if (checked.receipt) {
 			return this.receiptResponse(checked.receipt);
@@ -592,20 +926,27 @@ export class ThemeStore {
 			snapshot = await this.readDocument(state.previous);
 		} else {
 			const pkg = await this.getPackage(body.packageId);
-			// Package assets loaded from storage carry metadata; normalization needs bytes.
-			const fullPkg = { ...pkg, assets: await Promise.all(pkg.assets.map((asset) => this.resolveAsset(asset.hash))) };
-			const normalized = await normalizeAppearance(fullPkg, appearanceInput(body), { resolveAsset: (hash) => this.resolveAsset(hash) });
-			for (const asset of normalized.assets) {
-				await this.saveBlob(asset);
+			if (isApp(pkg)) {
+				snapshot = (await this.prepareAppAppearance(body)).snapshot;
+			} else {
+				// Package assets loaded from storage carry metadata; normalization needs bytes.
+				const fullPkg = { ...pkg, assets: await Promise.all(pkg.assets.map((asset) => this.resolveAsset(asset.hash))) };
+				const normalized = await normalizeAppearance(fullPkg, appearanceInput(body), { resolveAsset: (hash) => this.resolveAsset(hash) });
+				for (const asset of normalized.assets) {
+					await this.saveBlob(asset);
+				}
+				snapshot = {
+					...normalized.appearance,
+					packageId: pkg.packageId,
+					themeId: pkg.manifest.id,
+					manifest: pkg.manifest,
+					css: pkg.css,
+					resources: normalized.assets.map((asset) => assetInfo(asset, true)),
+				};
 			}
-			snapshot = {
-				...normalized.appearance,
-				packageId: pkg.packageId,
-				themeId: pkg.manifest.id,
-				manifest: pkg.manifest,
-				css: pkg.css,
-				resources: normalized.assets.map((asset) => assetInfo(asset, true)),
-			};
+		}
+		if (isApp(snapshot)) {
+			assertAppHostCompatible(snapshot.manifest);
 		}
 		const document = await this.saveDocument(snapshot);
 		const prior = state.active || (await this.saveDocument(createDefaultAppearance())).hash;
@@ -627,20 +968,31 @@ export class ThemeStore {
 					throw problem('主题版本已被删除，请重新安装', 409, 'THEME_NOT_FOUND');
 				}
 			}
+			if (isApp(snapshot)) {
+				await this.markAppPackagePublic(tx, snapshot.packageId);
+			}
 			for (const resource of snapshot.resources) {
 				const meta = await tx.get(META + resource.hash);
-				if (!meta || meta.status !== 'ready') {
+				if (!meta || meta.status !== 'ready' || !hasRole(meta, 'asset')) {
 					throw problem('素材已过期，请重新上传', 409, 'THEME_ASSET_MISSING', { hash: resource.hash });
+				}
+				if (isApp(snapshot)) {
+					await this.appFileBytes(resource, tx, 'asset');
 				}
 				await tx.put(META + resource.hash, { ...meta, public: true });
 			}
 			const revision = current.revision + 1;
+			const profiles = { ...current.profiles, [profileKey(snapshot)]: document.hash };
+			const legacy = current.profiles[snapshot.themeId];
+			if (legacy && isApp(await this.readDocument(legacy, tx)) === isApp(snapshot)) {
+				delete profiles[snapshot.themeId];
+			}
 			await tx.put(STATE_KEY, {
 				...current,
 				revision,
 				active: document.hash,
 				previous: prior,
-				profiles: { ...current.profiles, [snapshot.themeId]: document.hash },
+				profiles,
 			});
 			const receipt = { digest: checked.digest, revision, snapshot: document.hash, previous: true, expiresAt: Date.now() + TTL };
 			await tx.put(RECEIPT + body.operationId, receipt);
@@ -665,11 +1017,16 @@ export class ThemeStore {
 			throw problem('主题不存在', 404, 'THEME_NOT_FOUND');
 		}
 		const pkg = await this.readDocument(record.document);
-		const profileHash = state.profiles[pkg.manifest.id];
-		if (profileHash && (await this.readDocument(profileHash)).packageId === id) {
-			delete state.profiles[pkg.manifest.id];
+		for (const key of [profileKey(pkg), pkg.manifest.id]) {
+			const profileHash = state.profiles[key];
+			if (profileHash && (await this.readDocument(profileHash)).packageId === id) {
+				delete state.profiles[key];
+			}
 		}
 		await this.storage.transaction(async (tx) => {
+			if ((await this.previews.pins(tx)).some((record) => record.packageId === id)) {
+				throw problem('请先关闭使用此主题的预览，再删除主题', 409, 'THEME_IN_USE');
+			}
 			await tx.delete(PACKAGE + id);
 			await tx.put(STATE_KEY, state);
 			await this.schedule(tx);
@@ -685,7 +1042,9 @@ export class ThemeStore {
 		}
 		const pkg = await this.getPackage(id);
 		const assets = await Promise.all((full ? appearance.resources : pkg.assets).map((asset) => this.resolveAsset(asset.hash)));
-		const bytes = await exportTheme({ ...pkg, assets }, full ? { appearance: appearanceInput(appearance), assets } : {});
+		const bytes = isApp(pkg)
+			? await exportAppTheme(await this.hydrateAppPackage(pkg), full ? { appearance: appAppearanceInput(appearance, pkg), assets } : {})
+			: await exportTheme({ ...pkg, assets }, full ? { appearance: appearanceInput(appearance), assets } : {});
 		return new Response(bytes, {
 			headers: {
 				'Content-Type': 'application/zip',
@@ -698,6 +1057,11 @@ export class ThemeStore {
 
 	async referencedBlobs() {
 		const protectedHashes = new Set();
+		for (const preview of await this.previews.pins()) {
+			for (const hash of preview.resources || []) {
+				protectedHashes.add(hash);
+			}
+		}
 		for (const record of (await this.storage.list({ prefix: PACKAGE })).values()) {
 			if (record.status === 'ready') {
 				protectedHashes.add(record.document);
@@ -715,7 +1079,8 @@ export class ThemeStore {
 		}
 		for (const hash of new Set(snapshots.filter(Boolean))) {
 			protectedHashes.add(hash);
-			for (const resource of (await this.readDocument(hash)).resources || []) {
+			const snapshot = await this.readDocument(hash);
+			for (const resource of [...(snapshot.resources || []), ...(snapshot.files || [])]) {
 				protectedHashes.add(resource.hash);
 			}
 		}
@@ -748,13 +1113,14 @@ export class ThemeStore {
 	alarm() {
 		return this.enqueue(async () => {
 			const now = Date.now();
+			const previewExpiry = await this.previews.collect(now);
 			const references = await this.referencedBlobs();
 			const records = await this.storage.list({ prefix: META });
 			let processed = 0;
-			let next = now + TTL;
+			let next = Math.min(now + TTL, previewExpiry);
 			for (const record of records.values()) {
 				const garbage = record.status === 'deleting' || (!references.has(record.hash) && record.expiresAt <= now);
-				const mirror = record.kind === 'asset' && record.status === 'ready' && !record.mirrored && !!this.env.SECRETS_KV;
+				const mirror = hasRole(record, 'asset') && record.status === 'ready' && !record.mirrored && !!this.env.SECRETS_KV;
 				if (processed >= 16 || record.nextAttemptAt > now) {
 					if (garbage || mirror) {
 						next = Math.min(next, Math.max(now + 1000, record.nextAttemptAt));

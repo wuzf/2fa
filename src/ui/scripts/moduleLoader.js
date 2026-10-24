@@ -30,7 +30,8 @@ export function getModuleLoaderCode() {
       button.type = 'button';
       button.className = 'btn btn-secondary';
       button.textContent = t('restoreRefresh');
-      button.onclick = () => {
+      button.onclick = async () => {
+        if (typeof requestThemeRuntimeReload === 'function') return requestThemeRuntimeReload('update');
         if (typeof window.__2FA_REFRESH_BLOCKED__ === 'function' && window.__2FA_REFRESH_BLOCKED__()) {
           showCenterToast('⚠️', t('moduleRefreshBlocked'));
           return;
@@ -54,34 +55,60 @@ export function getModuleLoaderCode() {
       googleMigration: { loaded: false, loading: false, code: null }
     };
 
+    // One deadline covers both response headers and the entire body. The
+    // losing read is side-effect free even when an underlying fetch ignores
+    // abort, so it can never inject code or reset a later retry's state.
+    async function readHostModuleCode(moduleName, buildId, isCurrent) {
+      const controller = new AbortController();
+      let expired = false;
+      let timer;
+      const assertCurrent = () => {
+        if (expired) throw new Error(t('moduleLoadTimeout', {module:getModuleDisplayName(moduleName)}));
+        if (!isCurrent()) throw new Error('Host module request expired');
+      };
+      const deadline = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          expired = true;
+          reject(new Error(t('moduleLoadTimeout', {module:getModuleDisplayName(moduleName)})));
+          controller.abort();
+        }, 15000);
+      });
+      try {
+        const reading = (async () => {
+          assertCurrent();
+          const response = await authenticatedFetch(\`/modules/\${moduleName}.js?build=\${encodeURIComponent(buildId)}\`, {signal:controller.signal});
+          assertCurrent();
+          if (response.status === 409 || (response.ok && buildId && response.headers.get('X-2FA-Build') !== buildId)) {
+            showModuleBuildUpdate();
+            throw new Error(t('moduleBuildChanged'));
+          }
+          if (!response.ok) throw new Error(t('moduleHttpError', {status:response.status}));
+          const code = await response.text();
+          assertCurrent();
+          return code;
+        })();
+        return await Promise.race([reading, deadline]);
+      } finally {
+        expired = true;
+        clearTimeout(timer);
+        controller.abort();
+      }
+    }
+
     /**
      * 加载模块
      * @param {string} moduleName - 模块名称
      * @returns {Promise<void>}
      */
-    async function loadModule(moduleName) {
-      // 如果已加载，直接返回
-      if (moduleLoadState[moduleName].loaded) {
-        console.log(\`✅ 模块 \${moduleName} 已加载\`);
-        return;
-      }
-
-      // 如果正在加载，等待加载完成
-      if (moduleLoadState[moduleName].loading) {
-        console.log(\`⏳ 模块 \${moduleName} 正在加载中...\`);
-        // 轮询等待加载完成（最多5秒）
-        const startTime = Date.now();
-        while (moduleLoadState[moduleName].loading && Date.now() - startTime < 5000) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-
-        if (moduleLoadState[moduleName].loaded) {
-          return;
-        } else {
-          throw new Error(t('moduleLoadTimeout', { module: getModuleDisplayName(moduleName) }));
-        }
-      }
-
+    function loadModule(moduleName) {
+      const state = moduleLoadState[moduleName];
+      if (!state) return Promise.reject(new Error('Unknown host module'));
+      if (state.loaded) return Promise.resolve();
+      if (state.promise) return state.promise;
+      const session = typeof accountStore !== 'undefined' ? accountStore.getSessionGeneration() : null;
+      const mountGuard = typeof window.__2FA_APP_MODULE_GUARD__ === 'function' ? window.__2FA_APP_MODULE_GUARD__() : () => true;
+      const isCurrent = () => mountGuard() && (session === null || accountStore.isSessionCurrent(session));
+      const task = (async () => {
       // 开始加载
       moduleLoadState[moduleName].loading = true;
       console.log(\`📦 开始加载模块: \${moduleName}\`);
@@ -91,19 +118,11 @@ export function getModuleLoaderCode() {
         loadingModuleName = moduleName;
         showLoadingToast(t('moduleLoading', { module: getModuleDisplayName(moduleName) }));
 
+        if (!isCurrent()) throw new Error('Host module request expired');
         // 从服务器获取模块代码
         const buildId = window.__2FA_BUILD_ID__ || '';
-        const response = await authenticatedFetch(\`/modules/\${moduleName}.js?build=\${encodeURIComponent(buildId)}\`);
-        if (response.status === 409 || (response.ok && buildId && response.headers.get('X-2FA-Build') !== buildId)) {
-          showModuleBuildUpdate();
-          throw new Error(t('moduleBuildChanged'));
-        }
-
-        if (!response.ok) {
-          throw new Error(t('moduleHttpError', { status: response.status }));
-        }
-
-        const code = await response.text();
+        const code = await readHostModuleCode(moduleName, buildId, isCurrent);
+        if (!isCurrent()) throw new Error('Host module request expired');
 
         // 执行模块代码（注入到全局作用域）
         const script = document.createElement('script');
@@ -126,6 +145,9 @@ export function getModuleLoaderCode() {
       } finally {
         moduleLoadState[moduleName].loading = false;
       }
+      })();
+      state.promise = task.finally(() => { state.promise = null; });
+      return state.promise;
     }
 
     /**

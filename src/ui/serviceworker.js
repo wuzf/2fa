@@ -6,8 +6,13 @@
 import { createOfflinePage } from './offlinePage.js';
 import { getBuildId } from '../utils/build.js';
 import { createSnapshotIndex, createSnapshotManager } from './offlineSnapshots.js';
+import { createRuntimeProtocol } from './runtimeProtocol.js';
+import { createRuntimeSnapshotIndex } from './runtimeSnapshotIndex.js';
+import { createRuntimeSnapshotManager } from './runtimeSnapshots.js';
 import { serializeBrowserFunction } from './scripts/browserSource.js';
 import { OFFLINE_MESSAGES } from './locales/offline.js';
+import { getQrVendorInventory } from './qrVendors.js';
+import { SUPPORTED_LANGUAGES } from '../shared/languages.js';
 import { normalizeLanguage } from '../shared/languages.js';
 
 /**
@@ -45,8 +50,17 @@ const RUNTIME_CACHE = '${RUNTIME_CACHE}';
 const BUILD_ID = ${JSON.stringify(getBuildId())};
 const snapshotManager = BUILD_ID ? (${serializeBrowserFunction(createSnapshotManager)})({
   buildId: BUILD_ID, origin: self.location.origin, caches, fetch,
-  index: (${serializeBrowserFunction(createSnapshotIndex)})(), clients: self.clients
+  index: (${serializeBrowserFunction(createSnapshotIndex)})(), clients: self.clients,
+  canClean: async () => !runtimeSnapshots || runtimeSnapshots.canCleanLegacy()
 }) : null;
+const runtimeProtocol = BUILD_ID ? (${serializeBrowserFunction(createRuntimeProtocol)})({origin: self.location.origin,languages:${JSON.stringify(SUPPORTED_LANGUAGES)}}) : null;
+const runtimeSnapshots = BUILD_ID ? (${serializeBrowserFunction(createRuntimeSnapshotManager)})({
+  buildId: BUILD_ID, origin: self.location.origin, caches, fetch,
+  index: (${serializeBrowserFunction(createRuntimeSnapshotIndex)})(), protocol: runtimeProtocol,
+  clients: self.clients,
+  notify: message => { void notifyClients({...message,type:'RUNTIME_STATUS_CHANGED'}).catch(() => {}); }
+}) : null;
+const QR_VENDORS = ${JSON.stringify(getQrVendorInventory())};
 const DB_NAME = '2fa-offline-db';
 const DB_VERSION = 1;
 const SW_VERSION = '${version}';
@@ -298,13 +312,13 @@ self.addEventListener('install', event => {
       const cache = await caches.open(CACHE_NAME);
       await cache.addAll(STATIC_RESOURCES).catch(() => {});
     }
-    await self.skipWaiting();
+    // Legacy upgrades wait naturally; protocol updates use one gated coordinator.
   })());
 });
 
 self.addEventListener('activate', event => {
   // Keep legacy and last-good caches until a complete candidate is promoted.
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(runtimeSnapshots ? runtimeSnapshots.recordWorker() : Promise.resolve());
 });
 
 /**
@@ -483,7 +497,7 @@ self.addEventListener('fetch', event => {
   if (url.origin === self.location.origin && request.method === 'GET' && url.pathname === '/') {
     let cacheUpdate = Promise.resolve();
     const navigation = (async () => {
-      const cached = await (snapshotManager ? snapshotManager.match(request) : caches.match(request)).catch(() => null);
+      const cached = (runtimeSnapshots ? await runtimeSnapshots.matchNavigation(request).catch(() => null) : null) || await (snapshotManager ? snapshotManager.match(request) : caches.match(request)).catch(() => null);
       const controller = new AbortController();
       let timer;
       try {
@@ -504,6 +518,8 @@ self.addEventListener('fetch', event => {
               .then(cache => cache.put(request, responseToCache))
               .catch(error => console.warn('[SW] 无法更新首页缓存:', error));
           }
+          if (runtimeSnapshots) await runtimeSnapshots.pinNavigation(request, event.resultingClientId || event.clientId, complete,
+            {isCurrent:()=>!controller.signal.aborted}).catch(() => {});
           return complete;
         })();
         return await Promise.race([
@@ -515,9 +531,9 @@ self.addEventListener('fetch', event => {
       } catch {
         // Bind only the shell actually served offline, not the speculative
         // cached lookup made before a successful network navigation.
-        const fallback = snapshotManager
+        const fallback = (runtimeSnapshots ? await runtimeSnapshots.matchNavigation(request, event.resultingClientId || event.clientId).catch(() => null) : null) || (snapshotManager
           ? await snapshotManager.match(request, event.resultingClientId || event.clientId).catch(() => null)
-          : cached;
+          : cached);
         return fallback || new Response(OFFLINE_PAGE, {
           status: 503, statusText: 'Service Unavailable',
           headers: { 'Content-Type': 'text/html; charset=utf-8' }
@@ -598,6 +614,31 @@ self.addEventListener('fetch', event => {
     return;
   }
   
+  if (request.method === 'GET' && (url.pathname.startsWith('/theme-packages/') || url.pathname.startsWith('/vendor/'))) {
+    event.respondWith((async () => {
+      const kept = runtimeSnapshots ? await runtimeSnapshots.fetchResource(request, event.clientId).catch(() => null) : null;
+      if (kept) return kept;
+      const vendor = QR_VENDORS.find(item => item.url === url.pathname && !url.search);
+      if (!vendor) { try { return await fetch(request); } catch { return new Response('', {status:503}); } }
+      const cache = await caches.open('2fa-vendor-cache-v1');
+      const cached = await cache.match(request);
+      const valid = async response => {
+        if (!response || !response.ok || (response.headers.get('Content-Type') || '').split(';')[0] !== vendor.mime) return false;
+        const bytes = await response.clone().arrayBuffer();
+        const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),byte=>byte.toString(16).padStart(2,'0')).join('');
+        return bytes.byteLength === vendor.size && hash === vendor.sha256;
+      };
+      try {
+        const response = await fetch(request);
+        if (response.status === 401 || response.status === 403) return response;
+        if (await valid(response)) { await cache.put(request,response.clone()); return response; }
+        if (response.status >= 500 && await valid(cached)) return cached;
+        return response;
+      } catch { return await valid(cached) ? cached : new Response('',{status:503}); }
+    })());
+    return;
+  }
+
   // The request build selects its cache, including old pages controlled by a new SW.
   if (url.pathname.startsWith('/modules/') && request.method === 'GET') {
     const requestedBuild = url.searchParams.get('build');
@@ -618,13 +659,15 @@ self.addEventListener('fetch', event => {
       return identified ? (await caches.open(cacheName)).match(request) : caches.match(request);
     };
     const moduleResponse = (async () => {
+      const runtimeResource = runtimeSnapshots ? await runtimeSnapshots.fetchResource(request, event.clientId).catch(() => null) : null;
+      if (runtimeResource) return runtimeResource;
       try {
         const response = await fetch(request);
         if (response.status === 401 || response.status === 403) return response;
         if (identified && response.ok && response.headers.get('X-2FA-Build') !== requestedBuild) {
           return (await keptModule()) || new Response('Module build changed; refresh the page', { status: 409 });
         }
-        if (response.status === 409) return (await keptModule()) || response;
+        if (response.status === 409 || response.status >= 500) return (await keptModule()) || response;
         if (response.ok && (identified || !BUILD_ID)) {
           const copy = response.clone();
           cacheWrite = caches.open(cacheName).then(cache => cache.put(request, copy)).catch(() => {});
@@ -648,6 +691,8 @@ self.addEventListener('fetch', event => {
   if (snapshotManager && request.method === 'GET' &&
       (url.pathname.startsWith('/theme-assets/') || url.pathname === '/manifest.json' || url.pathname.startsWith('/icon-') || url.pathname.startsWith('/apple-touch-icon'))) {
     event.respondWith((async () => {
+      const runtimeResource = runtimeSnapshots ? await runtimeSnapshots.fetchResource(request, event.clientId).catch(() => null) : null;
+      if (runtimeResource) return runtimeResource;
       const bound = await snapshotManager.boundResource(request, event.clientId).catch(() => null);
       if (bound) return bound;
         try {
@@ -1217,7 +1262,58 @@ function isQueueClient(event) {
  * 消息处理
  * 允许页面与 Service Worker 通信
  */
+async function activeRuntimeBuild() {
+  const active = self.registration?.active;
+  if (!active || typeof MessageChannel !== 'function') return null;
+  return new Promise(resolve => {
+    const channel = new MessageChannel();
+    const nonce = crypto.randomUUID();
+    const timer = setTimeout(() => finish(null), 3000);
+    function finish(value) { clearTimeout(timer); channel.port1.close(); channel.port2.close(); resolve(value); }
+    channel.port1.onmessage = event => {
+      if (self.registration.active !== active || event.data?.protocol !== '2fa-runtime-v1' || event.data.nonce !== nonce) return;
+      finish(event.data.workerBuild);
+    };
+    try { active.postMessage({type:'RUNTIME_PROTOCOL_INFO',nonce},[channel.port2]); } catch { finish(null); }
+  });
+}
+async function handleRuntimeRequest(event, type = event.data?.type) {
+  const request = event.data || {};
+  const echo = {protocol:'2fa-runtime-v1',nonce:request.nonce,generation:request.generation,tuple:request.tuple,workerBuild:BUILD_ID};
+  try {
+    if (!isQueueClient(event) || !runtimeSnapshots || request.protocol !== '2fa-runtime-v1' ||
+        typeof request.nonce !== 'string' || request.nonce.length < 8 || !Number.isSafeInteger(request.generation)) throw new Error('invalid-runtime-client');
+    let result;
+    if (type === 'RUNTIME_PREPARE') result = await runtimeSnapshots.prepare(request.tuple,event.source.id,request);
+    else if (type === 'RUNTIME_ATTACH') result = await runtimeSnapshots.attach(request.tuple,event.source.id,request);
+    else if (type === 'RUNTIME_STATUS') result = await runtimeSnapshots.status(request.tuple,request);
+    else if (type === 'RUNTIME_STARTED') result = await runtimeSnapshots.markStartup(request.tuple,event.source.id,request);
+    else if (type === 'RUNTIME_ACTIVATE') {
+      const activeWorkerBuild = await activeRuntimeBuild();
+      if (!activeWorkerBuild || activeWorkerBuild === BUILD_ID) result = {status:'blocked',reason:'legacy-or-current-worker'};
+      else {
+        const prepared = await runtimeSnapshots.prepareServerRuntime(event.source.id);
+        result = prepared.status === 'ready'
+          ? await runtimeSnapshots.activation({activeWorkerBuild,skipWaiting:()=>self.skipWaiting()}) : prepared;
+      }
+    }
+    else throw new Error('unknown-runtime-request');
+    event.ports?.[0]?.postMessage({...echo,...result});
+  } catch (error) {
+    event.ports?.[0]?.postMessage({...echo,status:'blocked',reason:error.message,compatible:false,resourcesReady:false,recoveryReady:false});
+  }
+}
+
 self.addEventListener('message', event => {
+  if (event.data?.type === 'RUNTIME_PROTOCOL_INFO') {
+    event.ports?.[0]?.postMessage({protocol:'2fa-runtime-v1',nonce:event.data.nonce,workerBuild:BUILD_ID});
+    return;
+  }
+  if (['RUNTIME_PREPARE','RUNTIME_ATTACH','RUNTIME_STATUS','RUNTIME_STARTED','RUNTIME_ACTIVATE'].includes(event.data?.type)) {
+    event.waitUntil(handleRuntimeRequest(event));
+    return;
+  }
+
   if (snapshotManager && (event.data?.type === 'APPEARANCE_SNAPSHOT' || event.data?.type === 'APP_BUILD_PIN')) {
     const task = (async () => {
       if (!isQueueClient(event)) throw new Error('Invalid snapshot client');
@@ -1255,25 +1351,19 @@ self.addEventListener('message', event => {
   }
   
   if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
+    event.waitUntil(handleRuntimeRequest(event, 'RUNTIME_ACTIVATE'));
+    return;
   }
-  
+
   if (event.data && event.data.type === 'CLEAR_CACHE') {
-    event.waitUntil(
-      caches.keys().then(cacheNames => {
-        return Promise.all(
-          cacheNames.map(cacheName => {
-            console.log('[SW] 清除缓存:', cacheName);
-            return caches.delete(cacheName);
-          })
-        );
-      }).then(() => {
-        console.log('[SW] 所有缓存已清除');
-        event.ports[0].postMessage({ success: true });
-      })
-    );
+    event.waitUntil((async () => {
+      const result = isQueueClient(event) && runtimeSnapshots ? await runtimeSnapshots.clean() : {status:'blocked',reason:'runtime-unavailable'};
+      if (result.status === 'ready' && snapshotManager) await snapshotManager.clean();
+      event.ports?.[0]?.postMessage({...result,success:result.status==='ready'});
+    })().catch(() => event.ports?.[0]?.postMessage({success:false,status:'blocked'})));
+    return;
   }
-  
+
   if (event.data && event.data.type === 'GET_VERSION') {
     event.ports[0].postMessage({ version: CACHE_NAME });
   }

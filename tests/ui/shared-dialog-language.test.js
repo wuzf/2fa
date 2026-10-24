@@ -18,6 +18,7 @@ function harness() {
 		localStorage,
 		setTimeout,
 		clearTimeout,
+		AbortController,
 		Blob,
 		Uint8Array,
 		ArrayBuffer,

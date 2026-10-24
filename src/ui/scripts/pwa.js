@@ -1,3 +1,5 @@
+import { createRuntimeTransport } from '../runtime/runtimeTransport.js';
+import { serializeBrowserFunction } from './browserSource.js';
 /**
  * PWA (Progressive Web App) 功能模块
  * Service Worker 注册、PWA 检测、安装提示
@@ -9,6 +11,69 @@
  */
 export function getPWACode() {
 	return `// ==================== PWA Service Worker 注册 ====================
+    window.twofaRuntimeTransport = (${serializeBrowserFunction(createRuntimeTransport)})({
+      window,navigator,
+      isReloadBlocked: () => Boolean((typeof accountStore !== 'undefined' && accountStore.getOperationState().busy) ||
+        (typeof secretDialogSubmission !== 'undefined' && secretDialogSubmission) || window.__2FA_REFRESH_BLOCKED__?.() ||
+        (typeof customCodeReloadBlocked === 'function' && customCodeReloadBlocked()))
+    });
+    function getCurrentRuntimeTuple(mode = null) {
+      const appearance = window.__2FA_APPEARANCE__;
+      const safe = new URLSearchParams(window.location.search).get('safeMode') === '1' || new URLSearchParams(window.location.search).get('disableCustomCode') === '1';
+      const selectedMode = mode || (safe ? 'safe' : appearance?.kind === 'app' || appearance?.manifest?.themeApiVersion === 2 ? 'app' : 'official');
+      return {hostBuild:window.__2FA_BUILD_ID__ || '',sdkApiVersion:1,packageId:selectedMode==='app'?appearance.packageId:null,
+        appearanceRevision:selectedMode==='safe'?0:appearance?.revision || 0,mode:selectedMode};
+    }
+    async function requestRuntimeUpdate() {
+      return window.twofaRuntimeTransport.requestUpdate();
+    }
+    let recoveryPreparation = null;
+    async function preparePublicRecovery() {
+      if (!navigator.serviceWorker?.controller || !/^[a-f0-9]{64}$/.test(window.__2FA_BUILD_ID__ || '') || !/^[a-f0-9]{64}$/.test(window.__2FA_RECOVERY_CONFIG_ID__ || '')) return;
+      if (!recoveryPreparation) recoveryPreparation = (async () => {
+        const tuple = getCurrentRuntimeTuple('safe');
+        const options = {expectedShellConfigId:window.__2FA_RECOVERY_CONFIG_ID__};
+        const result = await window.twofaRuntimeTransport.prepare(tuple,options);
+        // Prefetching recovery in a normal page must never replace its app pin.
+        if (result?.status === 'ready' && getCurrentRuntimeTuple().mode === 'safe') {
+          const attached = await window.twofaRuntimeTransport.attach(tuple,options);
+          if (attached.status !== 'ready') return attached;
+          return window.twofaRuntimeTransport.startup(tuple,options);
+        }
+        return result;
+      })().finally(() => {recoveryPreparation=null;});
+      return recoveryPreparation;
+    }
+    async function prepareCurrentRuntime() {
+      if (!navigator.serviceWorker?.controller || !/^[a-f0-9]{64}$/.test(window.__2FA_BUILD_ID__ || '')) return;
+      const tuple = getCurrentRuntimeTuple();
+      if (tuple.mode === 'safe') return preparePublicRecovery();
+      await preparePublicRecovery();
+      let result = await window.twofaRuntimeTransport.prepare(tuple);
+      // Only the app host can commit an app permit. Official pages still need
+      // a complete pin so a later worker update can classify this live tab.
+      if (result?.status === 'ready' && tuple.mode === 'official' && JSON.stringify(getCurrentRuntimeTuple()) === JSON.stringify(tuple)) {
+        const attached = await window.twofaRuntimeTransport.attach(tuple);
+        result = attached.status === 'ready' ? await window.twofaRuntimeTransport.startup(tuple) : attached;
+      }
+      window.dispatchEvent(new CustomEvent('runtime-offline-state',{detail:result}));
+      if (typeof notifyThemeRuntimeEnvironment === 'function') notifyThemeRuntimeEnvironment('offline-readiness');
+      return result;
+    }
+    function maybeControlFirstRuntime(registration) {
+      const appearance = window.__2FA_APPEARANCE__;
+      if (!registration.active || navigator.serviceWorker.controller || !(appearance?.kind==='app' || appearance?.manifest?.themeApiVersion===2)) return;
+      const key = '2fa-runtime-control-reload:' + (window.__2FA_BUILD_ID__ || '');
+      setTimeout(() => {
+        if (navigator.serviceWorker.controller || !registration.active || window.__2FA_REFRESH_BLOCKED__?.() ||
+          (typeof accountStore !== 'undefined' && accountStore.getOperationState().busy) ||
+          (typeof secretDialogOpen !== 'undefined' && secretDialogOpen) ||
+          (typeof customCodeReloadBlocked === 'function' && customCodeReloadBlocked())) return;
+        try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key,'1'); } catch { return; }
+        window.location.reload();
+      },3000);
+    }
+
 
     function publishAppearanceSnapshot(appearance = window.__2FA_APPEARANCE__) {
       const worker = navigator.serviceWorker && (navigator.serviceWorker.controller || offlineQueueWorker);
@@ -16,10 +81,13 @@ export function getPWACode() {
       const buildId = window.__2FA_BUILD_ID__ || '';
       if (!buildId) return;
       worker.postMessage({ type: 'APP_BUILD_PIN', buildId, revision: appearance?.revision });
+      void preparePublicRecovery();
       if (navigator.onLine === false || !appearance ||
           new URLSearchParams(window.location.search).get('safeMode') === '1' ||
           new URLSearchParams(window.location.search).get('disableCustomCode') === '1') return;
+      if (appearance?.kind === 'app' || appearance?.manifest?.themeApiVersion === 2) { void prepareCurrentRuntime(); return; }
       worker.postMessage({ type: 'APPEARANCE_SNAPSHOT', buildId, appearance });
+      void prepareCurrentRuntime();
     }
     window.addEventListener('appearance-applied', event => publishAppearanceSnapshot(event.detail));
 
@@ -75,10 +143,30 @@ export function getPWACode() {
     // Shows why a queue action did not happen. Only known reasons get their own
     // text; anything else is reported as an unavailable queue.
     let offlineQueueFeedbackKey = '';
+    function getOfflineQueueSnapshot() {
+      return {
+        state: offlineQueueFeedbackKey ? 'unavailable' : offlineQueueReading ? 'loading' : 'ready',
+        authRequired: offlineQueueAuthRequired, busy: offlineQueueBusy, unavailable: Boolean(offlineQueueFeedbackKey), reason: offlineQueueFeedbackKey,
+        operations: offlineQueueOperations.map(item => {
+          const safe = {};
+          ['id', 'type', 'name', 'timestamp', 'status', 'failureReason', 'reason', 'claimed', 'canRetry', 'canEdit', 'canCancel'].forEach(key => {
+            if (['string', 'number', 'boolean'].includes(typeof item[key])) safe[key] = item[key];
+          });
+          safe.operationId = item.id;
+          safe.canRetry = item.status === 'failed' && !offlineQueueBusy;
+          safe.canEdit = item.status === 'failed' && item.editable === true && !offlineQueueBusy;
+          safe.canCancel = ['failed', 'awaiting_auth'].includes(item.status) && !offlineQueueBusy;
+          return safe;
+        })
+      };
+    }
+    function publishPwaState() { if (typeof notifyThemeRuntimeEnvironment === 'function') notifyThemeRuntimeEnvironment('pwa'); }
+    function getPwaHostState() { return { installAvailable: Boolean(deferredPrompt) && !pwaInstallPending }; }
     function offlineQueueFeedback(error = null) {
+      offlineQueueFeedbackKey = !error ? '' : error.code === 'changeBusy' ? 'offlineQueueChangeBusy' : 'offlineQueueUnavailable';
+      publishPwaState();
       const feedback = document.getElementById('offlineQueueFeedback');
       if (!feedback) return;
-      offlineQueueFeedbackKey = !error ? '' : error.code === 'changeBusy' ? 'offlineQueueChangeBusy' : 'offlineQueueUnavailable';
       feedback.textContent = offlineQueueFeedbackKey ? t(offlineQueueFeedbackKey) : '';
       feedback.hidden = !error;
       document.getElementById('offlineQueueReload').hidden = !error;
@@ -98,6 +186,7 @@ export function getPWACode() {
     }
 
     function renderOfflineQueue() {
+      publishPwaState();
       const bar = document.getElementById('offlineQueue');
       if (!bar) return;
       bar.hidden = offlineQueueOperations.length === 0;
@@ -180,29 +269,35 @@ export function getPWACode() {
     }
 
     async function refreshOfflineQueue() {
-      if (!document.getElementById('offlineQueue')) return;
-      if (offlineQueueReading || offlineQueueBusy) { offlineQueueReadAgain = true; return; }
+      if (offlineQueueReading || offlineQueueBusy) { offlineQueueReadAgain = true; return { status: 'rejected', reason: 'queue-busy' }; }
       offlineQueueReading = true;
+      publishPwaState();
       const version = ++offlineQueueVersion;
       try {
         const summary = await requestOfflineQueueMessage('OFFLINE_QUEUE_STATUS');
         if (version === offlineQueueVersion && !offlineQueueReadAgain) applyOfflineQueueSummary(summary);
+        return { status: 'completed' };
       } catch (error) {
         if (version === offlineQueueVersion) offlineQueueFeedback(error);
+        return { status: 'rejected', reason: 'queue-unavailable' };
       } finally {
         offlineQueueReading = false;
+        publishPwaState();
         if (offlineQueueReadAgain) { offlineQueueReadAgain = false; void refreshOfflineQueue(); }
       }
     }
 
-    async function changeOfflineQueueOperation(type, operationId) {
-      if (offlineQueueBusy) return;
+    async function changeOfflineQueueOperation(type, operationId, options = {}) {
+      const isCurrent = options.isCurrent || (() => true);
+      if (!isCurrent()) return { status: 'rejected', reason: 'mount-invalidated' };
+      if (offlineQueueBusy) return { status: 'rejected', reason: 'queue-busy' };
       if (type === 'OFFLINE_QUEUE_CANCEL' && !(await showConfirmDialog({
         title: t('offlineQueueCancelTitle'), message: t('offlineQueueCancelMessage'),
         i18n: { title: 'offlineQueueCancelTitle', message: 'offlineQueueCancelMessage', confirmText: 'offlineQueueCancelChange', cancelText: 'offlineQueueKeep' },
         confirmText: t('offlineQueueCancelChange'), cancelText: t('offlineQueueKeep'), danger: true
-      }))) return;
-      if (offlineQueueBusy) return;
+      }))) return { status: 'cancelled' };
+      if (!isCurrent()) return { status: 'rejected', reason: 'mount-invalidated' };
+      if (offlineQueueBusy) return { status: 'rejected', reason: 'queue-busy' };
       offlineQueueBusy = true;
       const version = ++offlineQueueVersion;
       renderOfflineQueue();
@@ -210,8 +305,10 @@ export function getPWACode() {
         const summary = await requestOfflineQueueMessage(type, operationId);
         if (!summary) throw new Error(t('offlineQueueUnavailable'));
         if (version === offlineQueueVersion) applyOfflineQueueSummary(summary);
+        return { status: 'committed' };
       } catch (error) {
         if (version === offlineQueueVersion) offlineQueueFeedback(error);
+        return { status: 'rejected', reason: 'queue-unavailable' };
       } finally {
         offlineQueueBusy = false;
         renderOfflineQueue();
@@ -222,8 +319,10 @@ export function getPWACode() {
 
     // Reopen a stopped add/edit in the account dialog so it can be corrected
     // instead of cancelled with its content.
-    async function openOfflineQueueEditor(operationId) {
-      if (offlineQueueBusy) return;
+    async function openOfflineQueueEditor(operationId, options = {}) {
+      const isCurrent = options.isCurrent || (() => true);
+      if (!isCurrent()) return { status: 'rejected', reason: 'mount-invalidated' };
+      if (offlineQueueBusy) return { status: 'rejected', reason: 'queue-busy' };
       // Queued changes contain raw keys. Show them only to a page that has
       // confirmed this login, never to a new page after logout. The login
       // dialog cannot be dismissed while offline (leaving it opens /otp,
@@ -234,7 +333,7 @@ export function getPWACode() {
         } else if (typeof showLoginModal === 'function') {
           showLoginModal();
         }
-        return;
+        return { status: 'rejected', reason: 'auth-required' };
       }
       const sessionGeneration = secretSessionGeneration;
       offlineQueueBusy = true;
@@ -242,13 +341,17 @@ export function getPWACode() {
       renderOfflineQueue();
       try {
         const reply = await requestOfflineQueueMessage('OFFLINE_QUEUE_DETAIL', operationId);
+        if (!isCurrent()) return { status: 'rejected', reason: 'mount-invalidated' };
         if (!reply || !reply.detail) throw new Error(t('offlineQueueUnavailable'));
         if (version === offlineQueueVersion) applyOfflineQueueSummary(reply);
         if (isSecretSessionCurrent(sessionGeneration) && typeof showQueuedSecretEditor === 'function') {
-          showQueuedSecretEditor(reply.detail);
+          if (showQueuedSecretEditor(reply.detail, options) === false) return { status: 'rejected', reason: 'queue-edit-unavailable' };
+          return { status: 'opened' };
         }
+        return { status: 'session-invalidated' };
       } catch (error) {
         if (version === offlineQueueVersion) offlineQueueFeedback(error);
+        return { status: 'rejected', reason: 'queue-unavailable' };
       } finally {
         offlineQueueBusy = false;
         renderOfflineQueue();
@@ -340,6 +443,8 @@ export function getPWACode() {
           offlineQueueWorker = registration.active || null;
 
           console.log('✅ Service Worker 注册成功:', registration.scope);
+          maybeControlFirstRuntime(registration);
+          navigator.serviceWorker.ready.then(maybeControlFirstRuntime).catch(() => {});
 
           // 监听更新（仅记录日志，不显示通知）
           registration.addEventListener('updatefound', () => {
@@ -364,6 +469,7 @@ export function getPWACode() {
 
           // 📨 监听 Service Worker 消息（离线同步通知）
           navigator.serviceWorker.addEventListener('message', (event) => {
+            if (event.data?.type === 'RUNTIME_STATUS_CHANGED' && event.source !== navigator.serviceWorker.controller) return;
             console.log('[PWA] 收到 Service Worker 消息:', event.data);
             handleServiceWorkerMessage(event.data);
           });
@@ -433,6 +539,10 @@ export function getPWACode() {
       const { type } = message;
 
       switch (type) {
+        case 'RUNTIME_STATUS_CHANGED':
+          window.dispatchEvent(new CustomEvent('runtime-offline-state',{detail:{status:message.state,tuple:message.tuple}}));
+          if (typeof notifyThemeRuntimeEnvironment === 'function') notifyThemeRuntimeEnvironment('offline-readiness');
+          break;
         case 'OFFLINE_QUEUE_CHANGED':
           void refreshOfflineQueue();
           break;
@@ -511,6 +621,7 @@ export function getPWACode() {
      * - 未捕获：禁用并用 title 提示
      */
     function updateSettingsPwaInstallButton() {
+      publishPwaState();
       const section = document.getElementById('settingsPwaSection');
       const btn = document.getElementById('settingsPwaInstallBtn');
       if (!section || !btn) return;
@@ -542,8 +653,9 @@ export function getPWACode() {
      */
     async function triggerPwaInstallFromSettings() {
       const btn = document.getElementById('settingsPwaInstallBtn');
-      if (!deferredPrompt || pwaInstallPending) return;
+      if (!deferredPrompt || pwaInstallPending) return { status: 'rejected', reason: 'install-unavailable' };
       pwaInstallPending = true;
+      publishPwaState();
 
       if (btn) {
         btn.disabled = true;
@@ -557,15 +669,19 @@ export function getPWACode() {
 
         if (outcome === 'accepted') {
           showCenterToast('✅', t('pwaInstallStarted'));
+          return { status: 'completed', reason: 'install-accepted' };
         } else {
           showCenterToast('❌', t('pwaInstallCancelled'));
+          return { status: 'cancelled' };
         }
       } catch {
         showCenterToast('❌', t('pwaInstallFailed'));
+        return { status: 'rejected', reason: 'install-failed' };
       } finally {
         pwaInstallPending = false;
         deferredPrompt = null;
         updateSettingsPwaInstallButton();
+        publishPwaState();
       }
     }
 
@@ -596,6 +712,7 @@ export function getPWACode() {
      * 监听在线/离线状态变化
      */
     window.addEventListener('online', () => {
+      publishPwaState();
       publishAppearanceSnapshot();
       console.log('🌐 网络已连接');
 
@@ -636,6 +753,7 @@ export function getPWACode() {
     });
 
     window.addEventListener('offline', () => {
+      publishPwaState();
       console.log('📡 网络已断开');
       offlineReconnectReadPending = true;
 
@@ -684,60 +802,17 @@ export function getPWACode() {
      * 原因：移动浏览器会暂停后台页面的定时器，导致验证码和倒计时不同步
      */
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        // 页面变为可见（从后台切回前台）
-        console.log('📱 页面恢复可见，刷新所有验证码');
-        
-        // 立即刷新所有OTP验证码，确保时间同步
-        if (typeof secrets !== 'undefined' && secrets && secrets.length > 0) {
-          console.log('🔄 正在刷新 ' + secrets.length + ' 个验证码...');
-          
-          // 并发计算并原子提交所有验证码，避免快卡先闪现、慢卡随后再播放动画。
-          const refreshPromise = typeof updateOTPSecretsInBatch === 'function'
-            ? updateOTPSecretsInBatch(secrets, { includeHOTP: true })
-            : Promise.all(
-              secrets.map(secret => {
-                if (typeof updateOTP === 'function') {
-                  return updateOTP(secret.id, null, secret);
-                }
-                return Promise.resolve();
-              })
-            );
-          refreshPromise.then(() => {
-            console.log('✅ 所有验证码已刷新完成');
-          }).catch(err => {
-            console.error('❌ 刷新验证码时出错:', err);
-          });
-        }
-      } else {
-        // 页面变为隐藏（切到后台）
-        console.log('📱 页面进入后台');
+      if (typeof getOtpEngine === 'function') {
+        const engine = getOtpEngine();
+        if (document.hidden) engine.suspend();
+        else void engine.resume('visibility');
       }
+      publishPwaState();
     });
 
-    /**
-     * 监听页面获得焦点事件（备用方案）
-     * 某些浏览器在锁屏解锁时只会触发focus而不触发visibilitychange
-     */
     window.addEventListener('focus', () => {
-      console.log('📱 窗口获得焦点');
-      
-      // 延迟100ms执行，避免与visibilitychange重复
-      setTimeout(() => {
-        if (typeof secrets !== 'undefined' && secrets && secrets.length > 0) {
-          console.log('🔄 窗口焦点恢复，检查并刷新验证码');
-          
-          if (typeof updateOTPSecretsInBatch === 'function') {
-            updateOTPSecretsInBatch(secrets, { includeHOTP: true });
-          } else {
-            secrets.forEach(secret => {
-              if (typeof updateOTP === 'function') {
-                updateOTP(secret.id, null, secret);
-              }
-            });
-          }
-        }
-      }, 100);
+      if (!document.hidden && typeof getOtpEngine === 'function') void getOtpEngine().resume('focus');
+      publishPwaState();
     });
 
     /**

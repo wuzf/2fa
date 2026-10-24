@@ -1,16 +1,8 @@
-// @vitest-environment happy-dom
-
-import { createContext, runInContext } from 'node:vm';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createMainPage } from '../../src/ui/page.js';
-import { getCoreCode } from '../../src/ui/scripts/core.js';
-import { getSearchCode } from '../../src/ui/scripts/search.js';
-import { getServiceAggregationCode } from '../../src/ui/scripts/serviceAggregation.js';
-import { getStateCode } from '../../src/ui/scripts/state.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createRuntimeFixture } from '../helpers/theme-runtime.js';
 import { createAppearanceController } from '../../src/ui/scripts/appearanceRuntime.js';
 import { getBuiltinTheme } from '../../src/themes/builtins.js';
 
-const html = await (await createMainPage()).text();
 const accounts = [
 	{ id: 'google', name: 'Google', account: 'a@example.com', secret: 'JBSWY3DPEHPK3PXP' },
 	{ id: 'microsoft', name: 'Microsoft', account: 'a@example.com', secret: 'JBSWY3DPEHPK3PXP' },
@@ -18,83 +10,49 @@ const accounts = [
 	{ id: 'outlook', name: 'Outlook', account: 'z@example.com', secret: 'JBSWY3DPEHPK3PXP' },
 ];
 
-function createHarness({ online, viewMode, defaultViewMode }) {
-	document.body.innerHTML = html;
-	localStorage.setItem('2fa-secrets-cache', JSON.stringify({ data: accounts, timestamp: 1 }));
-	localStorage.setItem('2fa-view-mode', viewMode);
-	if (defaultViewMode) {
-		localStorage.setItem('2fa-default-view-mode', defaultViewMode);
-	}
-	localStorage.setItem('2fa-flat-sort-preference', 'newest-first');
-	localStorage.setItem('2fa-group-item-sort-preference', 'account-desc');
-	localStorage.setItem('2fa-group-sort-preference', 'name-desc');
-	const listeners = new Map();
-	const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => accounts }));
-	const updateOTPSecretsInBatch = vi.fn(async () => {});
-	const clock = vi.fn(async () => {});
-	const warnings = vi.fn();
-	const api = createContext({
-		document: {
-			getElementById: document.getElementById.bind(document),
-			querySelector: document.querySelector.bind(document),
-			querySelectorAll: document.querySelectorAll.bind(document),
-			addEventListener: (type, listener) => listeners.set(type, listener),
-		},
-		window: { addEventListener: vi.fn(), innerHeight: 800 },
-		navigator: { onLine: online },
-		localStorage,
-		console: { log() {}, warn: warnings, error: warnings },
-		AbortController,
-		performance,
-		setTimeout,
-		clearTimeout,
-		setInterval: vi.fn(),
-		clearInterval: vi.fn(),
-		initializeTrustedClock: vi.fn(),
-		ensureServerTimeSynchronized: clock,
-		checkAuth: () => true,
-		initTheme: vi.fn(),
-		authenticatedFetch: fetch,
-		updateOTPSecretsInBatch,
-		startOTPInterval: vi.fn(),
-		t: (key) => key,
-		escapeHTML: (value) =>
-			String(value).replace(
-				/[&<>"']/g,
-				(character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character],
-			),
-	});
-	runInContext(getStateCode() + getSearchCode() + getCoreCode() + getServiceAggregationCode(), api);
-	return {
-		startPage: () => listeners.get('DOMContentLoaded')(),
-		selectViewMode: api.selectViewMode,
-		fetch,
-		clock,
-		updateOTPSecretsInBatch,
-		warnings,
-	};
-}
-
-beforeEach(() => vi.useFakeTimers());
-afterEach(() => {
-	vi.clearAllTimers();
-	vi.useRealTimers();
-	document.body.replaceChildren();
-	localStorage.clear();
+const fixtures = [];
+afterEach(async () => {
+	await Promise.all(fixtures.splice(0).map((h) => h.dispose()));
 });
+async function createHarness({ online, viewMode, defaultViewMode }) {
+	const fetch = vi.fn(async () => Response.json(accounts));
+	const clock = vi.fn(async () => true);
+	const warnings = vi.fn();
+	const h = await createRuntimeFixture({
+		fetch,
+		setupWindow(window) {
+			window.localStorage.setItem('2fa-secrets-cache', JSON.stringify({ data: accounts, timestamp: 1 }));
+			window.localStorage.setItem('2fa-view-mode', viewMode);
+			if (defaultViewMode) {
+				window.localStorage.setItem('2fa-default-view-mode', defaultViewMode);
+			}
+			window.localStorage.setItem('2fa-flat-sort-preference', 'newest-first');
+			window.localStorage.setItem('2fa-group-item-sort-preference', 'account-desc');
+			window.localStorage.setItem('2fa-group-sort-preference', 'name-desc');
+			Object.defineProperty(window.navigator, 'onLine', { value: online, configurable: true });
+			window.__startupClock = clock;
+			window.console = { log() {}, warn: warnings, error: warnings };
+		},
+		extraSource:
+			'initializeTrustedClock=()=>{}; ensureServerTimeSynchronized=window.__startupClock; initCustomCodeAutoReload=()=>{}; const startupLoad=loadSecrets; loadSecrets=(...args)=>window.__startupLoad=startupLoad(...args);',
+	});
+	fixtures.push(h);
+	h.setClock(59000);
+	return { ...h, startPage: h.initializeThemeApplication, selectViewMode: h.window.selectViewMode, fetch, clock, warnings };
+}
 
 describe('saved view and sort preferences on cached startup', () => {
 	it('preserves the account grid marker through actual view changes and theme switches', async () => {
-		const h = createHarness({ online: false, viewMode: 'grouped' });
+		const h = await createHarness({ online: false, viewMode: 'grouped' });
 		h.startPage();
-		await vi.advanceTimersByTimeAsync(0);
-		const list = document.getElementById('secretsList');
-		const controller = createAppearanceController(document);
+		await h.window.__startupLoad;
+		const list = h.document.getElementById('secretsList');
+		const controller = createAppearanceController(h.document);
 		for (const theme of ['compact', 'document', 'compact']) {
 			controller.apply(getBuiltinTheme(theme));
 			for (const mode of ['flat', 'grouped', 'flat']) {
 				await h.selectViewMode(mode);
-				expect(document.getElementById('secretsList')).toBe(list);
+				expect(h.document.getElementById('secretsList')).toBe(list);
 				expect(list.dataset.part).toBe('account-grid');
 				expect(list.dataset.view).toBe(mode);
 				expect(list.querySelectorAll('.secret-card')).toHaveLength(accounts.length);
@@ -114,18 +72,18 @@ describe('saved view and sort preferences on cached startup', () => {
 	])(
 		'restores $viewMode / default $defaultViewMode before the first cached render (online: $online)',
 		async ({ online, viewMode, defaultViewMode }) => {
-			const h = createHarness({ online, viewMode, defaultViewMode });
+			const h = await createHarness({ online, viewMode, defaultViewMode });
 			h.startPage();
 
 			// Cache rendering is synchronous up to OTP generation. Assert the first
 			// visible cards before an online response can mask a startup-order bug.
-			const list = document.getElementById('secretsList');
+			const list = h.document.getElementById('secretsList');
 			const grouped = (defaultViewMode || viewMode) === 'grouped';
 			expect(list.classList.contains('is-grouped')).toBe(grouped);
 			expect(list.dataset.view).toBe(grouped ? 'grouped' : 'flat');
 			expect(list.style.display).toBe('');
 			expect(list.hidden).toBe(false);
-			expect(window.getComputedStyle(list).display).toBe(grouped ? 'block' : 'grid');
+			expect(h.window.getComputedStyle(list).display).toBe(grouped ? 'block' : 'grid');
 			expect([...list.querySelectorAll('.otp-code')].map((node) => node.id)).toEqual(
 				grouped ? ['otp-outlook', 'otp-microsoft', 'otp-gmail', 'otp-google'] : ['otp-outlook', 'otp-gmail', 'otp-microsoft', 'otp-google'],
 			);
@@ -135,13 +93,13 @@ describe('saved view and sort preferences on cached startup', () => {
 			expect(h.fetch).not.toHaveBeenCalled();
 			const firstCard = list.querySelector('.secret-card');
 
-			await vi.advanceTimersByTimeAsync(0);
+			await h.window.__startupLoad;
 
 			// An identical server snapshot deliberately keeps the original DOM.
 			// Offline startup has no subsequent response that could repair it either.
 			expect(list.querySelector('.secret-card')).toBe(firstCard);
-			expect(h.updateOTPSecretsInBatch).toHaveBeenCalledOnce();
-			expect(h.fetch).toHaveBeenCalledTimes(online ? 1 : 0);
+			expect(h.getThemeRuntime().sdk.getSnapshot().library.accounts).toHaveLength(accounts.length);
+			expect(h.fetch.mock.calls.filter(([url]) => url === '/api/secrets')).toHaveLength(online ? 1 : 0);
 			expect(h.clock).toHaveBeenCalledTimes(online ? 1 : 0);
 			expect(h.warnings).not.toHaveBeenCalled();
 		},

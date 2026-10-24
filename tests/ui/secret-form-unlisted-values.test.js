@@ -5,6 +5,8 @@ import { createMainPage } from '../../src/ui/page.js';
 import { getCoreCode } from '../../src/ui/scripts/core.js';
 import { getI18nCode } from '../../src/ui/scripts/i18n.js';
 import { getStateCode } from '../../src/ui/scripts/state.js';
+import { getTimeCode } from '../../src/ui/scripts/time.js';
+import { getOTPCode } from '../../src/ui/scripts/otp.js';
 import { getUICode } from '../../src/ui/scripts/ui.js';
 
 const ACCOUNT = {
@@ -60,6 +62,8 @@ async function harness(accounts) {
 		`
 		${getI18nCode()}
 		${getStateCode()}
+		${getTimeCode()}
+		${getOTPCode()}
 		${getUICode()}
 		${getCoreCode()}
 		renderSecrets = async () => {};
@@ -67,7 +71,7 @@ async function harness(accounts) {
 		disableBodyScroll = () => {};
 		enableBodyScroll = () => {};
 		return { editSecret, showAddModal, hideSecretModal, handleSubmit, showQueuedSecretEditor,
-			setSecrets(value) { secrets = value; } };
+			setSecrets(value) { replaceSecretRecords(value); } };
 	`,
 	)(document, window, fetch, toast, { log() {}, warn() {}, error() {} }, storage, { language: 'zh-CN', onLine: true });
 	api.setSecrets(globalThis.structuredClone(accounts));

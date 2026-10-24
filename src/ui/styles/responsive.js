@@ -554,45 +554,9 @@ export function getResponsiveStyles() {
       .btn {
         width: 100%;
       }
-    }
     
-    /* 大屏幕手机和小平板适配 */
-    @media (min-width: 481px) and (max-width: 767px) {
-      /* 容器宽度适配 */
-      .container {
-        max-width: 600px;
-      }
-
-      body {
-        padding: 8px;
-      }
-      
-      .secrets-list,
-      .service-group-grid {
-        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-        gap: 12px;
-        justify-content: center;
-        text-align: left;
-      }
-
-      .content {
-        text-align: center;
-      }
-
-      .secret-header {
-        flex-wrap: nowrap;
-        align-items: center;
-      }
-      
-      .secret-actions {
-        flex-wrap: wrap;
-      }
-      
-      .action-btn {
-        font-size: 12px;
-        min-width: 50px;
-      }
-    }
+    /* The former 481–767px block was preceded by an unmatched closing brace
+       and ignored by browsers. Keep the established base/mobile layout here. */
 
     /* 平板和中等桌面屏幕适配 */
     @media (min-width: 768px) and (max-width: 1199px) {

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { createAccountStore } from '../../src/ui/runtime/accountStore.js';
+import { createAccountViewState } from '../../src/ui/runtime/accountViewState.js';
+import { createThemeSdk } from '../../src/ui/runtime/themeSdk.js';
 import { getOTPCode } from '../../src/ui/scripts/otp.js';
 import { getTimeCode } from '../../src/ui/scripts/time.js';
 import { getI18nCode } from '../../src/ui/scripts/i18n.js';
@@ -134,8 +137,17 @@ function createHarness({
 		crypto: globalThis.crypto,
 	};
 
+	const accountStore = createAccountStore({ records: secrets });
+	const environmentListeners = new Set();
+	const notifyEnvironment = vi.fn((reason) => {
+		for (const listener of environmentListeners) {
+			listener(reason);
+		}
+	});
 	// eslint-disable-next-line no-new-func
 	const api = new Function(
+		'accountStore',
+		'notifyThemeRuntimeEnvironment',
 		'Date',
 		'performance',
 		'fetch',
@@ -159,10 +171,14 @@ function createHarness({
 			getCorrectedNowMs,
 			ensureServerTimeSynchronized,
 			syncServerTime,
+			getOtpEngine,
+			otpPresentation,
 			otpCalculator,
 			updateCountdown
 		};`,
 	)(
+		accountStore,
+		notifyEnvironment,
 		fakeDate,
 		performance,
 		fetch,
@@ -223,6 +239,9 @@ function createHarness({
 	}
 
 	return {
+		notifyEnvironment,
+		environmentListeners,
+		accountStore,
 		api,
 		completeNextPendingRequest,
 		completePendingRequests,
@@ -245,6 +264,62 @@ async function runSync(harness, samples) {
 }
 
 describe('trusted browser clock', () => {
+	it('publishes synchronization, failed refresh, and clock discontinuity to an empty-account SDK', async () => {
+		const h = createHarness();
+		const runtime = createThemeSdk({
+			accounts: h.accountStore,
+			otp: h.api.getOtpEngine(),
+			commands: {},
+			view: createAccountViewState(),
+			environment: {
+				getSnapshot: () => ({
+					clock: { status: h.api.trustedClock.status, generation: h.api.trustedClock.generation, correctedNow: h.api.getCorrectedNowMs() },
+				}),
+				subscribe: (listener) => {
+					h.environmentListeners.add(listener);
+					return () => h.environmentListeners.delete(listener);
+				},
+			},
+		});
+		const seen = [];
+		runtime.sdk.subscribe((snapshot) => seen.push(snapshot.clock));
+		expect(seen).toEqual([{ status: 'local', generation: 0, correctedNow: SERVER_BASE_MS }]);
+		await runSync(
+			h,
+			[20, 40, 60].map((rttMs) => ({ rttMs, offsetMs: 10_000 })),
+		);
+		expect(seen.at(-1)).toMatchObject({ status: 'synced', generation: 1 });
+		expect(h.notifyEnvironment).toHaveBeenLastCalledWith('clock-synced');
+		await runSync(
+			h,
+			[20, 40, 60].map((rttMs) => ({ rttMs, reject: true })),
+		);
+		expect(seen.at(-1)).toMatchObject({ status: 'cached', generation: 1 });
+		expect(h.notifyEnvironment).toHaveBeenLastCalledWith('clock-sync-failed');
+		h.state.wallClockAdjustmentMs += 60_000;
+		expect(h.api.trustedClock.recoverFromClockDiscontinuity()).toBe(true);
+		expect(seen.at(-1)).toMatchObject({ status: 'cached', generation: 2 });
+		expect(h.notifyEnvironment).toHaveBeenLastCalledWith('clock-discontinuity');
+		expect(runtime.sdk.getSnapshot().library.accounts).toEqual([]);
+		runtime.dispose();
+		h.api.getOtpEngine().dispose();
+	});
+
+	it('does not undo a confirmed clock sync when an environment observer throws', async () => {
+		const h = createHarness();
+		h.notifyEnvironment.mockImplementation(() => {
+			throw new Error('observer failure');
+		});
+		await expect(
+			runSync(
+				h,
+				[20, 40, 60].map((rttMs) => ({ rttMs, offsetMs: 1000 })),
+			),
+		).resolves.toBe(true);
+		expect(h.api.trustedClock.status).toBe('synced');
+		expect(h.api.trustedClock.generation).toBe(1);
+	});
+
 	it.each([
 		['fast', 5 * 60 * 1000, -5 * 60 * 1000],
 		['slow', -4 * 60 * 1000, 4 * 60 * 1000],
@@ -645,6 +720,10 @@ describe('trusted browser clock', () => {
 			await expect(initialSync).resolves.toBe(true);
 			await vi.waitFor(() => expect(elements['otp-automatic'].textContent).toMatch(/^\d{6}$/));
 			const initialCode = elements['otp-automatic'].textContent;
+			// A page restore initializes missing codes. Seed an actual committed
+			// HOTP to verify clock refresh preserves its value and identity.
+			await harness.api.getOtpEngine().refreshOne('hotp');
+			const initialHOTP = harness.api.getOtpEngine().readCommitted('hotp');
 			harness.fetch.mockClear();
 			harness.queueSamples([20, 40, 60].map((rttMs) => ({ rttMs, offsetMs: 90_000 })));
 			if (eventName === 'interval') {
@@ -663,7 +742,8 @@ describe('trusted browser clock', () => {
 			const expectedCode = await harness.api.otpCalculator.calculateCurrentOTP(secret);
 			expect(expectedCode).not.toBe(initialCode);
 			await vi.waitFor(() => expect(elements['otp-automatic'].textContent).toBe(expectedCode));
-			expect(elements['otp-hotp'].textContent).toBe('unchanged HOTP');
+			expect(elements['otp-hotp'].textContent).toBe(initialHOTP.current);
+			expect(harness.api.getOtpEngine().readCommitted('hotp')).toBe(initialHOTP);
 			expect(elements['progress-automatic'].style.width).toBeDefined();
 			expect(JSON.parse(harness.localStorage.values.get(STORAGE_KEY)).offsetMs).toBe(90_000);
 			expectSilentClockUI(harness, elements);

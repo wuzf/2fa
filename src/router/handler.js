@@ -40,6 +40,8 @@ import { createSetupPage } from '../ui/setupPage.js';
 import { createManifest, createDefaultIcon } from '../ui/manifest.js';
 import { createServiceWorker } from '../ui/serviceworker.js';
 import { getModuleCode } from '../ui/scripts/index.js';
+import { createRuntimeManifest } from '../ui/runtimeManifest.js';
+import { createQrVendorResponse } from '../ui/qrVendors.js';
 
 // 工具函数
 import { createErrorResponse } from '../utils/response.js';
@@ -55,7 +57,14 @@ import {
 } from '../utils/auth.js';
 import { createPreflightResponse } from '../utils/security.js';
 import { getLogger } from '../utils/logger.js';
-import { handleThemeRequest, handleThemeAssetRequest, getPublicAppearance, createDefaultAppearance } from '../api/themes.js';
+import {
+	handleThemeRequest,
+	handleThemeAssetRequest,
+	handleThemePreviewRequest,
+	revokeThemePreviewOwner,
+	getPublicAppearance,
+	createDefaultAppearance,
+} from '../api/themes.js';
 import { getBuildId } from '../utils/build.js';
 
 /**
@@ -72,8 +81,24 @@ export async function handleRequest(request, env, ctx) {
 	const logger = getLogger(env);
 
 	try {
-		if (pathname.startsWith('/theme-assets/')) {
+		if (pathname.startsWith('/vendor/')) {
+			return createQrVendorResponse(request);
+		}
+		if (pathname.startsWith('/theme-preview/')) {
+			return handleThemePreviewRequest(request, env);
+		}
+		if (pathname.startsWith('/theme-assets/') || pathname.startsWith('/theme-packages/')) {
 			return handleThemeAssetRequest(request, env);
+		}
+		if (pathname === '/api/runtime-manifest' && url.searchParams.get('mode') === 'safe') {
+			const buildId = getBuildId();
+			if (method !== 'GET') {
+				return new Response('Not found', { status: 404 });
+			}
+			if (!buildId || url.searchParams.get('build') !== buildId || url.searchParams.get('appearance') !== '0') {
+				return createErrorResponse('应用版本已更新', '请刷新页面后重试', 409, request);
+			}
+			return createRuntimeManifest(request, { appearance: null, buildId, customCodes: [] });
 		}
 		// 时间校准接口必须在设置和认证检查前处理，确保无需访问 KV。
 		if (pathname === '/api/time') {
@@ -147,6 +172,28 @@ export async function handleRequest(request, env, ctx) {
 			}
 			return handleThemeRequest(request, env, ctx);
 		}
+		if (pathname === '/api/runtime-manifest' && method === 'GET') {
+			const buildId = getBuildId();
+			if (!buildId || url.searchParams.get('build') !== buildId) {
+				return createErrorResponse('应用版本已更新', '请刷新页面后重试', 409, request);
+			}
+			const saved = await handleThemeRequest(new Request(new URL('/api/appearance', request.url)), env);
+			if (!saved.ok) {
+				return saved;
+			}
+			const { active: appearance } = await saved.json();
+			const mode = appearance?.kind === 'app' ? 'app' : 'official';
+			if (url.searchParams.get('appearance') !== String(appearance.revision) || url.searchParams.get('mode') !== mode) {
+				return createErrorResponse('外观已更新', '请重新加载已保存外观后重试', 409, request);
+			}
+			let customCodes = [];
+			try {
+				customCodes = (await readSettingsSnapshot(env)).customCodes;
+			} catch (error) {
+				logger.warn('读取自定义代码失败，使用默认页面', { errorMessage: error.message });
+			}
+			return createRuntimeManifest(request, { appearance, buildId, customCodes });
+		}
 
 		// 静态路由处理
 		if (pathname === '/' || pathname === '') {
@@ -167,7 +214,8 @@ export async function handleRequest(request, env, ctx) {
 
 		// PWA Manifest
 		if (pathname === '/manifest.json') {
-			const appearance = getBuildId() ? await getPublicAppearance(env) : createDefaultAppearance();
+			const safeMode = url.searchParams.get('safeMode') === '1' || url.searchParams.get('disableCustomCode') === '1';
+			const appearance = getBuildId() && !safeMode ? await getPublicAppearance(env) : createDefaultAppearance();
 			return createManifest(request, appearance);
 		}
 
@@ -179,10 +227,11 @@ export async function handleRequest(request, env, ctx) {
 		// PWA 图标（使用默认SVG图标）
 		if (pathname === '/icon-192.png' || pathname === '/icon-512.png') {
 			const size = pathname.includes('512') ? 512 : 192;
-			if (getBuildId()) {
+			const safeMode = url.searchParams.get('safeMode') === '1' || url.searchParams.get('disableCustomCode') === '1';
+			if (getBuildId() && !safeMode) {
 				const appearance = await getPublicAppearance(env);
 				const icon = appearance.branding?.[size === 512 ? 'icon512' : 'icon192'];
-				if (typeof icon === 'string' && /^\/theme-assets\/[a-f0-9]{64}\//.test(icon)) {
+				if (typeof icon === 'string' && /^\/(?:theme-assets|theme-packages)\/[a-f0-9]{64}\//.test(icon)) {
 					return handleThemeAssetRequest(new Request(new URL(icon, request.url), { method: 'GET' }), env);
 				}
 			}
@@ -238,7 +287,16 @@ export async function handleRequest(request, env, ctx) {
 
 		// 退出登录路由
 		if (pathname === '/api/logout' && method === 'POST') {
-			return await handleLogout(request, env);
+			const response = await handleLogout(request, env);
+			if (response.ok) {
+				try {
+					request.authDetails = await verifyAuthWithDetails(request, env);
+					await revokeThemePreviewOwner(request, env);
+				} catch {
+					logger.warn('退出登录后主题预览撤销暂时不可用，将在固定期限内过期');
+				}
+			}
+			return response;
 		}
 
 		// Token 刷新路由

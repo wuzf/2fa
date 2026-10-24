@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { SERVICE_FAMILY_ALIASES, SERVICE_FAMILY_NAMES, SERVICE_FUZZY_MATCH_KEYS, SERVICE_LOGOS } from '../../src/ui/config/serviceLogos.js';
 import { createServiceAggregation } from '../../src/shared/service-aggregation.js';
 import { LOCALES } from '../../src/ui/locales/index.js';
-import { getCoreCode } from '../../src/ui/scripts/core.js';
+import { createAccountViewState } from '../../src/ui/runtime/accountViewState.js';
 import { getServiceAggregationCode } from '../../src/ui/scripts/serviceAggregation.js';
 import { transferI18n } from '../helpers/transfer-i18n.js';
 
@@ -318,7 +318,18 @@ describe('automatic service grouping', () => {
 	});
 
 	it('wires aggregate group order independently from item sorting', () => {
-		expect(getCoreCode()).toContain('groupSecretsByServiceFamily(sortedSecrets, secrets, currentGroupSortType)');
+		const view = createAccountViewState({ groupSecretsByServiceFamily: api.groupSecretsByServiceFamily });
+		const records = [secret('g1', 'Google'), secret('g2', 'Gmail'), secret('m1', 'Microsoft'), secret('m2', 'Outlook')];
+		view.setSort({ groupSort: 'name-desc', groupedItemSort: 'newest-first' });
+		expect(view.derive(records).groups.map((group) => [group.label, group.ids])).toEqual([
+			['Microsoft', ['m2', 'm1']],
+			['Google', ['g2', 'g1']],
+		]);
+		view.setSort({ groupedItemSort: 'oldest-first' });
+		expect(view.derive(records).groups.map((group) => [group.label, group.ids])).toEqual([
+			['Microsoft', ['m1', 'm2']],
+			['Google', ['g1', 'g2']],
+		]);
 	});
 });
 

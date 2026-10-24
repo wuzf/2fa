@@ -148,6 +148,7 @@ export function getUICode() {
 
       root.classList.add(animate ? 'theme-transition' : 'theme-instant');
       root.setAttribute('data-theme', nextTheme);
+      if (typeof notifyThemeRuntimeEnvironment === 'function') notifyThemeRuntimeEnvironment('theme');
       // Start cleanup after styles have painted, with a small margin over 180ms.
       afterPaint(() => {
         if (animate) change.timer = setTimeout(finish, 220);
@@ -204,6 +205,7 @@ export function getUICode() {
     }
 
     function showSecretModal(onShow) {
+      secretDialogCommandGuard = null;
       const modal = document.getElementById('secretModal');
       if (!modal) return;
       if (typeof trackModalClosed === 'function') trackModalClosed(modal);
@@ -230,8 +232,9 @@ export function getUICode() {
       }, 10);
     }
 
-    function showAddModal() {
+    function showAddModal(guard = {}) {
       showSecretModal(() => {
+        secretDialogCommandGuard = guard;
         editingId = null;
         document.getElementById('secretForm').reset();
         document.getElementById('secretId').value = '';
@@ -242,6 +245,7 @@ export function getUICode() {
     function hideSecretModal() {
       const modal = document.getElementById('secretModal');
       if (!modal || !secretDialogOpen) return;
+      secretDialogCommandGuard = null;
       if (typeof trackModalClosed === 'function') trackModalClosed(modal);
       const generation = ++secretDialogGeneration;
       secretDialogOpen = false;
@@ -293,6 +297,7 @@ export function getUICode() {
       const submenu = document.getElementById('actionSubmenu');
       const overlay = document.getElementById('menuOverlay');
 
+      if (!mainBtn || !submenu || !overlay) return;
       const isActive = mainBtn.classList.contains('active');
 
       if (isActive) {
@@ -308,6 +313,7 @@ export function getUICode() {
       const submenu = document.getElementById('actionSubmenu');
       const overlay = document.getElementById('menuOverlay');
 
+      if (!mainBtn || !submenu || !overlay) return;
       mainBtn.classList.add('active');
       mainBtn.setAttribute('aria-expanded', 'true');
       submenu.classList.add('show');
@@ -327,10 +333,10 @@ export function getUICode() {
       const submenu = document.getElementById('actionSubmenu');
       const overlay = document.getElementById('menuOverlay');
 
-      mainBtn.classList.remove('active');
-      mainBtn.setAttribute('aria-expanded', 'false');
-      submenu.classList.remove('show');
-      overlay.classList.remove('show');
+      mainBtn?.classList.remove('active');
+      mainBtn?.setAttribute('aria-expanded', 'false');
+      submenu?.classList.remove('show');
+      overlay?.classList.remove('show');
     }
 
     // 高级选项切换函数
@@ -654,4 +660,115 @@ export function getUICode() {
       };
     }
 `;
+}
+
+/** Host-owned flows remain reachable when the account view uses a different DOM. */
+export function getHostFlowsCode() {
+	return `
+    function openThemeHostDialog(modalId, open, context, moduleName = null) {
+      const invoke = () => {
+        if (!context.isCurrent()) return { status: 'session-invalidated' };
+        let observer = null;
+        let opened = false;
+        let settled = false;
+        let finish;
+        let ownedSecretGeneration = null;
+        const originalSecretGeneration = typeof secretDialogGeneration === 'number' ? secretDialogGeneration : null;
+        const captureSecretOwnership = () => { if (ownedSecretGeneration === null && modalId === 'secretModal' && typeof secretDialogGeneration === 'number' && secretDialogGeneration !== originalSecretGeneration && typeof secretDialogCommandGuard !== 'undefined' && secretDialogCommandGuard?.isCurrent === context.isCurrent) ownedSecretGeneration = secretDialogGeneration; };
+        const invalidated = () => {
+          if (ownedSecretGeneration !== null && secretDialogGeneration === ownedSecretGeneration && typeof hideSecretModal === 'function') hideSecretModal();
+          finish({ status: 'rejected', reason: 'mount-invalidated' });
+        };
+        const closed = new Promise(resolve => { finish = result => { if (settled) return; settled = true; observer?.disconnect(); context.signal?.removeEventListener('abort', invalidated); resolve(result); }; });
+        context.signal?.addEventListener('abort', invalidated, { once: true });
+        const inspect = () => {
+          const modal = document.getElementById(modalId);
+          const visible = Boolean(modal && !modal.hidden && modal.style.display !== 'none' && (modal.style.display || modal.classList.contains('show')));
+          if (visible) opened = true;
+          else if (opened) finish({ status: 'closed' });
+        };
+        if (typeof MutationObserver === 'function') {
+          observer = new MutationObserver(inspect);
+          observer.observe(document.body, { attributes: true, childList: true, subtree: true, attributeFilter: ['style', 'class', 'hidden'] });
+        }
+        let result;
+        try { result = open(); captureSecretOwnership(); inspect(); } catch { finish({ status: 'rejected', reason: 'flow-failed' }); return { closed }; }
+        Promise.resolve(result).then(value => {
+          captureSecretOwnership();
+          inspect();
+          if (value && ['rejected', 'session-invalidated', 'cancelled'].includes(value.status)) finish(value);
+          else if (!opened) finish({ status: 'rejected', reason: 'dialog-unavailable' });
+          else if (!observer) finish({ status: 'unknown', reason: 'dialog-observer-unavailable' });
+        }, () => finish({ status: 'rejected', reason: 'flow-failed' }));
+        return { closed };
+      };
+      if (moduleName && typeof loadModule === 'function') return loadModule(moduleName).then(invoke);
+      return invoke();
+    }
+
+    function openThemeHostPanel(panelId, title, context) {
+      const panel = document.getElementById(panelId);
+      if (!panel) return { status: 'rejected', reason: 'panel-unavailable' };
+      const oldParent = panel.parentNode;
+      const oldNext = panel.nextSibling;
+      let modal = document.getElementById('themeHostStatusModal');
+      if (!modal) {
+        modal = document.createElement('div'); modal.id = 'themeHostStatusModal'; modal.className = 'modal'; modal.style.display = 'none';
+        modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.dataset.part = 'dialog';
+        const content = document.createElement('div'); content.className = 'modal-content';
+        const heading = document.createElement('h2'); heading.id = 'themeHostStatusTitle'; content.append(heading); modal.setAttribute('aria-labelledby', heading.id);
+        const body = document.createElement('div'); body.id = 'themeHostStatusBody'; content.append(body);
+        const close = document.createElement('button'); close.type = 'button'; close.className = 'btn btn-secondary'; close.textContent = t('close'); close.onclick = () => hideModal('themeHostStatusModal'); content.append(close);
+        modal.append(content); document.body.append(modal);
+      }
+      if (modal.style.display !== 'none') return { status: 'rejected', reason: 'dialog-busy' };
+      document.getElementById('themeHostStatusTitle').textContent = title;
+      const flow = openThemeHostDialog('themeHostStatusModal', () => {
+        document.getElementById('themeHostStatusBody').append(panel);
+        showModal('themeHostStatusModal');
+      }, context);
+      flow.closed?.then(() => {
+        if (oldParent?.isConnected) oldParent.insertBefore(panel, oldNext?.parentNode === oldParent ? oldNext : null);
+        else document.getElementById('hostThemePanels')?.append(panel);
+      });
+      return flow;
+    }
+
+    function getThemeHostHandlers() {
+      const dialog = (id, open, context, moduleName) => openThemeHostDialog(id, open, context, moduleName);
+      const tools = {
+        'qr-decode': ['qrDecodeModal', () => showQRScanAndDecode()], 'qr-generate': ['qrGenerateModal', () => showQRGenerateTool()],
+        'base32': ['base32Modal', () => showBase32Tool()], 'timestamp': ['timestampModal', () => showTimestampTool()],
+        'key-check': ['keyCheckModal', () => showKeyCheckTool()], 'key-generate': ['keyGeneratorModal', () => showKeyGeneratorTool()]
+      };
+      const providers = { webdav: ['webdavModal', () => showWebdavTool()], s3: ['s3Modal', () => showS3Tool()], onedrive: ['oneDriveModal', () => showOneDriveTool()], gdrive: ['googleDriveModal', () => showGoogleDriveTool()] };
+      return {
+        login: (request, context) => dialog('loginModal', () => showLoginModal(), context),
+        logout: async () => { const serverConfirmed = await logout(); return { status: serverConfirmed ? 'completed' : 'unknown', reason: serverConfirmed ? 'logout-server-confirmed' : 'logout-local-only' }; },
+        'account-add': (request, context) => dialog('secretModal', () => showAddModal({ isCurrent: context.isCurrent }), context),
+        'account-edit': (request, context) => dialog('secretModal', () => editSecret(request.account.id, { isCurrent: context.isCurrent }), context),
+        'account-delete': (request, context) => deleteSecret(request.account.id, { isCurrent: context.isCurrent }),
+        'account-qr': (request, context) => dialog('qrModal', () => showQRCode(request.account.id), context, 'qrcode'),
+        'scan-import': (request, context) => dialog('qrScanModal', () => showQRScanner(), context, 'qrcode'),
+        import: (request, context) => dialog('importModal', () => showImportModal(), context, 'import'),
+        export: (request, context) => dialog('exportFormatModal', () => showExportFormatModal(), context, 'export'),
+        backup: (request, context) => dialog('restoreModal', () => showRestoreModal(), context, 'backup'),
+        tools: (request, context) => dialog('toolsModal', () => showToolsModal(), context),
+        tool: (request, context) => { const [id, open] = tools[request.tool]; return dialog(id, open, context, 'tools'); },
+        settings: (request, context) => dialog('settingsModal', () => { showSettingsModal(); switchSettingsTab(request.section); }, context),
+        'sync-provider': (request, context) => { const [id, open] = providers[request.provider]; return dialog(id, open, context, 'tools'); },
+        appearance: (request, context) => dialog('appearanceModal', () => window.showAppearanceEditor(), context, 'appearance'),
+        recovery: () => { const result = getThemeRuntime().sdk.lifecycle.requestReload('recovery'); return result; },
+        'hidden-accounts': (request, context) => { hiddenSecretsExpanded = true; renderHiddenSecretsNotice(); return openThemeHostPanel('hiddenSecrets', t('pageHiddenAccounts'), context); },
+        'offline-queue': (request, context) => { offlineQueueExpanded = true; renderOfflineQueue(); void refreshOfflineQueue(); return openThemeHostPanel('offlineQueue', t('offlineQueueView'), context); },
+        'offline-queue-edit': (request, context) => dialog('secretModal', () => openOfflineQueueEditor(request.operationId, { isCurrent: context.isCurrent }), context),
+        'offline-queue-retry': (request, context) => changeOfflineQueueOperation('OFFLINE_QUEUE_RETRY', request.operationId, { isCurrent: context.isCurrent }),
+        'offline-queue-cancel': (request, context) => changeOfflineQueueOperation('OFFLINE_QUEUE_CANCEL', request.operationId, { isCurrent: context.isCurrent }),
+        'offline-queue-status-retry': () => refreshOfflineQueue(),
+        extension: (request, context) => dialog('browserExtensionModal', () => showBrowserExtensionModal(), context),
+        'pwa-install': () => triggerPwaInstallFromSettings(),
+        'quick-otp': () => { window.location.assign('/otp'); return { status: 'completed' }; }
+      };
+    }
+  `;
 }

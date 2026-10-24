@@ -205,9 +205,8 @@ async function normalizeAppearanceWithResolver(pkg, input, resolver, source = 'a
 	return validateAppearance(appearance, pkg.manifest);
 }
 
-/** All inputs become one immutable, data-only normalized package. No network or executable templates remain. */
-export async function normalizeThemeImport(input, options = {}) {
-	const budget = new ImportBudget(options);
+/** Shared guarded download for v1 and app packages, with one budget per import. */
+export async function downloadThemeSource(input, options = {}, budget = new ImportBudget(options)) {
 	let bytes = input.bytes instanceof Uint8Array ? input.bytes : input.bytes ? new Uint8Array(input.bytes) : null;
 	let name = input.name || 'theme.zip';
 	let sourceUrl = input.sourceUrl;
@@ -220,6 +219,13 @@ export async function normalizeThemeImport(input, options = {}) {
 	}
 	invariant(bytes && bytes.length > 0, 'THEME_EMPTY_FILE');
 	invariant(bytes.length <= (options.restore ? LIMITS.restoreUpload : LIMITS.upload), 'THEME_UPLOAD_LIMIT');
+	return { bytes, name, sourceUrl };
+}
+
+/** All inputs become one immutable, data-only normalized package. No network or executable templates remain. */
+export async function normalizeThemeImport(input, options = {}) {
+	const budget = new ImportBudget(options);
+	const { bytes, name, sourceUrl } = await downloadThemeSource(input, options, budget);
 	const files = new Map();
 	let manifestInput;
 	let css;

@@ -12,7 +12,19 @@ function getNotifyPayloads(source, messageType) {
 }
 
 function createPWAHarness({ online = true } = {}) {
-	const controller = { postMessage: vi.fn() };
+	class Channel {
+		constructor() {
+			this.port1 = { onmessage: null, close: vi.fn() };
+			this.port2 = { close: vi.fn(), reply: (data) => this.port1.onmessage?.({ data }) };
+		}
+	}
+	const controller = {
+		postMessage: vi.fn((message, ports) => {
+			if (ports) {
+				ports[0].reply({ ok: true, operations: [], authRequired: false });
+			}
+		}),
+	};
 	const registration = { scope: '/', addEventListener: vi.fn(), update: vi.fn() };
 	const serviceWorker = {
 		controller,
@@ -43,7 +55,13 @@ function createPWAHarness({ online = true } = {}) {
 	const loadSecrets = vi.fn();
 	const showCenterToast = vi.fn();
 	const quietConsole = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
-	const setTimeout = vi.fn();
+	const timers = new Map();
+	const setTimeout = vi.fn((callback, delay) => {
+		const id = {};
+		timers.set(id, { callback, delay });
+		return id;
+	});
+	const clearTimeout = vi.fn((id) => timers.delete(id));
 
 	// eslint-disable-next-line no-new-func
 	const api = new Function(
@@ -55,10 +73,12 @@ function createPWAHarness({ online = true } = {}) {
 		'console',
 		'setInterval',
 		'setTimeout',
+		'clearTimeout',
+		'MessageChannel',
 		`${getI18nCode()}${getStateCode()}${getPWACode()}
       return { requestPendingOperationSync, handleServiceWorkerMessage, invalidateSecretSession };
     `,
-	)(navigator, window, document, loadSecrets, showCenterToast, quietConsole, vi.fn(), setTimeout);
+	)(navigator, window, document, loadSecrets, showCenterToast, quietConsole, vi.fn(), setTimeout, clearTimeout, Channel);
 
 	return {
 		api,
@@ -66,6 +86,9 @@ function createPWAHarness({ online = true } = {}) {
 		navigator,
 		window,
 		setTimeout,
+		timers,
+		replayMessages: () =>
+			controller.postMessage.mock.calls.map(([message]) => message).filter((message) => message.type === 'SYNC_OPERATIONS'),
 		loadSecrets,
 		showCenterToast,
 	};
@@ -200,13 +223,13 @@ describe('PWA offline replay fallback', () => {
 			const controllerChange = harness.navigator.serviceWorker.addEventListener.mock.calls.find(([type]) => type === 'controllerchange')[1];
 			controllerChange();
 		}
-		expect(harness.controller.postMessage).not.toHaveBeenCalled();
+		expect(harness.replayMessages()).toEqual([]);
 
 		harness.navigator.onLine = true;
 		const online = harness.window.addEventListener.mock.calls.find(([type]) => type === 'online')[1];
 		online();
 		await Promise.resolve();
-		expect(harness.controller.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'SYNC_OPERATIONS', language: 'zh-CN' });
+		expect(harness.replayMessages()).toEqual([{ type: 'SYNC_OPERATIONS', language: 'zh-CN' }]);
 	});
 
 	it('does not fall back to manual replay if the network drops during sync registration', async () => {
@@ -253,18 +276,19 @@ describe('PWA offline replay fallback', () => {
 		const harness = createPWAHarness();
 		harness.api.handleServiceWorkerMessage({ type: 'SYNC_COMPLETE', successCount, failCount: 0, deferredCount: 0, authRequired: true });
 		expect(harness.loadSecrets).toHaveBeenCalledOnce();
-		expect(harness.setTimeout).not.toHaveBeenCalled();
+		// The queue-summary RPC timeout is cleared by its reply; no replay retry remains.
+		expect(harness.timers.size).toBe(0);
 	});
 
 	it('retries deferred operations once without showing a permanent failure and rechecks connectivity', async () => {
 		const harness = createPWAHarness();
 		harness.api.handleServiceWorkerMessage({ type: 'SYNC_COMPLETE', successCount: 0, failCount: 0, deferredCount: 1 });
-		expect(harness.setTimeout).toHaveBeenCalledTimes(1);
+		expect(harness.timers.size).toBe(1);
 		expect(harness.showCenterToast).not.toHaveBeenCalled();
 		harness.navigator.onLine = false;
-		harness.setTimeout.mock.calls[0][0]();
+		Array.from(harness.timers.values())[0].callback();
 		await Promise.resolve();
-		expect(harness.controller.postMessage).not.toHaveBeenCalled();
+		expect(harness.replayMessages()).toEqual([]);
 	});
 });
 

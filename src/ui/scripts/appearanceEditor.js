@@ -6,11 +6,44 @@ import { migrateSettings, validateSettingValue } from '../../themes/schema.js';
 /** Keep valid user values across versions while preserving each theme's saved profile. */
 export function createAppearanceDraft(theme, current = {}, { reset = false } = {}, migrate = migrateSettings) {
 	const clone = (value) => JSON.parse(JSON.stringify(value));
-	const previous = reset ? {} : current.themeId === theme.manifest.id ? current : theme.profile || {};
-	const migration = migrate(previous.manifest || { settings: [] }, theme.manifest, previous.settings || {});
+	const format = (value) => (value?.kind === 'app' || value?.manifest?.kind === 'app' ? 'app' : 'v1');
+	const app = format(theme) === 'app';
+	const sameTheme = current.themeId === theme.manifest.id && format(current) === format(theme);
+	const profile = format(theme.profile) === format(theme) ? theme.profile : null;
+	const previous = reset ? {} : sameTheme ? current : profile || {};
+	const values = clone(previous.settings || {});
+	if (app && previous.packageId) {
+		const prefix = '/theme-packages/' + previous.packageId + '/';
+		for (const field of theme.manifest.settings) {
+			if (field.type === 'asset' && typeof values[field.key] === 'string' && values[field.key].startsWith(prefix)) {
+				values[field.key] = values[field.key].slice(prefix.length);
+			}
+		}
+	}
+	const migration = migrate(previous.manifest || { settings: [] }, theme.manifest, values);
+	if (app) {
+		for (const field of theme.manifest.settings) {
+			const value = migration.settings[field.key];
+			if (field.type !== 'asset' || !value || /^local:|^\/(?:theme-assets|api\/appearance\/assets)\/[a-f0-9]{64}(?:\/|$)/.test(value)) {
+				continue;
+			}
+			if (!theme.manifest.files?.some((file) => file.path === value && (file.mime?.startsWith('image/') || file.mime === 'font/woff2'))) {
+				migration.settings[field.key] = field.default;
+				if (!migration.changes.some((change) => change.key === field.key)) {
+					migration.changes.push({ key: field.key, reason: 'asset-missing', value: field.default });
+				}
+			}
+		}
+	}
 	const sameVersion = previous.packageId === theme.packageId;
 	const resources = new Map();
-	for (const resource of [...(theme.assets || theme.resources || []), ...(previous.resources || [])]) {
+	const brandHashes = new Set(
+		['logo', 'icon192', 'icon512', 'appleTouchIcon', 'background']
+			.map((key) => /^\/(?:theme-assets|api\/appearance\/assets)\/([a-f0-9]{64})(?:\/|$)/.exec(current.branding?.[key] || '')?.[1])
+			.filter(Boolean),
+	);
+	const brandResources = (current.resources || []).filter((resource) => brandHashes.has(resource.hash));
+	for (const resource of [...(theme.assets || theme.resources || []), ...(previous.resources || []), ...brandResources]) {
 		resources.set(resource.hash || resource.url, resource);
 	}
 	return {
@@ -18,12 +51,16 @@ export function createAppearanceDraft(theme, current = {}, { reset = false } = {
 			packageId: theme.packageId,
 			themeId: theme.manifest.id,
 			manifest: clone(theme.manifest),
-			css: theme.css || '',
+			...(app
+				? { kind: 'app' }
+				: {
+						css: theme.css || '',
+						layout: clone(sameVersion && previous.layout ? previous.layout : theme.manifest.layout),
+						content: clone(sameVersion && previous.content ? previous.content : theme.manifest.content || {}),
+						customCss: previous.customCss || '',
+					}),
 			settings: clone(migration.settings),
-			layout: clone(sameVersion && previous.layout ? previous.layout : theme.manifest.layout),
-			content: clone(sameVersion && previous.content ? previous.content : theme.manifest.content || {}),
 			branding: clone(current.branding || previous.branding || {}),
-			customCss: previous.customCss || '',
 			resources: clone([...resources.values()]),
 		},
 		changes: previous.manifest ? migration.changes : [],
@@ -62,6 +99,13 @@ function appearanceEditorClient(createAppearanceDraft) {
 		persistTimer: null,
 		queue: Promise.resolve(),
 		previewGeneration: 0,
+		localProfiles: new Map(),
+		importFormat: 'v1',
+		trustedPackages: new Set(),
+		appPreview: null,
+		appPreviewPackage: null,
+		previewReferences: [],
+		reloadRequired: false,
 	};
 	const resourceCache = new Map();
 	const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -69,6 +113,9 @@ function appearanceEditorClient(createAppearanceDraft) {
 	const localName = (value) =>
 		typeof value === 'string' ? value : value?.[document.documentElement.lang] || value?.en || Object.values(value || {})[0] || '';
 	const uid = () => window.crypto.randomUUID();
+	const isApp = (value) => value?.kind === 'app' || value?.manifest?.kind === 'app';
+	const profileKey = (value) => (isApp(value) ? 'app:' : 'v1:') + (value.themeId || value.manifest?.id);
+	const importUrl = (url) => url + (state.importFormat === 'app' ? '?format=app' : '');
 	const regions = ['header', 'leading', 'main', 'trailing', 'footer'];
 	const regionKeys = ['appearanceHeader', 'appearanceLeading', 'appearanceMain', 'appearanceTrailing', 'appearanceFooterRegion'];
 	const required = new Set(['search', 'view-controls', 'system-status', 'accounts', 'actions']);
@@ -155,6 +202,9 @@ function appearanceEditorClient(createAppearanceDraft) {
 			if (state.conflict) {
 				element.append(button('appearanceReload', 'reload'));
 			}
+			if (state.reloadRequired) {
+				element.append(button('appearanceRefreshNow', 'refresh-runtime'));
+			}
 		}
 	}
 	async function api(url, options = {}) {
@@ -232,6 +282,9 @@ function appearanceEditorClient(createAppearanceDraft) {
 	}
 	function changed() {
 		state.dirty = true;
+		if (state.draft?.themeId) {
+			state.localProfiles.set(profileKey(state.draft), clone(state.draft));
+		}
 		state.version += 1;
 		message(tr('appearanceUnsaved'));
 		clearTimeout(state.persistTimer);
@@ -252,6 +305,8 @@ function appearanceEditorClient(createAppearanceDraft) {
 			blobs: Array.from(state.blobs),
 			dirty: state.dirty,
 			pendingApply: state.pendingApply,
+			profiles: Array.from(state.localProfiles),
+			migration: clone(state.migration),
 		};
 		const task = state.queue
 			.catch(() => {})
@@ -283,6 +338,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 				state.conflict = false;
 				state.migration = [];
 				state.blobs.clear();
+				state.localProfiles.clear();
 			});
 		state.queue = task;
 		return task;
@@ -295,13 +351,15 @@ function appearanceEditorClient(createAppearanceDraft) {
 			return;
 		}
 		for (const theme of state.library) {
-			if (theme.manifest.id === snapshot.themeId) {
+			if (profileKey(theme) === profileKey(snapshot)) {
 				theme.profile = clone(snapshot);
 			}
 		}
 	}
 	function makeDraft(theme, previous = {}, options) {
-		const result = createAppearanceDraft(theme, previous, options);
+		const local = state.localProfiles.get(profileKey(theme));
+		const selected = local && profileKey(previous) !== profileKey(theme) ? { ...theme, profile: local } : theme;
+		const result = createAppearanceDraft(selected, previous, options);
 		state.migration = result.changes;
 		return { revision: state.revision, ...result.draft };
 	}
@@ -313,15 +371,17 @@ function appearanceEditorClient(createAppearanceDraft) {
 			message(tr('appearanceOffline'));
 			return;
 		}
-		const [library, appearance] = await Promise.all([
+		const [library, appLibrary, appearance] = await Promise.all([
 			api('/api/themes').then((response) => response.json()),
+			api('/api/themes?format=app').then((response) => response.json()),
 			api('/api/appearance').then((response) => response.json()),
 		]);
 		if (generation !== state.loadGeneration || epoch !== state.draftEpoch) {
 			return;
 		}
-		state.library = library.themes || [];
+		state.library = [...(library.themes || []), ...(appLibrary.themes || [])];
 		state.capabilities = appearance.capabilities || { write: false };
+		state.previewSessionInvalid = false;
 		const revision = appearance.revision || 0;
 		state.remoteRevision = Math.max(state.remoteRevision, revision);
 		if (revision >= state.remoteRevision) {
@@ -408,12 +468,24 @@ function appearanceEditorClient(createAppearanceDraft) {
 			notifyPreview();
 		});
 		toolbar.append(scenes);
+		const refreshPreview = button('appearanceRefreshPreview', 'refresh-preview', 'btn btn-secondary btn-sm');
+		refreshPreview.id = 'appearanceRefreshPreview';
+		refreshPreview.hidden = true;
+		toolbar.append(refreshPreview);
 		const viewport = node('div', 'appearance-preview-viewport');
 		const frame = document.createElement('iframe');
 		frame.id = 'appearancePreview';
 		frame.title = tr('appearancePreview');
 		frame.setAttribute('sandbox', 'allow-scripts');
 		viewport.append(frame);
+		const appContainer = node('div');
+		appContainer.id = 'appearanceAppPreview';
+		appContainer.hidden = true;
+		viewport.append(appContainer);
+		const previewStatus = node('p', 'settings-desc');
+		previewStatus.id = 'appearanceAppPreviewStatus';
+		previewStatus.setAttribute('role', 'status');
+		previewSection.append(previewStatus);
 		previewSection.append(toolbar, viewport, node('p', 'settings-desc', tr('appearancePreviewHelp')));
 		workspace.append(sidebar, previewSection);
 		const status = node('div', 'appearance-status');
@@ -443,6 +515,9 @@ function appearanceEditorClient(createAppearanceDraft) {
 			return;
 		}
 		panel.replaceChildren();
+		if (isApp(state.draft) && ['layout', 'advanced'].includes(state.panel)) {
+			state.panel = 'design';
+		}
 		if (state.migration.length) {
 			const note = node('div', 'appearance-migration', tr('appearanceMigration'));
 			const changes = node('ul');
@@ -454,6 +529,8 @@ function appearanceEditorClient(createAppearanceDraft) {
 			panel.append(note);
 		}
 		document.querySelectorAll('.appearance-tab').forEach((tab) => {
+			tab.hidden = Boolean(isApp(state.draft) && ['layout', 'advanced'].includes(tab.dataset.panel));
+			tab.style.display = tab.hidden ? 'none' : '';
 			tab.classList.toggle('active', tab.dataset.panel === state.panel);
 			tab.setAttribute('aria-current', tab.dataset.panel === state.panel ? 'page' : 'false');
 		});
@@ -487,7 +564,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 		const wrapper = node('label', 'btn btn-secondary appearance-file-button', tr(label));
 		const file = document.createElement('input');
 		file.type = 'file';
-		file.accept = restore ? '.zip' : '.zip,.json,.css';
+		file.accept = restore || state.importFormat === 'app' ? '.zip' : '.zip,.json,.css';
 		file.dataset.write = '';
 		file.dataset.editorControl = '';
 		file.addEventListener('change', () => {
@@ -524,9 +601,31 @@ function appearanceEditorClient(createAppearanceDraft) {
 				),
 				node('small', '', theme.builtIn || theme.packageId.startsWith('builtin:') ? tr('appearanceBuiltin') : theme.manifest.version),
 			);
+			if (isApp(theme)) {
+				card.append(node('small', '', tr('appearanceAppTheme')));
+			}
 			cards.append(card);
 		}
 		panel.append(cards);
+		const format = document.createElement('select');
+		format.id = 'appearanceImportFormat';
+		for (const [value, label] of [
+			['v1', 'appearanceStyleTheme'],
+			['app', 'appearanceAppTheme'],
+		]) {
+			const option = node('option', '', tr(label));
+			option.value = value;
+			format.append(option);
+		}
+		format.value = state.importFormat;
+		format.addEventListener('change', () => {
+			state.importFormat = format.value;
+			render();
+		});
+		panel.append(field(tr('appearanceImportFormat'), format));
+		if (isApp(state.draft) || state.importFormat === 'app') {
+			panel.append(node('p', 'settings-desc', tr('appearanceAppTrust')));
+		}
 		const imports = node('div', 'appearance-import-actions');
 		imports.append(fileButton('appearanceImport', false), fileButton('appearanceRestore', true));
 		panel.append(imports);
@@ -916,9 +1015,36 @@ function appearanceEditorClient(createAppearanceDraft) {
 		if (name === 'select') {
 			const theme = state.library.find((item) => item.packageId === target.dataset.package);
 			if (theme) {
-				state.draft = makeDraft(theme, state.draft);
-				changed();
-				render();
+				setBusy(true);
+				try {
+					const previous =
+						isApp(state.draft) && state.draft.packageId !== theme.packageId
+							? await portableBranding(state.draft, theme.packageId)
+							: state.draft;
+					state.localProfiles.set(profileKey(state.draft), clone(state.draft));
+					stopAppPreview();
+					state.draft = makeDraft(theme, previous);
+					changed();
+					render();
+				} finally {
+					setBusy(false);
+				}
+			}
+			return;
+		}
+		if (name === 'refresh-preview') {
+			await preview(true);
+			return;
+		}
+		if (name === 'refresh-runtime') {
+			if (state.dirty) {
+				await persist();
+			}
+			close();
+			const result = await window.requestAppearanceRuntimeReload?.('theme-change');
+			if (result?.status !== 'completed') {
+				await window.showAppearanceEditor();
+				message(tr('moduleRefreshBlocked'), true);
 			}
 			return;
 		}
@@ -987,7 +1113,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 				await apply();
 			} else if (name === 'install') {
 				const url = document.getElementById('appearanceSource').value;
-				const response = await api('/api/themes/import', {
+				const response = await api(importUrl('/api/themes/import'), {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({ url, operationId: uid() }),
@@ -1035,19 +1161,27 @@ function appearanceEditorClient(createAppearanceDraft) {
 			const form = new FormData();
 			form.append('file', file);
 			form.append('operationId', uid());
-			const response = await api(restore ? '/api/appearance/restore-inspect' : '/api/themes/import', { method: 'POST', body: form });
+			const response = await api(importUrl(restore ? '/api/appearance/restore-inspect' : '/api/themes/import'), {
+				method: 'POST',
+				body: form,
+			});
 			await installed(await response.json());
 		} finally {
 			setBusy(false);
 		}
 	}
 	async function installed(data) {
-		await load();
+		await load({ preserveDraft: true });
 		const theme = data.theme || state.library.find((item) => item.packageId === data.packageId);
 		if (theme) {
-			state.draft = makeDraft(theme, state.draft || {});
+			const previous = await portableBranding(state.draft || {}, theme.packageId);
+			if (state.draft?.themeId) {
+				state.localProfiles.set(profileKey(state.draft), clone(state.draft));
+			}
+			stopAppPreview();
+			state.draft = makeDraft(theme, previous);
 			if (data.appearance) {
-				Object.assign(state.draft, data.appearance, { manifest: theme.manifest, css: theme.css });
+				state.draft = makeDraft(theme, { ...data.appearance, manifest: theme.manifest, themeId: theme.manifest.id });
 			}
 			if (data.appearance) {
 				await preserveDraftResources();
@@ -1056,6 +1190,31 @@ function appearanceEditorClient(createAppearanceDraft) {
 		}
 		message(tr('appearanceInstalled'));
 		render();
+	}
+	async function portableBranding(draft, nextPackage) {
+		if (!isApp(draft) || draft.packageId === nextPackage) {
+			return draft;
+		}
+		const portable = clone(draft);
+		for (const key of ['logo', 'icon192', 'icon512', 'appleTouchIcon', 'background']) {
+			const value = portable.branding?.[key];
+			if (!value || value.startsWith('local:') || value.startsWith('/theme-assets/')) {
+				continue;
+			}
+			const path = value.startsWith('/theme-packages/' + draft.packageId + '/')
+				? value.slice(('/theme-packages/' + draft.packageId + '/').length)
+				: value;
+			const file = draft.manifest?.files?.find((entry) => entry.path === path && entry.mime.startsWith('image/'));
+			if (!file) {
+				throw new Error(tr('appearanceErrorMissing'));
+			}
+			if (!navigator.onLine) {
+				throw new Error(tr('appearanceOfflineBrand'));
+			}
+			const response = await api('/api/themes/' + encodeURIComponent(draft.packageId) + '/files/' + file.path);
+			portable.branding[key] = rememberBlob(await response.blob(), file.path.split('/').pop());
+		}
+		return portable;
 	}
 	function rememberBlob(blob, name) {
 		if (blob.size > 10 * 1024 * 1024) {
@@ -1212,10 +1371,10 @@ function appearanceEditorClient(createAppearanceDraft) {
 		}
 		return value;
 	}
-	async function apply() {
+	async function uploadLocalResources(source) {
 		const replacements = [];
 		for (const [key, asset] of state.blobs) {
-			if (!JSON.stringify(state.draft).includes(key)) {
+			if (!JSON.stringify(source).includes(key)) {
 				continue;
 			}
 			const form = new FormData();
@@ -1224,16 +1383,24 @@ function appearanceEditorClient(createAppearanceDraft) {
 			const stored = data.asset || data;
 			replacements.push([key, '/theme-assets/' + stored.hash + '/' + encodeURIComponent(stored.name)]);
 		}
+		return replacements;
+	}
+	async function apply() {
+		if (isApp(state.draft) && !state.trustedPackages.has(state.draft.packageId)) {
+			if (!(await confirm('appearanceAppTrust'))) {
+				return;
+			}
+			state.trustedPackages.add(state.draft.packageId);
+		}
+		const replacements = await uploadLocalResources(state.draft);
 		const draft = replaceReferences(state.draft, replacements);
 		const payload = {
 			expectedRevision: state.revision,
 			operationId: uid(),
 			packageId: draft.packageId,
 			settings: draft.settings,
-			layout: draft.layout,
-			content: draft.content,
 			branding: draft.branding,
-			customCss: draft.customCss,
+			...(!isApp(draft) ? { layout: draft.layout, content: draft.content, customCss: draft.customCss } : {}),
 		};
 		const serialized = JSON.stringify(payload);
 		// Preserve the operation identity for a retry after a lost response.
@@ -1250,6 +1417,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 		await acceptCurrent();
 	}
 	async function acceptCurrent() {
+		const running = window.__2FA_APPEARANCE__;
 		const data = await (await api('/api/appearance')).json();
 		if (data.revision < state.remoteRevision) {
 			state.conflict = true;
@@ -1260,23 +1428,182 @@ function appearanceEditorClient(createAppearanceDraft) {
 		state.remoteRevision = Math.max(state.remoteRevision, data.revision);
 		state.draft = data.active;
 		rememberProfile(data.active);
+		state.reloadRequired ||= Boolean((isApp(running) || isApp(data.active)) && running?.packageId !== data.active?.packageId);
 		window.__2FA_APPEARANCE__ = data.active;
-		if (!window.__2FA_SAFE_MODE__) {
+		if (!window.__2FA_SAFE_MODE__ && !state.reloadRequired) {
 			window.applyAppearance?.(data.active);
 		}
 		window.updateAppearanceMetadata?.();
-		if (window.__2FA_SAFE_MODE__) {
+		if (window.__2FA_SAFE_MODE__ || state.reloadRequired) {
 			window.dispatchEvent(new CustomEvent('appearance-applied', { detail: data.active }));
 		}
-		message(tr('appearanceApplied'));
+		message(tr(state.reloadRequired ? 'appearancePublishedReload' : 'appearanceApplied'));
 		render();
 	}
-	async function preview() {
-		if (!state.open || !state.ready || !state.draft) {
+	function sizePreview(frame) {
+		if (!frame?.parentElement) {
+			return;
+		}
+		frame.style.width = state.width + 'px';
+		const viewport = document.querySelector('.appearance-preview-viewport');
+		const available = viewport?.clientWidth || state.width;
+		const scale = Math.min(1, available / state.width);
+		frame.style.transformOrigin = 'top left';
+		frame.style.transform = 'scale(' + scale + ')';
+		frame.style.height = Math.ceil(600 / scale) + 'px';
+		frame.style.border = '0';
+		frame.style.maxWidth = 'none';
+	}
+	function appPreviewStatus(status) {
+		if (!state.open || !isApp(state.draft)) {
+			return;
+		}
+		const key =
+			status.status === 'ready'
+				? 'appearancePreviewReady'
+				: status.reason === 'offline-preview-unavailable'
+					? 'appearancePreviewOffline'
+					: status.reason === 'preview-expired'
+						? 'appearancePreviewExpired'
+						: status.reason === 'preview-resources-changed'
+							? 'appearancePreviewChanged'
+							: status.status === 'blocked'
+								? 'appearancePreviewBlocked'
+								: 'appearanceLoading';
+		document.getElementById('appearanceAppPreviewStatus').textContent = tr(key);
+		sizePreview(document.querySelector('#appearanceAppPreview iframe'));
+	}
+	function stopAppPreview() {
+		state.previewGeneration += 1;
+		state.previewTask = null;
+		state.appPreview?.close();
+		state.appPreviewPackage = null;
+		state.previewReferences = [];
+	}
+	async function previewApp(force) {
+		if (state.previewTask) {
+			state.previewTask.changed = true;
+			return;
+		}
+		const task = { changed: false };
+		state.previewTask = task;
+		try {
+			await runAppPreview(force);
+		} finally {
+			if (state.previewTask === task) {
+				state.previewTask = null;
+				if (task.changed && state.open) {
+					notifyPreview();
+				}
+			}
+		}
+	}
+	async function runAppPreview(force) {
+		const generation = ++state.previewGeneration;
+		const draft = clone(state.draft);
+		if (state.previewSessionInvalid) {
+			appPreviewStatus({ status: 'blocked', reason: 'session-invalidated' });
+			return;
+		}
+		if (!navigator.onLine) {
+			stopAppPreview();
+			appPreviewStatus({ status: 'blocked', reason: 'offline-preview-unavailable' });
+			return;
+		}
+		if (!window.createAppThemePreview) {
+			appPreviewStatus({ status: 'blocked' });
+			return;
+		}
+		state.appPreview ||= window.createAppThemePreview({
+			container: document.getElementById('appearanceAppPreview'),
+			request: (url, options) => api(url, options),
+			translate: tr,
+			onStatus: appPreviewStatus,
+			onSessionInvalidated: () => {
+				stopAppPreview();
+				state.previewSessionInvalid = true;
+				state.capabilities.write = false;
+				state.loadGeneration += 1;
+				setBusy(state.busy);
+				if (state.open) {
+					message(tr('loginModalDesc'), true);
+					appPreviewStatus({ status: 'blocked', reason: 'session-invalidated' });
+				}
+			},
+		});
+		if (state.previewSessionInvalid || generation !== state.previewGeneration) {
+			return;
+		}
+		const fresh = force || state.appPreviewPackage !== draft.packageId;
+		if (fresh) {
+			// Claim this package synchronously so typing while staging never opens a second capability.
+			state.appPreviewPackage = draft.packageId;
+			appPreviewStatus({ status: 'preparing' });
+			try {
+				const references = await uploadLocalResources({ settings: draft.settings, branding: draft.branding });
+				if (!state.open || generation !== state.previewGeneration || draft.packageId !== state.draft?.packageId) {
+					return;
+				}
+				state.previewReferences = references;
+			} catch (error) {
+				if (state.open && generation === state.previewGeneration) {
+					appPreviewStatus({ status: 'blocked' });
+					errorMessage(error);
+				}
+				return;
+			}
+		}
+		if (!state.open || generation !== state.previewGeneration) {
+			return;
+		}
+		const appearance = replaceReferences({ settings: draft.settings, branding: draft.branding }, state.previewReferences);
+		const assetValues = [
+			...draft.manifest.settings.filter((field) => field.type === 'asset').map((field) => appearance.settings[field.key]),
+			...['logo', 'icon192', 'icon512', 'appleTouchIcon', 'background'].map((key) => appearance.branding[key]),
+		];
+		if (assetValues.some((value) => typeof value === 'string' && value.startsWith('local:'))) {
+			appPreviewStatus({ status: 'blocked', reason: 'preview-resources-changed' });
+			return;
+		}
+		const payload = {
+			packageId: draft.packageId,
+			appearance,
+			mode: state.mode,
+			language: document.documentElement.lang,
+			scene: state.scene,
+		};
+		try {
+			await state.appPreview[fresh ? 'open' : 'update'](payload);
+		} catch (error) {
+			if (state.open && generation === state.previewGeneration) {
+				appPreviewStatus({ status: 'blocked' });
+				errorMessage(error);
+			}
+		}
+		if (state.open && generation === state.previewGeneration) {
+			sizePreview(document.querySelector('#appearanceAppPreview iframe'));
+		}
+	}
+	async function preview(force = false) {
+		if (!state.open || !state.draft) {
+			return;
+		}
+		const frame = document.getElementById('appearancePreview');
+		const app = isApp(state.draft);
+		frame.style.display = app ? 'none' : 'block';
+		document.getElementById('appearanceAppPreview').hidden = !app;
+		document.getElementById('appearanceRefreshPreview').hidden = !app;
+		document.getElementById('appearanceAppPreviewStatus').hidden = !app;
+		if (app) {
+			return previewApp(force);
+		}
+		if (state.appPreviewPackage) {
+			stopAppPreview();
+		}
+		if (!state.ready) {
 			return;
 		}
 		const generation = ++state.previewGeneration;
-		const frame = document.getElementById('appearancePreview');
 		if (!frame?.contentWindow || !frame.isConnected) {
 			return;
 		}
@@ -1299,11 +1626,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 		if (generation !== state.previewGeneration || !state.open || !frame.isConnected || !frame.parentElement) {
 			return;
 		}
-		frame.style.width = state.width + 'px';
-		const available = frame.parentElement.clientWidth || state.width;
-		const scale = Math.min(1, available / state.width);
-		frame.style.transform = 'scale(' + scale + ')';
-		frame.style.height = Math.ceil(600 / scale) + 'px';
+		sizePreview(frame);
 		frame.contentWindow.postMessage(
 			{
 				type: 'appearance-preview',
@@ -1354,7 +1677,8 @@ function appearanceEditorClient(createAppearanceDraft) {
 	}
 	function close() {
 		state.open = false;
-		state.previewGeneration++;
+		clearTimeout(state.previewTimer);
+		stopAppPreview();
 		window.hideModal('appearanceModal');
 	}
 	window.hasAppearancePendingChanges = () => state.open || state.busy || state.persisted < state.version;
@@ -1414,6 +1738,8 @@ function appearanceEditorClient(createAppearanceDraft) {
 				state.blobs = new Map(saved.blobs || []);
 				state.dirty = saved.dirty;
 				state.pendingApply = saved.pendingApply;
+				state.localProfiles = new Map(saved.profiles || []);
+				state.migration = saved.migration || [];
 				message(tr('appearanceDraftRestored'));
 			}
 			await load();
@@ -1480,11 +1806,15 @@ function appearanceEditorClient(createAppearanceDraft) {
 			});
 	});
 	window.addEventListener('offline', () => {
+		stopAppPreview();
 		state.capabilities.write = false;
 		state.loadGeneration += 1;
 		setBusy(state.busy);
 		if (state.open) {
 			message(tr('appearanceOffline'));
+			if (isApp(state.draft)) {
+				appPreviewStatus({ status: 'blocked', reason: 'offline-preview-unavailable' });
+			}
 		}
 	});
 }

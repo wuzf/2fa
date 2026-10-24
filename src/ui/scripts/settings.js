@@ -1016,6 +1016,7 @@ export function getSettingsCode() {
     function applyThemeFromSettings(theme) {
       localStorage.setItem('theme', theme);
       applyTheme(theme, true);
+      if (typeof notifyThemeRuntimeEnvironment === 'function') notifyThemeRuntimeEnvironment('preferences');
     }
 
     /**
@@ -1029,6 +1030,7 @@ export function getSettingsCode() {
         viewModeSelect.value = appliedMode;
       }
       await selectViewMode(appliedMode === 'remember' ? currentViewMode : appliedMode);
+      if (typeof notifyThemeRuntimeEnvironment === 'function') notifyThemeRuntimeEnvironment('preferences');
     }
 
     /**
@@ -1041,6 +1043,7 @@ export function getSettingsCode() {
       if (animationSelect) {
         animationSelect.value = appliedMode;
       }
+      if (typeof notifyThemeRuntimeEnvironment === 'function') notifyThemeRuntimeEnvironment('preferences');
     }
 
     /**
@@ -1101,28 +1104,70 @@ export function getSettingsCode() {
      * @param {string} selectedLang - 选中的语言代码
      */
     async function saveLanguagePreference(selectedLang) {
+      const sessionGeneration = typeof secretSessionGeneration === 'number' ? secretSessionGeneration : null;
+      const sessionCurrent = () => sessionGeneration === null || typeof isSecretSessionCurrent !== 'function' || isSecretSessionCurrent(sessionGeneration);
       if (typeof setLanguage === 'function') {
         setLanguage(selectedLang);
       }
       pendingLanguageSaves += 1;
       try {
-        const resp = await enqueuePreferenceSave(() => authenticatedFetch('/api/settings', {
+        const resp = await enqueuePreferenceSave(() => !sessionCurrent() ? null : authenticatedFetch('/api/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ language: selectedLang }),
         }));
+        if (!resp || !sessionCurrent()) return { status: 'session-invalidated' };
         const data = await resp.json();
+        if (!sessionCurrent()) return { status: 'session-invalidated' };
         if (resp.ok && data.success) {
           const msg = t('languageSaved');
           if (typeof showCenterToast === 'function') {
             showCenterToast('✅', msg);
           }
+          return { status: 'committed' };
         }
+        return { status: 'rejected', reason: 'language-save-failed' };
       } catch (e) {
         // 静默网络异常或保持当前界面语言
+        if (!sessionCurrent()) return { status: 'session-invalidated' };
+        return { status: 'unknown', reason: 'language-local-only' };
       } finally {
         pendingLanguageSaves -= 1;
+        if (typeof notifyThemeRuntimeEnvironment === 'function') notifyThemeRuntimeEnvironment('preferences');
       }
+    }
+
+    function getThemePublicPreferences() {
+      const read = (key, fallback) => { try { return localStorage.getItem(key) || fallback; } catch { return fallback; } };
+      return {
+        language: typeof getLanguagePreference === 'function' ? getLanguagePreference() : read('language', 'auto'),
+        resolvedLanguage: typeof getLanguage === 'function' ? getLanguage() : 'en',
+        theme: read('theme', 'auto'), resolvedTheme: document.documentElement.getAttribute('data-theme') || 'light',
+        defaultViewMode: typeof getDefaultViewModePreference === 'function' ? getDefaultViewModePreference() : 'remember',
+        otpAnimation: typeof getOTPAnimationMode === 'function' ? getOTPAnimationMode() : 'none',
+        reducedMotion: Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches),
+        defaultExportFormat: read('defaultExportFormat', 'json'), maxBackups: numericPreferences.maxBackups.savedValue
+      };
+    }
+
+    async function setThemePublicPreferences(patch) {
+      const sessionGeneration = typeof secretSessionGeneration === 'number' ? secretSessionGeneration : null;
+      if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return { status: 'rejected', reason: 'invalid-preferences' };
+      const allowed = {
+        language: value => value === 'auto' || (typeof I18N_LOCALES !== 'undefined' && Object.prototype.hasOwnProperty.call(I18N_LOCALES, value)),
+        theme: value => ['auto', 'light', 'dark'].includes(value),
+        defaultViewMode: value => ['remember', 'grouped', 'flat'].includes(value),
+        otpAnimation: value => ['none', 'flow', 'flip', 'spotlight'].includes(value)
+      };
+      if (Object.keys(patch).some(key => !allowed[key] || !allowed[key](patch[key]))) return { status: 'rejected', reason: 'invalid-preferences' };
+      try {
+        if (Object.prototype.hasOwnProperty.call(patch, 'theme')) applyThemeFromSettings(patch.theme);
+        if (Object.prototype.hasOwnProperty.call(patch, 'otpAnimation')) applyOTPAnimationFromSettings(patch.otpAnimation);
+        if (Object.prototype.hasOwnProperty.call(patch, 'defaultViewMode')) await applyDefaultViewModeFromSettings(patch.defaultViewMode);
+        if (sessionGeneration !== null && typeof isSecretSessionCurrent === 'function' && !isSecretSessionCurrent(sessionGeneration)) return { status: 'session-invalidated' };
+        if (Object.prototype.hasOwnProperty.call(patch, 'language')) return await saveLanguagePreference(patch.language);
+        return { status: 'committed' };
+      } catch { return { status: 'rejected', reason: 'preference-save-failed' }; }
     }
 
     function showNumericPreferenceResult(key, messageKey, status = '', params = {}, serverMessage = '') {

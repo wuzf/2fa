@@ -1,542 +1,62 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createRuntimeFixture } from '../helpers/theme-runtime.js';
 
-import { getCoreCode } from '../../src/ui/scripts/core.js';
-import { getI18nCode } from '../../src/ui/scripts/i18n.js';
-import { getSearchCode } from '../../src/ui/scripts/search.js';
-import { getServiceAggregationCode } from '../../src/ui/scripts/serviceAggregation.js';
-import { getStateCode } from '../../src/ui/scripts/state.js';
-
-class TestClassList {
-	constructor(element) {
-		this.element = element;
-		this.values = new Set();
+const fixtures = [];
+afterEach(async () => {
+	for (const fixture of fixtures.splice(0)) {
+		await fixture.dispose();
 	}
+});
 
-	reset(value) {
-		this.values = new Set(
-			String(value || '')
-				.split(/\s+/)
-				.filter(Boolean),
-		);
-	}
-
-	sync() {
-		this.element.attributes.set('class', Array.from(this.values).join(' '));
-	}
-
-	add(...names) {
-		names.forEach((name) => this.values.add(name));
-		this.sync();
-	}
-
-	remove(...names) {
-		names.forEach((name) => this.values.delete(name));
-		this.sync();
-	}
-
-	toggle(name, enabled) {
-		const shouldEnable = enabled === undefined ? !this.values.has(name) : enabled;
-		if (shouldEnable) {
-			this.values.add(name);
-		} else {
-			this.values.delete(name);
-		}
-		this.sync();
-		return shouldEnable;
-	}
-
-	contains(name) {
-		return this.values.has(name);
-	}
-}
-
-class TestTextNode {
-	constructor(text, ownerDocument) {
-		this.nodeType = 3;
-		this.ownerDocument = ownerDocument;
-		this.parentNode = null;
-		this.textContent = text;
-	}
-}
-
-function dataAttributeProperty(name) {
-	return name
-		.slice(5)
-		.split('-')
-		.map((part, index) => (index === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1)))
-		.join('');
-}
-
-function matchesSelector(element, selector) {
-	if (selector.startsWith('.')) {
-		return element.classList.contains(selector.slice(1));
-	}
-	if (selector.startsWith('#')) {
-		return element.id === selector.slice(1);
-	}
-
-	const attributeMatch = selector.match(/^\[([^=\]]+)(?:="([^"]*)")?\]$/);
-	if (attributeMatch) {
-		return (
-			element.hasAttribute(attributeMatch[1]) &&
-			(attributeMatch[2] === undefined || element.getAttribute(attributeMatch[1]) === attributeMatch[2])
-		);
-	}
-
-	return element.tagName.toLowerCase() === selector.toLowerCase();
-}
-
-class TestElement {
-	constructor(tagName, ownerDocument) {
-		this.nodeType = 1;
-		this.tagName = tagName.toUpperCase();
-		this.ownerDocument = ownerDocument;
-		this.parentNode = null;
-		this.children = [];
-		this.attributes = new Map();
-		this.classList = new TestClassList(this);
-		this.dataset = {};
-		this.style = {
-			removeProperty(name) {
-				const previous = this[name] || '';
-				delete this[name];
-				return previous;
-			},
-		};
-		this.hidden = false;
-		this.value = '';
-		this.listeners = new Map();
-		this.ownText = '';
-	}
-
-	get id() {
-		return this.getAttribute('id') || '';
-	}
-
-	set id(value) {
-		this.setAttribute('id', value);
-	}
-
-	get textContent() {
-		return this.ownText + this.children.map((child) => child.textContent).join('');
-	}
-
-	set textContent(value) {
-		this.ownerDocument.unregisterChildren(this);
-		this.children = [];
-		this.ownText = String(value);
-	}
-
-	get innerHTML() {
-		return this.children.map((child) => child.textContent).join('');
-	}
-
-	set innerHTML(value) {
-		this.ownerDocument.unregisterChildren(this);
-		this.children = [];
-		this.ownText = '';
-		parseFragment(String(value), this);
-	}
-
-	setAttribute(name, value) {
-		const normalizedName = name.toLowerCase();
-		const stringValue = String(value);
-		if (normalizedName === 'id') {
-			this.ownerDocument.unregisterId(this);
-		}
-		this.attributes.set(normalizedName, stringValue);
-		if (normalizedName === 'class') {
-			this.classList.reset(stringValue);
-		}
-		if (normalizedName.startsWith('data-')) {
-			this.dataset[dataAttributeProperty(normalizedName)] = stringValue;
-		}
-		if (normalizedName === 'id') {
-			this.ownerDocument.registerId(this);
-		}
-	}
-
-	getAttribute(name) {
-		return this.attributes.get(name.toLowerCase()) ?? null;
-	}
-
-	hasAttribute(name) {
-		return this.attributes.has(name.toLowerCase());
-	}
-
-	removeAttribute(name) {
-		const normalizedName = name.toLowerCase();
-		if (normalizedName === 'id') {
-			this.ownerDocument.unregisterId(this);
-		}
-		this.attributes.delete(normalizedName);
-	}
-
-	appendChild(child) {
-		child.parentNode = this;
-		this.children.push(child);
-		this.ownerDocument.registerTree(child);
-		return child;
-	}
-
-	removeChild(child) {
-		const index = this.children.indexOf(child);
-		if (index >= 0) {
-			this.ownerDocument.unregisterTree(child);
-			this.children.splice(index, 1);
-			child.parentNode = null;
-		}
-		return child;
-	}
-
-	querySelectorAll(selector) {
-		const matches = [];
-		const visit = (node) => {
-			if (node.nodeType !== 1) {
-				return;
-			}
-			if (matchesSelector(node, selector)) {
-				matches.push(node);
-			}
-			node.children.forEach(visit);
-		};
-		this.children.forEach(visit);
-		return matches;
-	}
-
-	querySelector(selector) {
-		return this.querySelectorAll(selector)[0] || null;
-	}
-
-	closest(selector) {
-		let current = this;
-		while (current) {
-			if (current.nodeType === 1 && matchesSelector(current, selector)) {
-				return current;
-			}
-			current = current.parentNode;
-		}
-		return null;
-	}
-
-	contains(node) {
-		let current = node;
-		while (current) {
-			if (current === this) {
-				return true;
-			}
-			current = current.parentNode;
-		}
-		return false;
-	}
-
-	addEventListener(type, listener) {
-		const listeners = this.listeners.get(type) || [];
-		listeners.push(listener);
-		this.listeners.set(type, listeners);
-	}
-
-	dispatchEvent(event) {
-		if (!event.target) {
-			event.target = this;
-		}
-		(this.listeners.get(event.type) || []).forEach((listener) => listener(event));
-	}
-
-	focus() {
-		this.ownerDocument.activeElement = this;
-	}
-
-	getBoundingClientRect() {
-		return { top: 0, right: 0, bottom: 44, left: 0, width: 0, height: 44 };
-	}
-}
-
-const VOID_ELEMENTS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source']);
-
-function parseFragment(html, parent) {
-	const stack = [parent];
-	const tokens = html.match(/<[^>]+>|[^<]+/g) || [];
-
-	for (const token of tokens) {
-		if (token.startsWith('</')) {
-			if (stack.length > 1) {
-				stack.pop();
-			}
-			continue;
-		}
-		if (!token.startsWith('<')) {
-			stack.at(-1).appendChild(new TestTextNode(token, parent.ownerDocument));
-			continue;
-		}
-
-		const openingTag = token.match(/^<([^\s/>]+)([\s\S]*?)(\/?)>$/);
-		if (!openingTag) {
-			continue;
-		}
-		const element = parent.ownerDocument.createElement(openingTag[1]);
-		const attributeSource = openingTag[2];
-		const attributePattern = /([^\s=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
-		let attributeMatch;
-		while ((attributeMatch = attributePattern.exec(attributeSource))) {
-			element.setAttribute(attributeMatch[1], attributeMatch[2] ?? attributeMatch[3] ?? attributeMatch[4] ?? '');
-		}
-		stack.at(-1).appendChild(element);
-		if (!openingTag[3] && !VOID_ELEMENTS.has(openingTag[1].toLowerCase())) {
-			stack.push(element);
-		}
-	}
-}
-
-class TestDocument {
-	constructor() {
-		this.ids = new Map();
-		this.listeners = new Map();
-		this.hidden = false;
-		this.body = new TestElement('body', this);
-		this.activeElement = this.body;
-	}
-
-	createElement(tagName) {
-		return new TestElement(tagName, this);
-	}
-
-	getElementById(id) {
-		return this.ids.get(id) || null;
-	}
-
-	querySelectorAll(selector) {
-		return this.body.querySelectorAll(selector);
-	}
-
-	querySelector(selector) {
-		return this.querySelectorAll(selector)[0] || null;
-	}
-
-	addEventListener(type, listener) {
-		const listeners = this.listeners.get(type) || [];
-		listeners.push(listener);
-		this.listeners.set(type, listeners);
-	}
-
-	dispatchEvent(event) {
-		if (!event.target) {
-			event.target = this;
-		}
-		(this.listeners.get(event.type) || []).forEach((listener) => listener(event));
-	}
-
-	registerId(element) {
-		if (element.id) {
-			this.ids.set(element.id, element);
-		}
-	}
-
-	unregisterId(element) {
-		const id = element.getAttribute('id');
-		if (id && this.ids.get(id) === element) {
-			this.ids.delete(id);
-		}
-	}
-
-	registerTree(node) {
-		if (node.nodeType !== 1) {
-			return;
-		}
-		this.registerId(node);
-		node.children.forEach((child) => this.registerTree(child));
-	}
-
-	unregisterTree(node) {
-		if (node.nodeType !== 1) {
-			return;
-		}
-		this.unregisterId(node);
-		node.children.forEach((child) => this.unregisterTree(child));
-	}
-
-	unregisterChildren(element) {
-		element.children.forEach((child) => this.unregisterTree(child));
-	}
-}
-
-function appendElement(document, tagName, options = {}) {
-	const element = document.createElement(tagName);
-	if (options.id) {
-		element.id = options.id;
-	}
-	if (options.className) {
-		element.setAttribute('class', options.className);
-	}
-	Object.entries(options.dataset || {}).forEach(([name, value]) => {
-		const attributeName = 'data-' + name.replace(/[A-Z]/g, (character) => '-' + character.toLowerCase());
-		element.setAttribute(attributeName, value);
+async function createHarness(initialStorage = {}) {
+	const clipboard = { writeText: vi.fn(async () => {}) };
+	const fixture = await createRuntimeFixture({
+		clipboard,
+		extraSource: `window.__aggregationFixture = {
+    filterSecrets, getServiceLogo, initSortDropdownOutsideClose, copyNextOTP, copyOTP,
+    renderSecrets, renderFilteredSecrets, setLanguage, hideSecretModal, restoreGroupSortPreference,
+    restoreSortPreference, restoreViewModePreference, selectViewMode, otpCalculator,
+    setSecrets(value) { replaceSecretRecords(value, { source: 'server', accessVerified: true }); },
+    getOTPIntervalIds: () => Object.keys(otpIntervals)
+  };`,
 	});
-	document.body.appendChild(element);
-	return element;
-}
-
-function createPageDocument() {
-	const document = new TestDocument();
-	for (const id of ['loading', 'secretsList', 'emptyState', 'searchClear', 'searchStats', 'searchInput', 'sortModeLabel']) {
-		appendElement(document, 'div', { id });
+	fixtures.push(fixture);
+	const { window, document } = fixture;
+	const localStorage = window.localStorage;
+	for (const [key, value] of Object.entries({ language: 'zh-CN', ...initialStorage })) {
+		localStorage.setItem(key, value);
 	}
-	const sortSelect = appendElement(document, 'select', { id: 'sortSelect' });
-	sortSelect.value = 'oldest-first';
-
-	const dropdown = appendElement(document, 'details', { id: 'sortDropdown' });
-	const trigger = document.createElement('button');
-	trigger.setAttribute('class', 'sort-trigger');
-	dropdown.appendChild(trigger);
-	const menu = document.createElement('div');
-	menu.setAttribute('class', 'sort-menu');
-	dropdown.appendChild(menu);
-
-	const groupedOption = appendElement(document, 'button', {
-		className: 'view-mode-option active',
-		dataset: { viewMode: 'grouped' },
-	});
-	const flatOption = appendElement(document, 'button', {
-		className: 'view-mode-option active',
-		dataset: { viewMode: 'flat' },
-	});
-	for (const groupSort of ['name-asc', 'name-desc']) {
-		appendElement(document, 'button', {
-			className: 'group-sort-option group-sort-only active',
-			dataset: { groupSort },
-		});
-	}
-	for (const sort of ['oldest-first', 'newest-first', 'name-asc', 'name-desc', 'account-asc', 'account-desc']) {
-		appendElement(document, 'button', {
-			className: 'sort-option active' + (sort.startsWith('name-') ? ' flat-sort-only' : ''),
-			dataset: { sort },
-		});
-	}
-	appendElement(document, 'div', { className: 'group-sort-only' });
-
-	return { document, dropdown, flatOption, groupedOption, trigger };
-}
-
-function createStorage(initialValues = {}) {
-	const values = new Map(Object.entries(initialValues));
+	vi.spyOn(localStorage, 'setItem');
+	const setInterval = vi.spyOn(window, 'setInterval');
+	const clearInterval = vi.spyOn(window, 'clearInterval');
+	vi.spyOn(window, 'addEventListener');
+	fixture.setClock(50_000);
+	const api = window.__aggregationFixture;
+	api.setLanguage(initialStorage.language || 'zh-CN');
+	const codes = new Map();
+	const current = vi.fn(async (account) => codes.get(String(account.id))?.current || '-'.repeat(Number(account.digits) || 6));
+	const next = vi.fn(async (account) => codes.get(String(account.id))?.next || '-'.repeat(Number(account.digits) || 6));
+	api.otpCalculator.calculateCurrentOTP = current;
+	api.otpCalculator.calculateNextOTP = next;
+	const runtime = fixture.getThemeRuntime();
+	fixture.getOfficialAccountView();
 	return {
-		getItem: vi.fn((key) => values.get(key) ?? null),
-		setItem: vi.fn((key, value) => values.set(key, value)),
-	};
-}
-
-function createHarness(initialStorage = {}, overrides = {}) {
-	const page = createPageDocument();
-	const localStorage = createStorage(initialStorage);
-	const updateOTP = overrides.updateOTP ?? vi.fn(async () => {});
-	const updateOTPSecretsInBatch = overrides.updateOTPSecretsInBatch ?? vi.fn(async () => {});
-	const startOTPInterval = overrides.startOTPInterval ?? vi.fn();
-	const window = {
-		addEventListener: vi.fn(),
-		innerHeight: 800,
-		visualViewport: null,
-	};
-	const navigator = {
-		language: 'zh-CN',
-		clipboard: {
-			writeText: vi.fn(async () => {}),
-		},
-	};
-	const quietConsole = { error: vi.fn(), log: vi.fn(), warn: vi.fn() };
-	const source = `
-    function escapeHTML(value) {
-      return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-    }
-    function hideSecretModal() {}
-    function hideQRModal() {}
-    function hideQRScanner() {}
-    function hideImportModal() {}
-    function showCenterToast() {}
-    ${getI18nCode()}
-    ${getStateCode()}
-    ${getCoreCode()}
-    ${getServiceAggregationCode()}
-    ${getSearchCode()}
-    return {
-      filterSecrets,
-      getServiceLogo,
-      initSortDropdownOutsideClose,
-      copyNextOTP,
-      copyOTP,
-      renderSecrets,
-      renderFilteredSecrets,
-      ${overrides.i18n ? 'setLanguage,' : ''}
-      restoreGroupSortPreference,
-      restoreSortPreference,
-      restoreViewModePreference,
-      selectViewMode,
-      setSecrets(value) {
-        secrets = value;
-        filteredSecrets = [...value];
-      },
-      setOTPIntervals(value) {
-        otpIntervals = value;
-      },
-      getOTPIntervalIds() {
-        return Object.keys(otpIntervals);
-      }
-    };
-  `;
-
-	const clearInterval = vi.fn();
-	// eslint-disable-next-line no-new-func
-	const api = new Function(
-		'document',
-		'window',
-		'navigator',
-		'localStorage',
-		'console',
-		'setInterval',
-		'clearInterval',
-		'setTimeout',
-		'clearTimeout',
-		'ResizeObserver',
-		'requestAnimationFrame',
-		'cancelAnimationFrame',
-		'performance',
-		'updateOTP',
-		'updateOTPSecretsInBatch',
-		'startOTPInterval',
-		source,
-	)(
-		page.document,
-		window,
-		navigator,
-		localStorage,
-		quietConsole,
-		vi.fn(() => 1),
-		clearInterval,
-		vi.fn(() => 1),
-		vi.fn(),
-		undefined,
-		undefined,
-		undefined,
-		{ now: vi.fn(() => 0) },
-		updateOTP,
-		updateOTPSecretsInBatch,
-		startOTPInterval,
-	);
-
-	return {
-		...page,
+		...fixture,
 		api,
-		clearInterval,
+		runtime,
 		localStorage,
-		navigator,
-		startOTPInterval,
-		updateOTP,
-		updateOTPSecretsInBatch,
-		window,
+		navigator: window.navigator,
+		clearInterval,
+		setInterval,
+		calculations: { current, next },
+		async commitCodes(id, currentCode, nextCode) {
+			codes.set(String(id), { current: currentCode, next: nextCode });
+			await runtime.otp.refresh([id]);
+		},
+		dropdown: document.getElementById('sortDropdown'),
+		trigger: document.querySelector('#sortDropdown .sort-trigger'),
+		flatOption: document.querySelector('[data-view-mode="flat"]'),
+		groupedOption: document.querySelector('[data-view-mode="grouped"]'),
 	};
 }
 
@@ -554,7 +74,7 @@ const TEST_SECRETS = [
 
 describe('smart aggregation rendering integration', () => {
 	it('renders grouped and flat DOM and removes stale active states during mode changes', async () => {
-		const { api, document, flatOption, groupedOption, localStorage } = createHarness();
+		const { api, document, flatOption, groupedOption, localStorage } = await createHarness();
 		api.restoreSortPreference();
 		api.restoreGroupSortPreference();
 		api.restoreViewModePreference();
@@ -565,9 +85,13 @@ describe('smart aggregation rendering integration', () => {
 		expect(list.classList.contains('is-grouped')).toBe(true);
 		expect(list.getAttribute('data-view')).toBe('grouped');
 		expect(list.hidden).toBe(false);
-		expect(list.style.display).toBeUndefined();
-		expect(list.querySelectorAll('.service-group-title').map((node) => node.textContent)).toEqual(['Google', 'Microsoft', '其他服务']);
-		expect(list.querySelectorAll('.service-group-count').map((node) => node.textContent)).toEqual(['2 个', '2 个', '1 个']);
+		expect(list.style.display).toBe('');
+		expect(Array.from(list.querySelectorAll('.service-group-title')).map((node) => node.textContent)).toEqual([
+			'Google',
+			'Microsoft',
+			'其他服务',
+		]);
+		expect(Array.from(list.querySelectorAll('.service-group-count')).map((node) => node.textContent)).toEqual(['2 个', '2 个', '1 个']);
 		expect(list.querySelectorAll('.secret-card')).toHaveLength(TEST_SECRETS.length);
 		expect(groupedOption.classList.contains('active')).toBe(true);
 		expect(groupedOption.getAttribute('aria-pressed')).toBe('true');
@@ -579,7 +103,7 @@ describe('smart aggregation rendering integration', () => {
 		expect(list.classList.contains('is-grouped')).toBe(false);
 		expect(list.getAttribute('data-view')).toBe('flat');
 		expect(list.hidden).toBe(false);
-		expect(list.style.display).toBeUndefined();
+		expect(list.style.display).toBe('');
 		expect(list.querySelectorAll('.service-group')).toHaveLength(0);
 		expect(list.querySelectorAll('.secret-card')).toHaveLength(TEST_SECRETS.length);
 		expect(groupedOption.classList.contains('active')).toBe(false);
@@ -589,7 +113,7 @@ describe('smart aggregation rendering integration', () => {
 	});
 
 	it('renders global search results and per-group matched/total counts from the full list', async () => {
-		const { api, document } = createHarness();
+		const { api, document } = await createHarness();
 		api.setSecrets(TEST_SECRETS);
 		await api.filterSecrets('gmail');
 
@@ -597,7 +121,7 @@ describe('smart aggregation rendering integration', () => {
 		const stats = document.getElementById('searchStats');
 		const groupCount = list.querySelector('.service-group-count');
 		expect(stats.textContent).toBe('找到 1 个匹配密钥（共 5 个）');
-		expect(stats.style.display).toBeUndefined();
+		expect(stats.style.display).toBe('');
 		expect(list.querySelectorAll('.service-group')).toHaveLength(1);
 		expect(list.querySelector('.service-group-title').textContent).toBe('Google');
 		expect(groupCount.textContent).toBe('1 / 2');
@@ -606,37 +130,39 @@ describe('smart aggregation rendering integration', () => {
 		expect(list.querySelector('h3').textContent).toBe('Gmail');
 	});
 
-	it('clears old intervals before awaiting render and starts new ones with secret hints', async () => {
-		let resolveBatch;
-		const batchPromise = new Promise((resolve) => {
-			resolveBatch = resolve;
+	it('renders accounts while computation is pending and retains a single presentation timer across redraws', async () => {
+		const h = await createHarness();
+		let settleCurrent;
+		let settleNext;
+		const current = new Promise((resolve) => {
+			settleCurrent = resolve;
 		});
-		const updateOTPSecretsInBatch = vi.fn(() => batchPromise);
-		const { api, clearInterval, startOTPInterval } = createHarness({}, { updateOTPSecretsInBatch });
-		const renderedSecrets = TEST_SECRETS.slice(0, 2);
-		api.setSecrets(renderedSecrets);
-		api.setOTPIntervals({ google: 101, gmail: 102 });
-
-		const renderPromise = api.renderFilteredSecrets();
-
-		expect(updateOTPSecretsInBatch).toHaveBeenCalledWith(renderedSecrets, {
-			includeHOTP: true,
+		const next = new Promise((resolve) => {
+			settleNext = resolve;
 		});
-		expect(api.getOTPIntervalIds()).toEqual([]);
-		expect(clearInterval.mock.calls).toEqual([[101], [102]]);
-		expect(startOTPInterval).not.toHaveBeenCalled();
-
-		resolveBatch();
-		await renderPromise;
-
-		expect(startOTPInterval).toHaveBeenCalledTimes(renderedSecrets.length);
-		for (const item of renderedSecrets) {
-			expect(startOTPInterval).toHaveBeenCalledWith(item.id, item);
-		}
+		h.calculations.current.mockImplementation(() => current);
+		h.calculations.next.mockImplementation(() => next);
+		const records = TEST_SECRETS.slice(0, 2);
+		h.api.setSecrets(records);
+		h.api.renderFilteredSecrets();
+		expect(h.document.querySelectorAll('.secret-card')).toHaveLength(2);
+		expect(h.runtime.otp.readCommitted('google')).toBeNull();
+		expect(h.api.getOTPIntervalIds()).toEqual([]);
+		expect(h.setInterval.mock.calls.filter(([, delay]) => delay === 1000)).toHaveLength(1);
+		const calculationCount = h.calculations.current.mock.calls.length;
+		h.api.renderFilteredSecrets();
+		expect(h.calculations.current).toHaveBeenCalledTimes(calculationCount);
+		const completed = h.runtime.otp.refresh(records.map((record) => record.id));
+		settleCurrent('111111');
+		settleNext('222222');
+		await completed;
+		expect(h.document.getElementById('otp-google').textContent).toBe('111111');
+		expect(h.document.getElementById('next-otp-gmail').textContent).toBe('222222');
+		expect(h.setInterval.mock.calls.filter(([, delay]) => delay === 1000)).toHaveLength(1);
 	});
 
 	it('searches displayed family names in grouped and flat views', async () => {
-		const { api, document } = createHarness();
+		const { api, document } = await createHarness();
 		const familySecrets = [
 			secret('gmail', 'Gmail', 'mail@example.com'),
 			secret('youtube', 'YouTube', 'video@example.com'),
@@ -658,7 +184,7 @@ describe('smart aggregation rendering integration', () => {
 
 			expect(list.querySelectorAll('.service-group')).toHaveLength(1);
 			expect(list.querySelector('.service-group-title').textContent).toBe(familyName);
-			expect(list.querySelectorAll('h3').map((node) => node.textContent)).toEqual(expectedNames);
+			expect(Array.from(list.querySelectorAll('h3')).map((node) => node.textContent)).toEqual(expectedNames);
 		}
 
 		await api.selectViewMode('flat');
@@ -666,15 +192,15 @@ describe('smart aggregation rendering integration', () => {
 			await api.filterSecrets(familyName);
 
 			expect(list.querySelectorAll('.service-group')).toHaveLength(0);
-			expect(list.querySelectorAll('h3').map((node) => node.textContent)).toEqual(expectedNames);
+			expect(Array.from(list.querySelectorAll('h3')).map((node) => node.textContent)).toEqual(expectedNames);
 		}
 
 		await api.filterSecrets('files@example.com');
-		expect(list.querySelectorAll('h3').map((node) => node.textContent)).toEqual(['OneDrive']);
+		expect(Array.from(list.querySelectorAll('h3')).map((node) => node.textContent)).toEqual(['OneDrive']);
 	});
 
 	it('keeps family-name search working after replacing an item with the same service name', async () => {
-		const { api, document } = createHarness();
+		const { api, document } = await createHarness();
 		const editedSecrets = [secret('gmail', 'Gmail', 'before@example.com'), secret('youtube', 'YouTube', 'video@example.com')];
 
 		api.setSecrets(editedSecrets);
@@ -684,12 +210,12 @@ describe('smart aggregation rendering integration', () => {
 		await api.filterSecrets('google');
 
 		const list = document.getElementById('secretsList');
-		expect(list.querySelectorAll('h3').map((node) => node.textContent)).toEqual(['Gmail', 'YouTube']);
-		expect(list.querySelectorAll('p').map((node) => node.textContent)).toContain('after@example.com');
+		expect(Array.from(list.querySelectorAll('h3')).map((node) => node.textContent)).toEqual(['Gmail', 'YouTube']);
+		expect(Array.from(list.querySelectorAll('p')).map((node) => node.textContent)).toContain('after@example.com');
 	});
 
-	it('uses the smart service resolver for card logos', () => {
-		const { api } = createHarness();
+	it('uses the smart service resolver for card logos', async () => {
+		const { api } = await createHarness();
 
 		expect(api.getServiceLogo('GoogleCloud')).toBe('/api/favicon/cloud.google.com');
 		expect(api.getServiceLogo('AWSConsole')).toBe('/api/favicon/aws.amazon.com');
@@ -701,7 +227,7 @@ describe('smart aggregation rendering integration', () => {
 	});
 
 	it('searches the displayed other-services heading', async () => {
-		const { api, document } = createHarness();
+		const { api, document } = await createHarness();
 		api.setSecrets([
 			secret('google', 'Google', 'owner@example.com'),
 			secret('gmail', 'Gmail', 'mail@example.com'),
@@ -714,11 +240,11 @@ describe('smart aggregation rendering integration', () => {
 		const list = document.getElementById('secretsList');
 		expect(list.querySelector('.service-group-title').textContent).toBe('其他服务');
 		expect(list.querySelector('.service-group-count').textContent).toBe('2 个');
-		expect(list.querySelectorAll('h3').map((node) => node.textContent)).toEqual(['GitHub', 'Discord']);
+		expect(Array.from(list.querySelectorAll('h3')).map((node) => node.textContent)).toEqual(['GitHub', 'Discord']);
 	});
 
 	it('shows no heading when no service has two or more accounts', async () => {
-		const { api, document } = createHarness();
+		const { api, document } = await createHarness();
 		api.restoreViewModePreference();
 		api.setSecrets([secret('github', 'GitHub', 'code@example.com'), secret('discord', 'Discord', 'chat@example.com')]);
 		await api.renderFilteredSecrets();
@@ -736,64 +262,62 @@ describe('smart aggregation rendering integration', () => {
 			secret('discord', 'Discord', 'chat@example.com'),
 		]);
 		await api.renderFilteredSecrets();
-		expect(list.querySelectorAll('.service-group-title').map((node) => node.textContent)).toEqual(['GitHub', '其他服务']);
+		expect(Array.from(list.querySelectorAll('.service-group-title')).map((node) => node.textContent)).toEqual(['GitHub', '其他服务']);
 	});
 
-	it('does not copy failed eight-digit OTP placeholders', async () => {
-		const { api, document, navigator } = createHarness();
-		api.setSecrets([{ id: 'eight', name: 'Eight digit', digits: 8, secret: 'JBSWY3DPEHPK3PXP' }]);
-
-		const current = document.createElement('div');
-		current.id = 'otp-eight';
-		current.textContent = '--------';
-		document.body.appendChild(current);
-		const next = document.createElement('div');
-		next.id = 'next-otp-eight';
-		next.textContent = '--------';
-		document.body.appendChild(next);
-
-		await api.copyOTP('eight');
-		await api.copyNextOTP('eight');
-
-		expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
-
-		current.textContent = '12345678';
-		next.textContent = '87654321';
-		await api.copyOTP('eight');
-		await api.copyNextOTP('eight');
-
-		expect(navigator.clipboard.writeText.mock.calls).toEqual([['12345678'], ['87654321']]);
+	it('does not copy failed eight-digit OTPs or DOM forgeries and copies only committed values', async () => {
+		const h = await createHarness();
+		h.api.setSecrets([{ id: 'eight', name: 'Eight digit', digits: 8, secret: 'JBSWY3DPEHPK3PXP' }]);
+		await h.runtime.otp.refresh(['eight']);
+		await h.api.copyOTP('eight');
+		await h.api.copyNextOTP('eight');
+		expect(h.navigator.clipboard.writeText).not.toHaveBeenCalled();
+		const current = h.document.getElementById('otp-eight');
+		const next = h.document.getElementById('next-otp-eight');
+		current.textContent = '99999999';
+		next.textContent = '88888888';
+		await h.api.copyOTP('eight');
+		await h.api.copyNextOTP('eight');
+		expect(h.navigator.clipboard.writeText).not.toHaveBeenCalled();
+		await h.commitCodes('eight', '12345678', '87654321');
+		current.textContent = '99999999';
+		next.textContent = '88888888';
+		await h.api.copyOTP('eight');
+		await h.api.copyNextOTP('eight');
+		expect(h.navigator.clipboard.writeText.mock.calls).toEqual([['12345678'], ['87654321']]);
+		expect(current.textContent).toBe('12345678');
+		expect(next.textContent).toBe('87654321');
 	});
 
-	it('closes the sort dropdown with Escape and restores focus to its trigger', () => {
-		const { api, document, dropdown, flatOption, trigger, window } = createHarness();
+	it('closes the sort dropdown with Escape and restores focus to its trigger', async () => {
+		const { api, document, dropdown, flatOption, trigger, window } = await createHarness();
 		flatOption.focus();
 		dropdown.setAttribute('open', '');
 		api.initSortDropdownOutsideClose();
 
-		document.dispatchEvent({ type: 'keydown', key: 'Escape', ctrlKey: false });
+		document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', ctrlKey: false, bubbles: true }));
 
 		expect(dropdown.hasAttribute('open')).toBe(false);
 		expect(document.activeElement).toBe(trigger);
 		expect(window.addEventListener).toHaveBeenCalledWith('scroll', expect.any(Function), { passive: true });
 	});
 
-	it('clears active OTP intervals when a search has no matches', async () => {
-		const { api, clearInterval, document } = createHarness();
-		api.setSecrets(TEST_SECRETS);
-		api.setOTPIntervals(Object.fromEntries(TEST_SECRETS.map((item, index) => [item.id, index + 1])));
-
-		await api.filterSecrets('not-present');
-
-		expect(api.getOTPIntervalIds()).toEqual([]);
-		expect(clearInterval).toHaveBeenCalledTimes(TEST_SECRETS.length);
-		expect(document.getElementById('secretsList').innerHTML).toBe('');
+	it('removes unmatched cards without introducing per-card timers or repeating OTP computations', async () => {
+		const h = await createHarness();
+		h.api.setSecrets(TEST_SECRETS);
+		await h.runtime.otp.refresh();
+		const calculations = h.calculations.current.mock.calls.length;
+		await h.api.filterSecrets('not-present');
+		expect(h.api.getOTPIntervalIds()).toEqual([]);
+		expect(h.document.getElementById('secretsList').innerHTML).toBe('');
+		expect(h.calculations.current).toHaveBeenCalledTimes(calculations);
+		expect(h.setInterval.mock.calls.filter(([, delay]) => delay === 1000)).toHaveLength(1);
 	});
 });
 
 describe('translated empty states', () => {
 	it('keeps an empty vault translated after loading and changing languages', async () => {
-		const { api, document } = createHarness({ language: 'en' }, { i18n: true });
+		const { api, document } = await createHarness({ language: 'en' }, { i18n: true });
 		api.setSecrets([]);
 		await api.renderSecrets();
 
@@ -801,7 +325,9 @@ describe('translated empty states', () => {
 		expect(emptyState.querySelector('h3').textContent).toBe('No Keys Yet');
 		expect(emptyState.querySelector('p').textContent).toBe('Add your two-factor authentication keys to generate verification codes here');
 		expect(emptyState.querySelector('button').textContent).toBe('Add Key');
-		expect(emptyState.querySelector('button').getAttribute('onclick')).toBe('showAddModal()');
+		emptyState.querySelector('button').click();
+		expect(document.getElementById('secretModal').style.display).toBe('flex');
+		api.hideSecretModal();
 
 		api.setLanguage('zh-TW');
 		expect(emptyState.querySelector('h3').textContent).toBe('尚無金鑰');
@@ -816,7 +342,7 @@ describe('translated empty states', () => {
 	});
 
 	it('translates unmatched search results and preserves the query when switching languages', async () => {
-		const { api, document } = createHarness({ language: 'en' }, { i18n: true });
+		const { api, document } = await createHarness({ language: 'en' }, { i18n: true });
 		api.setSecrets(TEST_SECRETS);
 		document.getElementById('searchInput').value = 'not-present';
 		await api.filterSecrets('not-present');
@@ -825,7 +351,7 @@ describe('translated empty states', () => {
 		expect(emptyState.querySelector('h3').textContent).toBe('No matching keys found');
 		expect(emptyState.querySelector('p').textContent).toBe('Try searching with different keywords');
 		expect(emptyState.querySelector('button').textContent).toBe('Clear search');
-		expect(emptyState.querySelector('button').getAttribute('onclick')).toBe('clearSearch()');
+		expect(typeof emptyState.querySelector('button').onclick).toBe('function');
 
 		api.setLanguage('zh-TW');
 		expect(emptyState.querySelector('h3').textContent).toBe('未找到相符的金鑰');
@@ -834,10 +360,14 @@ describe('translated empty states', () => {
 		expect(document.getElementById('searchInput').value).toBe('not-present');
 		expect(document.getElementById('secretsList').style.display).toBe('none');
 
-		document.getElementById('searchInput').value = '';
+		emptyState.querySelector('button').click();
+		expect(document.getElementById('searchInput').value).toBe('');
+		expect(document.querySelectorAll('.secret-card')).toHaveLength(TEST_SECRETS.length);
 		api.setSecrets([]);
 		await api.filterSecrets('');
 		expect(emptyState.querySelector('h3').textContent).toBe('尚無金鑰');
-		expect(emptyState.querySelector('button').getAttribute('onclick')).toBe('showAddModal()');
+		emptyState.querySelector('button').click();
+		expect(document.getElementById('secretModal').style.display).toBe('flex');
+		api.hideSecretModal();
 	});
 });

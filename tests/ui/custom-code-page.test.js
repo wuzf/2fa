@@ -98,7 +98,11 @@ describe('custom code in the main document', () => {
 		const baseline = await createMainPage();
 		const response = await createMainPage({ customCode: '<script src="https://cdn.example/custom.js"></script>' });
 
-		expect([...response.headers]).toEqual([...baseline.headers]);
+		const stableHeaders = (headers) => [...headers].filter(([name]) => name !== 'x-2fa-shell-config');
+		expect(stableHeaders(response.headers)).toEqual(stableHeaders(baseline.headers));
+		// Custom code changes the exact shell identity, while all security/cache headers remain identical.
+		expect(response.headers.get('X-2FA-Shell-Config')).toMatch(/^[a-f0-9]{64}$/);
+		expect(response.headers.get('X-2FA-Shell-Config')).not.toBe(baseline.headers.get('X-2FA-Shell-Config'));
 		expect(response.headers.get('Content-Security-Policy')).toBe("frame-ancestors 'none'");
 		expect(response.headers.get('X-Frame-Options')).toBe('DENY');
 		expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');

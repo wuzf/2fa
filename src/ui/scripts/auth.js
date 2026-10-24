@@ -290,7 +290,7 @@ export function getAuthCode() {
       }
 
       const attempt = ++loginAttemptGeneration;
-      secretLoadGeneration += 1;
+      invalidateSecretReads();
       // A current login is allowed to recover from an older operation's 401.
       // Logout and newer login attempts explicitly cancel this login intent.
       const isCurrentAttempt = () => attempt === loginAttemptGeneration;
@@ -378,31 +378,9 @@ export function getAuthCode() {
         console.warn('清除缓存失败:', e);
       }
 
-      try {
-        Object.keys(otpIntervals || {}).forEach(secretId => {
-          clearInterval(otpIntervals[secretId]);
-          delete otpIntervals[secretId];
-        });
-      } catch (e) {
-        console.warn('清除验证码定时器失败:', e);
-      }
-
-      if (typeof clearAllOTPAnimations === 'function') {
-        clearAllOTPAnimations();
-      }
-      if (typeof clearOTPWindowScheduler === 'function') {
-        clearOTPWindowScheduler();
-      }
-
-      secrets = [];
       filteredSecrets = [];
-      if (typeof filterAppearanceServices === 'function') filterAppearanceServices([], []);
       currentSearchQuery = '';
-      const secretsList = document.getElementById('secretsList');
-      if (secretsList) {
-        secretsList.innerHTML = '';
-        secretsList.style.display = 'none';
-      }
+
 
       showCenterToast('⚠️', t('loginExpired'));
       setTimeout(() => {
@@ -427,32 +405,10 @@ export function getAuthCode() {
         console.warn('清除缓存失败:', e);
       }
 
-      try {
-        Object.keys(otpIntervals || {}).forEach(secretId => {
-          clearInterval(otpIntervals[secretId]);
-          delete otpIntervals[secretId];
-        });
-      } catch (e) {
-        console.warn('清除验证码定时器失败:', e);
-      }
-
-      if (typeof clearAllOTPAnimations === 'function') {
-        clearAllOTPAnimations();
-      }
-      if (typeof clearOTPWindowScheduler === 'function') {
-        clearOTPWindowScheduler();
-      }
-
-      secrets = [];
       filteredSecrets = [];
-      if (typeof filterAppearanceServices === 'function') filterAppearanceServices([], []);
       currentSearchQuery = '';
 
-      const secretsList = document.getElementById('secretsList');
-      if (secretsList) {
-        secretsList.innerHTML = '';
-        secretsList.style.display = 'none';
-      }
+
 
       if (typeof hideSettingsModal === 'function') {
         hideSettingsModal();

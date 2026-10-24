@@ -42,7 +42,7 @@ function createHarness({ withCore = true } = {}) {
 		showConfirmDialog = confirmDialog;
 		generateQRCodeDataURL = async () => 'data:image/png;base64,fixture';
 		return { showQRCode, deleteSecret: typeof deleteSecret === 'function' ? deleteSecret : null,
-			setSecrets(value) { secrets = value; }, getURI: () => currentOTPAuthURL };
+			setSecrets(value) { replaceSecretRecords(value); }, getURI: () => currentOTPAuthURL };
 	`,
 	)(document, window, localStorage, { language: 'zh-CN' }, { log() {}, warn() {}, error() {} }, vi.fn(), confirm);
 	api.setSecrets([{ ...ACCOUNT }]);

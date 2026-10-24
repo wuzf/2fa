@@ -6,6 +6,12 @@ import { getCoreCode } from '../../src/ui/scripts/core.js';
 import { getStateCode } from '../../src/ui/scripts/state.js';
 import { getAuthCode } from '../../src/ui/scripts/auth.js';
 import { getUtilsCode } from '../../src/ui/scripts/utils.js';
+import { createThemeSdk } from '../../src/ui/runtime/themeSdk.js';
+import { createAccountViewState } from '../../src/ui/runtime/accountViewState.js';
+import { createOfficialAccountView } from '../../src/ui/scripts/officialAccountView.js';
+import { createAccountRenderer } from '../../src/ui/themes/renderer.js';
+
+const disposers = [];
 
 const CACHE_KEY = '2fa-secrets-cache';
 const ACCOUNT = {
@@ -51,17 +57,7 @@ function harness({ cached, online = true } = {}) {
 	};
 	const fetch = vi.fn(async () => response([ACCOUNT]));
 	const clock = vi.fn(async () => true);
-	const render = vi.fn(async (accounts) => {
-		document.getElementById('loading').style.display = 'none';
-		document.getElementById('emptyState').style.display = 'none';
-		document.getElementById('secretsList').innerHTML = '';
-		for (const account of accounts) {
-			const button = document.createElement('button');
-			button.dataset.id = account.id;
-			button.textContent = account.name;
-			document.getElementById('secretsList').append(button);
-		}
-	});
+	const render = vi.fn(async () => {});
 	const navigator = { onLine: online, language: 'zh-CN' };
 	const toast = vi.fn();
 	// Real emitted reads and authentication boundaries, with only card rendering
@@ -86,20 +82,56 @@ function harness({ cached, online = true } = {}) {
 		${getCoreCode()}
 		function showSecretModal(fill) { fill(); }
 		function toggleAdvancedOptions() {}
-		const originalRenderSecrets = renderSecrets;
-		renderSecrets = () => secrets.length ? render(secrets) : originalRenderSecrets();
-		return { loadSecrets, handleUnauthorized, commitSecretListChange, createSecretCard, editSecret, bindAccountAppearanceActions,
+		function getOtpEngine() { return {refresh: () => render(accountStore.getRecords())}; }
+		return { loadSecrets, handleUnauthorized, commitSecretListChange, editSecret, accountStore, getAccountCommands, t,
 			getSecrets: () => secrets,
 			getBlocked: () => secretReadsBlocked,
 			newSession: () => invalidateSecretSession({blocked:false})
 		};
 	`,
 	)(document, { addEventListener() {} }, navigator, storage, fetch, clock, render, toast, { log() {}, warn() {}, error() {} }, vi.fn());
-	return { ...api, fetch, clock, render, storage, navigator, toast, readCache: () => JSON.parse(storage.getItem(CACHE_KEY)) };
+	const viewState = createAccountViewState();
+	viewState.setMode('flat');
+	const runtime = createThemeSdk({
+		accounts: api.accountStore,
+		otp: { readCommitted: () => null, subscribeCommits: () => () => {} },
+		commands: api.getAccountCommands(),
+		view: viewState,
+		translate: api.t,
+		environment: { getSnapshot: () => ({ connectivity: { onlineHint: navigator.onLine } }) },
+		hostFlows: {
+			listActions: () => [],
+			open(request) {
+				if (request.kind === 'account-edit') {
+					api.editSecret(request.account.id);
+				}
+			},
+		},
+	});
+	const official = createOfficialAccountView({ document, window, sdk: runtime.sdk, renderer: createAccountRenderer(), translate: api.t });
+	disposers.push(() => {
+		official.dispose();
+		runtime.dispose();
+		viewState.dispose();
+	});
+	return {
+		...api,
+		fetch,
+		clock,
+		render,
+		storage,
+		navigator,
+		toast,
+		view: official,
+		createSecretCard: (raw) =>
+			official.createSecretCard(runtime.sdk.getSnapshot().library.accounts.find((item) => item.ref.id === String(raw.id))),
+		readCache: () => JSON.parse(storage.getItem(CACHE_KEY)),
+	};
 }
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
+	disposers.splice(0).forEach((dispose) => dispose());
 	vi.clearAllTimers();
 	vi.useRealTimers();
 });
@@ -113,7 +145,7 @@ describe('main-page cache-first account reads', () => {
 		h.fetch.mockReturnValueOnce(request.promise);
 		const reading = h.loadSecrets();
 		expect(h.render).toHaveBeenCalledOnce();
-		expect(document.getElementById('secretsList').textContent).toBe('Example');
+		expect(document.querySelector('.secret-name').textContent).toBe('Example');
 		expect(h.fetch).not.toHaveBeenCalled();
 		clock.resolve(true);
 		await flush();
@@ -129,13 +161,13 @@ describe('main-page cache-first account reads', () => {
 		const request = deferred();
 		h.fetch.mockReturnValueOnce(request.promise);
 		const reading = h.loadSecrets();
-		const card = document.querySelector('[data-id="example"]');
+		const card = document.querySelector('[data-account-id="example"] .otp-code');
 		card.focus();
 		await flush();
 		request.resolve(response([ACCOUNT]));
 		await reading;
 		expect(h.render).toHaveBeenCalledOnce();
-		expect(document.querySelector('[data-id="example"]')).toBe(card);
+		expect(document.querySelector('[data-account-id="example"] .otp-code')).toBe(card);
 		expect(document.activeElement).toBe(card);
 	});
 
@@ -176,7 +208,7 @@ describe('main-page cache-first account reads', () => {
 		await vi.advanceTimersByTimeAsync(8001);
 		await reading;
 		expect(h.getSecrets()).toEqual([ACCOUNT]);
-		expect(document.getElementById('secretsList').textContent).toBe('Example');
+		expect(document.querySelector('.secret-name').textContent).toBe('Example');
 		if (stage !== 'clock') {
 			expect(h.fetch.mock.calls[0][1].signal.aborted).toBe(true);
 		}
@@ -249,7 +281,7 @@ describe('main-page cache-first account reads', () => {
 		h.fetch.mockResolvedValueOnce(response([ACCOUNT, invalid, other]));
 		await h.loadSecrets();
 		expect(h.getSecrets()).toEqual([ACCOUNT, other]);
-		expect(document.getElementById('secretsList').textContent).toBe('ExampleOther');
+		expect([...document.querySelectorAll('.secret-name')].map((element) => element.textContent)).toEqual(['Example', 'Other']);
 		expect(h.readCache().data).toEqual([ACCOUNT, other]);
 		expect(h.toast).toHaveBeenCalledWith('⚠️', '有 1 个账户的数据无效或 OTP 参数不受支持，未显示。服务器上的数据未被修改。');
 		expect(document.getElementById('emptyState').textContent).not.toContain('账户数据暂时无法读取');
@@ -293,7 +325,7 @@ describe('main-page cache-first account reads', () => {
 				}
 				document.body.append(input);
 			}
-			offline.bindAccountAppearanceActions();
+			offline.view.render();
 			document.querySelector('[data-account-action="edit"]').click();
 			expect(document.getElementById('secretId').value).toBe('legacy');
 			expect(document.getElementById('secretName').value).toBe(name);
@@ -387,15 +419,15 @@ describe('main-page cache-first account reads', () => {
 		expect(h.readCache().data).toEqual([]);
 	});
 
-	it('retries rendering unchanged data after the first local render failed', async () => {
+	it('retries OTP readiness for unchanged data after the first local calculation failed', async () => {
 		const h = harness({ cached: [ACCOUNT] });
 		h.render.mockRejectedValueOnce(new Error('Temporary render failure'));
 		await h.loadSecrets();
 		expect(h.render).toHaveBeenCalledTimes(2);
-		expect(document.getElementById('secretsList').textContent).toBe('Example');
+		expect(document.querySelector('.secret-name').textContent).toBe('Example');
 	});
 
-	it('does not reuse an obsolete local render after an invalid response and recovery with the same accounts', async () => {
+	it('does not reuse an obsolete local calculation after an invalid response and recovery with the same accounts', async () => {
 		const h = harness({ cached: [ACCOUNT] });
 		const staleRendering = deferred();
 		h.render.mockReturnValueOnce(staleRendering.promise);
@@ -406,6 +438,6 @@ describe('main-page cache-first account reads', () => {
 		await flush();
 		await h.loadSecrets();
 		expect(h.render).toHaveBeenCalledTimes(2);
-		expect(document.getElementById('secretsList').textContent).toBe('Example');
+		expect(document.querySelector('.secret-name').textContent).toBe('Example');
 	});
 });

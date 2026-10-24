@@ -94,7 +94,7 @@ describe('complete offline appearance snapshots', () => {
 		const network = vi.fn(async () => new Response('server response', { status }));
 		const source = (await createServiceWorker().text()).replace(
 			/const snapshotManager = [\s\S]*?\nconst DB_NAME/,
-			'const snapshotManager = testSnapshots;\nconst DB_NAME',
+			'const snapshotManager = testSnapshots;\nconst runtimeSnapshots = null;\nconst DB_NAME',
 		);
 		const silent = { log: vi.fn(), error: vi.fn(), warn: vi.fn() };
 		// eslint-disable-next-line no-new-func
@@ -400,7 +400,7 @@ describe('complete offline appearance snapshots', () => {
 		// as the binding rule without requiring a browser IndexedDB implementation.
 		const source = (await createServiceWorker().text()).replace(
 			/const snapshotManager = [\s\S]*?\nconst DB_NAME/,
-			'const snapshotManager = testSnapshots;\nconst DB_NAME',
+			'const snapshotManager = testSnapshots;\nconst runtimeSnapshots = null;\nconst DB_NAME',
 		);
 		const silent = { log: vi.fn(), error: vi.fn(), warn: vi.fn() };
 		// eslint-disable-next-line no-new-func

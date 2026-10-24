@@ -4,6 +4,8 @@
  */
 
 import { getSearchFilterCode } from './searchFilter.js';
+import { createAccountViewState } from '../runtime/accountViewState.js';
+import { serializeBrowserFunction } from './browserSource.js';
 
 /**
  * 获取搜索和排序相关代码
@@ -29,6 +31,51 @@ export function getSearchCode() {
     let searchFilterTimer = null;
     let sortMenuLayoutFrame = null;
     let sortMenuResizeObserver = null;
+    let accountViewState = null;
+    const createAccountViewState = ${serializeBrowserFunction(createAccountViewState)};
+
+    function getAccountViewState() {
+      if (!accountViewState) {
+        accountViewState = createAccountViewState({
+          filterAccountsByQuery: (...args) => filterAccountsByQuery(...args),
+          groupSecretsByServiceFamily: (...args) => typeof groupSecretsByServiceFamily === 'function' ? groupSecretsByServiceFamily(...args) : [],
+          compareStrings: (a, b) => typeof compareI18nStrings === 'function' ? compareI18nStrings(a, b) : a.localeCompare(b, 'zh-CN'),
+          persist: patch => {
+            const keys = { mode: '2fa-view-mode', groupSort: '2fa-group-sort-preference', flatSort: '2fa-flat-sort-preference', groupedItemSort: '2fa-group-item-sort-preference' };
+            for (const [key, value] of Object.entries(patch)) if (keys[key]) localStorage.setItem(keys[key], value);
+          },
+          onError: error => console.warn('Account view preference failed', error)
+        });
+        syncAccountViewPreferences();
+        accountViewState.subscribe(() => {
+          const state = accountViewState.getState();
+          currentViewMode = state.mode; currentGroupSortType = state.groupSort;
+          currentFlatSortType = state.flatSort; currentGroupedItemSortType = state.groupedItemSort;
+          currentSortType = state.mode === 'grouped' ? state.groupedItemSort : state.flatSort;
+          currentSearchQuery = state.query;
+        });
+      }
+      return accountViewState;
+    }
+
+    function syncAccountViewPreferences() {
+      if (accountViewState) accountViewState.restore({ query: typeof currentSearchQuery === 'string' ? currentSearchQuery : '', mode: currentViewMode, groupSort: currentGroupSortType, flatSort: currentFlatSortType, groupedItemSort: currentGroupedItemSortType, serviceFilter: accountViewState.getState().serviceFilter });
+    }
+
+    function updateOfficialViewControls(selection) {
+      const input = document.getElementById('searchInput');
+      if (input && input.value.trim().toLowerCase() !== selection.query) input.value = selection.query;
+      const clear = document.getElementById('searchClear');
+      if (clear) clear.style.display = selection.query ? 'block' : 'none';
+      const stats = document.getElementById('searchStats');
+      if (stats) {
+        stats.textContent = selection.serviceFilter ? t('searchFoundCount', { found: selection.found, total: selection.total }) : !selection.query ? '' : selection.found === 0 ? t('searchNoMatch') : selection.found === selection.total ? t('searchShowAll', { count: selection.total }) : t('searchFoundCount', { found: selection.found, total: selection.total });
+        stats.style.color = selection.serviceFilter ? 'var(--2fa-muted)' : selection.found === 0 ? '#e74c3c' : selection.found === selection.total ? '#27ae60' : '#3498db';
+      }
+      currentViewMode = selection.mode; currentGroupSortType = selection.groupSort;
+      currentFlatSortType = selection.flatSort; currentGroupedItemSortType = selection.groupedItemSort;
+      markActiveViewMode(selection.mode); markActiveGroupSortOption(selection.groupSort); syncSortMenuForViewMode();
+    }
 
     function normalizeViewMode(value) {
       return VALID_VIEW_MODES.includes(value) ? value : 'grouped';
@@ -78,6 +125,7 @@ export function getSearchCode() {
 
       markActiveViewMode(currentViewMode);
       syncSortMenuForViewMode();
+      syncAccountViewPreferences();
     }
 
     function restoreGroupSortPreference() {
@@ -89,6 +137,7 @@ export function getSearchCode() {
       }
 
       markActiveGroupSortOption(currentGroupSortType);
+      syncAccountViewPreferences();
     }
 
     function saveViewModePreference(viewMode) {
@@ -210,6 +259,7 @@ export function getSearchCode() {
 
     async function selectViewMode(value) {
       currentViewMode = normalizeViewMode(value);
+      getAccountViewState().setMode(currentViewMode);
       markActiveViewMode(currentViewMode);
       saveViewModePreference(currentViewMode);
       syncSortMenuForViewMode();
@@ -219,6 +269,7 @@ export function getSearchCode() {
 
     async function selectGroupSort(value) {
       currentGroupSortType = normalizeGroupSortType(value);
+      getAccountViewState().setSort({ groupSort: currentGroupSortType });
       markActiveGroupSortOption(currentGroupSortType);
       saveGroupSortPreference(currentGroupSortType);
       await renderFilteredSecrets();
@@ -239,6 +290,7 @@ export function getSearchCode() {
           savedGroupedSort !== null ? savedGroupedSort : legacySort
         );
         syncCurrentSortTypeForViewMode();
+        syncAccountViewPreferences();
         if (savedFlatSort || savedGroupedSort || legacySort) {
           console.log('✅ 已恢复排序设置:', {
             flat: currentFlatSortType,
@@ -364,19 +416,20 @@ export function getSearchCode() {
 
       const trimmedQuery = query.trim().toLowerCase();
       currentSearchQuery = trimmedQuery;
+      getAccountViewState().setQuery(trimmedQuery);
 
       const searchClear = document.getElementById('searchClear');
       const searchStats = document.getElementById('searchStats');
 
-      if (trimmedQuery) {
+      if (searchClear && trimmedQuery) {
         searchClear.style.display = 'block';
-      } else {
+      } else if (searchClear) {
         searchClear.style.display = 'none';
       }
 
       if (!trimmedQuery) {
         filteredSecrets = filterAccountsByQuery(secrets, trimmedQuery);
-        searchStats.textContent = '';
+        if (searchStats) searchStats.textContent = '';
         await renderFilteredSecrets();
         return;
       }
@@ -386,13 +439,13 @@ export function getSearchCode() {
       const totalCount = secrets.length;
       const foundCount = filteredSecrets.length;
 
-      if (foundCount === 0) {
+      if (searchStats && foundCount === 0) {
         searchStats.textContent = (typeof t === 'function' ? t('searchNoMatch') : null) || '未找到匹配的密钥';
         searchStats.style.color = '#e74c3c';
-      } else if (foundCount === totalCount) {
+      } else if (searchStats && foundCount === totalCount) {
         searchStats.textContent = (typeof t === 'function' ? t('searchShowAll', { count: totalCount }) : null) || ('显示所有 ' + totalCount + ' 个密钥');
         searchStats.style.color = '#27ae60';
-      } else {
+      } else if (searchStats) {
         searchStats.textContent = (typeof t === 'function' ? t('searchFoundCount', { found: foundCount, total: totalCount }) : null) || ('找到 ' + foundCount + ' 个匹配密钥（共 ' + totalCount + ' 个）');
         searchStats.style.color = '#3498db';
       }
@@ -405,9 +458,10 @@ export function getSearchCode() {
         clearTimeout(searchFilterTimer);
         searchFilterTimer = null;
       }
-      document.getElementById('searchInput').value = '';
+      const input = document.getElementById('searchInput');
+      if (input) input.value = '';
       filterSecrets('');
-      document.getElementById('searchInput').focus();
+      input?.focus();
     }
 
     // 应用排序
@@ -420,60 +474,15 @@ export function getSearchCode() {
       
       // 保存用户的排序选择
       saveSortPreference(currentSortType);
+      getAccountViewState().setSort(currentViewMode === 'grouped' ? { groupedItemSort: currentSortType } : { flatSort: currentSortType });
       
       await renderFilteredSecrets();
     }
 
     // 排序密钥
     function sortSecrets(secretsToSort, sortType) {
-      if (!secretsToSort || secretsToSort.length === 0) {
-        return secretsToSort;
-      }
-
-      const sortedSecrets = [...secretsToSort];
-
-      switch (sortType) {
-        case 'name-asc':
-          return sortedSecrets.sort((a, b) => {
-            const nameA = (a.name || '').toLowerCase();
-            const nameB = (b.name || '').toLowerCase();
-            return typeof compareI18nStrings === 'function' ? compareI18nStrings(nameA, nameB) : nameA.localeCompare(nameB, 'zh-CN');
-          });
-
-        case 'name-desc':
-          return sortedSecrets.sort((a, b) => {
-            const nameA = (a.name || '').toLowerCase();
-            const nameB = (b.name || '').toLowerCase();
-            return typeof compareI18nStrings === 'function' ? compareI18nStrings(nameB, nameA) : nameB.localeCompare(nameA, 'zh-CN');
-          });
-
-        case 'account-asc':
-          return sortedSecrets.sort((a, b) => {
-            const accountA = (a.account || '').toLowerCase();
-            const accountB = (b.account || '').toLowerCase();
-            return typeof compareI18nStrings === 'function' ? compareI18nStrings(accountA, accountB) : accountA.localeCompare(accountB, 'zh-CN');
-          });
-
-        case 'account-desc':
-          return sortedSecrets.sort((a, b) => {
-            const accountA = (a.account || '').toLowerCase();
-            const accountB = (b.account || '').toLowerCase();
-            return typeof compareI18nStrings === 'function' ? compareI18nStrings(accountB, accountA) : accountB.localeCompare(accountA, 'zh-CN');
-          });
-
-        case 'oldest-first':
-          // 最早添加：按添加顺序（保持原有顺序）
-          return sortedSecrets;
-
-        case 'newest-first':
-          // 最晚添加：按添加顺序倒序
-          return sortedSecrets.reverse();
-
-        case 'default':
-        default:
-          // 兼容旧版本，默认使用最早添加
-          return sortedSecrets;
-      }
+      if (!secretsToSort || !secretsToSort.length) return secretsToSort;
+      return getAccountViewState().sort(secretsToSort, sortType);
     }
 `;
 }

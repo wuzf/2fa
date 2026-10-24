@@ -2,13 +2,17 @@
  * 全局状态模块
  * 全局变量定义
  */
+import { createAccountStore } from '../runtime/accountStore.js';
+import { serializeBrowserFunction } from './browserSource.js';
 
 /**
  * 获取 State 相关代码
  * @returns {string} State JavaScript 代码
  */
 export function getStateCode() {
-	return `    let secrets = [];
+	return `    const accountStore = (${serializeBrowserFunction(createAccountStore)})();
+    // Host-private read mirror. Every production write goes through accountStore.
+    let secrets = accountStore.getRecords();
     let scanStream = null;
     let scannerCanvas = null;
     let scannerContext = null;
@@ -18,6 +22,7 @@ export function getStateCode() {
     let secretDialogGeneration = 0;
     let secretDialogOpen = false;
     let secretDialogSubmission = null;
+    let secretDialogCommandGuard = null; // Host mount/reference guard, captured by an accepted submission.
     let secretDialogQueuedOperationId = null; // stopped offline change being corrected in the dialog
     let secretDialogStoredParams = null; // saved type and period of the edited account; the period is kept even if no longer offered
     let secretDialogShowTimer = null;
@@ -35,25 +40,59 @@ export function getStateCode() {
     // or from the local copy that logout and an expired login delete. A new
     // page starts unconfirmed, so a logged-out page cannot show queued keys.
     let secretAccessVerifiedSession = null;
+    accountStore.subscribe(() => {
+      const state = accountStore.getState();
+      secrets = accountStore.getRecords();
+      secretSessionGeneration = state.sessionGeneration;
+      secretLoadGeneration = state.readGeneration;
+      secretReadsBlocked = state.blocked;
+      secretAccessVerifiedSession = state.accessVerified ? state.sessionGeneration : null;
+    }, { phase: 'internal' });
     function isSecretSessionCurrent(generation) {
-      return !secretReadsBlocked && generation === secretSessionGeneration;
+      return accountStore.isSessionCurrent(generation);
     }
     function markSecretAccessVerified(generation = secretSessionGeneration) {
-      if (isSecretSessionCurrent(generation)) secretAccessVerifiedSession = generation;
+      accountStore.markAccessVerified(generation);
     }
     function isSecretAccessVerified() {
       return isSecretSessionCurrent(secretAccessVerifiedSession);
     }
     function invalidateSecretSession({ blocked = true } = {}) {
-      secretSessionGeneration += 1;
-      secretLoadGeneration += 1;
+      const invalidatedGeneration = accountStore.invalidateSession({ blocked });
       secretRenderGeneration += 1;
-      secretReadsBlocked = blocked;
+      if (typeof getAccountViewState === 'function') {
+        getAccountViewState().setQuery('');
+        getAccountViewState().setServiceFilter(null);
+      }
       // The hidden-accounts notice belongs to the session that read them.
       if (typeof renderHiddenSecretsNotice === 'function') renderHiddenSecretsNotice();
-      return secretSessionGeneration;
+      return invalidatedGeneration;
+    }
+    function replaceSecretRecords(records, options = {}) {
+      return accountStore.replaceRecords(records, options);
+    }
+    function invalidateSecretReads() {
+      secretLoadGeneration = accountStore.invalidateReads();
+      return secretLoadGeneration;
+    }
+    function beginSecretRead() {
+      const generation = accountStore.beginRead();
+      secretLoadGeneration = accountStore.getReadGeneration();
+      return generation;
+    }
+    function beginSecretWrite(type, accountId, sessionGeneration = secretSessionGeneration) {
+      return accountStore.beginWrite({ type, accountId, sessionGeneration });
     }
     let saveQueue = Promise.resolve(); // 保存操作队列，确保串行执行避免并发覆盖
+    function queueSecretWrite(type, accountId, sessionGeneration, operation) {
+      const handle = beginSecretWrite(type, accountId, sessionGeneration);
+      if (!handle) return Promise.resolve({ status: 'session-invalidated' });
+      return saveQueue.then(() => {
+        if (!isSecretSessionCurrent(sessionGeneration)) return { status: 'session-invalidated' };
+        accountStore.updateOperation(handle.operationId, { status: 'running' });
+        return operation();
+      }).finally(() => accountStore.endWrite(handle));
+    }
     // authToken 已移除 - 现在使用 HttpOnly Cookie
 
 `;

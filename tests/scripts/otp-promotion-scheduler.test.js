@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { createAccountStore } from '../../src/ui/runtime/accountStore.js';
 import { getOTPCode } from '../../src/ui/scripts/otp.js';
 import { getTimeCode } from '../../src/ui/scripts/time.js';
 
@@ -21,17 +22,15 @@ async function flushMicrotasks() {
 	}
 }
 
-function createHarness(
-	periods = [30, 30],
-	secretOverrides = [],
-	{ sharedSchedulerAvailable = true } = {},
-) {
+function createHarness(periods = [30, 30], secretOverrides = [], { sharedSchedulerAvailable = true } = {}) {
 	const state = { monotonicMs: 0, wallClockAdjustmentMs: 0 };
 	const domEvents = [];
 	const secretAccessStats = {
 		idReads: 0,
+		recordReads: 0,
 		reset() {
 			this.idReads = 0;
+			this.recordReads = 0;
 		},
 	};
 	const secrets = periods.map(
@@ -235,8 +234,17 @@ function createHarness(
 	const quietConsole = { error: vi.fn(), log: vi.fn(), warn: vi.fn() };
 
 	// The UI scripts are emitted into one browser scope, so evaluate them in the same way here.
+	const authoritativeStore = createAccountStore({ records: secrets });
+	const accountStore = {
+		...authoritativeStore,
+		getRecord(id) {
+			secretAccessStats.recordReads += 1;
+			return authoritativeStore.getRecord(id);
+		},
+	};
 	// eslint-disable-next-line no-new-func
 	const api = new Function(
+		'accountStore',
 		'Date',
 		'performance',
 		'fetch',
@@ -257,6 +265,8 @@ function createHarness(
 		'otpIntervals',
 		`${getTimeCode()}${getOTPCode()}; return {
 			trustedClock,
+			getOtpEngine,
+			otpPresentation,
 			otpCalculator,
 			refreshTOTPsAfterClockChange,
 			updateOTP,
@@ -264,6 +274,7 @@ function createHarness(
 			updateCountdown
 		};`,
 	)(
+		accountStore,
 		FakeDate,
 		{ now: () => state.monotonicMs },
 		vi.fn(),
@@ -330,6 +341,7 @@ function createHarness(
 	}
 
 	return {
+		accountStore,
 		api,
 		dispatchDocumentEvent,
 		document,
@@ -401,7 +413,7 @@ describe('OTP promotion scheduling', () => {
 
 	it('does not promote eight-digit fallback placeholders', async () => {
 		const harness = createHarness([30]);
-		harness.secrets[0].digits = 8;
+		harness.accountStore.replaceRecords(harness.accountStore.getRecords().map((record) => ({ ...record, digits: 8 })));
 
 		const initial = harness.api.updateOTP('a');
 		await harness.resolvePair(0, '--------', '--------');
@@ -421,7 +433,7 @@ describe('OTP promotion scheduling', () => {
 
 	it('treats an eight-digit all-dash scheduler result as uncommitted', async () => {
 		const harness = createHarness([30]);
-		harness.secrets[0].digits = 8;
+		harness.accountStore.replaceRecords(harness.accountStore.getRecords().map((record) => ({ ...record, digits: 8 })));
 
 		const initial = harness.api.updateOTP('a');
 		await harness.resolvePair(0, '11111111', '22222222');
@@ -442,23 +454,19 @@ describe('OTP promotion scheduling', () => {
 		expect(harness.elements['otp-a'].textContent).toBe('22222222');
 	});
 
-	it('defensively refreshes any all-dash placeholder when no scheduler is active', async () => {
+	it('refreshes uncommitted state on core resume without inspecting placeholder DOM', async () => {
 		const harness = createHarness([30]);
-		harness.secrets[0].digits = 8;
+		harness.accountStore.replaceRecords(harness.accountStore.getRecords().map((record) => ({ ...record, digits: 8 })));
 		harness.elements['otp-a'].textContent = '--------';
 
-		harness.api.updateCountdown('a');
+		harness.api.getOtpEngine().resume('test');
 		expect(harness.generationCalls).toHaveLength(2);
 		await harness.resolvePair(0, '11111111', '22222222');
 		expect(harness.elements['otp-a'].textContent).toBe('11111111');
 	});
 
 	it('falls back by committed window when the shared scheduler is unavailable', async () => {
-		const harness = createHarness(
-			[30],
-			[{ digits: 8 }],
-			{ sharedSchedulerAvailable: false },
-		);
+		const harness = createHarness([30], [{ digits: 8 }], { sharedSchedulerAvailable: false });
 		const initial = harness.api.updateOTP('a');
 		await harness.resolvePair(0, '11111111', '22222222');
 		await initial;
@@ -757,7 +765,7 @@ describe('OTP promotion scheduling', () => {
 		expect(harness.requestAnimationFrame).not.toHaveBeenCalled();
 
 		// The superseded request may finish later, but cannot overwrite the fresh result.
-		await harness.resolvePair(2, 'stale-current', 'stale-next');
+		await harness.resolvePair(2, '123456', '234567');
 		expect(harness.elements['otp-a'].textContent).toBe('222222');
 		expect(harness.requestAnimationFrame).not.toHaveBeenCalled();
 	});
@@ -824,19 +832,19 @@ describe('OTP promotion scheduling', () => {
 	it('does not reuse an in-flight result after the secret material changes', async () => {
 		const harness = createHarness([30]);
 		const staleUpdate = harness.api.updateOTP('a');
-		harness.secrets[0].secret = 'REPLACED-SECRET';
+		harness.accountStore.replaceRecords(harness.accountStore.getRecords().map((record) => ({ ...record, secret: 'REPLACED-SECRET' })));
 		const freshUpdate = harness.api.updateOTP('a');
 
 		expect(freshUpdate).not.toBe(staleUpdate);
 		expect(harness.generationCalls).toHaveLength(4);
 
-		await harness.resolvePair(2, 'fresh-current', 'fresh-next');
+		await harness.resolvePair(2, '345678', '456789');
 		await freshUpdate;
-		await harness.resolvePair(0, 'stale-current', 'stale-next');
+		await harness.resolvePair(0, '123456', '234567');
 		await staleUpdate;
 
-		expect(harness.elements['otp-a'].textContent).toBe('fresh-current');
-		expect(harness.elements['next-otp-a'].textContent).toBe('fresh-next');
+		expect(harness.elements['otp-a'].textContent).toBe('345678');
+		expect(harness.elements['next-otp-a'].textContent).toBe('456789');
 	});
 
 	it('does not rescan the secrets array for every entry on a scheduler boundary', async () => {
@@ -853,6 +861,8 @@ describe('OTP promotion scheduling', () => {
 
 		expect(harness.generationCalls).toHaveLength(entryCount * 2);
 		expect(harness.secretAccessStats.idReads).toBeLessThanOrEqual(entryCount);
+		expect(harness.secretAccessStats.recordReads).toBeGreaterThanOrEqual(entryCount);
+		expect(harness.secretAccessStats.recordReads).toBeLessThanOrEqual(entryCount * 3);
 	});
 
 	it('keeps retry deadlines independent from forward and backward wall-clock jumps', async () => {

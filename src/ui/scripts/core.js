@@ -1,12 +1,13 @@
 import { serializeBrowserFunction } from './browserSource.js';
-import { dialogIcon } from '../dialogIcons.js'; /**
+/**
  * Core 核心业务逻辑模块
  * 包含密钥管理、OTP生成、二维码、备份等所有核心功能
  */
 
 import { SERVICE_LOGOS } from '../config/serviceLogos.js';
 import { getOfflineSecretsCode } from './offlineCache.js';
-import { createAccountRenderer } from '../themes/renderer.js';
+import { createAccountCommands } from '../runtime/accountCommands.js';
+import { createBrowserClipboardPort } from './browserClipboard.js';
 
 /**
  * 获取 Core 相关代码
@@ -16,14 +17,51 @@ export function getCoreCode() {
 	const serviceLogosJSON = JSON.stringify(SERVICE_LOGOS, null, 2);
 
 	return `${getOfflineSecretsCode()}
-    const accountAppearanceRenderer = (${serializeBrowserFunction(createAccountRenderer)})();
+    let accountCommandsInstance = null;
+    let browserClipboardInstance = null;
+    function getBrowserClipboard() {
+      if (!browserClipboardInstance) browserClipboardInstance = (${serializeBrowserFunction(createBrowserClipboardPort)})({ navigator, document });
+      return browserClipboardInstance;
+    }
+    function getAccountCommands() {
+      if (!accountCommandsInstance) accountCommandsInstance = (${serializeBrowserFunction(createAccountCommands)})({
+        accounts: accountStore,
+        otp: { readCopyTarget: (id, slot) => getOtpEngine().readCopyTarget(id, slot),
+          validateCopyTarget: target => getOtpEngine().validateCopyTarget(target) },
+        clipboard: getBrowserClipboard(),
+        online: () => navigator.onLine !== false,
+        origin: () => window.location.origin,
+        unnamedLabel: () => t('transferUnnamed'),
+        reserveCounter: snapshot => reserveHOTPCounter(snapshot, snapshot.sessionGeneration),
+        reconcile: () => loadSecrets(), refresh: () => loadSecrets(),
+        onOperationStart: promise => { saveQueue = promise.then(() => undefined); },
+        feedback: (result, error) => {
+          if (result.status === 'not-started') {
+            const key = result.reason === 'write-busy-reclick' ? 'coreHotpWriteBusy' :
+              result.reason === 'operation-pending-account-changed' ? 'coreHotpAccountChangedPending' :
+              result.reason === 'offline' ? 'coreHotpCopyOffline' :
+              result.reason === 'counter-limit' ? 'coreHotpLimit' : 'coreCodeUpdating';
+            showCenterToast(['offline', 'counter-limit'].includes(result.reason) ? '⚠️' : '⏳', t(key));
+          } else if (result.reservation === 'confirmed' && result.clipboard === 'failed') {
+            showCenterToast('⚠️', t('coreHotpCopyFailedAdvanced'));
+          } else if (result.reservation !== 'not-attempted' && (result.reservation !== 'confirmed' || result.localCommit !== 'committed')) {
+            showCenterToast('⚠️', t(result.clipboard === 'copied' ? 'coreHotpCopiedSyncFailed' : 'coreHotpNotCopiedReconciled') + (error?.message || ''));
+          }
+        },
+        afterCounterCommit: async snapshot => {
+          if (!isSecretSessionCurrent(snapshot.sessionGeneration)) return;
+          cacheSecretsLocally();
+          await getOtpEngine().refreshOne(snapshot.id);
+        }
+      });
+      return accountCommandsInstance;
+    }
     // ========== Service Logos 配置 ==========
     // 服务名称到域名的映射数据（从 serviceLogos.js 导入）
     const SERVICE_LOGOS = ${serviceLogosJSON};
 
     // ========== Service Logo 处理逻辑（唯一实现） ==========
     // 注意：逻辑只在客户端实现，服务器端的 serviceLogos.js 只是纯数据配置
-    const hotpCopyLocks = new Map();
     const SECRETS_CACHE_KEY = '2fa-secrets-cache';
     let secretsCacheWriteFailed = false;
     let lastSecretsCacheTimestamp = 0;
@@ -66,8 +104,8 @@ export function getCoreCode() {
       if (!isSecretSessionCurrent(sessionGeneration)) return false;
       // In-flight list reads started before this confirmed write must not
       // replace the new local state or persist their older snapshot afterward.
-      secretLoadGeneration += 1;
-      secrets = nextSecrets;
+      invalidateSecretReads();
+      if (!replaceSecretRecords(nextSecrets, { expectedSession: sessionGeneration, reason: 'mutation', accessVerified: true })) return false;
       secretsReadInvalid = false;
       // Only confirmed server writes reach this point.
       markSecretAccessVerified(sessionGeneration);
@@ -102,7 +140,7 @@ export function getCoreCode() {
       return !!(
         secret &&
         snapshot &&
-        String(secret.id) === snapshot.id &&
+        String(secret.id) === String(snapshot.id) &&
         String(secret.type || '').toUpperCase() === 'HOTP' &&
         secret.secret === snapshot.secret &&
         (Number(secret.digits) || 6) === snapshot.digits &&
@@ -189,57 +227,6 @@ export function getCoreCode() {
       const base32Regex = /^[A-Z2-7]+=*$/;
       return base32Regex.test(secret.toUpperCase()) && secret.length >= 8;
     }
-
-    // 页面加载时获取密钥列表
-    document.addEventListener('DOMContentLoaded', function() {
-        if (typeof initModalDismissal === 'function') initModalDismissal();
-        if (typeof initLanguage === 'function') {
-          initLanguage();
-        }
-        if (typeof applyTranslations === 'function') {
-          applyTranslations();
-        }
-        // Cached accounts can render before loadSecrets() first awaits. Restore
-        // their view and sorting now so the first visible list uses them too.
-        restoreSortPreference();
-        restoreGroupSortPreference();
-        restoreViewModePreference();
-
-        initializeTrustedClock();
-        // 先检查认证状态
-        if (checkAuth()) {
-          loadSecrets();
-          // Cookie 过期由浏览器自动管理，无需定时检查
-        }
-        initTheme();
-        if (typeof initCustomCodeAutoReload === 'function') initCustomCodeAutoReload();
-
-        // 排序 popover 外部点击 / Escape 关闭
-        if (typeof initSortDropdownOutsideClose === 'function') {
-          initSortDropdownOutsideClose();
-        }
-
-        bindAccountAppearanceActions();
-
-        // 初始化 FAB 拖拽并还原上次保存的位置
-        if (typeof initFABDrag === 'function') {
-          initFABDrag();
-        }
-
-        // 页面加载后立即刷新所有OTP，确保时间同步
-        setTimeout(() => {
-          if (secrets && secrets.length > 0) {
-            console.log('页面加载完成，立即刷新所有OTP');
-            if (typeof updateOTPSecretsInBatch === 'function') {
-              updateOTPSecretsInBatch(secrets, { includeHOTP: true });
-            } else {
-              secrets.forEach(secret => {
-                updateOTP(secret.id, null, secret);
-              });
-            }
-          }
-        }, 500);
-      });
 
     // Validate records before using either a server response or a persisted
     // snapshot. Keep legacy numeric IDs and omitted default OTP parameters.
@@ -346,7 +333,7 @@ export function getCoreCode() {
       if (!isSecretSessionCurrent(sessionGeneration)) return;
       // Like commitSecretListChange: reads started before this confirmed delete
       // must not bring the account back.
-      secretLoadGeneration += 1;
+      invalidateSecretReads();
       // A read that finished meanwhile may already have left it out.
       if (!getHiddenSecretRecords().some(record => record.id === id)) return;
       const records = getHiddenSecretRecords().filter(record => record.id !== id);
@@ -354,6 +341,7 @@ export function getCoreCode() {
       hiddenSecretsCount = { session: sessionGeneration, count: Math.max(0, getHiddenSecretsCount() - 1) };
       hiddenSecretsNotice = sessionGeneration + ':' + hiddenSecretsCount.count;
       cacheSecretsLocally();
+      accountStore.setHidden({ count: getHiddenSecretsCount(), records }, sessionGeneration);
       if (typeof renderHiddenSecretsNotice === 'function') renderHiddenSecretsNotice();
     }
 
@@ -362,6 +350,7 @@ export function getCoreCode() {
       if (Array.isArray(records) || !hiddenCount) {
         hiddenSecretRecords = { session: sessionGeneration, records: Array.isArray(records) ? records : [] };
       }
+      accountStore.setHidden({ count: hiddenCount || 0, records: getHiddenSecretRecords() }, sessionGeneration);
       if (typeof renderHiddenSecretsNotice === 'function') renderHiddenSecretsNotice();
       if (!hiddenCount) {
         hiddenSecretsNotice = null;
@@ -375,18 +364,11 @@ export function getCoreCode() {
     }
 
     function showSecretsReadFailure(messageKey) {
+      accountStore.setReadStatus({ state: 'error', refreshState: 'error', errorKey: messageKey });
       secretsDisplaySession = null;
       secretsDisplayFingerprint = null;
       secretsDisplayPending = null;
-      const loading = document.getElementById('loading');
-      const emptyState = document.getElementById('emptyState');
-      if (loading) loading.style.display = 'none';
-      if (!emptyState) return;
-      emptyState.innerHTML = '<h3 data-i18n="coreReadTitle"></h3><p></p>' +
-        '<button type="button" class="workspace-action" data-i18n="retry" onclick="loadSecrets()"></button>';
-      setTranslatedText(emptyState.querySelector('p'), messageKey);
-      applyTranslations(emptyState);
-      emptyState.style.display = 'block';
+
     }
 
     function discardInvalidSecretsSnapshot() {
@@ -396,14 +378,8 @@ export function getCoreCode() {
       secretsDisplayFingerprint = null;
       secretsDisplayPending = null;
       secretRenderGeneration += 1;
-      secrets = [];
+      replaceSecretRecords([], { reason: 'invalid-data' });
       filteredSecrets = [];
-      if (typeof filterAppearanceServices === 'function') filterAppearanceServices([], []);
-      clearOTPIntervalsExcept([]);
-      if (typeof clearAllOTPAnimations === 'function') clearAllOTPAnimations();
-      if (typeof clearOTPWindowScheduler === 'function') clearOTPWindowScheduler();
-      const list = document.getElementById('secretsList');
-      if (list) { list.innerHTML = ''; list.style.display = 'none'; }
       try { localStorage.removeItem(SECRETS_CACHE_KEY); } catch { /* Never reuse it in this page. */ }
     }
 
@@ -415,7 +391,7 @@ export function getCoreCode() {
       const pending = { session: secretSessionGeneration, fingerprint, promise: null };
       secretsDisplayPending = pending;
       let rendering;
-      try { rendering = Promise.resolve(renderSecrets()); }
+      try { rendering = Promise.resolve(getOtpEngine().refresh()); }
       catch (error) { rendering = Promise.reject(error); }
       pending.promise = rendering.then(() => {
         if (secretsDisplayPending === pending) {
@@ -441,7 +417,7 @@ export function getCoreCode() {
     async function loadSecrets() {
       const sessionGeneration = secretSessionGeneration;
       if (!isSecretSessionCurrent(sessionGeneration)) return;
-      const loadGeneration = ++secretLoadGeneration;
+      const loadGeneration = beginSecretRead();
       const isCurrentLoad = () => isSecretSessionCurrent(sessionGeneration) && loadGeneration === secretLoadGeneration;
       let localAvailable = false;
       let cachedHiddenCount = null;
@@ -455,7 +431,8 @@ export function getCoreCode() {
             const raw = localStorage.getItem(SECRETS_CACHE_KEY);
             const cached = parseOfflineSecretsCache(raw, Infinity);
             if (cached && isUsableSecretsSnapshot(cached.data)) {
-              secrets = cached.data;
+              replaceSecretRecords(cached.data, { expectedSession: sessionGeneration, source: 'local', accessVerified: true,
+                hidden: { count: readCachedHiddenCount(raw), records: [] } });
               secretsSnapshotSession = sessionGeneration;
               localAvailable = true;
               cachedHiddenCount = readCachedHiddenCount(raw);
@@ -463,7 +440,10 @@ export function getCoreCode() {
           } catch { /* Continue with the server when browser storage is unavailable. */ }
         }
       }
-      if (localAvailable) markSecretAccessVerified(sessionGeneration);
+      if (localAvailable) {
+        markSecretAccessVerified(sessionGeneration);
+        accountStore.setReadStatus({ state: 'ready' });
+      }
       if (cachedHiddenCount !== null) announceHiddenSecrets(cachedHiddenCount, sessionGeneration);
       const displaying = localAvailable ? renderLoadedSecretsIfChanged().catch(error => {
         if (isCurrentLoad()) console.warn('显示本地账户失败:', error);
@@ -471,7 +451,8 @@ export function getCoreCode() {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         await displaying;
         if (isCurrentLoad() && !localAvailable) showSecretsReadFailure('coreOfflineRead');
-        return;
+        if (isCurrentLoad() && localAvailable) accountStore.setReadStatus({ state: 'ready', refreshState: 'idle' });
+        return false;
       }
       const controller = new AbortController();
       let timedOut = false;
@@ -513,12 +494,14 @@ export function getCoreCode() {
         const loaded = await Promise.race([reading, deadline]);
         clearTimeout(timeoutId);
         if (!isCurrentLoad() || timedOut || loaded === null) return;
-        secrets = loaded.secrets;
+        if (!replaceSecretRecords(loaded.secrets, { expectedSession: sessionGeneration, expectedRead: loadGeneration,
+          source: 'server', accessVerified: true, hidden: { count: loaded.hiddenCount, records: loaded.hidden }, reason: 'server-read' })) return false;
         secretsReadInvalid = false;
         if (typeof syncLanguagePreferenceAfterAuth === 'function') void syncLanguagePreferenceAfterAuth();
         announceHiddenSecrets(loaded.hiddenCount, sessionGeneration, loaded.hidden);
         cacheSecretsLocally();
         await renderLoadedSecretsIfChanged();
+        return true;
       } catch (error) {
         if (!isCurrentLoad()) return;
         console.warn('读取账户未完成:', error);
@@ -527,38 +510,12 @@ export function getCoreCode() {
           showSecretsReadFailure('coreInvalidData');
         } else if (!localAvailable) {
           showSecretsReadFailure('coreConnectionFailed');
+        } else {
+          accountStore.setReadStatus({ state: 'ready', refreshState: 'error', errorKey: 'coreConnectionFailed' });
         }
       } finally {
         clearTimeout(timeoutId);
       }
-    }
-
-    // 渲染密钥列表
-    async function renderSecrets() {
-      if (secretReadsBlocked) return;
-      filteredSecrets = [...secrets];
-      const searchInput = document.getElementById('searchInput');
-      if (searchInput && searchInput.value.trim()) {
-        await filterSecrets(searchInput.value);
-      } else {
-        await renderFilteredSecrets();
-      }
-    }
-
-    // 获取服务商颜色
-    function getServiceColor(serviceName) {
-      const colors = [
-        '#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8',
-        '#6f42c1', '#e83e8c', '#fd7e14', '#20c997', '#6c757d',
-        '#343a40', '#007bff', '#28a745', '#dc3545', '#ffc107'
-      ];
-      
-      let hash = 0;
-      for (let i = 0; i < serviceName.length; i++) {
-        hash = serviceName.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      
-      return colors[Math.abs(hash) % colors.length];
     }
 
     // Older imports could save blank names. Everything that names an account
@@ -568,356 +525,25 @@ export function getCoreCode() {
       return name.trim() ? name : t('transferUnnamed');
     }
 
-    // A presentation-only model is shared with isolated theme previews.
-    function createSecretCard(secret) {
-      const labels = {};
-      ['cardCopyTooltip', 'cardMenuTriggerTitle', 'cardMenuQRCode', 'cardMenuQRCodeTitle',
-        'cardMenuCopyURI', 'cardMenuCopyURITitle', 'cardMenuCopyLink', 'cardMenuCopyLinkTitle',
-        'cardMenuEdit', 'cardMenuEditTitle', 'cardMenuDelete', 'cardMenuDeleteTitle',
-        'copyOtpBtnTitle', 'copyOtpBtnAriaLabel', 'otpNextLabel', 'copyNextOtpBtnTitle', 'counterLabel'
-      ].forEach(key => { if (typeof t === 'function') labels[key] = t(key); });
-      return accountAppearanceRenderer.card({
-        id: secret.id,
-        name: getSecretDisplayName(secret),
-        account: secret.account,
-        logoUrl: getServiceLogo(secret.name),
-        isHOTP: String(secret.type || '').toUpperCase() === 'HOTP',
-        counter: secret.counter
-      }, labels);
-    }
-
-    function bindAccountAppearanceActions() {
-      const container = document.getElementById('secretsList');
-      if (!container || container.dataset.accountActionsBound) return;
-      container.dataset.accountActionsBound = 'true';
-      accountAppearanceRenderer.bind(container, (action, id) => {
-        if (action === 'menu') { toggleCardMenu(id); return; }
-        const handlers = {
-          copy: () => copyOTP(id), next: () => copyNextOTP(id),
-          qr: () => showQRCode(id), uri: () => copyOTPAuthURL(id),
-          link: () => copyOTPPageURL(id), edit: () => editSecret(id),
-          delete: () => deleteSecret(id)
-        };
-        if (handlers[action]) {
-          handlers[action]();
-          if (action !== 'copy' && action !== 'next') closeAllCardMenus();
-        }
-      });
-    }
-
-    function createServiceGroupSection(group, index, showHeader = true) {
-      const cardsHTML = group.items.map(secret => createSecretCard(secret)).join('');
-      if (!showHeader) {
-        return '<div class="service-group"><div class="service-group-grid">' + cardsHTML + '</div></div>';
-      }
-      const headingId = 'service-group-heading-' + index;
-      const hasFilteredCount = Boolean(currentSearchQuery) && group.matchedCount !== group.totalCount;
-      const countText = hasFilteredCount
-        ? group.matchedCount + ' / ' + group.totalCount
-        : (typeof t === 'function' ? t('groupCountText', { count: group.totalCount }) : group.totalCount + ' 个');
-      const countLabel = hasFilteredCount
-        ? (typeof t === 'function' ? t('groupMatchedCountLabel', { matched: group.matchedCount, total: group.totalCount }) : '匹配 ' + group.matchedCount + ' 个，共 ' + group.totalCount + ' 个')
-        : (typeof t === 'function' ? t('groupCountLabel', { count: group.totalCount }) : '共 ' + group.totalCount + ' 个');
-
-      return '<section class="service-group" data-part="service-group" aria-labelledby="' + headingId + '">' +
-        '<div class="service-group-header" data-part="group-header">' +
-          '<h2 class="service-group-title" id="' + headingId + '">' + escapeHTML(group.name) + '</h2>' +
-          '<span class="service-group-count" aria-label="' + escapeHTML(countLabel) + '">' + countText + '</span>' +
-        '</div>' +
-        '<div class="service-group-grid">' + cardsHTML + '</div>' +
-      '</section>';
-    }
-
-    function clearOTPIntervalsExcept(visibleSecrets) {
-      const visibleIds = new Set((visibleSecrets || []).map(secret => String(secret.id)));
-      Object.keys(otpIntervals).forEach(secretId => {
-        if (visibleIds.has(secretId)) return;
-        clearInterval(otpIntervals[secretId]);
-        delete otpIntervals[secretId];
-      });
-    }
-
-    // 渲染过滤后的密钥列表
-    async function renderFilteredSecrets() {
-      if (secretReadsBlocked) return;
-      const sessionGeneration = secretSessionGeneration;
-      const renderGeneration = ++secretRenderGeneration;
-      const loading = document.getElementById('loading');
-      const secretsList = document.getElementById('secretsList');
-      const emptyState = document.getElementById('emptyState');
-      const visibleSecrets = typeof filterAppearanceServices === 'function'
-        ? filterAppearanceServices(filteredSecrets, secrets) : filteredSecrets;
-      bindAccountAppearanceActions();
-
-      // 重绘会替换 OTP 节点；先取消旧节点上的排队/播放动效，避免 flyer 残留或异步回调命中脱离节点。
-      if (typeof clearAllOTPAnimations === 'function') {
-        clearAllOTPAnimations();
-      }
-      if (typeof clearOTPWindowScheduler === 'function') {
-        clearOTPWindowScheduler();
-      }
-      // 旧 interval 会命中新替换的占位节点并启动非 batch 请求；重绘完成后统一重建。
-      clearOTPIntervalsExcept([]);
-
-      loading.style.display = 'none';
-
-      if ((currentSearchQuery || (typeof hasAppearanceServiceFilter === 'function' && hasAppearanceServiceFilter())) && visibleSecrets.length === 0) {
-        clearOTPIntervalsExcept([]);
-        secretsList.innerHTML = '';
-        secretsList.style.display = 'none';
-        emptyState.innerHTML =
-          '<div class="icon" aria-hidden="true">${dialogIcon('search')}</div>' +
-          '<h3 data-i18n="searchNoMatch">未找到匹配的密钥</h3>' +
-          '<p data-i18n="searchNoMatchDesc">尝试使用不同的关键字搜索</p>' +
-          '<button type="button" class="workspace-action" data-i18n="searchClearAriaLabel" onclick="clearSearch()">清除搜索</button>';
-        if (typeof applyTranslations === 'function') {
-          applyTranslations(emptyState);
-        }
-        emptyState.style.display = 'block';
-        return;
-      }
-
-      if (secrets.length === 0) {
-        clearOTPIntervalsExcept([]);
-        secretsList.innerHTML = '';
-        secretsList.style.display = 'none';
-        emptyState.innerHTML =
-          '<div class="icon" aria-hidden="true">${dialogIcon('key')}</div>' +
-          '<h3 data-i18n="emptyTitle">还没有密钥</h3>' +
-          '<p data-i18n="emptyDesc">添加账户的两步验证密钥，在这里获取验证码</p>' +
-          '<button type="button" class="workspace-action" data-i18n="emptyAddBtn" onclick="showAddModal()">添加密钥</button>';
-        if (typeof applyTranslations === 'function') {
-          applyTranslations(emptyState);
-        }
-        emptyState.style.display = 'block';
-        return;
-      }
-
-      emptyState.style.display = 'none';
-
-      // 应用排序
-      const sortedSecrets = sortSecrets(visibleSecrets, currentSortType);
-      const isGroupedView = currentViewMode === 'grouped';
-      secretsList.classList.toggle('is-grouped', isGroupedView);
-      secretsList.style.removeProperty('display');
-      secretsList.hidden = false;
-      secretsList.setAttribute('data-view', isGroupedView ? 'grouped' : 'flat');
-
-      if (isGroupedView) {
-        const serviceGroups = groupSecretsByServiceFamily(sortedSecrets, secrets, currentGroupSortType);
-        // When no service has two or more accounts, every account is in "Other services";
-        // a single heading above the whole list would only repeat the total.
-        const onlyUngrouped = serviceGroups.length === 1 && serviceGroups[0].isOther && serviceGroups[0].totalCount === secrets.length;
-        secretsList.innerHTML = serviceGroups.map((group, index) => createServiceGroupSection(group, index, !onlyUngrouped)).join('');
-      } else {
-        secretsList.innerHTML = sortedSecrets.map(secret => createSecretCard(secret)).join('');
-      }
-
-      // 🚀 性能优化：并发计算所有OTP
-      const perfStart = performance.now();
-
-      // 并发计算所有密钥的OTP（等待全部完成）
-      if (typeof updateOTPSecretsInBatch === 'function') {
-        await updateOTPSecretsInBatch(sortedSecrets, { includeHOTP: true });
-      } else {
-        await Promise.all(
-          sortedSecrets.map(secret => updateOTP(secret.id, null, secret))
-        );
-      }
-
-      if (!isSecretSessionCurrent(sessionGeneration) || renderGeneration !== secretRenderGeneration) return;
-
-      // 性能监控日志
-      const perfEnd = performance.now();
-      const duration = (perfEnd - perfStart).toFixed(2);
-      console.log('[性能优化] ' + sortedSecrets.length + '个密钥的OTP并发计算完成，耗时: ' + duration + 'ms');
-
-      // OTP计算完成后再启动定时器
-      sortedSecrets.forEach(secret => {
-        startOTPInterval(secret.id, secret);
-      });
-
-      clearOTPIntervalsExcept(visibleSecrets);
-    }
-
-    // 从卡片点击复制OTP验证码
-    async function copyOTPFromCard(event, secretId) {
-      // 检查点击的目标元素，避免在点击交互元素时触发
-      const target = event.target;
-      const isInteractiveElement = target.closest('.card-menu') || 
-                                   target.closest('.otp-code') || 
-                                   target.closest('.otp-next-container') ||
-                                   target.closest('.secret-actions') ||
-                                   target.closest('.action-btn');
-      
-      // 如果点击的是交互元素，不执行复制
-      if (isInteractiveElement) {
-        return;
-      }
-      
-      // 执行复制操作
-      await copyOTP(secretId);
-    }
-
-    // 复制OTP验证码
-    async function copyOTP(secretId) {
-      const sessionGeneration = secretSessionGeneration;
-      if (!isSecretSessionCurrent(sessionGeneration)) return;
-      // 关闭所有打开的卡片菜单
-      closeAllCardMenus();
-
-      const secret = secrets.find(s => String(s.id) === String(secretId));
-      if (secret && String(secret.type || '').toUpperCase() === 'HOTP') {
-        return copyHOTPAndAdvanceCounter(secretId);
-      }
-
-      const otpElement = document.getElementById('otp-' + secretId);
-      if (!otpElement) return;
-
-      const otpText = otpElement.textContent;
-      if (!isCopyableOTPValue(secretId, otpText)) return;
-
-      try {
-        await navigator.clipboard.writeText(otpText);
-        if (!isSecretSessionCurrent(sessionGeneration)) return;
-        showOTPCopyFeedback(secretId);
-      } catch (err) {
-        if (!isSecretSessionCurrent(sessionGeneration)) return;
-        const textArea = document.createElement('textarea');
-        textArea.value = otpText;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        showOTPCopyFeedback(secretId);
-      }
-    }
-
     function copyHOTPAndAdvanceCounter(secretId) {
       const sessionGeneration = secretSessionGeneration;
-      if (!isSecretSessionCurrent(sessionGeneration)) return Promise.resolve(false);
-      const lockKey = sessionGeneration + ':' + String(secretId);
-      const existing = hotpCopyLocks.get(lockKey);
-      if (existing) return existing;
-
-      // 等待更早的编辑/删除完成后再读取并复制，保证验证码与随后推进的 counter 属于同一快照。
-      const operation = saveQueue
-        .then(() => isSecretSessionCurrent(sessionGeneration) ? performHOTPCopyAndAdvance(secretId, sessionGeneration) : false)
-        .catch(async error => {
-          if (!isSecretSessionCurrent(sessionGeneration)) return false;
-          console.error('HOTP 计数器更新失败:', error);
-          try {
-            await loadSecrets();
-            if (!isSecretSessionCurrent(sessionGeneration)) return false;
-          } catch (reconcileError) {
-            if (!isSecretSessionCurrent(sessionGeneration)) return false;
-            console.warn('重新加载 HOTP 计数器失败:', reconcileError);
-          }
-          const message = error.hotpCopied
-            ? t('coreHotpCopiedSyncFailed')
-            : t('coreHotpNotCopiedReconciled');
-          showCenterToast('⚠️', message + error.message);
-          return false;
-        });
-      hotpCopyLocks.set(lockKey, operation);
-      saveQueue = operation.then(() => undefined);
-      const clearLock = () => {
-        if (hotpCopyLocks.get(lockKey) === operation) {
-          hotpCopyLocks.delete(lockKey);
-        }
-      };
-      operation.then(clearLock, clearLock);
-      return operation;
+      const operation = getAccountCommands().copyCurrent(secretId);
+      return operation.then(result => {
+        if (!isSecretSessionCurrent(sessionGeneration)) return false;
+        if (result.status === 'not-started' || result.reservation !== 'confirmed' ||
+            result.localCommit !== 'committed' || result.clipboard !== 'copied') return false;
+        showOTPCopyFeedback(secretId);
+        return true;
+      });
     }
 
-    async function performHOTPCopyAndAdvance(secretId, sessionGeneration = secretSessionGeneration) {
-      if (!isSecretSessionCurrent(sessionGeneration)) return false;
-      const secret = secrets.find(item => String(item.id) === String(secretId));
-      const snapshot = getHOTPGenerationSnapshot(secret);
-      if (!snapshot) {
-        showCenterToast('⚠️', t('coreHotpLimit'));
-        return false;
-      }
-
-      const otpElement = document.getElementById('otp-' + secretId);
-      if (!otpElement) return false;
-
-      // 被批次替换的更新也会 resolve；必须同步确认节点实际提交了当前 counter 的验证码。
-      const otpText = getCommittedHOTPToken(secretId, secret);
-      if (!otpText) {
-        // 恢复计算失败或被取消的 HOTP；本次不等待计算后自动复制，避免丢失用户激活。
-        updateOTP(secretId, null, secret).catch(error => console.warn('刷新 HOTP 失败:', error));
-        showCenterToast('⏳', t('coreCodeUpdating'));
-        return false;
-      }
-      if (navigator.onLine === false) {
-        showCenterToast('⚠️', t('coreHotpCopyOffline'));
-        return false;
-      }
-
-      // 本地校验通过并即将预留；更早开始的 GET 不得在复制后回写旧状态。
-      secretLoadGeneration += 1;
-      // 剪贴板调用必须在用户激活仍有效时启动；与服务端预留并发，避免网络 await 后权限失效。
-      const clipboardOperation = copyHOTPText(otpText, sessionGeneration);
-      const reservationOperation = reserveHOTPCounter(snapshot, sessionGeneration);
-      const [clipboardResult, reservationResult] = await Promise.allSettled([
-        clipboardOperation,
-        reservationOperation
-      ]);
-      if (!isSecretSessionCurrent(sessionGeneration)) return false;
-      const copied = clipboardResult.status === 'fulfilled' && clipboardResult.value === true;
-      if (reservationResult.status === 'rejected') {
-        const reservationError = reservationResult.reason instanceof Error
-          ? reservationResult.reason
-          : new Error(String(reservationResult.reason));
-        reservationError.hotpCopied = copied;
-        throw reservationError;
-      }
-
-      try {
-        await commitReservedHOTPCounter(snapshot, sessionGeneration);
-        if (!isSecretSessionCurrent(sessionGeneration)) return false;
-      } catch (error) {
-        if (!isSecretSessionCurrent(sessionGeneration)) return false;
-        error.hotpCopied = copied;
-        throw error;
-      }
-
-      if (!copied) {
-        showCenterToast('⚠️', t('coreHotpCopyFailedAdvanced'));
-        return false;
-      }
-
-      showOTPCopyFeedback(secretId);
-      return true;
-    }
-
-    async function copyHOTPText(otpText, sessionGeneration = secretSessionGeneration) {
-      if (!isSecretSessionCurrent(sessionGeneration)) return false;
-      try {
-        await navigator.clipboard.writeText(otpText);
-        return isSecretSessionCurrent(sessionGeneration);
-      } catch (clipboardError) {
-        if (!isSecretSessionCurrent(sessionGeneration)) return false;
-        const textArea = document.createElement('textarea');
-        try {
-          textArea.value = otpText;
-          document.body.appendChild(textArea);
-          textArea.select();
-          if (document.execCommand('copy') === false) throw clipboardError;
-          return true;
-        } catch (fallbackError) {
-          console.warn('HOTP 复制失败:', fallbackError);
-          return false;
-        } finally {
-          if (textArea.parentNode) textArea.parentNode.removeChild(textArea);
-        }
-      }
+    function performHOTPCopyAndAdvance(secretId) {
+      return copyHOTPAndAdvanceCounter(secretId);
     }
 
     async function reserveHOTPCounter(snapshot, sessionGeneration = secretSessionGeneration) {
       if (!isSecretSessionCurrent(sessionGeneration)) return;
-      const queuedSecret = secrets.find(item => String(item.id) === snapshot.id);
+      const queuedSecret = secrets.find(item => String(item.id) === String(snapshot.id));
       const queuedCounter = queuedSecret && queuedSecret.counter !== undefined
         ? queuedSecret.counter
         : 0;
@@ -943,7 +569,7 @@ export function getCoreCode() {
         }
       );
       if (!isSecretSessionCurrent(sessionGeneration)) return;
-      if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         handleUnauthorized(sessionGeneration);
         return;
       }
@@ -951,7 +577,11 @@ export function getCoreCode() {
       if (!isSecretSessionCurrent(sessionGeneration)) return;
 
       if (!response.ok) {
-        throw new Error(result.message || result.error || t('coreHotpRejected'));
+        // Validation, missing resources, unsupported methods, conflicts and rate
+        // limits reject before a reservation. A timeout or 5xx can follow a write:
+        // only reconciliation may establish the current counter, never who wrote it.
+        const reservationRejected = [400, 404, 405, 409, 422, 429].includes(response.status);
+        throw Object.assign(new Error(result.message || result.error || t('coreHotpRejected')), { reservationRejected });
       }
 
       const queuedOffline = result.queued === true && result.offline === true;
@@ -966,323 +596,56 @@ export function getCoreCode() {
         throw new Error(t('coreHotpInvalidState'));
       }
 
-      const currentSecret = secrets.find(item => String(item.id) === snapshot.id);
-      const currentCounter = currentSecret && currentSecret.counter !== undefined
-        ? currentSecret.counter
-        : 0;
-      if (
-        !matchesHOTPGenerationSnapshot(currentSecret, snapshot) ||
-        (currentCounter !== snapshot.counter &&
-          currentCounter !== snapshot.nextCounter)
-      ) {
-        throw new Error(t('coreKeyChanged'));
-      }
-    }
-
-    async function commitReservedHOTPCounter(snapshot, sessionGeneration = secretSessionGeneration) {
-      if (!isSecretSessionCurrent(sessionGeneration)) return;
-      const currentSecret = secrets.find(item => String(item.id) === snapshot.id);
-      const currentCounter = currentSecret && currentSecret.counter !== undefined
-        ? currentSecret.counter
-        : 0;
-      if (
-        !matchesHOTPGenerationSnapshot(currentSecret, snapshot) ||
-        (currentCounter !== snapshot.counter &&
-          currentCounter !== snapshot.nextCounter)
-      ) {
-        throw new Error(t('coreKeyChanged'));
-      }
-      // 使 POST 期间启动的 GET 失效，再提交本地新 counter。
-      secretLoadGeneration += 1;
-      currentSecret.counter = snapshot.nextCounter;
-      cacheSecretsLocally();
-      const counterElement = document.getElementById('counter-' + snapshot.id);
-      if (counterElement) counterElement.textContent = t('counterLabel') + snapshot.nextCounter;
-      await updateOTP(snapshot.id, null, currentSecret);
-    }
-
-    function showOTPCopyFeedback(secretId) {
-      const secret = secrets.find(s => s.id === secretId);
-      const serviceName = secret ? getSecretDisplayName(secret) : t('coreCode');
-      
-      showCenterToast('✅', t('coreCopiedService', { name: serviceName }));
-    }
-
-    async function copyNextOTP(secretId) {
-      const sessionGeneration = secretSessionGeneration;
-      if (!isSecretSessionCurrent(sessionGeneration)) return;
-      // 关闭所有打开的卡片菜单
-      closeAllCardMenus();
-
-      const nextOtpElement = document.getElementById('next-otp-' + secretId);
-      if (!nextOtpElement) return;
-
-      // 交接动画期间 flyer 仍在展示旧值，而节点已保存新的未来验证码。
-      // 单次点击先结束过渡、露出节点中的未来值，再复制与画面一致的数字。
-      if (
-        typeof isNextOTPTransitionActive === 'function' &&
-        isNextOTPTransitionActive(secretId)
-      ) {
-        if (typeof clearOTPAnimationTimer !== 'function') return;
-        clearOTPAnimationTimer(nextOtpElement);
-      }
-
-      const nextOtpText = nextOtpElement.textContent;
-      if (!isCopyableOTPValue(secretId, nextOtpText)) return;
-
-      try {
-        await navigator.clipboard.writeText(nextOtpText);
-        if (!isSecretSessionCurrent(sessionGeneration)) return;
-        showNextOTPCopyFeedback(secretId);
-      } catch (err) {
-        if (!isSecretSessionCurrent(sessionGeneration)) return;
-        const textArea = document.createElement('textarea');
-        textArea.value = nextOtpText;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        showNextOTPCopyFeedback(secretId);
-      }
-    }
-
-    function showNextOTPCopyFeedback(secretId) {
-      const secret = secrets.find(s => s.id === secretId);
-      const serviceName = secret ? getSecretDisplayName(secret) : t('coreCode');
-
-      showCenterToast('⏭️', t('coreCopiedNextService', { name: serviceName }));
-    }
-
-    function isCopyableOTPValue(secretId, value) {
-      const secret = secrets.find(s => String(s.id) === String(secretId));
-      const expectedLength = Number(secret && secret.digits) || 6;
-      return typeof value === 'string' &&
-        value.length === expectedLength &&
-        /^[0-9]+$/.test(value);
+      return responseSecret;
     }
 
     // 复制验证器配置 URI（otpauth:// 格式，用于导入验证器）
     async function copyOTPAuthURL(secretId) {
-      const secret = secrets.find(s => s.id === secretId);
+      const session = secretSessionGeneration;
+      const secret = accountStore.getRecord(secretId);
       if (!secret) {
         showCenterToast('❌', t('coreKeyMissing'));
-        return;
+        return { status: 'not-started', reason: 'account-missing' };
       }
-
-      try {
-        // 构建标签
-        const serviceName = getSecretDisplayName(secret).trim();
-        const accountName = secret.account ? secret.account.trim() : '';
-        let label;
-        if (accountName) {
-          label = encodeURIComponent(serviceName) + ':' + encodeURIComponent(accountName);
-        } else {
-          label = encodeURIComponent(serviceName);
-        }
-
-        // 根据类型构建不同的参数
-        const type = secret.type || 'TOTP';
-        let params;
-
-        switch (type.toUpperCase()) {
-          case 'HOTP':
-            params = new URLSearchParams({
-              secret: secret.secret.toUpperCase(),
-              issuer: serviceName,
-              algorithm: secret.algorithm || 'SHA1',
-              digits: (secret.digits || 6).toString(),
-              counter: (secret.counter || 0).toString()
-            });
-            break;
-          case 'TOTP':
-          default:
-            params = new URLSearchParams({
-              secret: secret.secret.toUpperCase(),
-              issuer: serviceName,
-              algorithm: secret.algorithm || 'SHA1',
-              digits: (secret.digits || 6).toString(),
-              period: (secret.period || 30).toString()
-            });
-            break;
-        }
-
-        // 根据类型选择正确的scheme
-        const scheme = type.toUpperCase() === 'HOTP' ? 'hotp' : 'totp';
-        const otpauthURL = 'otpauth://' + scheme + '/' + label + '?' + params.toString();
-
-        // 复制到剪贴板
-        await navigator.clipboard.writeText(otpauthURL);
-        showCenterToast('🔗', t('coreCopiedUriService', { name: getSecretDisplayName(secret) }));
-      } catch (err) {
-        console.error('复制验证器 URI 失败:', err);
-        showCenterToast('❌', t('coreCopyUriFailed') + err.message);
+      const result = await getAccountCommands().copyURI({ id: secretId, generation: accountStore.getAccountGeneration(secretId) });
+      if (isSecretSessionCurrent(session)) {
+        showCenterToast(result.clipboard === 'copied' ? '🔗' : '❌', result.clipboard === 'copied'
+          ? t('coreCopiedUriService', { name: getSecretDisplayName(secret) }) : t('coreCopyUriFailed'));
       }
+      return result;
     }
 
-    // 复制当前站点的验证码页面链接，保留影响 OTP 生成的非默认参数。
     async function copyOTPPageURL(secretId) {
-      const secret = secrets.find(s => s.id === secretId);
+      const session = secretSessionGeneration;
+      const secret = accountStore.getRecord(secretId);
       if (!secret) {
         showCenterToast('❌', t('coreKeyMissing'));
-        return;
+        return { status: 'not-started', reason: 'account-missing' };
       }
-
-      try {
-        const url = new URL('/otp/' + encodeURIComponent(secret.secret.toUpperCase()), window.location.origin);
-        const type = (secret.type || 'TOTP').toUpperCase();
-        const digits = Number(secret.digits) || 6;
-        const algorithm = (secret.algorithm || 'SHA1').toUpperCase();
-
-        if (type === 'HOTP') {
-          url.searchParams.set('type', 'HOTP');
-          url.searchParams.set('counter', String(secret.counter ?? 0));
-        } else {
-          const period = Number(secret.period) || 30;
-          if (period !== 30) url.searchParams.set('period', String(period));
-        }
-        if (digits !== 6) url.searchParams.set('digits', String(digits));
-        if (algorithm !== 'SHA1') url.searchParams.set('algorithm', algorithm);
-
-        await navigator.clipboard.writeText(url.toString());
-        showCenterToast('🔗', t('coreCopiedLinkService', { name: getSecretDisplayName(secret) }));
-      } catch (err) {
-        console.error('复制验证码链接失败:', err);
-        showCenterToast('❌', t('coreCopyLinkFailed') + err.message);
+      const result = await getAccountCommands().copyShareLink({ id: secretId, generation: accountStore.getAccountGeneration(secretId) });
+      if (isSecretSessionCurrent(session)) {
+        showCenterToast(result.clipboard === 'copied' ? '🔗' : '❌', result.clipboard === 'copied'
+          ? t('coreCopiedLinkService', { name: getSecretDisplayName(secret) }) : t('coreCopyLinkFailed'));
       }
+      return result;
     }
 
-    // 切换卡片菜单
-    function toggleCardMenu(secretId) {
-      const dropdown = document.getElementById('menu-' + secretId);
-      if (!dropdown) return;
-      
-      document.querySelectorAll('.card-menu-dropdown').forEach(menu => {
-        if (menu.id !== 'menu-' + secretId) {
-          menu.classList.remove('show');
-          updateCardMenuTrigger(menu);
-        }
-      });
-      
-      dropdown.classList.toggle('show');
-      updateCardMenuTrigger(dropdown);
-      if (dropdown.classList.contains('show')) {
-        const firstAction = getEnabledCardMenuActions(dropdown)[0];
-        if (firstAction) firstAction.focus();
-      }
+    function isAccountCommandCurrent(guard) {
+      try { return !guard || typeof guard.isCurrent !== 'function' || guard.isCurrent() === true; }
+      catch { return false; }
     }
 
-    function updateCardMenuTrigger(menu) {
-      const trigger = document.querySelector('[aria-controls="' + menu.id + '"]');
-      if (trigger) trigger.setAttribute('aria-expanded', String(menu.classList.contains('show')));
-    }
-    
-    function closeAllCardMenus() {
-      document.querySelectorAll('.card-menu-dropdown').forEach(menu => {
-        menu.classList.remove('show');
-        updateCardMenuTrigger(menu);
-      });
-    }
-
-    function isVisibleCardElement(element) {
-      if (!element || element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
-      const rect = element.getBoundingClientRect();
-      const style = window.getComputedStyle(element);
-      return rect.width > 0 && rect.height > 0 && style.display !== 'none' &&
-        style.visibility !== 'hidden' && style.visibility !== 'collapse';
-    }
-
-    function getEnabledCardMenuActions(menu) {
-      return Array.from(menu.querySelectorAll('.menu-item')).filter(action =>
-        !action.disabled && action.getAttribute('aria-disabled') !== 'true' && isVisibleCardElement(action)
-      );
-    }
-
-    // Use rendered positions so navigation follows responsive grids and service groups.
-    function getAdjacentSecretCard(card, key) {
-      const origin = card.getBoundingClientRect();
-      const horizontal = key === 'ArrowLeft' || key === 'ArrowRight';
-      let nearest = null;
-      let nearestDistance = Infinity;
-      let nearestOffset = Infinity;
-
-      document.querySelectorAll('.secret-card').forEach(candidate => {
-        if (candidate === card || !isVisibleCardElement(candidate)) return;
-        const rect = candidate.getBoundingClientRect();
-        // Left/right stay in the current row; up/down can cross group boundaries.
-        if (horizontal && Math.min(origin.bottom, rect.bottom) <= Math.max(origin.top, rect.top)) return;
-        const distance = key === 'ArrowLeft' ? origin.left - rect.right :
-          key === 'ArrowRight' ? rect.left - origin.right :
-          key === 'ArrowUp' ? origin.top - rect.bottom : rect.top - origin.bottom;
-        if (distance < -1) return;
-        const offset = horizontal
-          ? Math.abs((rect.top + rect.bottom) - (origin.top + origin.bottom))
-          : Math.abs((rect.left + rect.right) - (origin.left + origin.right));
-        if (distance < nearestDistance - 1 || (Math.abs(distance - nearestDistance) <= 1 && offset < nearestOffset)) {
-          nearest = candidate;
-          nearestDistance = distance;
-          nearestOffset = offset;
-        }
-      });
-      return nearest;
-    }
-
-    function handleCardArrowKey(event) {
-      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.isComposing ||
-          !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return false;
-      const target = event.target;
-      if (!target || typeof target.closest !== 'function' ||
-          target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]')) return false;
-
-      const card = target.closest('.secret-card');
-      if (!isVisibleCardElement(card)) return false;
-      const menuItem = target.closest('.menu-item');
-      const menu = menuItem && menuItem.closest('.card-menu-dropdown.show');
-      const control = target.closest('.otp-code, .otp-next-container, .card-menu-trigger');
-      if (!menu && !control) return false;
-
-      // Consume the boundary arrows too, keeping keyboard navigation from scrolling the page.
-      event.preventDefault();
-      if (menu && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-        const actions = getEnabledCardMenuActions(menu);
-        const index = actions.indexOf(menuItem);
-        const nextIndex = event.key === 'ArrowDown' ? (index + 1) % actions.length :
-          (index < 0 ? actions.length - 1 : (index + actions.length - 1) % actions.length);
-        if (actions[nextIndex]) actions[nextIndex].focus();
-        return true;
-      }
-
-      const nextCard = getAdjacentSecretCard(card, event.key);
-      const selector = menu || control.classList.contains('card-menu-trigger') ? '.card-menu-trigger' :
-        control.classList.contains('otp-next-container') ? '.otp-next-container' : '.otp-code';
-      closeAllCardMenus();
-      if (nextCard || menu) {
-        const destination = nextCard || card;
-        let nextControl = destination.querySelector(selector);
-        if (!nextControl || nextControl.disabled || !isVisibleCardElement(nextControl)) {
-          nextControl = destination.querySelector('.otp-code');
-        }
-        if (nextControl && !nextControl.disabled && isVisibleCardElement(nextControl)) nextControl.focus();
-      }
-      return true;
-    }
-
-    document.addEventListener('click', function(event) {
-      if (!event.target.closest('.card-menu')) {
-        closeAllCardMenus();
-      }
-    });
-
-
-    // 编辑密钥
-    function editSecret(id) {
-      const secret = secrets.find(s => s.id === id);
+    function editSecret(id, guard = null) {
+      if (!isAccountCommandCurrent(guard)) return { status: 'rejected', reason: 'operation-invalidated' };
+      const secret = accountStore.getRecord(id);
       if (!secret) return;
-      showSecretModal(() => fillSecretForm(id, secret));
+      showSecretModal(() => { secretDialogCommandGuard = guard; fillSecretForm(id, secret); });
     }
 
     // Reopen an offline add/edit the server rejected. Saving it replaces the
     // stopped queue entry, so its content is never lost to a cancellation.
-    function showQueuedSecretEditor(detail) {
+    function showQueuedSecretEditor(detail, guard = null) {
+      if (!isAccountCommandCurrent(guard)) return false;
       if (!detail || typeof detail.id !== 'string' || !detail.data || typeof detail.data !== 'object') return false;
       const targetId = detail.type === 'UPDATE' && typeof detail.targetId === 'string' && detail.targetId ? detail.targetId : null;
       if (detail.type === 'UPDATE' ? !targetId : detail.type !== 'ADD') return false;
@@ -1302,6 +665,7 @@ export function getCoreCode() {
       // saving adds it as a new account instead of editing a missing one.
       const targetMissing = detail.type === 'UPDATE' && detail.targetMissing === true;
       showSecretModal(() => {
+        secretDialogCommandGuard = guard;
         fillSecretForm(targetMissing ? null : targetId, secret);
         secretDialogQueuedOperationId = detail.id;
       });
@@ -1363,11 +727,18 @@ export function getCoreCode() {
       toggleAdvancedOptions();
     }
     
-    async function deleteSecret(id) {
+    async function deleteSecret(id, guard = null) {
       const sessionGeneration = secretSessionGeneration;
-      if (!isSecretSessionCurrent(sessionGeneration)) return;
-      const secret = secrets.find(s => s.id === id);
-      if (!secret) return;
+      if (!isSecretSessionCurrent(sessionGeneration)) return { status: 'session-invalidated' };
+      const secret = accountStore.getRecord(id);
+      if (!secret) return { status: 'rejected', reason: 'account-missing' };
+      const accountGeneration = accountStore.getAccountGeneration(id);
+      const invalidBeforeSend = () => !isSecretSessionCurrent(sessionGeneration)
+        ? { status: 'session-invalidated' }
+        : !isAccountCommandCurrent(guard) ? { status: 'rejected', reason: 'operation-invalidated' }
+        : accountStore.getAccountGeneration(id) !== accountGeneration ? { status: 'rejected', reason: 'account-changed' } : null;
+      const initiallyInvalid = invalidBeforeSend();
+      if (initiallyInvalid) return initiallyInvalid;
 
       const displayName = getSecretDisplayName(secret);
       const confirmed = await showConfirmDialog({
@@ -1378,13 +749,14 @@ export function getCoreCode() {
         cancelText: t('cancel'),
         danger: true
       });
-      if (!confirmed || !isSecretSessionCurrent(sessionGeneration)) {
-        return;
-      }
+      const invalidAfterConfirmation = invalidBeforeSend();
+      if (invalidAfterConfirmation) return invalidAfterConfirmation;
+      if (!confirmed) return { status: 'cancelled' };
 
       // 🔒 删除操作也使用队列，避免与编辑操作产生竞态条件
-      saveQueue = saveQueue.then(async () => {
-        if (!isSecretSessionCurrent(sessionGeneration)) return;
+      saveQueue = queueSecretWrite('delete', id, sessionGeneration, async () => {
+        const invalid = invalidBeforeSend();
+        if (invalid) return invalid;
         try {
           console.log('🗑️ [保存队列] 提交删除请求:', secret.name);
 
@@ -1392,15 +764,15 @@ export function getCoreCode() {
           const response = await authenticatedFetch('/api/secrets/' + encodeURIComponent(id), {
             method: 'DELETE'
           });
-          if (!isSecretSessionCurrent(sessionGeneration)) return;
+          if (!isSecretSessionCurrent(sessionGeneration)) return { status: 'session-invalidated' };
           if (response.status === 401) {
             handleUnauthorized(sessionGeneration);
-            return;
+            return { status: 'session-invalidated' };
           }
 
           if (response.ok) {
             const result = await response.json();
-            if (!isSecretSessionCurrent(sessionGeneration)) return;
+            if (!isSecretSessionCurrent(sessionGeneration)) return { status: 'session-invalidated' };
 
             // 检查是否为离线排队响应
             if (result.queued && result.offline) {
@@ -1408,33 +780,34 @@ export function getCoreCode() {
               showCenterToast('📥', t('coreQueued'));
 
               // 离线模式下，暂时不更新本地状态，等待同步完成后由 PWA 模块刷新
-              return;
+              return { status: 'queued-offline' };
             }
 
             // 正常在线响应，立即删除本地数据
-            const cached = commitSecretListChange(secrets.filter(s => s.id !== id), sessionGeneration);
-            await renderSecrets();
-            if (!isSecretSessionCurrent(sessionGeneration)) return;
+            const cached = commitSecretListChange(secrets.filter(s => String(s.id) !== String(id)), sessionGeneration);
+            await renderLoadedSecretsIfChanged();
+            if (!isSecretSessionCurrent(sessionGeneration)) return { status: 'session-invalidated' };
             if (!cached) showCenterToast('⚠️', t('coreDeletedNoCache'));
 
-            if (otpIntervals[id]) {
-              clearInterval(otpIntervals[id]);
-              delete otpIntervals[id];
-            }
 
             console.log('✅ [保存队列] 删除成功:', secret.name);
+            return { status: 'committed' };
           } else {
             showCenterToast('❌', t('coreDeleteRetry'));
+            return { status: 'rejected', reason: 'server-rejected' };
           }
         } catch (error) {
-          if (!isSecretSessionCurrent(sessionGeneration)) return;
+          if (!isSecretSessionCurrent(sessionGeneration)) return { status: 'session-invalidated' };
           console.error('❌ [保存队列] 删除失败:', error);
           showCenterToast('❌', t('coreDeleteFailed') + error.message);
+          return { status: 'rejected', reason: 'transport-unknown' };
         }
       }).catch(err => {
-        if (!isSecretSessionCurrent(sessionGeneration)) return;
+        if (!isSecretSessionCurrent(sessionGeneration)) return { status: 'session-invalidated' };
         console.error('❌ [保存队列] 队列执行错误:', err);
+        return { status: 'rejected', reason: 'queue-failed' };
       });
+      return saveQueue;
     }
     
     // 二维码解析工具
@@ -1544,6 +917,8 @@ export function getCoreCode() {
       if (!isSecretSessionCurrent(sessionGeneration)) return;
       if (!secretDialogOpen) return;
       if (secretDialogSubmission) return secretDialogSubmission.promise;
+      const commandGuard = secretDialogCommandGuard;
+      if (!isAccountCommandCurrent(commandGuard)) return { status: 'rejected', reason: 'operation-invalidated' };
 
       const name = document.getElementById('secretName').value.trim();
       const account = document.getElementById('secretService').value.trim();
@@ -1590,6 +965,7 @@ export function getCoreCode() {
         generation: secretDialogGeneration,
         editingId,
         replacesOperationId: secretDialogQueuedOperationId,
+        guard: commandGuard,
         data: { name, account, secret, type, digits, period, algorithm, counter }
       };
       secretDialogSubmission = submission;
@@ -1601,11 +977,13 @@ export function getCoreCode() {
       // 🔒 关键修复：使用队列确保保存操作串行执行，避免并发覆盖
       // 当快速连续编辑多个密钥时，后端的读-修改-写操作会产生race condition
       // 通过Promise链式调用，确保前一个保存完成后再执行下一个
-      saveQueue = saveQueue.then(async () => {
+      saveQueue = queueSecretWrite(submission.editingId ? 'edit' : 'add', submission.editingId, submission.sessionGeneration, async () => {
         if (!isSecretSessionCurrent(submission.sessionGeneration)) return;
         try {
+          if (!isAccountCommandCurrent(submission.guard)) return { status: 'rejected', reason: 'operation-invalidated' };
           if (!(await claimStoppedQueuedChange(submission, ownsDialog))) return;
           if (!isSecretSessionCurrent(submission.sessionGeneration)) return;
+          if (!isAccountCommandCurrent(submission.guard)) return { status: 'rejected', reason: 'operation-invalidated' };
           let response;
           const data = submission.data;
 
@@ -1661,7 +1039,7 @@ export function getCoreCode() {
               : [...secrets, savedSecret], submission.sessionGeneration);
             replaceStoppedQueuedChange(submission);
 
-            await renderSecrets();
+            await renderLoadedSecretsIfChanged();
             if (!isSecretSessionCurrent(submission.sessionGeneration)) return;
             if (ownsDialog()) {
               if (!cached) showCenterToast('⚠️', t('coreSavedNoCache'));
@@ -1703,99 +1081,5 @@ export function getCoreCode() {
     }
 
 
-    // 键盘快捷键
-    document.addEventListener('keydown', function(e) {
-      if (handleCardArrowKey(e)) return;
-      if (e.key === 'Escape') {
-        const openCardMenu = document.querySelector('.card-menu-dropdown.show');
-        if (openCardMenu) {
-          const trigger = document.querySelector('[aria-controls="' + openCardMenu.id + '"]');
-          closeAllCardMenus();
-          if (trigger) trigger.focus();
-          return;
-        }
-      }
-      
-      if (e.ctrlKey && e.key === 'd') {
-        e.preventDefault();
-        debugMode = !debugMode;
-        console.log('Debug mode ' + (debugMode ? 'enabled' : 'disabled'));
-        
-        showCenterToast('ℹ️', t('coreDebug') + (debugMode ? t('coreEnabled') : t('coreDisabled')));
-
-      }
-      
-      if (e.ctrlKey && e.key === 'r') {
-        e.preventDefault();
-        console.log('Manually refreshing all OTP codes');
-        if (typeof updateOTPSecretsInBatch === 'function') {
-          updateOTPSecretsInBatch(secrets, { includeHOTP: true });
-        } else {
-          secrets.forEach(secret => {
-            updateOTP(secret.id, null, secret);
-          });
-        }
-        
-        showCenterToast('ℹ️', t('coreCodesRefreshed'));
-
-      }
-    });
-
-    // 页面卸载时清理定时器
-    window.addEventListener('beforeunload', function() {
-      Object.values(otpIntervals).forEach(interval => {
-        clearInterval(interval);
-      });
-    });
-
-    // 🛡️ 安全机制：定期检查所有验证码是否需要更新
-    // 防止定时器失效导致验证码过期
-    // 每5秒检查一次（不会影响性能）
-    setInterval(() => {
-      if (document.hidden) {
-        // 如果页面在后台，跳过检查（节省资源）
-        return;
-      }
-
-      const currentTime = Math.floor(getCorrectedNowMs() / 1000);
-      
-      secrets.forEach(secret => {
-        // 只检查TOTP类型
-        if (secret.type && secret.type.toUpperCase() === 'HOTP') {
-          return;
-        }
-
-        const otpElement = document.getElementById('otp-' + secret.id);
-        if (!otpElement) return;
-
-        // 检查验证码是否为默认值（未初始化或更新失败）
-        if (otpElement.textContent === '------') {
-          console.warn('⚠️  [安全检查] 发现未初始化的验证码:', secret.name);
-          updateOTP(secret.id, null, secret);
-          return;
-        }
-
-        // 检查当前时间窗口，判断验证码是否应该更新
-        const timeStep = secret.period || 30;
-        const currentWindow = Math.floor(currentTime / timeStep);
-        
-        // 在时间窗口刚切换时（前3秒），强制刷新验证码
-        const secondsInWindow = currentTime % timeStep;
-        if (secondsInWindow <= 2) {
-          // 避免重复刷新：检查上次刷新时间
-          const lastRefreshKey = 'lastRefresh-' + secret.id;
-          const lastRefreshWindow = window[lastRefreshKey];
-          
-          if (lastRefreshWindow !== currentWindow) {
-            console.log('🔄 [安全检查] 时间窗口已切换，刷新验证码:', secret.name, '窗口:', currentWindow);
-            window[lastRefreshKey] = currentWindow;
-            // 共享窗口调度器负责可见卡片的统一刷新；仅在其不可用时走单卡兜底。
-            if (typeof isOTPWindowScheduled !== 'function' || !isOTPWindowScheduled(secret.id)) {
-              updateOTP(secret.id, null, secret);
-            }
-          }
-        }
-      });
-    }, 5000); // 每5秒检查一次
 `;
 }

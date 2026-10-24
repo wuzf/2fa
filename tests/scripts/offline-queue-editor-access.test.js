@@ -176,7 +176,7 @@ describe('reopening a stopped offline change', () => {
 		await page.editStoppedChange();
 
 		expect(page.workerMessages).toContain('OFFLINE_QUEUE_DETAIL');
-		expect(page.editor).toHaveBeenCalledExactlyOnceWith(DETAIL);
+		expect(page.editor).toHaveBeenCalledExactlyOnceWith(DETAIL, {});
 		expect(page.loginShown()).toBe(false);
 	});
 
@@ -185,6 +185,6 @@ describe('reopening a stopped offline change', () => {
 		await page.loadSecrets();
 		await page.editStoppedChange();
 
-		expect(page.editor).toHaveBeenCalledExactlyOnceWith(DETAIL);
+		expect(page.editor).toHaveBeenCalledExactlyOnceWith(DETAIL, {});
 	});
 });

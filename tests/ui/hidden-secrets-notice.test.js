@@ -11,7 +11,16 @@ import { getSharedTransferMessageLocalizerCode } from '../../src/ui/scripts/tran
 import { getUtilsCode } from '../../src/ui/scripts/utils.js';
 
 const zh = LOCALES['zh-CN'];
-const ACCOUNT = { id: 'a', name: 'Example', account: 'alice', secret: 'JBSWY3DPEHPK3PXP', type: 'TOTP', digits: 6, period: 30, algorithm: 'SHA1' };
+const ACCOUNT = {
+	id: 'a',
+	name: 'Example',
+	account: 'alice',
+	secret: 'JBSWY3DPEHPK3PXP',
+	type: 'TOTP',
+	digits: 6,
+	period: 30,
+	algorithm: 'SHA1',
+};
 const UNSUPPORTED = { id: 'b', name: 'Legacy bank', account: 'bob', secret: 'JBSWY3DPEHPK3PXP', type: 'TOTP', digits: 7 };
 const BROKEN = { id: 'c', name: 'Broken', secret: 'not base32!' };
 const DUPLICATE = { id: 'a', name: 'Copy of Example', secret: 'JBSWY3DPEHPK3PXP', type: 'TOTP', digits: 6 };
@@ -70,12 +79,22 @@ async function harness(serverList, { deleteStatus = 200, confirm = true, deleteG
 		${getHiddenSecretsCode()}
 		authenticatedFetch = fetchStub;
 		ensureServerTimeSynchronized = async () => true;
-		renderSecrets = async () => {};
+		function getOtpEngine() { return {refresh: async () => {}}; }
 		showCenterToast = toastStub;
 		showConfirmDialog = confirmStub;
 		return { loadSecrets, setLanguage, invalidateSecretSession, getHiddenSecretsCount, toggleHiddenSecretsDetails };
 	`,
-	)(document, window, localStorage, { language: 'zh-CN', onLine: true }, { log() {}, warn() {}, error() {} }, vi.fn(), fetch, toast, confirmDialog);
+	)(
+		document,
+		window,
+		localStorage,
+		{ language: 'zh-CN', onLine: true },
+		{ log() {}, warn() {}, error() {} },
+		vi.fn(),
+		fetch,
+		toast,
+		confirmDialog,
+	);
 	const bar = () => document.getElementById('hiddenSecrets');
 	const items = () => [...document.querySelectorAll('#hiddenSecretsList li')];
 	return { ...api, fetch, toast, confirmDialog, bar, items, toggle: () => document.getElementById('hiddenSecretsToggle') };
@@ -109,7 +128,9 @@ describe('notice for accounts the page does not show', () => {
 
 		h.items()[0].querySelector('button').click();
 		await flush();
-		expect(h.confirmDialog).toHaveBeenCalledWith(expect.objectContaining({ danger: true, message: zh.hiddenSecretDeleteConfirm.replace('{name}', 'Legacy bank') }));
+		expect(h.confirmDialog).toHaveBeenCalledWith(
+			expect.objectContaining({ danger: true, message: zh.hiddenSecretDeleteConfirm.replace('{name}', 'Legacy bank') }),
+		);
 		expect(h.fetch).toHaveBeenCalledWith('/api/secrets/b', { method: 'DELETE' });
 		expect(h.toast).toHaveBeenCalledWith('✅', zh.hiddenSecretDeleted);
 		expect(h.getHiddenSecretsCount()).toBe(1);

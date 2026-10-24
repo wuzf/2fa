@@ -1,7 +1,6 @@
-import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 
-import { getCoreCode } from '../../src/ui/scripts/core.js';
+import { createOfficialAccountView } from '../../src/ui/scripts/officialAccountView.js';
 
 // A small DOM fixture with explicit screen rectangles; navigation runs through the real keydown listener.
 class Element {
@@ -127,7 +126,7 @@ function createHarness() {
 		hideQRScanner: vi.fn(),
 		hideImportModal: vi.fn(),
 	};
-	runInNewContext(getCoreCode(), api);
+	Object.assign(api, createOfficialAccountView({ document, window: api.window, renderer: {}, sdk: { subscribe: () => () => {} } }));
 	api.copyOTP = vi.fn();
 	api.copyNextOTP = vi.fn();
 	api.deleteSecret = vi.fn();

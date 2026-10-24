@@ -9,7 +9,7 @@ import {
 import { createAccountRenderer } from '../../src/ui/themes/renderer.js';
 import { getUICode } from '../../src/ui/scripts/ui.js';
 import { getSearchCode } from '../../src/ui/scripts/search.js';
-import { getCoreCode } from '../../src/ui/scripts/core.js';
+import { createOfficialAccountView } from '../../src/ui/scripts/officialAccountView.js';
 import { getStyles } from '../../src/ui/styles/index.js';
 import { getBuiltinTheme } from '../../src/themes/builtins.js';
 import { validateManifest } from '../../src/themes/schema.js';
@@ -112,6 +112,56 @@ describe('appearance runtime', () => {
 		expect(document.getElementById('appearance-config-css').textContent).toBe('');
 		expect(document.getElementById('appearance-custom-css').textContent).toBe('');
 	});
+	it('routes app configuration through its host without applying v1 layout or replacing the mounted app DOM', async () => {
+		const window = page();
+		const document = window.document;
+		const first = {
+			kind: 'app',
+			packageId: 'a'.repeat(64),
+			revision: 1,
+			manifest: { themeApiVersion: 2, kind: 'app' },
+			settings: { density: 'compact' },
+		};
+		window.__2FA_APPEARANCE__ = first;
+		const branding = vi.fn();
+		const context = vm.createContext({ window, document, CustomEvent: window.CustomEvent, updateAppearanceBranding: branding });
+		vm.runInContext(getAppearanceRuntimeCode(), context);
+		const list = document.getElementById('secretsList');
+		expect(context.applyAppearance(first)).toMatchObject({ status: 'pending' });
+		expect(document.getElementById('appearance-package-css')).toBeNull();
+		expect(branding).toHaveBeenCalledWith(first);
+		const changed = { ...first, revision: 2, settings: { density: 'comfortable' } };
+		const mounted = document.createElement('main');
+		mounted.id = 'appThemeRoot';
+		mounted.textContent = 'Live app';
+		document.body.append(mounted);
+		window.updateAppThemeAppearance = vi.fn(async () => ({ status: 'running' }));
+		expect(await context.applyAppearance(changed)).toEqual({ status: 'running' });
+		expect(window.updateAppThemeAppearance).toHaveBeenCalledWith(changed);
+		expect(document.getElementById('secretsList')).toBe(list);
+		expect(mounted.textContent).toBe('Live app');
+		const navigation = vi.fn();
+		window.addEventListener('appearance-navigation-required', navigation);
+		const other = { ...changed, packageId: 'b'.repeat(64) };
+		expect(context.applyAppearance(other)).toMatchObject({ status: 'reload-required' });
+		expect(window.__2FA_PENDING_APPEARANCE__).toBe(other);
+		expect(context.applyAppearance(getBuiltinTheme('compact'))).toMatchObject({ status: 'reload-required' });
+		expect(navigation).toHaveBeenCalledTimes(2);
+		expect(window.updateAppThemeAppearance).toHaveBeenCalledTimes(1);
+	});
+	it('keeps v1 theme application and requires navigation before entering an app theme', () => {
+		const window = page();
+		const document = window.document;
+		const context = vm.createContext({ window, document, CustomEvent: window.CustomEvent });
+		vm.runInContext(getAppearanceRuntimeCode(), context);
+		const compact = getBuiltinTheme('compact');
+		context.applyAppearance(compact);
+		expect(window.__2FA_APPEARANCE__).toEqual(compact);
+		expect(document.querySelector('[data-part="account-grid"]')).toBe(document.getElementById('secretsList'));
+		const app = { kind: 'app', packageId: 'a'.repeat(64), revision: 1 };
+		expect(context.applyAppearance(app)).toMatchObject({ status: 'reload-required' });
+		expect(window.__2FA_APPEARANCE__).toEqual(compact);
+	});
 	it.each(['document', 'compact'].flatMap((theme) => [320, 390, 768, 1440].map((width) => [theme, width])))(
 		'raises only the open menu owner below app popups and dialogs in %s at %ipx',
 		async (theme, width) => {
@@ -123,24 +173,35 @@ describe('appearance runtime', () => {
 			const list = document.getElementById('secretsList');
 			list.style.removeProperty('display');
 			list.innerHTML = ['first', 'second'].map((id) => createAccountRenderer().card({ id, name: 'Google', code: '123456' })).join('');
-			const documentApi = {
-				getElementById: document.getElementById.bind(document),
-				querySelector: document.querySelector.bind(document),
-				querySelectorAll: document.querySelectorAll.bind(document),
-				addEventListener: (type, listener) => {
-					if (type !== 'DOMContentLoaded') {
-						document.addEventListener(type, listener);
-					}
+			const snapshot = {
+				session: { state: 'authenticated' },
+				host: { operations: [] },
+				library: {
+					state: 'ready',
+					accounts: ['first', 'second'].map((id) => ({
+						ref: { id, generation: 1 },
+						service: { label: 'Google' },
+						accountLabel: '',
+						type: 'TOTP',
+						otp: { current: { value: '123456' }, next: { value: '654321' } },
+					})),
+					view: { query: '', mode: 'flat', resultIds: ['first', 'second'], groups: [], services: [], total: 2, found: 2 },
 				},
 			};
-			const api = vm.createContext({
-				document: documentApi,
-				window: { getComputedStyle: window.getComputedStyle.bind(window), addEventListener: vi.fn() },
-				setInterval: vi.fn(),
+			const open = vi.fn(() => ({ closed: Promise.resolve({ status: 'closed' }) }));
+			const official = createOfficialAccountView({
+				document,
+				window: { getComputedStyle: window.getComputedStyle.bind(window) },
+				renderer: createAccountRenderer(),
+				sdk: {
+					getSnapshot: () => snapshot,
+					subscribe: (listener) => {
+						listener(snapshot);
+						return () => {};
+					},
+					host: { open },
+				},
 			});
-			vm.runInContext(getCoreCode(), api);
-			api.editSecret = vi.fn();
-			api.bindAccountAppearanceActions();
 			const cards = [...list.querySelectorAll('.secret-card')];
 			const triggers = cards.map((card) => card.querySelector('.card-menu-trigger'));
 			const menus = cards.map((card) => card.querySelector('.card-menu-dropdown'));
@@ -190,7 +251,7 @@ describe('appearance runtime', () => {
 					expect(style(cards[0]).zIndex).toBe(closedLayer);
 					expect(layer(cards[1])).toBeGreaterThan(layer(cards[0]));
 					menus[1].querySelector('[data-account-action="edit"]').click();
-					expect(api.editSecret).toHaveBeenLastCalledWith('second');
+					expect(open).toHaveBeenLastCalledWith({ kind: 'account-edit', account: { id: 'second', generation: 1 } }, expect.any(Object));
 					expect(style(cards[1]).zIndex).toBe(closedLayer);
 					triggers[0].click();
 					document.body.click();
@@ -198,6 +259,7 @@ describe('appearance runtime', () => {
 					expect(style(cards[0]).zIndex).toBe(closedLayer);
 				}
 			}
+			official.dispose();
 		},
 	);
 	it.each([320, 390, 768, 1440])('marks the real account grid and preserves theme column choices at %ipx', async (width) => {

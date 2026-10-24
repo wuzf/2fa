@@ -1,9 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { Window } from 'happy-dom';
+import parse from 'css-tree/parser';
+import walk from 'css-tree/walker';
+import generate from 'css-tree/generator';
 
 import { getBaseStyles } from '../../src/ui/styles/base.js';
 import { getComponentStyles } from '../../src/ui/styles/components.js';
 import { getResponsiveStyles } from '../../src/ui/styles/responsive.js';
 import { getVariables } from '../../src/ui/styles/variables.js';
+import { getStyles } from '../../src/ui/styles/index.js';
+
+const windows = [];
+afterEach(async () => {
+	await Promise.all(windows.splice(0).map((window) => window.happyDOM.abort()));
+});
 
 function relativeLuminance(hex) {
 	const channels = hex.match(/[0-9a-f]{2}/gi).map((value) => Number.parseInt(value, 16) / 255);
@@ -43,12 +53,66 @@ describe('automatic service grouping styles', () => {
 	});
 
 	it('applies every existing responsive grid breakpoint to group grids', () => {
-		const styles = getResponsiveStyles();
-
-		expect(styles.match(/\.service-group-grid/g)).toHaveLength(3);
-		expect(styles).toContain('minmax(240px, 1fr)');
-		expect(styles).toContain('gap: 14px');
-		expect(styles).toContain('gap: 16px');
+		const breakpoints = [];
+		walk(parse(getResponsiveStyles()), {
+			visit: 'Rule',
+			enter(rule) {
+				if (this.atrule?.name !== 'media') {
+					return;
+				}
+				const selectors = rule.prelude.children.toArray().map((selector) => generate(selector));
+				if (!selectors.includes('.service-group-grid')) {
+					return;
+				}
+				expect(selectors).toContain('.secrets-list');
+				const declarations = Object.fromEntries(
+					rule.block.children
+						.toArray()
+						.filter((node) => node.type === 'Declaration')
+						.map((node) => [node.property, generate(node.value)]),
+				);
+				breakpoints.push({ media: generate(this.atrule.prelude), columns: declarations['grid-template-columns'], gap: declarations.gap });
+			},
+		});
+		// Only valid rules participate. The old malformed 481–767 block was ignored
+		// by Chrome and must not become an extra, newly active layout breakpoint.
+		expect(breakpoints).toEqual([
+			{ media: '(min-width:768px) and (max-width:1199px)', columns: 'repeat(auto-fill,minmax(280px,1fr))', gap: '14px' },
+			{ media: '(min-width:1200px)', columns: 'repeat(auto-fill,minmax(280px,1fr))', gap: '16px' },
+		]);
+	});
+	it.each([
+		[320, 'minmax(0,1fr)', '12px'],
+		[390, 'repeat(auto-fill,minmax(260px,1fr))', '12px'],
+		[481, 'repeat(auto-fill,minmax(260px,1fr))', '12px'],
+		[600, 'repeat(auto-fill,minmax(260px,1fr))', '12px'],
+		[767, 'repeat(auto-fill,minmax(260px,1fr))', '12px'],
+		[768, 'repeat(auto-fill,minmax(260px,1fr))', '12px'],
+		[769, 'repeat(auto-fill,minmax(280px,1fr))', '16px'],
+		[1199, 'repeat(auto-fill,minmax(280px,1fr))', '16px'],
+		[1200, 'repeat(auto-fill,minmax(280px,1fr))', '16px'],
+		[1440, 'repeat(auto-fill,minmax(280px,1fr))', '16px'],
+	])('keeps flat and grouped grid behavior equivalent in actual inline CSS at %ipx', (width, columns, gap) => {
+		const window = new Window();
+		windows.push(window);
+		window.happyDOM.setWindowSize({ width, height: 900 });
+		const document = window.document;
+		const style = document.createElement('style');
+		style.textContent = getStyles().match(/<style>([\s\S]*?)<\/style>/)[1];
+		document.head.append(style);
+		document.body.className = 'fluent-app';
+		document.body.innerHTML =
+			'<div class="secrets-list" id="flat"></div><div class="secrets-list is-grouped" id="grouped"><section class="service-group"><div class="service-group-grid" id="inner"></div></section></div>';
+		for (const theme of ['light', 'dark']) {
+			document.documentElement.dataset.theme = theme;
+			for (const id of ['flat', 'inner']) {
+				const computed = window.getComputedStyle(document.getElementById(id));
+				expect(computed.display).toBe('grid');
+				expect(computed.gridTemplateColumns.replace(/\s/g, '')).toBe(columns);
+				expect(computed.gap).toBe(gap);
+			}
+			expect(window.getComputedStyle(document.getElementById('grouped')).display).toBe('block');
+		}
 	});
 
 	it('provides stable mode controls and visible keyboard focus', () => {

@@ -16,12 +16,10 @@ export function getUtilsCode() {
     // ==================== 第三方脚本按需加载 ====================
     // jsQR (~250KB) 和 qrcode-generator (~20KB) 改为按需加载，
     // 仅在用户点开扫码/生成二维码相关功能时才下载，避免阻塞首屏。
-    // 两个脚本都固定版本并带 SRI 摘要，CDN 返回的内容与摘要不符时浏览器拒绝执行。
-    // jsQR 的 npm 包没有 .min.js，jsDelivr 临时压缩出的文件会随压缩器更新而变化，
-    // 摘要固定不住，所以加载包内的原文件。
-    const JSQR_URL = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+    // 固定版本原始字节由主机提供，并保留原 SRI；完整离线快照会预取这两个依赖。
+    const JSQR_URL = '/vendor/jsqr-1.4.0.js';
     const JSQR_INTEGRITY = 'sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx';
-    const QRCODE_GENERATOR_URL = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+    const QRCODE_GENERATOR_URL = '/vendor/qrcode-generator-1.4.4.js';
     const QRCODE_GENERATOR_INTEGRITY = 'sha384-mZT2gIty7ZDdOGkxfP6joZcYdMW1Jvj9dRlfpTmaJAKKXTqzygtB22k7FLe+KZC1';
     const __scriptLoadCache = new Map();
     function loadScriptOnce(url, integrity) {

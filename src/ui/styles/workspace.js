@@ -79,7 +79,7 @@ export function getWorkspaceStyles() {
       background: var(--workspace-bg);
       color-scheme: dark;
     }
-    .fluent-app > .container { max-width: 1400px; }
+    .fluent-app > .container, .fluent-app > :where(#officialThemeRoot) > .container { max-width: 1400px; }
     .fluent-app .content { padding: 24px 24px 40px; text-align: left; }
     .fluent-app .search-section { margin-bottom: 24px; }
     .fluent-app .search-action-row { gap: 12px; }

@@ -86,13 +86,13 @@ function harness({ storage, i18n = false } = {}) {
 		${getStateCode()}
 		${getUICode()}
 		${getCoreCode()}
-		renderSecrets = render;
+		function getOtpEngine() { return { refresh: render }; }
 		showCenterToast = toast;
 		async function ensureServerTimeSynchronized() { return true; }
 		return { editSecret, showAddModal, hideSecretModal, handleSubmit, deleteSecret, loadSecrets, showQueuedSecretEditor,
 			toggleAdvancedOptions, updateAdvancedOptionsForType,
 			${i18n ? 'setLanguage, loadPreferences,' : ''}
-			setSecrets(value) { secrets = value; }, getSecrets() { return secrets; },
+			setSecrets(value) { replaceSecretRecords(value); }, getSecrets() { return secrets; },
 			setQueue(value) { saveQueue = value; }, getQueue() { return saveQueue; }
 		};
 	`,
@@ -590,7 +590,8 @@ describe('confirmed mutations and the web offline snapshot', () => {
 		await h.loadSecrets();
 		expect(h.getSecrets()).toEqual([B]);
 		expect(h.field('emptyState').style.display).toBe('none');
-		expect(h.render).toHaveBeenCalledTimes(2);
+		// Reusing the confirmed snapshot does not recalculate identical OTP data.
+		expect(h.render).toHaveBeenCalledTimes(1);
 		h.storage.setItem.mockImplementation(originalSet);
 		h.fetch.mockResolvedValueOnce(response([B])).mockRejectedValueOnce(new TypeError('Offline'));
 		await h.loadSecrets();

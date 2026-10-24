@@ -325,6 +325,31 @@ describe('numeric preference autosave', () => {
 	});
 });
 
+describe('SDK preference bridge', () => {
+	it('validates the whole patch before applying local settings and reports remote language failures honestly', async () => {
+		const h = createHarness({
+			fetchImpl: async () => {
+				throw new Error('network unavailable');
+			},
+		});
+		h.api.applyTheme = vi.fn();
+		expect(await h.api.setThemePublicPreferences({ theme: 'dark', unknown: true })).toMatchObject({ status: 'rejected' });
+		expect(h.storage.has('theme')).toBe(false);
+		expect(await h.api.setThemePublicPreferences({ language: 'en' })).toEqual({ status: 'unknown', reason: 'language-local-only' });
+		expect(h.api.getLanguage()).toBe('en');
+	});
+
+	it('does not write a queued language preference into a later session', async () => {
+		const h = createHarness();
+		h.api.secretSessionGeneration = 3;
+		h.api.isSecretSessionCurrent = (generation) => generation === h.api.secretSessionGeneration;
+		const saving = h.api.setThemePublicPreferences({ language: 'en' });
+		h.api.secretSessionGeneration = 4;
+		expect(await saving).toMatchObject({ status: 'session-invalidated' });
+		expect(h.posts()).toEqual([]);
+	});
+});
+
 describe('language preference loading', () => {
 	it('preserves a setup language stored only in this browser when the server has no language preference', async () => {
 		const env = { SECRETS_KV: { get: async () => JSON.stringify({ maxBackups: 50 }) }, LOG_LEVEL: 'ERROR' };

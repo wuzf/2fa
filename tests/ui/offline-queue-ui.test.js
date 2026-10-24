@@ -87,7 +87,7 @@ async function harness({ controlled = true, supportsWorker = true } = {}) {
 		return { handleLoginSubmit, refreshOfflineQueue, handleServiceWorkerMessage, requestPendingOperationSync,
 			resumeOfflineQueueAfterLogin, toggleOfflineQueueDetails, retryOfflineQueueStatus, changeOfflineQueueOperation,
 			openOfflineQueueEditor, discardReplacedOfflineQueueOperation, invalidateSecretSession, markSecretAccessVerified,
-			claimOfflineQueueOperation, releaseOfflineQueueOperation };
+			claimOfflineQueueOperation, releaseOfflineQueueOperation, getOfflineQueueSnapshot };
 	`,
 	)(document, window, navigator, Channel, fetch, loadSecrets, toast, confirm, editor, { log() {}, warn() {}, error() {} }, vi.fn(), (cb) =>
 		cb(),
@@ -123,6 +123,57 @@ afterEach(() => {
 });
 
 describe('offline queue status and recovery', () => {
+	it('does not cancel a queued change after its originating theme was disposed during confirmation', async () => {
+		const h = await harness();
+		let confirm;
+		let current = true;
+		h.confirm.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					confirm = resolve;
+				}),
+		);
+		const cancelling = h.changeOfflineQueueOperation('OFFLINE_QUEUE_CANCEL', 'operation-a', { isCurrent: () => current });
+		current = false;
+		confirm(true);
+		expect(await cancelling).toMatchObject({ status: 'rejected', reason: 'mount-invalidated' });
+		expect(h.pending).toHaveLength(0);
+	});
+
+	it('does not open a stopped-change editor from a late response to a disposed theme', async () => {
+		const h = await harness();
+		h.markSecretAccessVerified();
+		let current = true;
+		const opening = h.openOfflineQueueEditor('operation-a', { isCurrent: () => current });
+		current = false;
+		h.pending.shift().reply({ ok: true, operations: [], detail: { id: 'operation-a', type: 'UPDATE', data: { secret: 'PRIVATE' } } });
+		expect(await opening).toMatchObject({ status: 'rejected', reason: 'mount-invalidated' });
+		expect(h.editor).not.toHaveBeenCalled();
+	});
+
+	it('reads and projects the queue when a theme has no official queue DOM', async () => {
+		const h = await harness();
+		document.getElementById('offlineQueue').remove();
+		const reading = h.refreshOfflineQueue();
+		expect(h.pending[0].message.type).toBe('OFFLINE_QUEUE_STATUS');
+		h.pending
+			.shift()
+			.reply(
+				summary([
+					operation({ status: 'failed', editable: true, data: { secret: 'PRIVATE-SEED' }, lastError: 'RAW-ERROR', url: '/private' }),
+				]),
+			);
+		await reading;
+		const state = h.getOfflineQueueSnapshot();
+		expect(state.state).toBe('ready');
+		expect(state.operations[0]).toMatchObject({ operationId: 'operation-a', canEdit: true, canRetry: true, canCancel: true });
+		expect(JSON.stringify(state)).not.toMatch(/PRIVATE-SEED|RAW-ERROR|private|"data"/);
+		const unavailable = h.refreshOfflineQueue();
+		vi.advanceTimersByTime(3001);
+		await unavailable;
+		expect(h.getOfflineQueueSnapshot()).toMatchObject({ state: 'unavailable', unavailable: true });
+	});
+
 	it('shows a queue summary only when unsynchronized changes exist and never renders sensitive response fields', async () => {
 		const h = await harness();
 		const read = h.refreshOfflineQueue();
@@ -334,7 +385,7 @@ describe('stopped offline changes', () => {
 		const detail = { id: 'operation-a', type: 'UPDATE', targetId: 'account-a', reason: 'Rejected', data: { name: 'Example' } };
 		h.pending.shift().reply({ ...summary([operation({ status: 'failed', editable: true })]), detail });
 		await flush();
-		expect(h.editor).toHaveBeenCalledExactlyOnceWith(detail);
+		expect(h.editor).toHaveBeenCalledExactlyOnceWith(detail, {});
 		expect(h.confirm).not.toHaveBeenCalled();
 		expect([...document.querySelectorAll('#offlineQueueList button')].some((button) => button.disabled)).toBe(false);
 	});
@@ -372,7 +423,7 @@ describe('stopped offline changes', () => {
 		const detail = { id: 'operation-a', type: 'ADD', data: { name: 'Example' } };
 		h.pending.shift().reply({ ...summary([operation({ status: 'failed', editable: true })]), detail });
 		await opening;
-		expect(h.editor).toHaveBeenCalledExactlyOnceWith(detail);
+		expect(h.editor).toHaveBeenCalledExactlyOnceWith(detail, {});
 	});
 
 	it('does not open the dialog when the detail request fails or the session changes meanwhile', async () => {

@@ -6,6 +6,8 @@ import { readSettingsSnapshot } from '../../src/storage/secrets-store.js';
 import { createMainPage } from '../../src/ui/page.js';
 import { getModuleCode } from '../../src/ui/scripts/index.js';
 import { ThemeStore } from '../../src/storage/theme-store.js';
+import { appThemeFixture } from '../helpers/app-theme.js';
+import { createRuntimeManifest } from '../../src/ui/runtimeManifest.js';
 
 vi.mock('../../src/utils/auth.js', async (original) => ({
 	...(await original()),
@@ -18,6 +20,7 @@ vi.mock('../../src/storage/secrets-store.js', () => ({
 }));
 vi.mock('../../src/ui/page.js', () => ({ createMainPage: vi.fn(async (options) => Response.json(options)) }));
 vi.mock('../../src/ui/scripts/index.js', () => ({ getModuleCode: vi.fn(() => '/* isolated module */') }));
+vi.mock('../../src/ui/runtimeManifest.js', () => ({ createRuntimeManifest: vi.fn(async (_request, options) => Response.json(options)) }));
 
 class Storage {
 	constructor() {
@@ -66,8 +69,8 @@ function environment(withStore = true) {
 	const storage = new Storage();
 	const store = new ThemeStore({ storage }, env);
 	const requests = [];
-	if (withStore)
-		{env.SECRETS_STORE = {
+	if (withStore) {
+		env.SECRETS_STORE = {
 			idFromName: (name) => name,
 			get: (name) => ({
 				fetch: (request) => {
@@ -75,7 +78,8 @@ function environment(withStore = true) {
 					return store.fetch(request);
 				},
 			}),
-		};}
+		};
+	}
 	return { env, store, storage, requests };
 }
 
@@ -101,16 +105,21 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('theme routes authentication and capabilities', () => {
-	it.each(['/api/themes', '/api/appearance', '/api/appearance/assets/' + 'a'.repeat(64), '/api/appearance/export'])(
-		'requires authentication before reading %s',
-		async (path) => {
-			const h = environment();
-			verifyAuthWithDetails.mockResolvedValue({ valid: false });
-			expect(requiresAuth(path)).toBe(true);
-			expect((await handleRequest(request(path), h.env)).status).toBe(401);
-			expect(h.requests).toHaveLength(0);
-		},
-	);
+	it.each([
+		'/api/themes',
+		'/api/appearance',
+		'/api/appearance/assets/' + 'a'.repeat(64),
+		'/api/appearance/export',
+		'/api/themes/' + 'a'.repeat(64) + '/files/entry.js',
+		'/api/themes/preview-capabilities',
+		'/api/runtime-manifest',
+	])('requires authentication before reading %s', async (path) => {
+		const h = environment();
+		verifyAuthWithDetails.mockResolvedValue({ valid: false });
+		expect(requiresAuth(path)).toBe(true);
+		expect((await handleRequest(request(path), h.env)).status).toBe(401);
+		expect(h.requests).toHaveLength(0);
+	});
 
 	it('requires authentication for writes even in an unbuilt source runtime', async () => {
 		const h = environment();
@@ -124,6 +133,7 @@ describe('theme routes authentication and capabilities', () => {
 		const h = environment(false);
 		const list = await handleRequest(request('/api/themes'), h.env);
 		expect((await list.json()).themes).toHaveLength(3);
+		expect((await (await handleRequest(request('/api/themes?format=app'), h.env)).json()).themes).toEqual([]);
 		const appearance = await handleRequest(request('/api/appearance'), h.env);
 		expect((await appearance.json()).capabilities.write).toBe(false);
 		expect((await handleRequest(request('/api/appearance', apply(), 'PUT'), h.env)).status).toBe(503);
@@ -157,6 +167,137 @@ describe('theme routes authentication and capabilities', () => {
 });
 
 describe('theme routes recovery and resource boundary', () => {
+	it('derives preview ownership after authentication, ignores spoofed owner headers and revokes that owner after logout', async () => {
+		const h = environment();
+		const source = await appThemeFixture();
+		const { theme } = await h.store.install({ bytes: source.archive }, false, 'app');
+		const make = () =>
+			new Request('https://vault.example.com/api/themes/preview-capabilities', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', 'X-2FA-Preview-Owner': 'a'.repeat(64) },
+				body: JSON.stringify({ packageId: theme.packageId }),
+			});
+		verifyAuthWithDetails.mockResolvedValue({ valid: false });
+		expect((await handleRequest(make(), h.env)).status).toBe(401);
+		expect(h.requests).toHaveLength(0);
+		verifyAuthWithDetails.mockResolvedValue({ valid: true, token: 'initial-jwt' });
+		const created = await handleRequest(make(), h.env);
+		expect(created.status).toBe(201);
+		const cap = await created.json();
+		expect(h.requests[0].request.headers.get('X-2FA-Preview-Owner')).toMatch(/^[a-f0-9]{64}$/);
+		expect(h.requests[0].request.headers.get('X-2FA-Preview-Owner')).not.toBe('a'.repeat(64));
+		verifyAuthWithDetails.mockResolvedValue({ valid: false });
+		vi.clearAllMocks();
+		const bytes = await handleRequest(new Request('https://vault.example.com' + cap.entryUrl, { headers: { Origin: 'null' } }), h.env);
+		expect(bytes.status).toBe(200);
+		expect(bytes.headers.get('Access-Control-Allow-Origin')).toBe('null');
+		expect(verifyAuthWithDetails).not.toHaveBeenCalled();
+		expect(checkIfSetupRequired).not.toHaveBeenCalled();
+		verifyAuthWithDetails.mockResolvedValue({ valid: true, token: 'refreshed-jwt' });
+		expect((await handleRequest(request('/api/logout', {}), h.env)).status).toBe(403);
+		expect((await handleRequest(new Request('https://vault.example.com' + cap.entryUrl), h.env)).status).toBe(200);
+		const logout = new Request('https://vault.example.com/api/logout', {
+			method: 'POST',
+			headers: { 'X-Requested-With': 'XMLHttpRequest', Origin: 'https://vault.example.com', Host: 'vault.example.com' },
+		});
+		expect((await handleRequest(logout, h.env)).status).toBe(200);
+		expect(
+			(await handleRequest(new Request('https://vault.example.com' + cap.entryUrl, { headers: { Origin: 'null' } }), h.env)).status,
+		).toBe(410);
+	});
+
+	it('serves only the safe descriptor publicly and authenticates exact current build/revision descriptors', async () => {
+		const h = environment();
+		verifyAuthWithDetails.mockResolvedValue({ valid: false });
+		const safe = await handleRequest(request('/api/runtime-manifest?mode=safe&build=fixture-build-2026&appearance=0'), h.env);
+		expect(safe.status).toBe(200);
+		expect(createRuntimeManifest).toHaveBeenCalledWith(expect.any(Request), {
+			appearance: null,
+			buildId: 'fixture-build-2026',
+			customCodes: [],
+		});
+		expect(verifyAuthWithDetails).not.toHaveBeenCalled();
+		expect(readSettingsSnapshot).not.toHaveBeenCalled();
+		expect(h.requests).toHaveLength(0);
+		expect((await handleRequest(request('/api/runtime-manifest?mode=official&build=fixture-build-2026&appearance=0'), h.env)).status).toBe(
+			401,
+		);
+		verifyAuthWithDetails.mockResolvedValue({ valid: true });
+		createRuntimeManifest.mockClear();
+		for (const query of [
+			'mode=official&build=old&appearance=0',
+			'mode=official&build=fixture-build-2026&appearance=1',
+			'mode=app&build=fixture-build-2026&appearance=0',
+			'mode=safe&build=fixture-build-2026&appearance=1',
+		]) {
+			expect((await handleRequest(request('/api/runtime-manifest?' + query), h.env)).status).toBe(409);
+		}
+		expect(createRuntimeManifest).not.toHaveBeenCalled();
+		const current = await handleRequest(request('/api/runtime-manifest?mode=official&build=fixture-build-2026&appearance=0'), h.env);
+		expect(current.status).toBe(200);
+		expect(createRuntimeManifest).toHaveBeenCalledWith(
+			expect.any(Request),
+			expect.objectContaining({
+				appearance: expect.objectContaining({ revision: 0, packageId: 'builtin:fluent' }),
+				buildId: 'fixture-build-2026',
+				customCodes: [{ id: 'custom', code: '<style>body{color:red}</style>', enabled: true }],
+			}),
+		);
+	});
+
+	it.each(['safeMode=1', 'disableCustomCode=1'])('serves safe manifest/icons independently of saved appearance: %s', async (query) => {
+		const h = environment();
+		await h.store.apply({ ...apply(), branding: { name: 'Saved app brand' } });
+		const manifest = await handleRequest(request('/manifest.json?' + query), h.env);
+		expect((await manifest.json()).name).not.toBe('Saved app brand');
+		for (const size of [192, 512]) {
+			const icon = await handleRequest(request('/icon-' + size + '.png?' + query), h.env);
+			expect(icon.status).toBe(200);
+			expect(icon.headers.get('Content-Type')).toContain('image/svg+xml');
+		}
+		expect(h.requests).toHaveLength(0);
+	});
+
+	it('serves only the two pinned QR vendor files publicly', async () => {
+		const h = environment();
+		verifyAuthWithDetails.mockResolvedValue({ valid: false });
+		for (const path of ['/vendor/jsqr-1.4.0.js', '/vendor/qrcode-generator-1.4.4.js']) {
+			const response = await handleRequest(request(path), h.env);
+			expect(response.status).toBe(200);
+			expect(response.headers.get('Content-Type')).toContain('javascript');
+		}
+		expect((await handleRequest(request('/vendor/arbitrary.js'), h.env)).status).toBe(404);
+		expect((await handleRequest(request('/vendor/jsqr-1.4.0.js', {}, 'POST'), h.env)).status).toBe(404);
+		expect(verifyAuthWithDetails).not.toHaveBeenCalled();
+		expect(checkIfSetupRequired).not.toHaveBeenCalled();
+	});
+
+	it('keeps installed app JS private and authenticates private file reads without broadening CORS', async () => {
+		const h = environment();
+		const fixture = await appThemeFixture();
+		const { theme } = await h.store.install({ bytes: fixture.archive }, false, 'app');
+		const publicPath = '/theme-packages/' + theme.packageId + '/entry.js';
+		const privatePath = '/api/themes/' + theme.packageId + '/files/entry.js';
+		verifyAuthWithDetails.mockResolvedValue({ valid: false });
+		expect((await handleRequest(request(publicPath), h.env)).status).toBe(404);
+		expect(verifyAuthWithDetails).not.toHaveBeenCalled();
+		expect(checkIfSetupRequired).not.toHaveBeenCalled();
+		expect((await handleRequest(request(privatePath), h.env)).status).toBe(401);
+		await h.storage.transaction((tx) => h.store.markAppPackagePublic(tx, theme.packageId));
+		vi.clearAllMocks();
+		const published = await handleRequest(request(publicPath), h.env);
+		expect(published.status).toBe(200);
+		expect(published.headers.get('Content-Type')).toBe('text/javascript');
+		expect(published.headers.has('Access-Control-Allow-Origin')).toBe(false);
+		expect(verifyAuthWithDetails).not.toHaveBeenCalled();
+		expect(checkIfSetupRequired).not.toHaveBeenCalled();
+		verifyAuthWithDetails.mockResolvedValue({ valid: true });
+		const authenticated = await handleRequest(request(privatePath), h.env);
+		expect(authenticated.status).toBe(200);
+		expect(authenticated.headers.get('Cache-Control')).toBe('private, no-store');
+		expect(authenticated.headers.has('Access-Control-Allow-Origin')).toBe(false);
+	});
+
 	it.each(['safeMode=1', 'disableCustomCode=1'])('renders a recovery shell without reading saved code or appearance: %s', async (query) => {
 		const h = environment();
 		const response = await handleRequest(request('/?' + query), h.env);

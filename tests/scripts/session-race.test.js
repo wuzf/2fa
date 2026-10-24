@@ -113,21 +113,36 @@ function harness() {
 		function sortSecrets(value) { return value; }
 		let currentSortType = 'name';
 		let currentViewMode = 'grid';
-		function getCommittedHOTPToken() { return '123456'; }
+		const copyTickets = new WeakSet();
+        const sessionOtp = {
+          readCopyTarget(id, slot) {
+            const target = Object.freeze({accountId:id,slot,value:'123456',sessionGeneration:accountStore.getSessionGeneration(),accountGeneration:accountStore.getAccountGeneration(id)});
+            copyTickets.add(target); return {status:'ready',target};
+          },
+          validateCopyTarget(target) {
+            return copyTickets.has(target) && accountStore.isSessionCurrent(target.sessionGeneration) && accountStore.getAccountGeneration(target.accountId)===target.accountGeneration
+              ? {status:'ready',target} : {status:'not-ready',reason:'stale-target'};
+          },
+          refreshOne(id) { return updateOTP(id); },
+          refresh() { return updateOTPSecretsInBatch(accountStore.getRecords(), {includeHOTP:true}); }
+        };
+        function getOtpEngine() { return sessionOtp; }
+
 		${getI18nCode()}${getStateCode()}
 		${getUICode()}
 		${getAuthCode()}
 		${getCoreCode()}
 		${getPWACode()}
-		const renderActual = renderFilteredSecrets;
-		renderFilteredSecrets = render;
+		const renderActual = renderLoadedSecretsIfChanged;
+        const copyOTP = copyHOTPAndAdvanceCounter;
+        function showOTPCopyFeedback() {}
 		showCenterToast = toast;
 		return { loadSecrets, logout, handleUnauthorized, handleLoginSubmit, showLoginModal,
 			renderActual,
 			refreshAuthToken,
 			editSecret, showAddModal, hideSecretModal, handleSubmit, deleteSecret, copyOTP,
 			handleServiceWorkerMessage, authenticatedFetch,
-			setSecrets(value) { secrets = value; filteredSecrets = [...value]; cacheSecretsLocally(); },
+			setSecrets(value) { replaceSecretRecords(value); filteredSecrets = [...value]; cacheSecretsLocally(); },
 			getSecrets() { return secrets; }, getQueue() { return saveQueue; }, setQueue(value) { saveQueue = value; },
 			getSession() { return { generation: secretSessionGeneration, blocked: secretReadsBlocked }; }
 		};
@@ -268,20 +283,21 @@ describe('secret work belongs to the login session that started it', () => {
 		expect(h.getSecrets()).toEqual([]);
 	});
 
-	it('does not restart old OTP intervals when a real render batch resolves after logout', async () => {
+	it('does not restore old account calculation state when its batch resolves after logout', async () => {
 		const h = harness();
 		const batch = deferred();
 		h.updateBatch.mockReturnValueOnce(batch.promise);
 		const rendering = h.renderActual();
 		await flush();
 		expect(h.updateBatch).toHaveBeenCalledOnce();
-		expect(h.field('secretsList').textContent).toContain('Account A');
+		expect(h.getSecrets()).toEqual([A]);
 		await h.logout();
 		batch.resolve();
 		await rendering;
 		expect(h.startInterval).not.toHaveBeenCalled();
-		expect(h.field('secretsList').innerHTML).toBe('');
-		expect(h.field('secretsList').style.display).toBe('none');
+		expect(h.getSecrets()).toEqual([]);
+		expect(h.getSession().blocked).toBe(true);
+		expect(h.storage.getItem(CACHE_KEY)).toBeNull();
 	});
 
 	it('does not let an old unauthorized timer reopen the login dialog after login succeeds', async () => {
@@ -462,7 +478,7 @@ describe('secret work belongs to the login session that started it', () => {
 			h.field('secretName').value = 'Old session save';
 			h.submit();
 		} else {
-			await h.deleteSecret('a');
+			void h.deleteSecret('a');
 		}
 		await flush();
 		const oldQueue = h.getQueue();
@@ -481,7 +497,7 @@ describe('secret work belongs to the login session that started it', () => {
 			h.editSecret('a');
 			h.submit();
 		} else {
-			await h.deleteSecret('a');
+			void h.deleteSecret('a');
 		}
 		await flush();
 		const oldQueue = h.getQueue();

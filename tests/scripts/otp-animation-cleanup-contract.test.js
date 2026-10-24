@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment happy-dom
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { getAuthCode } from '../../src/ui/scripts/auth.js';
 import { getCoreCode } from '../../src/ui/scripts/core.js';
 import { getOTPCode } from '../../src/ui/scripts/otp.js';
 import { getTimeCode } from '../../src/ui/scripts/time.js';
+import { getStateCode } from '../../src/ui/scripts/state.js';
 
 function findMatchingDelimiter(source, openingIndex, openingDelimiter, closingDelimiter) {
 	let depth = 0;
@@ -105,13 +107,91 @@ function extractEventListener(source, eventName) {
 
 const cleanupCallPattern = /\bclearAllOTPAnimations\s*\(\s*\)/;
 
+afterEach(() => {
+	document.body.replaceChildren();
+	vi.useRealTimers();
+});
+
+async function animatedAccount() {
+	vi.useFakeTimers();
+	document.body.innerHTML = '<div><span id="otp-a"></span><span id="next-otp-a"></span><span id="progress-a"></span></div>';
+	for (const id of ['otp-a', 'next-otp-a']) {
+		document.getElementById(id).getBoundingClientRect = () => ({ left: 10, top: 10, width: 120, height: 30, right: 130, bottom: 40 });
+	}
+	const browser = {
+		addEventListener() {},
+		matchMedia: () => ({ matches: false }),
+		requestAnimationFrame(callback) {
+			callback();
+			return 1;
+		},
+		cancelAnimationFrame() {},
+	};
+	// Actual emitted state, engine, presentation and auth; network and the calculation values are controlled.
+	// eslint-disable-next-line no-new-func
+	const api = new Function(
+		'document',
+		'window',
+		'navigator',
+		'fetch',
+		'setInterval',
+		'clearInterval',
+		`
+      let now = 0;
+      function getCorrectedNowMs() { return now; }
+      function getTrustedClockGeneration() { return 0; }
+      function getTrustedMonotonicNowMs() { return now; }
+      function t(key) { return key; }
+      function getLanguage() { return 'en'; }
+      function showCenterToast() {}
+      ${getStateCode()}${getOTPCode()}${getAuthCode()}${getCoreCode()}
+      setOTPAnimationMode('flow');
+      replaceSecretRecords([{id:'a',name:'Example',secret:'JBSWY3DPEHPK3PXP',type:'TOTP',period:30,digits:6}]);
+      return { accountStore, calculator:otpCalculator, refresh:()=>getOtpEngine().refresh(),
+        advance:()=>{now=30000;}, active:()=>isNextOTPTransitionActive('a'),
+        committed:()=>getOtpEngine().readCommitted('a'), logout, discardInvalidSecretsSnapshot,
+        dispose:()=>{getOtpEngine().dispose();otpPresentation.dispose();} };
+    `,
+	)(
+		document,
+		browser,
+		{ onLine: true },
+		async () => ({ ok: true, headers: new Headers() }),
+		vi.fn(() => 1),
+		vi.fn(),
+	);
+	let advanced = false;
+	api.calculator.calculateCurrentOTP = async () => (advanced ? '222222' : '111111');
+	api.calculator.calculateNextOTP = async () => (advanced ? '333333' : '222222');
+	await api.refresh();
+	advanced = true;
+	api.advance();
+	return api;
+}
+
 describe('emitted OTP animation cleanup contracts', () => {
-	it.each([
-		['getCoreCode', getCoreCode, 'renderFilteredSecrets'],
-		['getAuthCode', getAuthCode, 'logout'],
-		['getTimeCode', getTimeCode, 'refreshTOTPsAfterClockChange'],
-	])('%s cleans animations in %s', (_generatorName, generateCode, functionName) => {
-		const generatedFunction = extractNamedFunction(generateCode(), functionName);
+	it.each(['logout', 'invalid-data'])('clears active presentation through store invalidation on %s', async (reason) => {
+		const api = await animatedAccount();
+		try {
+			await api.refresh();
+			expect(api.active()).toBe(true);
+			expect(document.querySelector('.otp-promotion-flyer')).not.toBeNull();
+			if (reason === 'logout') {
+				expect(await api.logout()).toBe(true);
+			} else {
+				api.discardInvalidSecretsSnapshot();
+			}
+			expect(api.active()).toBe(false);
+			expect(document.querySelector('.otp-promotion-flyer')).toBeNull();
+			expect(api.committed()).toBeNull();
+			expect(api.accountStore.getRecords()).toEqual([]);
+			expect(document.getElementById('otp-a').textContent).toBe('------');
+		} finally {
+			api.dispose();
+		}
+	});
+	it('cleans presentation when the trusted clock changes', () => {
+		const generatedFunction = extractNamedFunction(getTimeCode(), 'refreshTOTPsAfterClockChange');
 
 		expect(generatedFunction).toMatch(cleanupCallPattern);
 	});
@@ -120,7 +200,8 @@ describe('emitted OTP animation cleanup contracts', () => {
 		const otpCode = getOTPCode();
 		const visibilityListener = extractEventListener(otpCode, 'visibilitychange');
 
-		expect(visibilityListener).toMatch(cleanupCallPattern);
+		expect(visibilityListener).toContain('handleOTPVisibilityChange');
+		expect(extractNamedFunction(otpCode, 'handleOTPVisibilityChange')).toMatch(cleanupCallPattern);
 		expect(otpCode).not.toContain('offsetWidth');
 	});
 });

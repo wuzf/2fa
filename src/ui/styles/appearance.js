@@ -19,7 +19,7 @@ export function getAppearanceStyles() {
       background:var(--2fa-background);background-image:var(--2fa-background-image);background-size:cover;background-attachment:fixed;
       color:var(--2fa-text);font-family:var(--2fa-font);font-size:var(--2fa-font-size);
     }
-    :root[data-appearance-ready] .fluent-app > .container { max-width:var(--2fa-page-width); }
+    :root[data-appearance-ready] .fluent-app > .container, :root[data-appearance-ready] .fluent-app > :where(#officialThemeRoot) > .container { max-width:var(--2fa-page-width); }
     :root[data-appearance-ready] .modal,:root[data-appearance-ready] .center-toast,:root[data-appearance-ready] .dialog-toast {
       --dialog-surface:var(--2fa-surface);--dialog-subtle:var(--2fa-background);--dialog-hover:var(--2fa-hover);
       --dialog-text:var(--2fa-text);--dialog-muted:var(--2fa-muted);--dialog-line:var(--2fa-border);--dialog-stroke:var(--2fa-border);

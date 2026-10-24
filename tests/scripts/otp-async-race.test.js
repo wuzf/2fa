@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { createAccountStore } from '../../src/ui/runtime/accountStore.js';
 import { getOTPCode } from '../../src/ui/scripts/otp.js';
 import { getTimeCode } from '../../src/ui/scripts/time.js';
 
@@ -219,8 +220,10 @@ function createHarness({
 		setInterval: vi.fn(),
 	};
 
+	const accountStore = createAccountStore({ records: secrets });
 	// eslint-disable-next-line no-new-func
 	const api = new Function(
+		'accountStore',
 		'Date',
 		'performance',
 		'fetch',
@@ -240,6 +243,8 @@ function createHarness({
 		'otpIntervals',
 		`${getTimeCode()}${getOTPCode()}; return {
 			trustedClock,
+			getOtpEngine,
+			otpPresentation,
 			otpCalculator,
 			getOTPAnimationMode,
 			isNextOTPTransitionActive,
@@ -247,6 +252,7 @@ function createHarness({
 			updateOTP
 		};`,
 	)(
+		accountStore,
 		FakeDate,
 		performance,
 		vi.fn(),
@@ -307,6 +313,7 @@ function createHarness({
 	}
 
 	return {
+		accountStore,
 		api,
 		animationFrameCallbacks,
 		body,
@@ -352,6 +359,53 @@ function getAnimationAdds(harness, elementId) {
 }
 
 describe('OTP asynchronous result races', () => {
+	it.each(['queued', 'active'])('finishes a %s next-code handoff synchronously before copy', async (phase) => {
+		const harness = createHarness({ storedAnimationMode: 'flow' });
+		const initial = harness.api.updateOTP('race');
+		await resolveGenerationPair(harness, INITIAL_TOKEN, PROMOTED_TOKEN);
+		await initial;
+		harness.state.monotonicMs += 30_000;
+		const promotion = harness.api.updateOTP('race');
+		await resolveGenerationPair(harness, PROMOTED_TOKEN, NEXT_TOKEN, 2);
+		await promotion;
+		if (phase === 'active') {
+			await harness.flushAnimationFrames();
+		}
+		const { target } = harness.api.getOtpEngine().readCopyTarget('race', 'next');
+		const clipboard = vi.fn((value) => {
+			expect(harness.body.children).toHaveLength(0);
+			expect(harness.api.isNextOTPTransitionActive('race')).toBe(false);
+			expect(harness.elements['next-otp-race'].textContent).toBe(value);
+		});
+		expect(harness.api.otpPresentation.finishTransitionForCopy('race', 'next', target)).toBe(true);
+		clipboard(target.value);
+		expect(clipboard).toHaveBeenCalledExactlyOnceWith(NEXT_TOKEN);
+		await harness.flushAnimationFrames();
+		expect(harness.body.children).toHaveLength(0);
+		expect(harness.timeoutCallbacks.size).toBe(0);
+	});
+
+	it('keeps the committed code when card nodes disappear and restores replacement nodes from the same record', async () => {
+		const harness = createHarness();
+		const current = harness.elements['otp-race'];
+		const next = harness.elements['next-otp-race'];
+		delete harness.elements['otp-race'];
+		delete harness.elements['next-otp-race'];
+		const task = harness.api.updateOTP('race');
+		await resolveGenerationPair(harness, INITIAL_TOKEN, PROMOTED_TOKEN);
+		expect((await task).status).toBe('committed');
+		const record = harness.api.getOtpEngine().readCommitted('race');
+		expect(record.current).toBe(INITIAL_TOKEN);
+		const target = harness.api.getOtpEngine().readCopyTarget('race', 'current').target;
+		expect(harness.api.otpPresentation.finishTransitionForCopy('race', 'current', target)).toBe(true);
+		harness.elements['otp-race'] = { ...current, textContent: '------' };
+		harness.elements['next-otp-race'] = { ...next, textContent: '------' };
+		harness.api.otpPresentation.renderCommitted('race', record);
+		expect(harness.elements['otp-race'].textContent).toBe(INITIAL_TOKEN);
+		expect(harness.elements['next-otp-race'].textContent).toBe(PROMOTED_TOKEN);
+		expect(harness.api.getOtpEngine().validateCopyTarget(target).status).toBe('ready');
+	});
+
 	it('does not let a pre-sync WebCrypto result overwrite the synchronized DOM', async () => {
 		const harness = createHarness({ storedAnimationMode: 'flow' });
 		const initialWindow = harness.api.otpCalculator.getCurrentTimeWindow(30);
@@ -372,19 +426,19 @@ describe('OTP asynchronous result races', () => {
 			initialWindow + 2,
 		]);
 
-		harness.generationCalls[2].resolve('fresh-current');
-		harness.generationCalls[3].resolve('fresh-next');
+		harness.generationCalls[2].resolve('345678');
+		harness.generationCalls[3].resolve('456789');
 		await synchronizedUpdate;
-		expect(harness.elements['otp-race'].textContent).toBe('fresh-current');
-		expect(harness.elements['next-otp-race'].textContent).toBe('fresh-next');
+		expect(harness.elements['otp-race'].textContent).toBe('345678');
+		expect(harness.elements['next-otp-race'].textContent).toBe('456789');
 
-		harness.generationCalls[0].resolve('stale-current');
+		harness.generationCalls[0].resolve('123456');
 		// The old "next" calculation targets the new current window and is deterministic.
-		harness.generationCalls[1].resolve('fresh-current');
+		harness.generationCalls[1].resolve('345678');
 		await staleUpdate;
 
-		expect(harness.elements['otp-race'].textContent).toBe('fresh-current');
-		expect(harness.elements['next-otp-race'].textContent).toBe('fresh-next');
+		expect(harness.elements['otp-race'].textContent).toBe('345678');
+		expect(harness.elements['next-otp-race'].textContent).toBe('456789');
 		expect(getAnimationAdds(harness, 'otp-race')).toEqual([]);
 		expect(getAnimationAdds(harness, 'next-otp-race')).toEqual([]);
 	});
@@ -394,11 +448,11 @@ describe('OTP asynchronous result races', () => {
 		const firstUpdate = harness.api.updateOTP('race');
 
 		expect(harness.generationCalls).toHaveLength(2);
-		await resolveGenerationPair(harness, 'current-0', 'next-0');
+		await resolveGenerationPair(harness, '101010', '202020');
 		await firstUpdate;
 
-		expect(harness.elements['otp-race'].textContent).toBe('current-0');
-		expect(harness.elements['next-otp-race'].textContent).toBe('next-0');
+		expect(harness.elements['otp-race'].textContent).toBe('101010');
+		expect(harness.elements['next-otp-race'].textContent).toBe('202020');
 		expect(getAnimationAdds(harness, 'otp-race')).toEqual([]);
 		expect(getAnimationAdds(harness, 'next-otp-race')).toEqual([]);
 		expect(harness.setTimeout).not.toHaveBeenCalled();
@@ -555,7 +609,7 @@ describe('OTP asynchronous result races', () => {
 		harness.state.monotonicMs += 30_000;
 		const promotedUpdate = harness.api.updateOTP('race');
 		await resolveGenerationPair(harness, PROMOTED_TOKEN, NEXT_TOKEN, 2);
-		await expect(promotedUpdate).resolves.toBeUndefined();
+		await expect(promotedUpdate).resolves.toMatchObject({ status: 'committed' });
 		await harness.flushAnimationFrames();
 
 		expect(harness.elements['otp-race'].textContent).toBe(PROMOTED_TOKEN);
@@ -754,16 +808,16 @@ describe('OTP asynchronous result races', () => {
 	it('does not animate when the result skips more than one time window', async () => {
 		const harness = createHarness({ storedAnimationMode: 'flow' });
 		const initialUpdate = harness.api.updateOTP('race');
-		await resolveGenerationPair(harness, 'current-0', 'next-0');
+		await resolveGenerationPair(harness, '101010', '202020');
 		await initialUpdate;
 
 		harness.state.monotonicMs += 60_000;
 		const skippedUpdate = harness.api.updateOTP('race');
-		await resolveGenerationPair(harness, 'current-2', 'next-2', 2);
+		await resolveGenerationPair(harness, '303030', '404040', 2);
 		await skippedUpdate;
 
-		expect(harness.elements['otp-race'].textContent).toBe('current-2');
-		expect(harness.elements['next-otp-race'].textContent).toBe('next-2');
+		expect(harness.elements['otp-race'].textContent).toBe('303030');
+		expect(harness.elements['next-otp-race'].textContent).toBe('404040');
 		expect(getAnimationAdds(harness, 'otp-race')).toEqual([]);
 		expect(getAnimationAdds(harness, 'next-otp-race')).toEqual([]);
 		expect(harness.setTimeout).not.toHaveBeenCalled();
@@ -841,7 +895,7 @@ describe('OTP asynchronous result races', () => {
 		expect(getAnimationAdds(harness, 'otp-race')).toEqual(['otp-promote-current']);
 		expect(getAnimationAdds(harness, 'next-otp-race')).toEqual(['otp-promote-next']);
 
-		await resolveGenerationPair(harness, 'stale-current', 'stale-next', 2);
+		await resolveGenerationPair(harness, '123456', '234567', 2);
 		await staleUpdate;
 
 		expect(harness.elements['otp-race'].textContent).toBe(PROMOTED_TOKEN);
@@ -853,16 +907,16 @@ describe('OTP asynchronous result races', () => {
 	it('keeps HOTP updates safe and animation-free', async () => {
 		const harness = createHarness({ secretOverrides: { type: 'HOTP' }, storedAnimationMode: 'flow' });
 		const firstUpdate = harness.api.updateOTP('race');
-		await resolveGenerationPair(harness, 'hotp-current-0', 'hotp-next');
+		await resolveGenerationPair(harness, '101010', '202020');
 		await firstUpdate;
 
 		harness.state.monotonicMs += 30_000;
 		const secondUpdate = harness.api.updateOTP('race');
-		await resolveGenerationPair(harness, 'hotp-next', 'hotp-next-1', 2);
-		await expect(secondUpdate).resolves.toBeUndefined();
+		await resolveGenerationPair(harness, '202020', '303030', 2);
+		await expect(secondUpdate).resolves.toMatchObject({ status: 'committed' });
 
-		expect(harness.elements['otp-race'].textContent).toBe('hotp-next');
-		expect(harness.elements['next-otp-race'].textContent).toBe('hotp-next-1');
+		expect(harness.elements['otp-race'].textContent).toBe('202020');
+		expect(harness.elements['next-otp-race'].textContent).toBe('303030');
 		expect(getAnimationAdds(harness, 'otp-race')).toEqual([]);
 		expect(getAnimationAdds(harness, 'next-otp-race')).toEqual([]);
 		expect(harness.setTimeout).not.toHaveBeenCalled();
@@ -879,19 +933,19 @@ describe('OTP asynchronous result races', () => {
 		expect(harness.generationCalls.map((call) => call.counter)).toEqual([initialWindow, initialWindow + 1]);
 
 		harness.state.monotonicMs += 200;
-		harness.generationCalls[0].resolve('expired-current');
-		harness.generationCalls[1].resolve('new-current');
+		harness.generationCalls[0].resolve('121212');
+		harness.generationCalls[1].resolve('232323');
 		await flushMicrotasks();
 
 		expect(harness.elements['otp-race'].textContent).toBe('current-initial');
 		expect(harness.elements['next-otp-race'].textContent).toBe('next-initial');
 		expect(harness.generationCalls.map((call) => call.counter)).toEqual([initialWindow, initialWindow + 1, initialWindow + 2]);
 
-		harness.generationCalls[2].resolve('new-next');
+		harness.generationCalls[2].resolve('343434');
 		await update;
 		await flushMicrotasks();
 
-		expect(harness.elements['otp-race'].textContent).toBe('new-current');
-		expect(harness.elements['next-otp-race'].textContent).toBe('new-next');
+		expect(harness.elements['otp-race'].textContent).toBe('232323');
+		expect(harness.elements['next-otp-race'].textContent).toBe('343434');
 	});
 });

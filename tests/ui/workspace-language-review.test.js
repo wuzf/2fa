@@ -8,6 +8,7 @@ import { getCoreCode } from '../../src/ui/scripts/core.js';
 import { getStateCode } from '../../src/ui/scripts/state.js';
 import { getUtilsCode } from '../../src/ui/scripts/utils.js';
 import { getUICode } from '../../src/ui/scripts/ui.js';
+import { createRuntimeFixture } from '../helpers/theme-runtime.js';
 
 const html = await (await createMainPage()).text();
 
@@ -126,21 +127,26 @@ describe('independent workspace language review', () => {
 		expect(untranslated).toEqual([]);
 	});
 
-	it('updates an already displayed read failure when switching languages', () => {
-		const { context, document } = harness();
-		context.showSecretsReadFailure('coreOfflineRead');
-		context.setLanguage('en');
-		const emptyState = document.getElementById('emptyState');
-		expect(emptyState.querySelector('h3').textContent).toBe(LOCALES.en.coreReadTitle);
-		expect(emptyState.querySelector('p').textContent).toBe(LOCALES.en.coreOfflineRead);
-		expect(emptyState.querySelector('button').textContent).toBe(LOCALES.en.retry);
-		expect(emptyState.style.display).toBe('block');
+	it('updates an already displayed read failure when switching languages', async () => {
+		const fixture = await createRuntimeFixture();
+		try {
+			fixture.getOfficialAccountView();
+			fixture.window.showSecretsReadFailure('coreOfflineRead');
+			fixture.window.setLanguage('en');
+			const emptyState = fixture.document.getElementById('emptyState');
+			expect(emptyState.querySelector('h3').textContent).toBe(LOCALES.en.coreReadTitle);
+			expect(emptyState.querySelector('p').textContent).toBe(LOCALES.en.coreOfflineRead);
+			expect(emptyState.querySelector('button').textContent).toBe(LOCALES.en.retry);
+			expect(emptyState.style.display).toBe('block');
+		} finally {
+			await fixture.dispose();
+		}
 	});
 
 	it('redraws the account list only when the resolved language changes', () => {
 		const { context } = harness();
 		context.initLanguage();
-		runInContext('secrets = [{ id: "account", name: "GitHub", secret: "JBSWY3DPEHPK3PXP" }];', context);
+		runInContext('replaceSecretRecords([{ id: "account", name: "GitHub", secret: "JBSWY3DPEHPK3PXP" }]);', context);
 
 		// The server preference read after login usually repeats the local one.
 		context.setLanguage('zh-CN');
@@ -155,7 +161,7 @@ describe('independent workspace language review', () => {
 
 	it('keeps a delete confirmation open, updates its language and renders the account name as plain text', async () => {
 		const { context, document, window } = harness();
-		runInContext('secrets = [{ id: "account", name: "<img src=x onerror=alert(1)>" }];', context);
+		runInContext('replaceSecretRecords([{ id: "account", name: "<img src=x onerror=alert(1)>" }]);', context);
 		const deleting = context.deleteSecret('account');
 		context.setLanguage('en');
 		expect(document.getElementById('confirmDialogTitle').textContent).toBe(LOCALES.en.deleteSecretTitle);

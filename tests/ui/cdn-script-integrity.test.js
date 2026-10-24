@@ -17,8 +17,8 @@ function loadUtils() {
 
 describe('third-party QR scripts', () => {
 	it.each([
-		['ensureJsQR', 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'],
-		['ensureQRCodeGen', 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js'],
+		['ensureJsQR', '/vendor/jsqr-1.4.0.js'],
+		['ensureQRCodeGen', '/vendor/qrcode-generator-1.4.4.js'],
 	])('%s loads a pinned file with an integrity digest', async (loader, url) => {
 		const { context, scripts } = loadUtils();
 		const loading = context[loader]();
@@ -42,8 +42,8 @@ describe('third-party QR scripts', () => {
 
 	it('lets the Service Worker cache the same files the page loads', async () => {
 		const source = await createServiceWorker({ SW_VERSION: 'cdn-test' }).text();
-		expect(source).toContain("'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'");
-		expect(source).toContain("'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js'");
+		expect(source).toContain('/vendor/jsqr-1.4.0.js');
+		expect(source).toContain('/vendor/qrcode-generator-1.4.4.js');
 	});
 
 	it('lets a script the browser refused be loaded again', async () => {

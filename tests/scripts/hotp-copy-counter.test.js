@@ -100,10 +100,11 @@ async function createHarness(authenticatedFetch, options = {}) {
       async function ensureServerTimeSynchronized() { return true; }
       ${getI18nCode()}
       ${getStateCode()}
-      secrets = initialSecrets;
+      replaceSecretRecords(initialSecrets);
       ${getOTPCode()}
       ${getCoreCode()}
-      renderFilteredSecrets = async () => updateOTPSecretsInBatch(filteredSecrets, { includeHOTP: true });
+      const copyOTP = copyHOTPAndAdvanceCounter;
+      function showOTPCopyFeedback() {}
       return {
         copyOTP,
         loadSecrets,
@@ -113,8 +114,8 @@ async function createHarness(authenticatedFetch, options = {}) {
         otpCalculator,
         getSecrets() { return secrets; },
         getSaveQueue() { return saveQueue; },
-        setSaveQueue(value) { saveQueue = value; },
-        setSecrets(value) { secrets = value; filteredSecrets = [...value]; }
+        setSaveQueue(value) { const write = beginSecretWrite('edit', 'hotp-1'); saveQueue = value.finally(() => accountStore.endWrite(write)); },
+        setSecrets(value) { replaceSecretRecords(value); filteredSecrets = [...value]; }
       };
     `,
 	)(
@@ -161,6 +162,18 @@ function expectedSnapshot(overrides = {}) {
 }
 
 describe('HOTP copy counter persistence', () => {
+	it('reserves a supported legacy numeric account ID without needing its old card node', async () => {
+		const authenticatedFetch = vi.fn(async (url, options) => {
+			expect(url).toBe('/api/secrets/12/counter');
+			expect(JSON.parse(options.body).expectedCounter).toBe(42);
+			return jsonResponse({ data: { secret: hotpSecret({ id: 12, counter: 43 }) } });
+		});
+		const harness = await createHarness(authenticatedFetch, { initialSecrets: [hotpSecret({ id: 12 })] });
+		await expect(harness.api.copyOTP(12)).resolves.toBe(true);
+		expect(harness.navigator.clipboard.writeText).toHaveBeenCalledWith('123456');
+		expect(harness.api.getSecrets()[0].counter).toBe(43);
+		expect(authenticatedFetch).toHaveBeenCalledOnce();
+	});
 	it('posts only the generation snapshot and advances after an online success', async () => {
 		const authenticatedFetch = vi.fn(async (_url, options) => {
 			expect(JSON.parse(options.body)).toEqual(expectedSnapshot());
@@ -247,7 +260,7 @@ describe('HOTP copy counter persistence', () => {
 		expect(harness.showCenterToast).toHaveBeenCalledWith('⚠️', 'HOTP 计数器无效或已达到上限');
 	});
 
-	it('reads a replacement secret after an earlier queued edit before copying', async () => {
+	it('requires a new click after an earlier queued edit and then copies its replacement secret', async () => {
 		const gate = createDeferred();
 		const replacement = hotpSecret({
 			secret: 'JBSWY3DPEHPK3PXP',
@@ -270,8 +283,11 @@ describe('HOTP copy counter persistence', () => {
 
 		const copy = harness.api.copyOTP('hotp-1');
 		expect(harness.navigator.clipboard.writeText).not.toHaveBeenCalled();
+		await expect(copy).resolves.toBe(false);
 		gate.resolve();
-		await expect(copy).resolves.toBe(true);
+		await harness.api.getSaveQueue();
+		expect(harness.navigator.clipboard.writeText).not.toHaveBeenCalled();
+		await expect(harness.api.copyOTP('hotp-1')).resolves.toBe(true);
 
 		expect(harness.navigator.clipboard.writeText).toHaveBeenCalledWith('87654321');
 		expect(JSON.parse(authenticatedFetch.mock.calls[0][1].body)).toEqual(
@@ -329,13 +345,13 @@ describe('HOTP copy counter persistence', () => {
 		expect(harness.api.getSecrets()[0].counter).toBe(43);
 	});
 
-	it('does not invalidate an in-flight GET when the displayed token is not copyable', async () => {
+	it('does not invalidate an in-flight GET when the account generation has no committed token', async () => {
 		const pendingGet = createDeferred();
 		const authenticatedFetch = vi.fn(() => pendingGet.promise);
 		const harness = await createHarness(authenticatedFetch);
 		const load = harness.api.loadSecrets();
 		await flushMicrotasks();
-		harness.elements['otp-hotp-1'].textContent = '------';
+		harness.api.setSecrets([hotpSecret({ digits: 8 })]);
 
 		await expect(harness.api.copyOTP('hotp-1')).resolves.toBe(false);
 		pendingGet.resolve(jsonResponse([hotpSecret({ counter: 50 })]));
@@ -373,7 +389,8 @@ describe('HOTP copy counter persistence', () => {
 		calculations[0].resolve('234567');
 		calculations[1].resolve('345678');
 		await expect(firstCopy).resolves.toBe(true);
-		expect(harness.elements['otp-hotp-1'].textContent).toBe('123456');
+		expect(harness.elements['otp-hotp-1'].textContent).toBe('------');
+		expect(harness.api.getCommittedHOTPToken('hotp-1')).toBeNull();
 
 		await expect(harness.api.copyOTP('hotp-1')).resolves.toBe(false);
 		expect(authenticatedFetch).toHaveBeenCalledOnce();
@@ -391,16 +408,14 @@ describe('HOTP copy counter persistence', () => {
 		expect(harness.api.getSecrets()[0].counter).toBe(44);
 	});
 
-	it('requires a fresh commit on a replacement DOM node even when its numeric text is unchanged', async () => {
-		const authenticatedFetch = vi.fn();
+	it('uses committed core code across replaced or tampered DOM nodes', async () => {
+		const authenticatedFetch = vi.fn(async () => jsonResponse({ data: { secret: hotpSecret({ counter: 43 }) } }));
 		const harness = await createHarness(authenticatedFetch);
-		harness.elements['otp-hotp-1'] = { textContent: '123456' };
-
-		await expect(harness.api.copyOTP('hotp-1')).resolves.toBe(false);
-		expect(authenticatedFetch).not.toHaveBeenCalled();
-		expect(harness.navigator.clipboard.writeText).not.toHaveBeenCalled();
-		await flushMicrotasks();
-		expect(harness.api.getCommittedHOTPToken('hotp-1', harness.api.getSecrets()[0])).toBe('123456');
+		harness.elements['otp-hotp-1'] = { textContent: '999999' };
+		await expect(harness.api.copyOTP('hotp-1')).resolves.toBe(true);
+		expect(harness.navigator.clipboard.writeText).toHaveBeenCalledWith('123456');
+		expect(authenticatedFetch).toHaveBeenCalledOnce();
+		expect(harness.api.getSecrets()[0].counter).toBe(43);
 	});
 
 	it.each([{ counter: 43 }, { hotpCounterNamespace: 'generation-b' }])(
@@ -413,7 +428,7 @@ describe('HOTP copy counter persistence', () => {
 			harness.calculateCurrentOTP.mockReturnValueOnce(calculation.promise);
 			const secret = harness.api.getSecrets()[0];
 			const update = harness.api.updateOTP(secret.id, null, secret);
-			Object.assign(secret, change);
+			harness.api.setSecrets([{ ...secret, ...change }]);
 			calculation.resolve('123456');
 			await update;
 

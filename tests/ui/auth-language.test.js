@@ -1,15 +1,11 @@
 // @vitest-environment happy-dom
 
-import { createContext, runInContext } from 'node:vm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createMainPage } from '../../src/ui/page.js';
-import { getAuthCode } from '../../src/ui/scripts/auth.js';
-import { getCoreCode } from '../../src/ui/scripts/core.js';
-import { getI18nCode } from '../../src/ui/scripts/i18n.js';
-import { getSettingsCode } from '../../src/ui/scripts/settings.js';
-import { getStateCode } from '../../src/ui/scripts/state.js';
+import { createRuntimeFixture } from '../helpers/theme-runtime.js';
 
-const html = await (await createMainPage()).text();
+let document;
+let localStorage;
+let activeHarness;
 const reply = (data, status = 200) => ({ ok: status < 400, status, headers: new Headers(), json: async () => data });
 
 function deferred() {
@@ -22,14 +18,7 @@ function deferred() {
 	return { promise, resolve, reject };
 }
 
-function createHarness({ language, settings = { language: 'en' }, fetchImpl } = {}) {
-	document.body.innerHTML = html;
-	if (language) {
-		localStorage.setItem('language', language);
-	}
-	const listeners = new Map();
-	const pageWindow = new EventTarget();
-	pageWindow.isSecureContext = true;
+async function createHarness({ language, settings = { language: 'en' }, fetchImpl } = {}) {
 	const fetch = vi.fn(async (url, options) => {
 		if (fetchImpl) {
 			return fetchImpl(url, options);
@@ -52,43 +41,36 @@ function createHarness({ language, settings = { language: 'en' }, fetchImpl } = 
 		}
 		throw new Error('Unexpected request: ' + url);
 	});
-	const api = createContext({
-		document: {
-			documentElement: document.documentElement,
-			getElementById: document.getElementById.bind(document),
-			querySelector: document.querySelector.bind(document),
-			querySelectorAll: document.querySelectorAll.bind(document),
-			addEventListener: (type, listener) => listeners.set(type, listener),
-		},
-		window: pageWindow,
-		navigator: { language: 'zh-CN', onLine: true },
-		localStorage,
-		console: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
+	const fixture = await createRuntimeFixture({
 		fetch,
-		AbortController,
-		setTimeout,
-		clearTimeout,
-		setInterval: vi.fn(),
-		clearInterval: vi.fn(),
-		requestAnimationFrame: (callback) => callback(),
-		initializeTrustedClock: vi.fn(),
-		ensureServerTimeSynchronized: vi.fn().mockResolvedValue(undefined),
-		initTheme: vi.fn(),
-		restoreSortPreference: vi.fn(),
-		restoreGroupSortPreference: vi.fn(),
-		restoreViewModePreference: vi.fn(),
-		getOTPAnimationMode: () => 'none',
-		renderFilteredSecrets: vi.fn().mockResolvedValue(undefined),
-		showCenterToast: vi.fn(),
+		setupWindow(pageWindow) {
+			document = pageWindow.document;
+			localStorage = pageWindow.localStorage;
+			localStorage.clear();
+			if (language) {
+				localStorage.setItem('language', language);
+			}
+			Object.defineProperty(pageWindow.navigator, 'language', { configurable: true, value: 'zh-CN' });
+			Object.defineProperty(pageWindow, 'isSecureContext', { configurable: true, value: true });
+			pageWindow.setTimeout = setTimeout;
+			pageWindow.clearTimeout = clearTimeout;
+			pageWindow.setInterval = vi.fn();
+			pageWindow.clearInterval = vi.fn();
+			pageWindow.console = { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		},
+		// Clock network synchronization is unrelated to language reads. The actual
+		// host bootstrap, runtime, auth, account load and settings code still run.
+		extraSource: `initializeTrustedClock = function() {}; ensureServerTimeSynchronized = async function() {};`,
 	});
-	runInContext(getStateCode() + getI18nCode() + getSettingsCode() + getAuthCode() + getCoreCode(), api);
+	activeHarness = fixture;
+	const api = fixture.window;
 	return {
 		api,
-		window: pageWindow,
+		window: fixture.window,
 		fetch,
 		settings,
 		startPage: async () => {
-			listeners.get('DOMContentLoaded')();
+			fixture.initializeThemeApplication();
 			await vi.advanceTimersByTimeAsync(0);
 		},
 		login: async () => {
@@ -101,15 +83,15 @@ function createHarness({ language, settings = { language: 'en' }, fetchImpl } = 
 }
 
 beforeEach(() => vi.useFakeTimers());
-afterEach(() => {
+afterEach(async () => {
+	await activeHarness?.dispose();
+	activeHarness = null;
 	vi.useRealTimers();
-	document.body.replaceChildren();
-	localStorage.clear();
 });
 
 describe('saved language after authentication', () => {
 	it('restores the server language on a fresh browser reload without opening preferences', async () => {
-		const h = createHarness();
+		const h = await createHarness();
 		document.getElementById('settingsModal').remove();
 		expect(h.api.getLanguage()).toBe('zh-CN');
 		await h.startPage();
@@ -122,7 +104,7 @@ describe('saved language after authentication', () => {
 	});
 
 	it('restores the language after a successful login even when loading accounts fails', async () => {
-		const h = createHarness({
+		const h = await createHarness({
 			fetchImpl: (url) => {
 				if (url === '/api/login') {
 					return reply({ success: true });
@@ -140,7 +122,7 @@ describe('saved language after authentication', () => {
 
 	it('shares a pending startup read with the account load after login', async () => {
 		const reading = deferred();
-		const h = createHarness({
+		const h = await createHarness({
 			fetchImpl: (url) => {
 				if (url === '/api/login') {
 					return reply({ success: true });
@@ -159,21 +141,21 @@ describe('saved language after authentication', () => {
 	});
 
 	it('preserves a locally selected setup language when the server has no saved language', async () => {
-		const h = createHarness({ language: 'en', settings: { maxBackups: 100 } });
+		const h = await createHarness({ language: 'en', settings: { maxBackups: 100 } });
 		await h.startPage();
 		expect(h.api.getLanguagePreference()).toBe('en');
 		expect(localStorage.getItem('language')).toBe('en');
 	});
 
 	it('applies an explicitly saved automatic language preference', async () => {
-		const h = createHarness({ language: 'en', settings: { language: 'auto' } });
+		const h = await createHarness({ language: 'en', settings: { language: 'auto' } });
 		await h.startPage();
 		expect(h.api.getLanguagePreference()).toBe('auto');
 		expect(h.api.getLanguage()).toBe('zh-CN');
 	});
 
 	it('does not fetch preferences for an unauthenticated page or a rejected login', async () => {
-		const h = createHarness({ language: 'en', fetchImpl: () => reply({ success: false }, 401) });
+		const h = await createHarness({ language: 'en', fetchImpl: () => reply({ success: false }, 401) });
 		await h.startPage();
 		await h.login();
 		expect(h.languageReads()).toHaveLength(0);
@@ -182,7 +164,7 @@ describe('saved language after authentication', () => {
 
 	it('keeps the local language on a network failure and retries after a later account load', async () => {
 		let available = false;
-		const h = createHarness({
+		const h = await createHarness({
 			language: 'en',
 			fetchImpl: (url) => {
 				if (url === '/api/secrets') {
@@ -208,10 +190,10 @@ describe('startup language read races', () => {
 		'keeps a newer cross-tab language when %s returns an older language',
 		async (load) => {
 			const reading = deferred();
-			const h = createHarness({ language: 'en', fetchImpl: () => reading.promise });
+			const h = await createHarness({ language: 'en', fetchImpl: () => reading.promise });
 			const loading = h.api[load]();
 			localStorage.setItem('language', 'ja');
-			h.window.dispatchEvent(new window.StorageEvent('storage', { key: 'language', oldValue: 'en', newValue: 'ja' }));
+			h.window.dispatchEvent(new h.window.StorageEvent('storage', { key: 'language', oldValue: 'en', newValue: 'ja' }));
 			expect(h.api.getLanguage()).toBe('ja');
 
 			reading.resolve(reply({ language: 'en', maxBackups: 50 }));
@@ -228,10 +210,10 @@ describe('startup language read races', () => {
 
 	it.each(['language', null])('keeps an automatic preference after cross-tab storage removal with key %s', async (key) => {
 		const reading = deferred();
-		const h = createHarness({ language: 'en', fetchImpl: () => reading.promise });
+		const h = await createHarness({ language: 'en', fetchImpl: () => reading.promise });
 		const loading = h.api.syncLanguagePreferenceAfterAuth();
 		localStorage.clear();
-		h.window.dispatchEvent(new window.StorageEvent('storage', { key, oldValue: 'en', newValue: null }));
+		h.window.dispatchEvent(new h.window.StorageEvent('storage', { key, oldValue: 'en', newValue: null }));
 		expect(h.api.getLanguagePreference()).toBe('auto');
 
 		reading.resolve(reply({ language: 'en' }));
@@ -243,7 +225,7 @@ describe('startup language read races', () => {
 
 	it('keeps a language applied directly while the startup request is pending', async () => {
 		const reading = deferred();
-		const h = createHarness({ fetchImpl: () => reading.promise });
+		const h = await createHarness({ fetchImpl: () => reading.promise });
 		const loading = h.api.syncLanguagePreferenceAfterAuth();
 		h.api.setLanguage('zh-TW');
 		reading.resolve(reply({ language: 'en' }));
@@ -254,7 +236,7 @@ describe('startup language read races', () => {
 
 	it('keeps a language selected and saved while the startup request is pending', async () => {
 		const reading = deferred();
-		const h = createHarness({
+		const h = await createHarness({
 			fetchImpl: (url, options) => {
 				if (url === '/api/secrets') {
 					return reply([]);
@@ -276,7 +258,7 @@ describe('startup language read races', () => {
 	it('ignores a startup response whose read began during a pending language save', async () => {
 		const reading = deferred();
 		const saving = deferred();
-		const h = createHarness({
+		const h = await createHarness({
 			fetchImpl: (url, options) => {
 				if (url === '/api/secrets') {
 					return reply([]);
@@ -296,7 +278,7 @@ describe('startup language read races', () => {
 	it('does not overwrite a newer preferences read with the delayed startup response', async () => {
 		const reading = deferred();
 		let reads = 0;
-		const h = createHarness({
+		const h = await createHarness({
 			fetchImpl: (url) => {
 				if (url === '/api/secrets') {
 					return reply([]);
@@ -315,7 +297,7 @@ describe('startup language read races', () => {
 	it('discards an earlier preferences response when startup receives a newer saved language', async () => {
 		const reading = deferred();
 		let reads = 0;
-		const h = createHarness({
+		const h = await createHarness({
 			fetchImpl: (url) => {
 				if (url === '/api/secrets') {
 					return reply([]);
@@ -333,7 +315,7 @@ describe('startup language read races', () => {
 	it('keeps the newly authenticated language when a response from the expired session arrives', async () => {
 		const oldSession = deferred();
 		let reads = 0;
-		const h = createHarness({
+		const h = await createHarness({
 			fetchImpl: (url) => {
 				if (url === '/api/login') {
 					return reply({ success: true });
@@ -356,7 +338,7 @@ describe('startup language read races', () => {
 
 	it.each(['logout', 'handleUnauthorized'])('discards a pending response after %s', async (action) => {
 		const reading = deferred();
-		const h = createHarness({
+		const h = await createHarness({
 			fetchImpl: (url) => {
 				if (url === '/api/secrets') {
 					return reply([]);

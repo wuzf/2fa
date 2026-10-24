@@ -40,7 +40,7 @@ export function createSnapshotIndex(database = indexedDB) {
 }
 
 /** Dependencies are injected so failure ordering and competing tabs can be tested. */
-export function createSnapshotManager({ buildId, origin, caches, fetch, index, clients }) {
+export function createSnapshotManager({ buildId, origin, caches, fetch, index, clients, canClean = async () => true }) {
 	const absolute = (path) => new URL(path, origin).href;
 	const shellKey = absolute('/');
 	const safeKey = absolute('/?safeMode=1');
@@ -85,6 +85,9 @@ export function createSnapshotManager({ buildId, origin, caches, fetch, index, c
 		});
 	}
 	async function clean() {
+		if (!(await canClean())) {
+			return;
+		}
 		const state = await index.read();
 		if (!state.active) {
 			return;
@@ -95,6 +98,9 @@ export function createSnapshotManager({ buildId, origin, caches, fetch, index, c
 			return;
 		}
 		for (const name of await caches.keys()) {
+			if (!(await canClean())) {
+				return;
+			}
 			// A candidate can promote while earlier cache deletions are awaiting I/O.
 			// Re-read protections for every immutable cache name. Once a name is
 			// neither active/previous nor the target, CAS can never promote it later.

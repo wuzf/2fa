@@ -227,11 +227,13 @@ export function getTimeCode() {
         this.generation += 1;
         this.persistOffset();
         refreshTOTPsAfterClockChange();
+        notifyTrustedClockEnvironment('clock-synced');
         return true;
       }
 
       markSyncFailure() {
         this.status = Number.isFinite(this.offsetMs) ? 'cached' : 'local';
+        notifyTrustedClockEnvironment('clock-sync-failed');
       }
 
       hasClockDiscontinuity() {
@@ -255,6 +257,7 @@ export function getTimeCode() {
         }
         this.generation += 1;
         refreshTOTPsAfterClockChange();
+        notifyTrustedClockEnvironment('clock-discontinuity');
         return true;
       }
 
@@ -353,42 +356,19 @@ export function getTimeCode() {
       return trustedClock.sync();
     }
 
+    // Initial cached state is read by runtime construction. Subsequent clock
+    // transitions must also reach subscribers when there are no OTP commits.
+    function notifyTrustedClockEnvironment(reason) {
+      try {
+        if (typeof notifyThemeRuntimeEnvironment === 'function') notifyThemeRuntimeEnvironment(reason);
+      } catch (error) {
+        console.warn('时间状态通知失败:', error);
+      }
+    }
+
     function refreshTOTPsAfterClockChange() {
-      if (typeof clearAllOTPAnimations === 'function') {
-        clearAllOTPAnimations();
-      }
-      if (typeof invalidateOTPWindowSchedulerForClockChange === 'function') {
-        invalidateOTPWindowSchedulerForClockChange();
-      }
-      if (typeof otpCalculator !== 'undefined' && typeof otpCalculator.clearCache === 'function') {
-        otpCalculator.clearCache();
-      }
-      if (typeof secrets === 'undefined' || !Array.isArray(secrets) || typeof updateOTP !== 'function') return;
-
-      if (typeof updateOTPSecretsInBatch === 'function') {
-        updateOTPSecretsInBatch(secrets);
-        secrets.forEach(secret => {
-          if (secret.type && secret.type.toUpperCase() === 'HOTP') return;
-          if (typeof updateCountdown === 'function') updateCountdown(secret.id, secret);
-        });
-        return;
-      }
-
-      const animationBatch = typeof createOTPAnimationBatch === 'function'
-        ? createOTPAnimationBatch()
-        : null;
-      secrets.forEach(secret => {
-        if (secret.type && secret.type.toUpperCase() === 'HOTP') return;
-        try {
-          updateOTP(secret.id, animationBatch, secret);
-        } catch (error) {
-          console.warn('校时后刷新OTP失败:', error);
-        }
-        if (typeof updateCountdown === 'function') updateCountdown(secret.id, secret);
-      });
-      if (animationBatch && typeof sealOTPAnimationBatch === 'function') {
-        sealOTPAnimationBatch(animationBatch);
-      }
+      if (typeof clearAllOTPAnimations === 'function') clearAllOTPAnimations();
+      if (typeof getOtpEngine === 'function') return getOtpEngine().clockChanged();
     }
 
 `;

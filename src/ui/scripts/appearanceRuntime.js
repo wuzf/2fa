@@ -99,7 +99,7 @@ export function createAppearanceController(document, options = {}) {
 		clearServiceButton.addEventListener('click', () => {
 			serviceFilter = '';
 			renderNavigation();
-			options.onFilter?.();
+			options.onFilter?.(null);
 		});
 		search.append(clearServiceButton);
 		move('system-status', ['#offlineQueue', '#hiddenSecrets']);
@@ -132,7 +132,7 @@ export function createAppearanceController(document, options = {}) {
 			}
 			serviceFilter = button.dataset.serviceKey;
 			renderNavigation();
-			options.onFilter?.();
+			options.onFilter?.(serviceFilter || null);
 		});
 		components.set('service-nav', nav);
 		originalContent = Array.from(layoutRoot.childNodes);
@@ -457,7 +457,18 @@ export function createAppearanceController(document, options = {}) {
 		restoreInteraction(saved);
 		return snapshot;
 	}
-	return { apply, filterServices, hasFilter: () => Boolean(serviceFilter), getSnapshot: () => current };
+	function updateView(selection) {
+		serviceFilter = selection.serviceFilter || '';
+		serviceGroups = selection.services.map((group) => ({
+			key: group.groupId,
+			name: group.label,
+			totalCount: group.count,
+			items: group.ids.map((id) => ({ id })),
+		}));
+		currentServices = serviceGroups.flatMap((group) => group.items);
+		renderNavigation();
+	}
+	return { apply, filterServices, updateView, hasFilter: () => Boolean(serviceFilter), getSnapshot: () => current };
 }
 
 /** Browser bindings intentionally leave all account mutation logic in core.js. */
@@ -466,7 +477,7 @@ export function getAppearanceRuntimeCode() {
     const appearanceController = (${serializeBrowserFunction(createAppearanceController)})(document, {
       translate: (key, values) => typeof t === 'function' ? t(key, values) : '',
       groupServices: (items) => typeof groupSecretsByServiceFamily === 'function' ? groupSecretsByServiceFamily(items, items) : [],
-      onFilter: () => { if (typeof filterSecrets === 'function') filterSecrets(document.getElementById('searchInput')?.value || ''); },
+      onFilter: groupId => { if (typeof getAccountViewState === 'function') getAccountViewState().setServiceFilter(groupId); },
       setActionMode: (mode) => { if (typeof setActionPresentation === 'function') setActionPresentation(mode); },
       onApplied: (snapshot) => {
         window.__2FA_APPEARANCE__ = snapshot;
@@ -474,9 +485,26 @@ export function getAppearanceRuntimeCode() {
         window.dispatchEvent(new CustomEvent('appearance-applied', { detail: snapshot }));
       }
     });
-    function applyAppearance(snapshot) { return appearanceController.apply(snapshot); }
+    function applyAppearance(snapshot) {
+      const isApp = value => value?.kind === 'app' || value?.manifest?.kind === 'app';
+      const previous = window.__2FA_APPEARANCE__;
+      if (isApp(previous) || isApp(snapshot)) {
+        if (!isApp(previous) || !isApp(snapshot) || previous.packageId !== snapshot.packageId) {
+          window.__2FA_PENDING_APPEARANCE__ = snapshot;
+          window.dispatchEvent(new CustomEvent('appearance-navigation-required', { detail: snapshot }));
+          return { status: 'reload-required', reason: 'appearance-kind-or-package-changed' };
+        }
+        if (typeof window.updateAppThemeAppearance === 'function') return window.updateAppThemeAppearance(snapshot);
+        // Boot metadata remains available to the app integration; never feed it
+        // into the v1 DOM/CSS adapter while the authenticated host is starting.
+        if (typeof updateAppearanceBranding === 'function') updateAppearanceBranding(snapshot);
+        return { status: 'pending', reason: 'app-host-not-ready' };
+      }
+      return appearanceController.apply(snapshot);
+    }
     function filterAppearanceServices(items, allItems) { return appearanceController.filterServices(items, allItems); }
     function hasAppearanceServiceFilter() { return appearanceController.hasFilter(); }
+    function syncAppearanceView(selection) { appearanceController.updateView(selection); }
     function refreshAppearanceLanguage() {
       const snapshot = appearanceController.getSnapshot();
       if (snapshot) appearanceController.apply(snapshot);

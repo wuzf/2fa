@@ -1,11 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getAuthCode } from '../../src/ui/scripts/auth.js';
-import { getCoreCode } from '../../src/ui/scripts/core.js';
-import { getI18nCode } from '../../src/ui/scripts/i18n.js';
-import { getPWACode } from '../../src/ui/scripts/pwa.js';
-import { getStateCode } from '../../src/ui/scripts/state.js';
+import { createRuntimeFixture } from '../helpers/theme-runtime.js';
 
 const CACHE_KEY = '2fa-secrets-cache';
 const ACCOUNT = {
@@ -30,22 +26,10 @@ async function flush() {
 	}
 }
 
-// Real account reads, 401 handling and reconnect logic from the emitted page
-// scripts; only card rendering, the clock and the worker transport are stubbed.
-function harness(queued = []) {
-	document.body.innerHTML =
-		'<div id="loading"></div><div id="secretsList"></div><div id="emptyState"></div><input id="searchInput">' +
-		'<div id="loginModal" style="display:none"><input id="loginToken"><div id="loginError"></div></div>' +
-		'<section id="offlineQueue" hidden><span id="offlineQueueSummary"></span><button id="offlineQueueLogin"></button>' +
-		'<button id="offlineQueueReload"></button><button id="offlineQueueToggle"></button>' +
-		'<p id="offlineQueueFeedback"></p><ul id="offlineQueueList"></ul></section>';
-	const values = new Map([[CACHE_KEY, JSON.stringify({ data: [ACCOUNT], timestamp: 1 })]]);
-	const storage = {
-		getItem: vi.fn((key) => values.get(key) ?? null),
-		setItem: vi.fn((key, value) => values.set(key, value)),
-		removeItem: vi.fn((key) => values.delete(key)),
-	};
-	const listeners = new Map();
+const fixtures = [];
+// Use the actual assembled account store, OTP engine, official view and PWA/auth
+// handlers. Only network/worker transport and the clock are test boundaries.
+async function harness(queued = []) {
 	const workerMessages = [];
 	class Channel {
 		constructor() {
@@ -63,94 +47,76 @@ function harness(queued = []) {
 		}),
 	};
 	const registration = { active: controller, addEventListener() {}, update: async () => {} };
-	const navigator = {
-		onLine: false,
-		language: 'zh-CN',
-		serviceWorker: { controller, register: async () => registration, addEventListener() {}, ready: Promise.resolve(registration) },
-	};
-	const window = {
-		navigator,
-		isSecureContext: true,
-		addEventListener: (type, callback) => listeners.set(type, callback),
-		matchMedia: () => ({ matches: false }),
-	};
 	const fetch = vi.fn(async () => response([UPDATED]));
-	const render = vi.fn(async (accounts) => {
-		document.getElementById('secretsList').textContent = accounts.map((account) => account.name).join(',');
+	const fixture = await createRuntimeFixture({
+		// Account replay/revalidation assertions count account reads. The assembled
+		// host also performs independent appearance reads when reconnecting.
+		fetch: (url, options) => (url === '/api/secrets' ? fetch(url, options) : Promise.resolve(response({}, 503))),
+		extraSource: `Object.assign(window.__runtimeFixture, {
+			refreshOfflineQueue, handleServiceWorkerMessage,
+			getSecrets: () => accountStore.getRecords(), getBlocked: () => accountStore.getState().blocked,
+			getQueue: () => getOfflineQueueSnapshot()
+		});`,
 	});
-	const toast = vi.fn();
-	// eslint-disable-next-line no-new-func
-	const api = new Function(
-		'document',
-		'window',
-		'navigator',
-		'localStorage',
-		'fetch',
-		'MessageChannel',
-		'ensureServerTimeSynchronized',
-		'render',
-		'showCenterToast',
-		'console',
-		'setInterval',
-		'requestAnimationFrame',
-		`
-		${getI18nCode()}${getStateCode()}${getAuthCode()}${getCoreCode()}${getPWACode()}
-		const originalRenderSecrets = renderSecrets;
-		renderSecrets = () => secrets.length ? render(secrets) : originalRenderSecrets();
-		return { loadSecrets, refreshOfflineQueue, handleServiceWorkerMessage,
-			getSecrets: () => secrets, getBlocked: () => secretReadsBlocked };
-	`,
-	)(
-		document,
-		window,
-		navigator,
-		storage,
-		fetch,
-		Channel,
-		async () => true,
-		render,
-		toast,
-		{ log() {}, warn() {}, error() {} },
-		vi.fn(),
-		(callback) => callback(),
-	);
+	fixtures.push(fixture);
+	const { window } = fixture;
+	const navigator = window.navigator;
+	Object.defineProperty(navigator, 'onLine', { configurable: true, writable: true, value: false });
+	Object.defineProperty(navigator, 'serviceWorker', {
+		configurable: true,
+		value: { controller, register: async () => registration, addEventListener() {}, ready: Promise.resolve(registration) },
+	});
+	window.MessageChannel = Channel;
+	window.setTimeout = globalThis.setTimeout.bind(globalThis);
+	window.clearTimeout = globalThis.clearTimeout.bind(globalThis);
+	window.setInterval = globalThis.setInterval.bind(globalThis);
+	window.clearInterval = globalThis.clearInterval.bind(globalThis);
+	window.localStorage.setItem(CACHE_KEY, JSON.stringify({ data: [ACCOUNT], timestamp: 1 }));
+	fixture.setClock(1700000000000);
+	fixture.getOfficialAccountView();
+	window.dispatchEvent(new window.Event('offline'));
 	return {
-		...api,
+		...fixture,
 		fetch,
-		storage,
+		storage: window.localStorage,
 		navigator,
 		workerMessages,
 		online: () => {
 			navigator.onLine = true;
-			listeners.get('online')();
+			window.dispatchEvent(new window.Event('online'));
 		},
 	};
 }
 
 beforeEach(() => vi.useFakeTimers());
-afterEach(() => {
+afterEach(async () => {
+	for (const fixture of fixtures.splice(0)) {
+		await fixture.dispose();
+	}
 	vi.clearAllTimers();
 	vi.useRealTimers();
 });
 
 describe('offline page reconnect revalidation', () => {
 	it('replaces a page opened offline with the server list when only a stopped change is queued', async () => {
-		const h = harness([{ id: 'stopped', type: 'UPDATE', name: 'Example', timestamp: 1, status: 'failed' }]);
+		const h = await harness([{ id: 'stopped', type: 'UPDATE', name: 'Example', timestamp: 1, status: 'failed' }]);
 		await h.loadSecrets();
 		await h.refreshOfflineQueue();
-		expect(document.getElementById('secretsList').textContent).toBe('Example');
+		expect(h.document.querySelector('.secret-name').textContent).toBe('Example');
+		expect(h.getOtpEngine().readCopyTarget(ACCOUNT.id, 'current').status).toBe('ready');
 		expect(h.fetch).not.toHaveBeenCalled();
 		h.online();
 		await flush();
 		expect(h.fetch).toHaveBeenCalledWith('/api/secrets', expect.anything());
 		expect(h.getSecrets()).toEqual([UPDATED]);
-		expect(document.getElementById('secretsList').textContent).toBe('Updated on the server');
+		expect(h.document.querySelector('.secret-name').textContent).toBe('Updated on the server');
 		expect(JSON.parse(h.storage.getItem(CACHE_KEY)).data).toEqual([UPDATED]);
 	});
 
 	it('clears cached codes like an online 401 when a replay finds the session expired, keeping the queue', async () => {
-		const h = harness([{ id: 'pending', type: 'ADD', name: 'Offline', timestamp: 1, status: 'pending' }]);
+		const h = await harness([{ id: 'pending', type: 'ADD', name: 'Offline', timestamp: 1, status: 'pending' }]);
 		await h.loadSecrets();
+		expect(h.getOtpEngine().readCommitted(ACCOUNT.id)).not.toBeNull();
 		await h.refreshOfflineQueue();
 		h.online();
 		await flush();
@@ -169,15 +135,17 @@ describe('offline page reconnect revalidation', () => {
 		expect(h.fetch).toHaveBeenCalledOnce();
 		expect(h.getBlocked()).toBe(true);
 		expect(h.getSecrets()).toEqual([]);
+		expect(h.getOtpEngine().readCommitted(ACCOUNT.id)).toBeNull();
 		expect(h.storage.getItem(CACHE_KEY)).toBeNull();
-		expect(document.getElementById('secretsList').textContent).toBe('');
+		expect(h.document.getElementById('secretsList').textContent).toBe('');
 		expect(h.workerMessages).not.toContain('OFFLINE_QUEUE_CANCEL');
+		expect(h.getQueue().operations.map((operation) => operation.id)).toEqual(['pending']);
 		await vi.advanceTimersByTimeAsync(1500);
-		expect(document.getElementById('loginModal').style.display).toBe('flex');
+		expect(h.document.getElementById('loginModal').style.display).toBe('flex');
 	});
 
 	it('keeps a still-valid session working after a stale login pause', async () => {
-		const h = harness();
+		const h = await harness();
 		await h.loadSecrets();
 		h.online();
 		await flush();

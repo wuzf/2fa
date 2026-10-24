@@ -82,7 +82,7 @@ export function getHiddenSecretsCode() {
       hiddenSecretDeleting = true;
       renderHiddenSecretsNotice();
       // Same queue as the other account changes, so a delete never overtakes an edit.
-      saveQueue = saveQueue.then(async () => {
+      saveQueue = queueSecretWrite('delete-hidden', id, sessionGeneration, async () => {
         try {
           if (!isSecretSessionCurrent(sessionGeneration)) return;
           const response = await authenticatedFetch('/api/secrets/' + encodeURIComponent(id), { method: 'DELETE' });

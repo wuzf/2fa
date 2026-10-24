@@ -12,15 +12,29 @@ import { getDialogStyles } from './dialogs.js';
 import { getWorkspaceStyles } from './workspace.js';
 import { getAppearanceStyles } from './appearance.js';
 import { getAppearanceEditorStyles } from './appearanceEditor.js';
+import { scopeHostStyles } from './hostScope.js';
+
+let cachedStyles;
 
 /**
  * 获取完整的样式内容
  * @returns {string} 完整的 <style>...</style> 标签
  */
 export function getStyles() {
-	return `
+	// Release builds embed the already-scoped CSS; production requests never parse it.
+	if (typeof globalThis.__2FA_HOST_STYLES__ === 'string') {
+		return globalThis.__2FA_HOST_STYLES__;
+	}
+	if (cachedStyles === undefined) {
+		const css = `${getVariables()}
+${getBaseStyles()}${getComponentStyles()}${getModalStyles()}${getResponsiveStyles()}${getWorkspaceStyles()}${getDialogStyles()}${getAppearanceStyles()}${getAppearanceEditorStyles()}
+#appThemeRuntimeStatus{position:relative;inset:auto;transform:none;display:block;box-sizing:border-box;max-width:960px;width:calc(100% - 32px);margin:16px auto}
+#appThemeRuntimeStatus[hidden]{display:none!important}`;
+		// The style modules are static. Parse once per Worker isolate, never per page request.
+		cachedStyles = `
   <style>
-${getVariables()}
-${getBaseStyles()}${getComponentStyles()}${getModalStyles()}${getResponsiveStyles()}${getWorkspaceStyles()}${getDialogStyles()}${getAppearanceStyles()}${getAppearanceEditorStyles()}  </style>
+${scopeHostStyles(css)}  </style>
 </head>`;
+	}
+	return cachedStyles;
 }
