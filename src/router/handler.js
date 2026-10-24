@@ -7,6 +7,7 @@
 import { handleGenerateOTP, handleGetBackups, handleExportBackup, handleExportSecrets } from '../api/secrets/index.js';
 import { readSettingsSnapshot, runSecretsOperation } from '../storage/secrets-store.js';
 import { handleFaviconProxy } from '../api/favicon.js';
+import { isAppearanceSafeMode } from '../ui/publicAppearance.js';
 import {
 	handleGetWebDAVConfigs,
 	handleSaveWebDAVConfig,
@@ -112,13 +113,14 @@ export async function handleRequest(request, env, ctx) {
 
 		// 🔧 首次设置路由（不需要认证）
 		if (pathname === '/setup') {
+			const safeMode = isAppearanceSafeMode(request);
 			// 检查是否需要首次设置
 			const setupRequired = await checkIfSetupRequired(env);
 			if (!setupRequired) {
 				// 已完成设置，重定向到首页
-				return Response.redirect(new URL('/', request.url).toString(), 302);
+				return Response.redirect(new URL(safeMode ? '/?safeMode=1' : '/', request.url).toString(), 302);
 			}
-			return await createSetupPage(request, getBuildId() ? await getPublicAppearance(env) : null);
+			return await createSetupPage(request, getBuildId() && !safeMode ? await getPublicAppearance(env) : null);
 		}
 
 		// 🔧 首次设置 API（不需要认证）
@@ -130,7 +132,7 @@ export async function handleRequest(request, env, ctx) {
 		const setupRequired = await checkIfSetupRequired(env);
 		if (setupRequired && pathname === '/') {
 			// 需要首次设置，重定向到设置页面
-			return Response.redirect(new URL('/setup', request.url).toString(), 302);
+			return Response.redirect(new URL(isAppearanceSafeMode(request) ? '/setup?safeMode=1' : '/setup', request.url).toString(), 302);
 		}
 
 		// 🔐 检查是否需要身份验证（使用详细验证以支持自动续期）

@@ -277,6 +277,7 @@ v2 设置只包含纯数据，没有 v1 `binding`、layout、content、tokens、
 | `sdk.accounts.copyShareLink(ref)`     | 真实账号 ref；Promise 复制结果                                          |
 | `sdk.host.listActions()`              | 入口元数据：actionId/labelKey/request/requires/enabled/reason           |
 | `sdk.host.open(request, options?)`    | 返回带 closed Promise 的 flow；options 可带 returnFocus DOM 节点        |
+| `sdk.host.setAppearance(tokens)`      | 可选同步宿主视觉接口；只有已就绪 app scope 生效，详见下节               |
 | `sdk.preferences.set(patch)`          | 仅允许 language/theme/defaultViewMode/otpAnimation，Promise 结果        |
 | `sdk.i18n.t(key, params?)`            | 主机文案；自定义主题词条需自建词典                                      |
 | `sdk.lifecycle.requestReload(reason)` | theme-change/update/recovery，Promise 结果；受未保存/事务保护           |
@@ -286,6 +287,51 @@ v2 设置只包含纯数据，没有 v1 `binding`、layout、content、tokens、
 排序合法值：groupSort 为 `name-asc/name-desc`；flatSort 为 `oldest-first/newest-first/name-asc/name-desc/account-asc/account-desc`；groupedItemSort 为 `oldest-first/newest-first/account-asc/account-desc`。同步 view 命令通常返回 committed/unchanged/rejected，committed 可另带 persistence；以返回结果和后续快照为准。
 
 偏好合法值：language 为 `auto` 或主机支持的 15 个语言代码；theme 为 `auto/light/dark`；defaultViewMode 为 `remember/grouped/flat`；otpAnimation 为 `none/flow/flip/spotlight`。resolvedLanguage/resolvedTheme/reducedMotion 是读取状态，不是可写字段。其他设置通过主机设置对话框修改。
+
+## 可选宿主视觉接口
+
+`sdk.host.setAppearance(tokens)` 是 API 1 的可选增量，不增加 manifest 字段。旧主题不调用时，主机保持原有外观；新主题须先检查方法是否存在，旧主机可以继续显示主题账户页与官方默认弹窗。
+
+```js
+if (typeof sdk.host.setAppearance === 'function') {
+	sdk.host.setAppearance({
+		surface: '#fffdf7',
+		text: '#1b1b1f',
+		stroke: '#1b1b1f',
+		accent: '#a8d49b',
+		accentHover: '#94c486',
+		accentText: '#1b1b1f',
+		radius: 0,
+		controlRadius: 0,
+		borderWidth: 2,
+		fontFamily: ['Pixel2FA Text', 'Microsoft YaHei', 'sans-serif'],
+		shadow: { x: 4, y: 4, blur: 0, spread: 0, color: '#1b1b1f' },
+		controlShadow: null,
+	});
+}
+```
+
+返回值同步为 `{status:'completed'}`，或 `{status:'rejected',reason}`；reason 为 `invalid-appearance`、`mount-invalidated` 或 `unavailable`。completed 只表示视觉参数已接受，不是保存业务设置或发布成功。在 mount 阶段参数仅暂存，主机确认 startup ready 后才激活。
+
+合法对象**替换整份**视觉配置，不累积 patch；缺失字段保持官方默认。整个参数 `null` 恢复当前 scope 的默认外观；`shadow:null` 或 `controlShadow:null` 仅关闭相应阴影。非法或未知字段整份拒绝并保留上一份有效配置。
+
+| 字段                                                            | 允许值                                                                                                         |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `surface/subtle/hover/text/muted/line/stroke`                   | `#RGB/#RGBA/#RRGGBB/#RRGGBBAA`                                                                                 |
+| `accent/accentHover/accentText/selected`                        | 同上；主按钮填充、悬停、文字及选中背景                                                                         |
+| `danger/dangerBackground/dangerFill/dangerFillHover/dangerText` | 同上；危险提示与危险按钮分别设置                                                                               |
+| `warning/warningBackground/success/successBackground`           | 同上；提示与状态颜色                                                                                           |
+| `radius/controlRadius/borderWidth`                              | 有限 number，分别为 0–24、0–16、1–3，单位 px；不接受数字字符串                                                 |
+| `shadow/controlShadow`                                          | `null` 或完整 `{x,y,blur,spread,color}`；x/y 为 −8–8，blur 为 0–64，spread 为 0–8，均为有限 number，color 同上 |
+| `fontFamily`                                                    | 1–8 个非空字体族名称字符串，每项最多 80 字符；不接受控制符和 CSS 结构字符                                      |
+
+字体族由主机安全序列化，`sans-serif`、`system-ui` 等通用族保持 CSS 关键字含义。只引用主题已有字体或系统 fallback，主机不会下载新字体。不接受 `var()`、URL、任意 CSS、选择器或控制布局、字号、定位、遮罩、z-index、display、pointer-events 的参数。
+
+作用范围为官方弹窗及其控件、内部菜单和官方 toast，明确排除 `#appThemeRoot` 及其子树。主题仍自行绘制账户页面与账户菜单；方法不改变业务表单 DOM、校验、焦点、关闭、保存和离线行为。
+
+每次挂载有独立 owner。卸载、失败、登出、许可失效、页面离开及官方回退会由主机同步清理，不依赖主题异步 unmount；旧 owner 不能修改或清理新 owner 的样式。safeMode 不激活此接口，视觉参数不写服务器或 localStorage。主题在 resolvedTheme、强调色、字体设置变化时发送新的完整对象即可，应按值去重；主机也会去重且不会因此发布账户快照。
+
+隔离预览的 mock SDK 使用同一校验规则，只在 iframe 内保存和清理这些视觉参数，不通过 RPC 修改父页面弹窗。现有预览 `host.open` 仍为模拟命令，不提供真实业务表单；弹窗的实际外观和操作须在正式宿主的隔离测试实例验证。
 
 ## 复制票据与 HOTP
 
@@ -347,6 +393,38 @@ if (account) {
 ```
 
 ## 隔离预览、离线与验收
+
+### 可选公共静态外观
+
+包可在根目录提供 `public-appearance.json`，并将其作为 `application/json` 普通文件加入既有 `manifest.files` 的 size/SHA256 清单。不要新增 manifest 顶层字段；themeApiVersion 2 / sdkApiVersion 1 保持不变。旧主机只把它当普通文件，新主机在安装、预览和发布时严格验证。没有此文件时维持官方默认，存在但非法时拒绝整个操作，不能以“忽略外观”继续安装。
+
+```json
+{
+	"formatVersion": 1,
+	"light": { "surface": "#fffdf7", "text": "#222222", "fontFamily": ["My Font", "sans-serif"] },
+	"dark": { "surface": "#222222", "text": "#eeeeee", "fontFamily": ["My Font", "sans-serif"] },
+	"fonts": [{ "family": "My Font", "path": "assets/font.woff2", "weight": [400, 700], "unicodeRange": "U+0000-00FF" }],
+	"variants": [
+		{
+			"setting": "handwriting",
+			"values": { "false": { "light": { "fontFamily": ["sans-serif"] }, "dark": { "fontFamily": ["sans-serif"] } } }
+		}
+	]
+}
+```
+
+`light` / `dark` 及每项变体 patch 采用 `sdk.host.setAppearance()` 相同的有限 token 规则，允许部分字段，遗漏字段使用官方 fallback。不会执行 JavaScript、表达式、条件、字符串插值或任意 CSS。未知字段、外部 URL、CSS 值、非法字体声明均拒绝。品牌继续通过既有 branding 保存。
+
+- `variants` 可省略，最多 4 个不重复 setting，每个 values 最多 16 项。只可引用 manifest 中已有 boolean/select；boolean 的 JSON 键是 `"true"` / `"false"`，select 键必须是合法 option.value。可省略无需覆盖的值；按 variants 声明顺序浅覆盖 light/dark token，fontFamily 和 shadow 整体替换。patch 至少含 light/dark 之一，省略的模式保持前值。只使用服务端验证后的 settings。
+- `fonts` 可省略，最多 4 个 family、64 个 face。family 为受限非 generic 名称，path 必须与同包已验证 `font/woff2` 清单精确匹配；字体魔数、长度和 SHA 沿用完整包校验。weight 默认 400，可为 100–900 的整数或有序 `[min,max]`；style 仅 normal/italic，默认 normal；font-display 固定 swap。
+- unicodeRange 可省略；单项不超过 32 KiB / 4096 段，仅接受 `U+码点`、`U+起点-终点`、尾部 `?` wildcard。解析后检查 0–0x10FFFF、排序合并相邻/重叠区间，再生成规范 CSS；不直接拼接输入。主机只输出解析后 light/dark 引用的家族及其分片，使用 packageId 派生内部 family 防止跨包冲突。主题运行态仍使用自己的原 family。
+- 描述原文件最大 128 KiB；描述和字体均计入原包文件数与总大小预算，没有额外上传/公共资源豁免。
+
+服务端从包字节与设置派生 `snapshot.publicAppearance`，内容只有有限 light/dark、当前同包字体 URL/hash/size 及包身份，没有完整 variants/settings、账户或认证数据。此字段由主机拥有，PUT/预览请求不能自行覆盖。导出不携带可伪造投影，恢复/再次导出从已验证包重新生成；发布仍须完成全部文件最终验证与 CAS 原子事务，GC 和离线 inventory 沿用完整包引用。
+
+公开描述用于首页登录 baseline、快速/独立 OTP、首次设置及站内 OAuth 返回页；不运行 app entry 或包 CSS。OAuth 的旧 v1 行为仍只有品牌，不因新能力启用旧 css/customCss。safeMode 或 disableCustomCode 时各入口都跳过外观读取/字体/描述；离线恢复兜底、自包含 HTML 导出与 JSON 错误维持独立默认。独立分享 OTP 不增加秘密缓存或离线能力。
+
+首页公共 baseline 与运行态视觉各自拥有 style/scope：主题成功 running 后运行态优先；登出/失效只撤销运行态而保留已发布 baseline。只有确认 current tuple 的同包设置更新才能更新 DOM baseline，失败候选/迟到 owner 不更新；跨包沿用刷新边界。旧主机发布的快照缺少派生字段时只读不迁移，重新应用后才启用。预览投影字体使用现有 capability URL，不提前公开包文件，也不改变父页面 baseline。
 
 预览使用真实包，但仅注入合成 SDK。首次打开、增加新资源或到期后重新打开需要联网；授权固定五分钟，不随设置更新延长。预览资源使用只覆盖该包及个人素材的匿名授权 URL；脚本不能依赖 `/api/secrets`、真实剪贴板、登录凭据或任意联网请求。动态图片可设置 `img.crossOrigin = 'anonymous'` 后再设置 src，以兼容 opaque origin。预览内的模拟成功不等于浏览器实际权限或服务端写入验收。
 

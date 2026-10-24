@@ -7,20 +7,19 @@ import {
 	LIMITS,
 	getBuiltinThemes,
 	getBuiltinTheme,
-	normalizeThemeImport,
+	normalizeDetectedThemeImport,
 	normalizeAppearance,
 	importAsset,
 	exportTheme,
-	downloadThemeSource,
-	normalizeAppThemeImport,
 	normalizeAppPackage,
-	normalizeAppAppearance,
 	normalizeAsset,
 	assetHashFromUrl,
 	appResourceUrl,
 	exportAppTheme,
 	appResourceHeaders,
 } from '../themes/index.js';
+import { normalizeAppPackageWithAppearance } from '../themes/appPackage.js';
+import { resolvePublicAppearance } from '../themes/publicAppearance.js';
 import { createDefaultAppearance, THEME_OPERATION_HEADER, THEME_PREVIEW_OWNER_HEADER } from '../api/themes.js';
 import { createJsonResponse } from '../utils/response.js';
 import { ThemePreviewCapabilities } from './theme-preview.js';
@@ -40,6 +39,9 @@ const JSON_LIMIT = 1024 * 1024;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const BRAND_ASSETS = ['logo', 'icon192', 'icon512', 'appleTouchIcon', 'background'];
+// Keys exist only inside one commitAppearance call and are always released in
+// its finally block. Neither HTTP input nor a previous request can supply proof.
+const preparedPublications = new WeakMap();
 
 function problem(message, status = 400, code = 'THEME_INVALID', details = {}) {
 	return Object.assign(new Error(message), { status, code, details });
@@ -356,6 +358,7 @@ export class ThemeStore {
 		const url = new URL(request.url);
 		const path = url.pathname;
 		const format = url.searchParams.get('format') === 'app' ? 'app' : 'v1';
+		const importFormat = url.searchParams.has('format') ? format : 'auto';
 		const operation = request.headers.get(THEME_OPERATION_HEADER);
 		if (operation === 'public') {
 			if (!['GET', 'HEAD'].includes(request.method)) {
@@ -407,10 +410,10 @@ export class ThemeStore {
 			return json(await this.apply(await readJSON(request), true));
 		}
 		if (path === '/api/themes/import' && request.method === 'POST') {
-			return json(await this.install(await readImport(request), false, format), 201);
+			return json(await this.install(await readImport(request), false, importFormat), 201);
 		}
 		if (path === '/api/appearance/restore-inspect' && request.method === 'POST') {
-			return json(await this.install(await readImport(request, true), true, format), 201);
+			return json(await this.install(await readImport(request, true), true, importFormat), 201);
 		}
 		if (path === '/api/appearance/assets' && request.method === 'POST') {
 			return json(await this.uploadAsset(await readImport(request, true)), 201);
@@ -695,30 +698,51 @@ export class ThemeStore {
 	 * Never routed as an API: P3 installation cannot activate or publish app code.
 	 * The caller must commit its appearance references in this same transaction.
 	 */
-	async markAppPackagePublic(tx, id) {
+	async markAppPackagePublic(tx, id, publication) {
 		const record = await tx.get(PACKAGE + id);
-		if (record?.status !== 'ready') {
+		if (record?.status !== 'ready' || record.kind !== 'app') {
 			throw problem('主题版本不存在', 409, 'THEME_NOT_FOUND');
 		}
-		const pkg = await this.readDocument(record.document, tx);
-		if (!isApp(pkg) || pkg.packageId !== id) {
-			throw problem('不是完整前端主题', 400, 'THEME_INVALID');
+		const prepared = publication && preparedPublications.get(publication);
+		if (publication) {
+			if (!prepared || prepared.store !== this || prepared.packageId !== id || prepared.document !== record.document) {
+				throw problem('主题包校验失败，请重新安装', 503, 'THEME_HASH_MISMATCH');
+			}
+			// Recheck the exact stored document and every byte at the publication
+			// boundary. Equal content proves the earlier syntax/path validation is
+			// still applicable; ready metadata alone is never sufficient.
+			await this.appFileBytes(prepared.documentFile, tx, 'document');
+			await Promise.all(prepared.files.map((file) => this.appFileBytes(file, tx)));
+		} else {
+			const pkg = await this.readDocument(record.document, tx);
+			if (!isApp(pkg) || pkg.packageId !== id) {
+				throw problem('不是完整前端主题', 400, 'THEME_INVALID');
+			}
+			await this.hydrateAppPackage(pkg, tx);
 		}
-		await this.hydrateAppPackage(pkg, tx);
 		await tx.put(PACKAGE + id, { ...record, public: true });
 	}
 
-	async prepareAppAppearance(body, { baseUrl } = {}) {
-		const installed = await this.getPackage(body.packageId);
-		if (!isApp(installed)) {
+	async prepareAppAppearance(body, { baseUrl, publication } = {}) {
+		if (Object.hasOwn(body, 'publicAppearance') || Object.hasOwn(body, 'publicAppearanceDescriptor')) {
+			throw problem('公共外观只能由已验证主题生成', 400, 'THEME_UNKNOWN_FIELD');
+		}
+		const record = await this.storage.get(PACKAGE + body.packageId);
+		if (record?.status !== 'ready') {
+			throw problem('主题版本不存在或尚未安装完成', 404, 'THEME_NOT_FOUND');
+		}
+		const documentMeta = await this.storage.get(META + record.document);
+		const documentFile = { hash: record.document, size: documentMeta?.size };
+		const installed = JSON.parse(decoder.decode(await this.appFileBytes(documentFile, this.storage, 'document')));
+		if (!isApp(installed) || record.kind !== 'app' || installed.packageId !== body.packageId) {
 			throw problem('不是完整前端主题', 400, 'THEME_INVALID');
 		}
 		assertAppHostCompatible(installed.manifest);
-		const pkg = await this.hydrateAppPackage(installed);
-		const input = appAppearanceInput(body, pkg);
+		const files = await Promise.all(installed.files.map(async (file) => ({ ...file, bytes: await this.appFileBytes(file) })));
+		const input = appAppearanceInput(body, installed);
 		const hashes = new Set();
 		for (const value of [
-			...pkg.manifest.settings.filter((field) => field.type === 'asset').map((field) => input.settings?.[field.key]),
+			...installed.manifest.settings.filter((field) => field.type === 'asset').map((field) => input.settings?.[field.key]),
 			...BRAND_ASSETS.map((field) => input.branding?.[field]),
 		]) {
 			const hash = assetHashFromUrl(value);
@@ -726,9 +750,10 @@ export class ThemeStore {
 				hashes.add(hash);
 			}
 		}
-		const normalized = await normalizeAppAppearance(pkg, input, {
+		const normalized = await normalizeAppPackageWithAppearance({ ...installed, files }, input, {
 			assets: await Promise.all([...hashes].map((hash) => this.resolveAsset(hash))),
 		});
+		const pkg = normalized.pkg;
 		const assets = new Map(normalized.assets.map((asset) => [asset.hash, asset]));
 		const branding = { ...normalized.appearance.branding };
 		for (const key of BRAND_ASSETS) {
@@ -761,10 +786,22 @@ export class ThemeStore {
 				branding[key] = resolveUrl(branding[key]);
 			}
 		}
+		if (publication) {
+			preparedPublications.set(publication, {
+				store: this,
+				packageId: pkg.packageId,
+				document: record.document,
+				documentFile,
+				files: pkg.files.map(({ path, mime, size, hash }) => ({ path, mime, size, hash })),
+			});
+		}
 		return {
 			assets: [...assets.values()],
 			snapshot: {
 				...normalized.appearance,
+				...(baseUrl && normalized.appearance.publicAppearance
+					? { publicAppearance: resolvePublicAppearance(pkg, normalized.appearance.settings, { baseUrl }) }
+					: {}),
 				kind: 'app',
 				manifest: pkg.manifest,
 				package: { id: pkg.manifest.id, name: pkg.manifest.name, version: pkg.manifest.version },
@@ -786,11 +823,8 @@ export class ThemeStore {
 		};
 	}
 
-	async install(input, restore = false, format = 'v1') {
-		const pkg =
-			format === 'app'
-				? await normalizeAppThemeImport(await downloadThemeSource(input, { restore }))
-				: await normalizeThemeImport(input, { restore });
+	async install(input, restore = false, format = 'auto') {
+		const pkg = await normalizeDetectedThemeImport(input, { restore, format });
 		if (pkg.appearance && !restore) {
 			throw problem('请使用外观备份恢复入口导入此文件', 400, 'THEME_RESTORE_REQUIRED');
 		}
@@ -918,88 +952,93 @@ export class ThemeStore {
 			return this.receiptResponse(checked.receipt);
 		}
 		const state = checked.state;
-		let snapshot;
-		if (rollback) {
-			if (!state.previous) {
-				throw problem('没有可回退的外观', 409, 'THEME_NO_PREVIOUS');
-			}
-			snapshot = await this.readDocument(state.previous);
-		} else {
-			const pkg = await this.getPackage(body.packageId);
-			if (isApp(pkg)) {
-				snapshot = (await this.prepareAppAppearance(body)).snapshot;
+		const publication = {};
+		try {
+			let snapshot;
+			if (rollback) {
+				if (!state.previous) {
+					throw problem('没有可回退的外观', 409, 'THEME_NO_PREVIOUS');
+				}
+				snapshot = await this.readDocument(state.previous);
 			} else {
-				// Package assets loaded from storage carry metadata; normalization needs bytes.
-				const fullPkg = { ...pkg, assets: await Promise.all(pkg.assets.map((asset) => this.resolveAsset(asset.hash))) };
-				const normalized = await normalizeAppearance(fullPkg, appearanceInput(body), { resolveAsset: (hash) => this.resolveAsset(hash) });
-				for (const asset of normalized.assets) {
-					await this.saveBlob(asset);
-				}
-				snapshot = {
-					...normalized.appearance,
-					packageId: pkg.packageId,
-					themeId: pkg.manifest.id,
-					manifest: pkg.manifest,
-					css: pkg.css,
-					resources: normalized.assets.map((asset) => assetInfo(asset, true)),
-				};
-			}
-		}
-		if (isApp(snapshot)) {
-			assertAppHostCompatible(snapshot.manifest);
-		}
-		const document = await this.saveDocument(snapshot);
-		const prior = state.active || (await this.saveDocument(createDefaultAppearance())).hash;
-		const response = await this.storage.transaction(async (tx) => {
-			const existing = await tx.get(RECEIPT + body.operationId);
-			if (existing && existing.expiresAt > Date.now()) {
-				if (existing.digest !== checked.digest) {
-					throw problem('相同操作标识不能用于不同内容', 409, 'THEME_OPERATION_REUSED');
-				}
-				return existing;
-			}
-			const current = (await tx.get(STATE_KEY)) || initialState();
-			if (current.revision !== body.expectedRevision) {
-				throw problem('另一设备已更新外观', 409, 'THEME_REVISION_CONFLICT', { revision: current.revision });
-			}
-			if (!getBuiltinTheme(snapshot.packageId)) {
-				const version = await tx.get(PACKAGE + snapshot.packageId);
-				if (version?.status !== 'ready') {
-					throw problem('主题版本已被删除，请重新安装', 409, 'THEME_NOT_FOUND');
+				const pkg = await this.getPackage(body.packageId);
+				if (isApp(pkg)) {
+					snapshot = (await this.prepareAppAppearance(body, { publication })).snapshot;
+				} else {
+					// Package assets loaded from storage carry metadata; normalization needs bytes.
+					const fullPkg = { ...pkg, assets: await Promise.all(pkg.assets.map((asset) => this.resolveAsset(asset.hash))) };
+					const normalized = await normalizeAppearance(fullPkg, appearanceInput(body), { resolveAsset: (hash) => this.resolveAsset(hash) });
+					for (const asset of normalized.assets) {
+						await this.saveBlob(asset);
+					}
+					snapshot = {
+						...normalized.appearance,
+						packageId: pkg.packageId,
+						themeId: pkg.manifest.id,
+						manifest: pkg.manifest,
+						css: pkg.css,
+						resources: normalized.assets.map((asset) => assetInfo(asset, true)),
+					};
 				}
 			}
 			if (isApp(snapshot)) {
-				await this.markAppPackagePublic(tx, snapshot.packageId);
+				assertAppHostCompatible(snapshot.manifest);
 			}
-			for (const resource of snapshot.resources) {
-				const meta = await tx.get(META + resource.hash);
-				if (!meta || meta.status !== 'ready' || !hasRole(meta, 'asset')) {
-					throw problem('素材已过期，请重新上传', 409, 'THEME_ASSET_MISSING', { hash: resource.hash });
+			const document = await this.saveDocument(snapshot);
+			const prior = state.active || (await this.saveDocument(createDefaultAppearance())).hash;
+			const response = await this.storage.transaction(async (tx) => {
+				const existing = await tx.get(RECEIPT + body.operationId);
+				if (existing && existing.expiresAt > Date.now()) {
+					if (existing.digest !== checked.digest) {
+						throw problem('相同操作标识不能用于不同内容', 409, 'THEME_OPERATION_REUSED');
+					}
+					return existing;
+				}
+				const current = (await tx.get(STATE_KEY)) || initialState();
+				if (current.revision !== body.expectedRevision) {
+					throw problem('另一设备已更新外观', 409, 'THEME_REVISION_CONFLICT', { revision: current.revision });
+				}
+				if (!getBuiltinTheme(snapshot.packageId)) {
+					const version = await tx.get(PACKAGE + snapshot.packageId);
+					if (version?.status !== 'ready') {
+						throw problem('主题版本已被删除，请重新安装', 409, 'THEME_NOT_FOUND');
+					}
 				}
 				if (isApp(snapshot)) {
-					await this.appFileBytes(resource, tx, 'asset');
+					await this.markAppPackagePublic(tx, snapshot.packageId, rollback ? undefined : publication);
 				}
-				await tx.put(META + resource.hash, { ...meta, public: true });
-			}
-			const revision = current.revision + 1;
-			const profiles = { ...current.profiles, [profileKey(snapshot)]: document.hash };
-			const legacy = current.profiles[snapshot.themeId];
-			if (legacy && isApp(await this.readDocument(legacy, tx)) === isApp(snapshot)) {
-				delete profiles[snapshot.themeId];
-			}
-			await tx.put(STATE_KEY, {
-				...current,
-				revision,
-				active: document.hash,
-				previous: prior,
-				profiles,
+				for (const resource of snapshot.resources) {
+					const meta = await tx.get(META + resource.hash);
+					if (!meta || meta.status !== 'ready' || !hasRole(meta, 'asset')) {
+						throw problem('素材已过期，请重新上传', 409, 'THEME_ASSET_MISSING', { hash: resource.hash });
+					}
+					if (isApp(snapshot)) {
+						await this.appFileBytes(resource, tx, 'asset');
+					}
+					await tx.put(META + resource.hash, { ...meta, public: true });
+				}
+				const revision = current.revision + 1;
+				const profiles = { ...current.profiles, [profileKey(snapshot)]: document.hash };
+				const legacy = current.profiles[snapshot.themeId];
+				if (legacy && isApp(await this.readDocument(legacy, tx)) === isApp(snapshot)) {
+					delete profiles[snapshot.themeId];
+				}
+				await tx.put(STATE_KEY, {
+					...current,
+					revision,
+					active: document.hash,
+					previous: prior,
+					profiles,
+				});
+				const receipt = { digest: checked.digest, revision, snapshot: document.hash, previous: true, expiresAt: Date.now() + TTL };
+				await tx.put(RECEIPT + body.operationId, receipt);
+				await this.schedule(tx);
+				return receipt;
 			});
-			const receipt = { digest: checked.digest, revision, snapshot: document.hash, previous: true, expiresAt: Date.now() + TTL };
-			await tx.put(RECEIPT + body.operationId, receipt);
-			await this.schedule(tx);
-			return receipt;
-		});
-		return { revision: response.revision, active: { ...snapshot, revision: response.revision }, previous: true };
+			return { revision: response.revision, active: { ...snapshot, revision: response.revision }, previous: true };
+		} finally {
+			preparedPublications.delete(publication);
+		}
 	}
 
 	async deletePackage(id) {

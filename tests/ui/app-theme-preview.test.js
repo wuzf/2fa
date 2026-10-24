@@ -79,7 +79,10 @@ function setup(options = {}) {
 	const action = vi.fn(),
 		status = vi.fn();
 	let logout;
-	const preview = createAppThemePreview({
+	if (options.emitted) {
+		window.eval(getAppThemePreviewCode());
+	}
+	const preview = (options.emitted ? window.createAppThemePreview : createAppThemePreview)({
 		window,
 		container,
 		request,
@@ -495,6 +498,19 @@ describe('opaque app preview client', () => {
 		expect(await update(2, 'https://vault.test/missing-logo.png 2x', 'srcset')).toBe(1);
 		expect(await update(3, '')).toBe(0);
 		expect(reports.some((message) => message.value?.type === 'error')).toBe(false);
+	});
+	it('runs the emitted production factory with its explicitly injected preview appearance validator', async () => {
+		const h = setup({ emitted: true });
+		await h.preview.open(input());
+		expect(h.preview.getState().status).toBe('loading');
+		const frame = h.container.querySelector('iframe');
+		expect(frame).not.toBeNull();
+		expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
+		const source = frame.srcdoc.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1];
+		expect(source).toMatch(/normalizeAppearance:\s*\(+function normalizeHostAppearance/);
+		expect(source).toContain('setAppearance(input)');
+		expect(() => new vm.Script(source)).not.toThrow();
+		expect(h.window.document.querySelector('style[data-app-host-appearance]')).toBeNull();
 	});
 	it('emits a strict opaque document and a browser factory without host SDK or account ports', () => {
 		const cap = capability();

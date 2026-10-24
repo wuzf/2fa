@@ -1,5 +1,6 @@
 import { STANDALONE_LOCALES } from './locales/standalone.js';
 import { normalizeLanguage, LANGUAGE_OPTIONS } from '../shared/languages.js';
+import { getPublicAppearanceHead } from './publicAppearance.js';
 
 export function getStandaloneText(language, key, params = {}) {
 	const value = STANDALONE_LOCALES[normalizeLanguage(language)]?.[key] || STANDALONE_LOCALES.en[key] || key;
@@ -272,7 +273,7 @@ export function getStandaloneBrandTitle(title, appearance) {
 
 /** Standalone surfaces inherit public tokens, without mounting workspace components. */
 function getStandaloneAppearanceStyles(appearance) {
-	if (!appearance) {
+	if (!appearance || appearance.kind === 'app' || appearance.manifest?.kind === 'app') {
 		return '';
 	}
 	const manifest = appearance.manifest || {};
@@ -329,7 +330,10 @@ function getStandaloneAppearanceStyles(appearance) {
 	return css + '\n' + (appearance.customCss || '');
 }
 
-export function getStandaloneHead(title, extraStyles = '', appearance = null, { brandOnly = false } = {}) {
+export function getStandaloneHead(title, extraStyles = '', appearance = null, { brandOnly = false, safeMode = false } = {}) {
+	if (safeMode) {
+		appearance = null;
+	}
 	title = getStandaloneBrandTitle(title, appearance);
 	const safeTitle = String(title).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	return `
@@ -339,5 +343,6 @@ export function getStandaloneHead(title, extraStyles = '', appearance = null, { 
     ${getStandaloneBrandMetadata(appearance)}
     <script>${getStandaloneThemeScript()}</script>
     <style>${(getStandaloneStyles() + extraStyles + (brandOnly ? '' : getStandaloneAppearanceStyles(appearance))).replace(/<\/style/gi, '<\\/style')}</style>
+    ${getPublicAppearanceHead(appearance, { surface: 'standalone', safeMode })}
   `;
 }

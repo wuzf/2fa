@@ -14,6 +14,7 @@ import { getDialogStyles } from '../../src/ui/styles/dialogs.js';
 import { getWorkspaceStyles } from '../../src/ui/styles/workspace.js';
 import { getAppearanceStyles } from '../../src/ui/styles/appearance.js';
 import { getAppearanceEditorStyles } from '../../src/ui/styles/appearanceEditor.js';
+import { getAppThemeStatusStyles } from '../../src/ui/styles/appThemeStatus.js';
 import { createMainPage } from '../../src/ui/page.js';
 import { createRuntimeFixture } from '../helpers/theme-runtime.js';
 
@@ -33,6 +34,7 @@ const rawCss = () =>
 		getDialogStyles(),
 		getAppearanceStyles(),
 		getAppearanceEditorStyles(),
+		getAppThemeStatusStyles(),
 	].join('\n');
 function documentWithStyles(source, width = 390) {
 	const window = new Window();
@@ -200,13 +202,36 @@ describe('application theme host CSS boundary', () => {
 	});
 	it('keeps runtime status hidden until shown and places it in the normal page flow', () => {
 		const window = documentWithStyles(css());
-		window.document.body.innerHTML = '<div id="appThemeRuntimeStatus" class="offline-banner show" hidden>Preparing resources</div>';
+		window.document.body.innerHTML = '<div id="appThemeRuntimeStatus" class="app-theme-status" hidden>Preparing resources</div>';
 		const status = window.document.getElementById('appThemeRuntimeStatus');
 		expect(window.getComputedStyle(status).display).toBe('none');
 		status.hidden = false;
-		expect(window.getComputedStyle(status).display).toBe('block');
+		expect(window.getComputedStyle(status).display).toBe('flex');
 		expect(window.getComputedStyle(status).position).toBe('relative');
 		expect(window.getComputedStyle(status).transform).toBe('none');
+	});
+	it.each([320, 390, 768, 1440])('keeps startup actions content-sized and neutral at %ipx', async (width) => {
+		const window = documentWithStyles(css(), width);
+		const document = window.document;
+		document.body.innerHTML =
+			'<div id="appThemeRuntimeStatus" class="app-theme-status"><span class="app-theme-status-message">Preparing theme</span><div class="app-theme-status-actions"><button class="btn btn-secondary">Use default interface</button></div></div>';
+		const status = document.getElementById('appThemeRuntimeStatus');
+		const action = status.querySelector('button');
+		for (const mode of ['light', 'dark']) {
+			document.documentElement.dataset.theme = mode;
+			const expected = document.createElement('div');
+			expected.style.background = 'var(--bg-secondary)';
+			expected.style.color = 'var(--text-secondary)';
+			document.body.append(expected);
+			const style = window.getComputedStyle(status);
+			expect(style.backgroundColor).toBe(window.getComputedStyle(expected).backgroundColor);
+			expect(style.color).toBe(window.getComputedStyle(expected).color);
+			expect(style.flexWrap).toBe('wrap');
+			expect(style.position).toBe('relative');
+			expect(window.getComputedStyle(action).width).toBe('auto');
+			expect(window.getComputedStyle(action).minHeight).toBe('44px');
+			expected.remove();
+		}
 	});
 	it('returns the build-time style string without invoking the fallback compiler', async () => {
 		vi.resetModules();

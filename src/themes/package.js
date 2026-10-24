@@ -223,8 +223,7 @@ export async function downloadThemeSource(input, options = {}, budget = new Impo
 }
 
 /** All inputs become one immutable, data-only normalized package. No network or executable templates remain. */
-export async function normalizeThemeImport(input, options = {}) {
-	const budget = new ImportBudget(options);
+export async function normalizeThemeImport(input, options = {}, budget = new ImportBudget(options)) {
 	const { bytes, name, sourceUrl } = await downloadThemeSource(input, options, budget);
 	const files = new Map();
 	let manifestInput;

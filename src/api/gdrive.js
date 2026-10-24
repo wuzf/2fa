@@ -1,4 +1,5 @@
 import { getPublicAppearance } from './themes.js';
+import { isAppearanceSafeMode } from '../ui/publicAppearance.js';
 import { getRequestLanguage } from '../utils/i18n.js';
 /**
  * Google Drive configuration and OAuth API endpoints.
@@ -251,7 +252,8 @@ export async function handleStartGoogleDriveOAuth(request, env) {
 }
 
 export async function handleGoogleDriveOAuthCallback(request, env) {
-	const renderResult = async (payload) => createOAuthPopupResponse(request, payload, await getPublicAppearance(env));
+	const renderResult = async (payload) =>
+		createOAuthPopupResponse(request, payload, isAppearanceSafeMode(request) ? null : await getPublicAppearance(env));
 	const logger = getLogger(env);
 	const url = new URL(request.url);
 	const state = url.searchParams.get('state');

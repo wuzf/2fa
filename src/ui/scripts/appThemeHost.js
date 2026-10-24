@@ -367,6 +367,10 @@ export function createAppThemeHost(ports) {
 			if (startup?.status !== 'ready') {
 				throw new Error(startup?.reason || 'runtime-startup-unconfirmed');
 			}
+			const presentation = token.scope.activateHostAppearance?.();
+			if (presentation?.status === 'rejected') {
+				throw new Error('host-appearance-invalidated');
+			}
 			current = token;
 			candidate = null;
 			token.mountRoot.style.removeProperty('visibility');

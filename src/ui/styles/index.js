@@ -12,7 +12,9 @@ import { getDialogStyles } from './dialogs.js';
 import { getWorkspaceStyles } from './workspace.js';
 import { getAppearanceStyles } from './appearance.js';
 import { getAppearanceEditorStyles } from './appearanceEditor.js';
+import { getAppThemeStatusStyles } from './appThemeStatus.js';
 import { scopeHostStyles } from './hostScope.js';
+import { getHostPartStyles } from './hostParts.js';
 
 let cachedStyles;
 
@@ -27,9 +29,7 @@ export function getStyles() {
 	}
 	if (cachedStyles === undefined) {
 		const css = `${getVariables()}
-${getBaseStyles()}${getComponentStyles()}${getModalStyles()}${getResponsiveStyles()}${getWorkspaceStyles()}${getDialogStyles()}${getAppearanceStyles()}${getAppearanceEditorStyles()}
-#appThemeRuntimeStatus{position:relative;inset:auto;transform:none;display:block;box-sizing:border-box;max-width:960px;width:calc(100% - 32px);margin:16px auto}
-#appThemeRuntimeStatus[hidden]{display:none!important}`;
+${getBaseStyles()}${getComponentStyles()}${getModalStyles()}${getResponsiveStyles()}${getWorkspaceStyles()}${getDialogStyles()}${getAppearanceStyles()}${getAppearanceEditorStyles()}${getAppThemeStatusStyles()}${getHostPartStyles()}`;
 		// The style modules are static. Parse once per Worker isolate, never per page request.
 		cachedStyles = `
   <style>

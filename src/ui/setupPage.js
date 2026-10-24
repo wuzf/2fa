@@ -11,12 +11,16 @@ import { LOCALES } from './locales/index.js';
 import { getRequestLanguage, normalizeLanguage } from '../utils/i18n.js';
 import { serverMessages, getServerTranslations } from '../utils/server-messages.js';
 import { getPageSecurityHeaders } from '../utils/security.js';
+import { getPublicAppearanceHead, isAppearanceSafeMode } from './publicAppearance.js';
 
 /**
  * 创建首次设置页面
  * @returns {Response} HTML响应
  */
 export async function createSetupPage(request, appearance = null) {
+	if (isAppearanceSafeMode(request)) {
+		appearance = null;
+	}
 	const initialLanguage = getRequestLanguage(request, 'en');
 	const setupMessages = serverMessages.filter(([source]) =>
 		/密码|设置|^KV 存储未绑定|^请求|^您的请求次数过多|^服务器内部错误/.test(source),
@@ -76,6 +80,7 @@ export async function createSetupPage(request, appearance = null) {
     ${getSetupStyles()}
     .setup-brand {display:inline-flex;gap:8px;align-items:center;margin-bottom:16px;color:inherit;text-decoration:none;font-weight:600;}
   </style>
+  ${getPublicAppearanceHead(appearance, { surface: 'setup', safeMode: isAppearanceSafeMode(request) })}
 </head>
 <body>
   <main class="setup-container">

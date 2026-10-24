@@ -4,6 +4,7 @@ import { MessageChannel } from 'node:worker_threads';
 import { createAppThemeHost } from '../../src/ui/scripts/appThemeHost.js';
 import { createRuntimeTransport } from '../../src/ui/runtime/runtimeTransport.js';
 import { createRuntimeFixture } from '../helpers/theme-runtime.js';
+import { createHostAppearanceManager, normalizeHostAppearance } from '../../src/ui/runtime/hostAppearance.js';
 
 const build = 'a'.repeat(64),
 	packageId = 'b'.repeat(64),
@@ -120,6 +121,81 @@ function setup(options = {}) {
 }
 
 describe('production app host', () => {
+	it('only activates staged host visuals after startup and removes them when a replacement fails after ATTACH', async () => {
+		const scopes = [];
+		const h = setup({
+			createSdkScope: ({ isCurrent }) => {
+				const visual = manager.createScope({ isCurrent });
+				const scope = {
+					sdk: { host: { setAppearance: (value) => visual.setAppearance(value) } },
+					activateHostAppearance: () => visual.activate(),
+					dispose: () => visual.dispose(),
+				};
+				scopes.push(scope);
+				return scope;
+			},
+		});
+		const manager = createHostAppearanceManager({ document: h.window.document, normalize: normalizeHostAppearance });
+		h.mount.mockImplementation(({ sdk }) => {
+			expect(sdk.host.setAppearance({ surface: '#123456' })).toEqual({ status: 'completed' });
+			return {};
+		});
+		const startup = deferred();
+		h.transport.startup.mockReturnValueOnce(startup.promise);
+		const starting = h.host.start();
+		await vi.waitFor(() => expect(h.transport.startup).toHaveBeenCalledOnce());
+		expect(h.window.document.querySelector('style[data-app-host-appearance]')).toBeNull();
+		startup.resolve({ status: 'ready' });
+		await starting;
+		expect(h.window.document.querySelector('style[data-app-host-appearance]')).not.toBeNull();
+		const originalStyle = h.window.document.querySelector('style[data-app-host-appearance]');
+		h.transport.prepare.mockResolvedValueOnce({ status: 'blocked', reason: 'not-ready' });
+		expect((await h.host.updateAppearance(appearance(2))).status).toBe('running');
+		expect(h.window.document.querySelector('style[data-app-host-appearance]')).toBe(originalStyle);
+		const failedStartup = deferred();
+		h.transport.startup.mockReturnValueOnce(failedStartup.promise);
+		const changing = h.host.updateAppearance(appearance(2));
+		await vi.waitFor(() => expect(h.transport.startup).toHaveBeenCalledTimes(2));
+		expect(h.window.document.querySelector('style[data-app-host-appearance]')).toBeNull();
+		expect(scopes[0].sdk.host.setAppearance({ surface: '#999' })).toMatchObject({ reason: 'mount-invalidated' });
+		failedStartup.resolve({ status: 'blocked', reason: 'test-startup-failed' });
+		await changing;
+		expect(h.host.getState().status).toBe('blocked-after-load-start');
+		expect(h.window.document.querySelector('style[data-app-host-appearance]')).toBeNull();
+		expect(scopes[1].sdk.host.setAppearance({})).toMatchObject({ reason: 'mount-invalidated' });
+	});
+	it.each(['logout', 'invalidate', 'pagehide'])(
+		'synchronously clears running host visuals on %s before asynchronous theme cleanup',
+		async (action) => {
+			let old;
+			const h = setup({
+				createSdkScope: ({ isCurrent }) => {
+					old = manager.createScope({ isCurrent });
+					return {
+						sdk: { host: { setAppearance: (value) => old.setAppearance(value) } },
+						activateHostAppearance: () => old.activate(),
+						dispose: () => old.dispose(),
+					};
+				},
+			});
+			const manager = createHostAppearanceManager({ document: h.window.document, normalize: normalizeHostAppearance });
+			const cleanup = deferred();
+			h.mount.mockImplementation(({ sdk }) => {
+				sdk.host.setAppearance({ surface: '#abcdef' });
+				return { unmount: () => cleanup.promise };
+			});
+			await h.host.start();
+			expect(h.window.document.querySelector('style[data-app-host-appearance]')).not.toBeNull();
+			if (action === 'pagehide') {
+				h.window.dispatchEvent(new h.window.Event('pagehide'));
+			} else {
+				h[action]();
+			}
+			expect(h.window.document.querySelector('style[data-app-host-appearance]')).toBeNull();
+			expect(old.setAppearance(null)).toMatchObject({ reason: 'mount-invalidated' });
+			cleanup.resolve();
+		},
+	);
 	it.each(['no-controller', 'runtime-incomplete', 'shell-configuration-changed'])(
 		'retains official fallback without import when preparation blocks: %s',
 		async (reason) => {

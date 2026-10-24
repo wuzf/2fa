@@ -132,7 +132,9 @@ describe('appearance editor controls', () => {
 	it('deletes repeated component content and persists the actions mode without breaking schema', async () => {
 		const { window, document, saved } = harness();
 		await window.showAppearanceEditor();
-		document.querySelector('[data-panel="layout"]').click();
+		document.querySelector('[data-panel="design"]').click();
+		document.querySelector('.appearance-advanced-settings').open = true;
+		document.querySelector('.appearance-layout-settings').open = true;
 		const actions = [...document.querySelectorAll('.appearance-layout-item')].find(
 			(row) => row.querySelector('strong').textContent === '操作',
 		);
@@ -214,12 +216,236 @@ describe('appearance editor controls', () => {
 	});
 });
 
+describe('appearance publication feedback and response adoption', () => {
+	const json = (value) => new Response(JSON.stringify(value));
+	const applyButton = (h) => h.document.querySelector('[data-appearance-action="apply"]');
+	const status = (h) => h.document.getElementById('appearanceStatus');
+	function edit(h, value = 'local brand') {
+		h.document.querySelector('[data-panel="brand"]').click();
+		const input = h.document.querySelector('#appearancePanel input[type="text"]');
+		input.value = value;
+		input.dispatchEvent(new h.window.Event('input'));
+	}
+	const published = (h, revision = 2) => ({
+		revision,
+		previous: true,
+		active: { ...h.initial, revision, branding: { name: 'published ' + revision } },
+	});
+	const deferred = () => {
+		let resolve, reject;
+		const promise = new Promise((done, fail) => {
+			resolve = done;
+			reject = fail;
+		});
+		return { promise, resolve, reject };
+	};
+
+	it('shows saving synchronously and adopts a complete PUT response without a follow-up GET', async () => {
+		const h = harness();
+		await h.window.showAppearanceEditor();
+		edit(h);
+		const pending = deferred();
+		h.window.authenticatedFetch.mockReset().mockReturnValue(pending.promise);
+		h.window.applyAppearance = vi.fn();
+		applyButton(h).click();
+		expect(status(h).textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
+		expect(status(h).getAttribute('aria-live')).toBe('polite');
+		expect(applyButton(h).textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
+		expect(applyButton(h).disabled).toBe(true);
+		applyButton(h).click();
+		await flush();
+		expect(h.window.authenticatedFetch).toHaveBeenCalledTimes(1);
+		pending.resolve(json(published(h)));
+		await flush();
+		expect(h.window.authenticatedFetch).toHaveBeenCalledTimes(1);
+		expect(h.window.__2FA_APPEARANCE__).toEqual(published(h).active);
+		expect(h.window.applyAppearance).toHaveBeenCalledWith(published(h).active);
+		expect(h.saved()).toBeUndefined();
+		expect(status(h).textContent).toBe(LOCALES['zh-CN'].appearanceApplied);
+		expect(applyButton(h).textContent).toBe(LOCALES['zh-CN'].appearanceApply);
+		expect(applyButton(h).disabled).toBe(false);
+	});
+
+	it.each(['invalid-json', 'missing-active', 'missing-previous', 'mismatched-revision'])(
+		'reads current appearance when the PUT response is %s',
+		async (reason) => {
+			const h = harness();
+			await h.window.showAppearanceEditor();
+			edit(h);
+			const data = published(h);
+			if (reason === 'missing-active') {
+				delete data.active;
+			}
+			if (reason === 'missing-previous') {
+				delete data.previous;
+			}
+			if (reason === 'mismatched-revision') {
+				data.active.revision = 1;
+			}
+			h.window.authenticatedFetch
+				.mockReset()
+				.mockImplementation(async (_url, options = {}) =>
+					options.method === 'PUT' ? (reason === 'invalid-json' ? new Response('{') : json(data)) : json(published(h, 3)),
+				);
+			applyButton(h).click();
+			await flush();
+			expect(h.window.authenticatedFetch.mock.calls.map(([, options]) => options?.method || 'GET')).toEqual(['PUT', 'GET']);
+			expect(h.window.__2FA_APPEARANCE__.revision).toBe(3);
+		},
+	);
+
+	it('retries a lost response with the same operation and reads current state instead of adopting an old receipt', async () => {
+		const h = harness();
+		await h.window.showAppearanceEditor();
+		edit(h);
+		let writes = 0;
+		h.window.authenticatedFetch.mockReset().mockImplementation(async (_url, options = {}) => {
+			if (options.method === 'PUT') {
+				if (++writes === 1) {
+					throw new Error('response lost after commit');
+				}
+				return json({ ...published(h), replayed: true });
+			}
+			return json(published(h, 3));
+		});
+		applyButton(h).click();
+		await flush();
+		const saved = h.saved();
+		expect(saved.draft.branding.name).toBe('local brand');
+		expect(status(h).dataset.error).toBe('true');
+		applyButton(h).click();
+		await flush();
+		const calls = h.window.authenticatedFetch.mock.calls;
+		expect(calls.map(([, options]) => options?.method || 'GET')).toEqual(['PUT', 'PUT', 'GET']);
+		expect(JSON.parse(calls[1][1].body).operationId).toBe(saved.pendingApply.id);
+		expect(h.window.__2FA_APPEARANCE__).toEqual(published(h, 3).active);
+		expect(h.saved()).toBeUndefined();
+	});
+
+	it('keeps the baseline and pending request when a remote revision arrives while PUT is pending', async () => {
+		const h = harness();
+		await h.window.showAppearanceEditor();
+		edit(h);
+		const pending = deferred();
+		h.window.authenticatedFetch.mockReset().mockReturnValue(pending.promise);
+		applyButton(h).click();
+		await flush();
+		const saved = h.saved();
+		h.window.dispatchEvent(new h.window.CustomEvent('appearance-updated-elsewhere', { detail: { revision: 3 } }));
+		pending.resolve(json(published(h)));
+		await flush();
+		expect(h.saved()).toEqual(saved);
+		expect(h.storage.log).not.toContain('delete');
+		expect(h.window.__2FA_APPEARANCE__).toEqual(h.initial);
+		expect(status(h).textContent).toContain(LOCALES['zh-CN'].appearanceConflict);
+	});
+
+	function richDraft() {
+		const theme = getBuiltinTheme('document');
+		const draft = createAppearanceDraft(theme).draft;
+		draft.branding = { name: 'kept draft', logo: 'local:picture' };
+		return {
+			draft,
+			revision: 1,
+			dirty: true,
+			blobs: [['local:picture', { blob: new Blob(['image bytes'], { type: 'image/png' }), name: 'image.png', mime: 'image/png' }]],
+			profiles: [['v1:compact', createAppearanceDraft(getBuiltinTheme('compact')).draft]],
+			migration: [{ key: 'accent', reason: 'changed', value: '#123456' }],
+		};
+	}
+	it.each([false, true])(
+		'restores the entire draft after a revision changes during IDB deletion (restore fails: %s)',
+		async (failRestore) => {
+			const h = harness({ savedDraft: richDraft() });
+			await h.window.showAppearanceEditor();
+			h.window.applyAppearance = vi.fn();
+			h.window.authenticatedFetch
+				.mockReset()
+				.mockImplementation(async (url) =>
+					json(url === '/api/appearance/assets' ? { asset: { hash: 'a'.repeat(64), name: 'image.png' } } : published(h)),
+				);
+			h.storage.holdNextDelete = true;
+			applyButton(h).click();
+			await flush();
+			expect(h.storage.release).toBeTypeOf('function');
+			const saved = h.saved();
+			expect(saved.pendingApply.id).toBeTypeOf('string');
+			expect(saved.blobs).toHaveLength(1);
+			expect(saved.profiles).toHaveLength(1);
+			expect(saved.migration).toHaveLength(1);
+			h.window.dispatchEvent(new h.window.CustomEvent('appearance-updated-elsewhere', { detail: { revision: 3 } }));
+			h.storage.failNextPut = failRestore;
+			h.storage.release();
+			await flush();
+			expect(h.window.applyAppearance).not.toHaveBeenCalled();
+			expect(h.window.__2FA_APPEARANCE__).toEqual(h.initial);
+			expect(status(h).textContent).toContain(LOCALES['zh-CN'][failRestore ? 'appearanceDraftFailed' : 'appearanceConflict']);
+			if (failRestore) {
+				expect(h.saved()).toBeUndefined();
+				h.document.querySelector('[data-appearance-action="keep"]').click();
+				await flush();
+			}
+			expect(h.saved()).toEqual(saved);
+			expect(h.saved().revision).toBe(1);
+			if (!failRestore) {
+				// The remembered remote revision stays 3 even though the draft baseline is 1.
+				const deletions = h.storage.log.filter((mode) => mode === 'delete').length;
+				applyButton(h).click();
+				await flush();
+				expect(h.storage.log.filter((mode) => mode === 'delete')).toHaveLength(deletions);
+				expect(h.saved().pendingApply.id).toBe(saved.pendingApply.id);
+			}
+		},
+	);
+
+	it('preserves the retry identity after IDB deletion aborts and can later complete', async () => {
+		const h = harness();
+		await h.window.showAppearanceEditor();
+		edit(h);
+		h.window.authenticatedFetch.mockReset().mockImplementation(async () => json(published(h)));
+		h.storage.failNextDelete = true;
+		applyButton(h).click();
+		await flush();
+		const saved = h.saved();
+		expect(saved.draft.branding.name).toBe('local brand');
+		expect(h.window.__2FA_APPEARANCE__).toEqual(h.initial);
+		expect(applyButton(h).disabled).toBe(false);
+		applyButton(h).click();
+		await flush();
+		expect(JSON.parse(h.window.authenticatedFetch.mock.calls[1][1].body).operationId).toBe(saved.pendingApply.id);
+		expect(h.saved()).toBeUndefined();
+		expect(h.window.__2FA_APPEARANCE__.revision).toBe(2);
+	});
+
+	it('distinguishes uploading from saving and restores retry controls on failure', async () => {
+		const h = harness({ savedDraft: richDraft() });
+		await h.window.showAppearanceEditor();
+		const upload = deferred(),
+			save = deferred();
+		h.window.authenticatedFetch.mockReset().mockImplementation((url) => (url === '/api/appearance/assets' ? upload.promise : save.promise));
+		applyButton(h).click();
+		expect(status(h).textContent).toBe(LOCALES['zh-CN'].appearanceUploading);
+		expect(applyButton(h).textContent).toBe(LOCALES['zh-CN'].appearanceUploading);
+		upload.resolve(json({ asset: { hash: 'a'.repeat(64), name: 'image.png' } }));
+		await flush();
+		expect(status(h).textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
+		save.reject(new Error('save unavailable'));
+		await flush();
+		expect(status(h).textContent).toContain('save unavailable');
+		expect(applyButton(h).textContent).toBe(LOCALES['zh-CN'].appearanceApply);
+		expect(applyButton(h).disabled).toBe(false);
+		expect(h.saved().blobs).toHaveLength(1);
+	});
+});
+
 describe('appearance editor lifecycle', () => {
 	it.each(['apply', 'rollback', 'reload'])('remembers the latest saved profile after %s through A to B to A', async (action) => {
 		const h = harness({ theme: getBuiltinTheme('fluent') });
 		const themes = [getBuiltinTheme('fluent'), getBuiltinTheme('compact')];
+		themes[1].profile = createAppearanceDraft(themes[1]).draft;
 		let active = h.initial;
-		const response = () => new Response(JSON.stringify({ revision: active.revision, active, capabilities: { write: true } }));
+		const response = () =>
+			new Response(JSON.stringify({ revision: active.revision, active, previous: true, capabilities: { write: true } }));
 		h.window.authenticatedFetch.mockImplementation(async (url, options = {}) => {
 			if (url === '/api/themes') {
 				return new Response(JSON.stringify({ themes }));

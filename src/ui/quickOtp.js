@@ -1,4 +1,5 @@
 import { dialogIcon } from './dialogIcons.js';
+import { isAppearanceSafeMode } from './publicAppearance.js';
 import {
 	getStandaloneHead,
 	getStandaloneBrand,
@@ -12,6 +13,9 @@ import { getQuickOtpStyles } from './styles/quickOtp.js';
 
 /** Public entry form; API clients still receive the plain-text usage response. */
 export function createOtpEntryPage(request, appearance = null) {
+	if (isAppearanceSafeMode(request)) {
+		appearance = null;
+	}
 	const language = getRequestLanguage(request, 'en');
 	const t = (key, params) => getStandaloneText(language, key, params);
 	return new Response(
@@ -76,8 +80,9 @@ export function createQuickOtpPage(otp, options = {}) {
 		validUntil = 0,
 		serverTime,
 		request,
-		appearance = null,
+		appearance: suppliedAppearance = null,
 	} = options;
+	const appearance = isAppearanceSafeMode(request) ? null : suppliedAppearance;
 	const language = getRequestLanguage(request, 'en');
 	const t = (key, params) => getStandaloneText(language, key, params);
 	const isHOTP = String(type).toUpperCase() === 'HOTP';

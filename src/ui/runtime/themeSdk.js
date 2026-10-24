@@ -374,6 +374,12 @@ export function createThemeSdk(ports) {
 					: Promise.resolve(rejection('account-changed')),
 		}),
 		host: Object.freeze({
+			setAppearance(tokens) {
+				if (!alive()) {
+					return rejection('mount-invalidated');
+				}
+				return ports.hostAppearance?.setAppearance(tokens) || rejection('unavailable');
+			},
 			listActions: () => hostFlows?.listActions() || Object.freeze([]),
 			open(request, options) {
 				return (
@@ -409,6 +415,7 @@ export function createThemeSdk(ports) {
 			listeners.clear();
 			notifications.length = 0;
 			hostFlows?.dispose?.();
+			ports.hostAppearance?.dispose();
 		},
 	});
 }

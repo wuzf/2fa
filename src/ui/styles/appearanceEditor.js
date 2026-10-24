@@ -22,6 +22,11 @@ export function getAppearanceEditorStyles() {
     .appearance-theme-card small {grid-column:2;color:var(--dialog-muted,var(--text-secondary));}
     .appearance-theme-swatch {grid-row:1/3;display:flex;align-items:center;justify-content:center;gap:4px;height:48px;border-radius:4px;border:1px solid #8883;}
     .appearance-theme-swatch i {width:12px;height:22px;border-radius:2px;border:1px solid #8883;}
+    #appearanceModal .appearance-disclosure {margin:14px 0;padding:0 12px;border:1px solid var(--dialog-line,var(--border-primary));border-radius:6px;}
+    #appearanceModal .appearance-disclosure > summary {min-height:44px;align-content:center;padding:10px 0;box-sizing:border-box;color:var(--dialog-text,var(--text-primary));font-weight:600;cursor:pointer;}
+    #appearanceModal .appearance-disclosure > summary:focus-visible {outline:2px solid var(--dialog-brand,var(--primary));outline-offset:2px;}
+    #appearanceModal .appearance-disclosure:not([open]) > :not(summary) {display:none;}
+    #appearanceModal .appearance-disclosure[open] > summary {margin-bottom:10px;border-bottom:1px solid var(--dialog-line,var(--border-primary));}
     .appearance-import-actions {display:flex;flex-wrap:wrap;gap:8px;margin:14px 0;}
     .appearance-file-button {position:relative;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;}
     .appearance-file-button input[type=file] {position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;}

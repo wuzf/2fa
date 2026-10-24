@@ -7,6 +7,7 @@ import { SUPPORTED_LANGUAGES, normalizeLanguage } from '../shared/languages.js';
 import { encryptData } from './encryption.js';
 import { createHtmlResponse } from './response.js';
 import { dialogIcon } from '../ui/dialogIcons.js';
+import { isAppearanceSafeMode } from '../ui/publicAppearance.js';
 import {
 	getStandaloneHead,
 	getStandaloneBrand,
@@ -231,6 +232,9 @@ export function extractOAuthProviderError(data, fallbackMessage, translateError)
  * @returns {Response} HTML response
  */
 export function createOAuthPopupResponse(request, payload, themeAppearance = null) {
+	if (isAppearanceSafeMode(request)) {
+		themeAppearance = null;
+	}
 	const { appOrigin, language: requestedLanguage, messageParts, ...messageData } = payload || {};
 	const language = requestedLanguage ? normalizeLanguage(requestedLanguage) || 'en' : getRequestLanguage(request, 'en');
 	const t = (key) => getStandaloneText(language, key);

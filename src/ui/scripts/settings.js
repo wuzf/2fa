@@ -781,41 +781,28 @@ export function getSettingsCode() {
      * 从设置弹窗打开 WebDAV 配置
      */
     function openWebdavFromSettings() {
-      hideSettingsModal();
-      // 延迟打开以避免两个模态框重叠
-      setTimeout(() => {
-        showWebdavModal(() => showSettingsModal());
-      }, 350);
+      return openThemeHostChild('settingsModal','webdavModal',()=>showWebdavModal(),()=>hideWebdavModal());
     }
 
     /**
      * 从设置弹窗打开 S3 配置
      */
     function openS3FromSettings() {
-      hideSettingsModal();
-      setTimeout(() => {
-        showS3Modal(() => showSettingsModal());
-      }, 350);
+      return openThemeHostChild('settingsModal','s3Modal',()=>showS3Modal(),()=>hideS3Modal());
     }
 
     /**
      * 从设置弹窗打开 OneDrive 配置
      */
     function openOneDriveFromSettings() {
-      hideSettingsModal();
-      setTimeout(() => {
-        showOneDriveModal(() => showSettingsModal());
-      }, 350);
+      return openThemeHostChild('settingsModal','oneDriveModal',()=>showOneDriveModal(),()=>hideOneDriveModal());
     }
 
     /**
      * 从设置弹窗打开 Google Drive 配置
      */
     function openGoogleDriveFromSettings() {
-      hideSettingsModal();
-      setTimeout(() => {
-        showGoogleDriveModal(() => showSettingsModal());
-      }, 350);
+      return openThemeHostChild('settingsModal','googleDriveModal',()=>showGoogleDriveModal(),()=>hideGoogleDriveModal());
     }
 
     /**

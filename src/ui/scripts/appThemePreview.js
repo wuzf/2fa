@@ -1,9 +1,11 @@
 import { serializeBrowserFunction } from './browserSource.js';
+import { normalizeHostAppearance } from '../runtime/hostAppearance.js';
 
 /** Synthetic presentation only. It never receives seeds, credentials or host business ports. */
-export function createAppPreviewMockSdk({ config, call, report, now = Date.now }) {
+export function createAppPreviewMockSdk({ config, call, report, now = Date.now, normalizeAppearance = normalizeHostAppearance }) {
 	let active = true,
-		revision = 0;
+		revision = 0,
+		hostAppearance = null;
 	const listeners = new Set(),
 		targets = new WeakSet();
 	let query = '',
@@ -244,6 +246,17 @@ export function createAppPreviewMockSdk({ config, call, report, now = Date.now }
 				copyShareLink: (ref) => command('accounts.link', { id: ref.id }),
 			},
 			host: {
+				setAppearance(input) {
+					if (!active) {
+						return { status: 'rejected', reason: 'mount-invalidated' };
+					}
+					try {
+						hostAppearance = freeze(normalizeAppearance(input));
+					} catch {
+						return { status: 'rejected', reason: 'invalid-appearance' };
+					}
+					return { status: 'completed' };
+				},
 				listActions: () =>
 					kinds.map((kind) => ({
 						actionId: kind,
@@ -282,6 +295,7 @@ export function createAppPreviewMockSdk({ config, call, report, now = Date.now }
 			},
 			lifecycle: { requestReload: (reason) => command('lifecycle.reload', { reason }) },
 		}),
+		getHostAppearance: () => hostAppearance,
 		update(next) {
 			if (!active) {
 				return;
@@ -298,6 +312,7 @@ export function createAppPreviewMockSdk({ config, call, report, now = Date.now }
 		},
 		dispose() {
 			active = false;
+			hostAppearance = null;
 			listeners.clear();
 			report?.({ type: 'disposed' });
 		},
@@ -518,10 +533,13 @@ export function appThemePreviewFrame(config, createMock) {
 	window.parent.postMessage({ type: 'preview-hello', nonce: config.nonce, session: config.session }, config.parentOrigin);
 }
 
-export function createAppThemePreviewDocument(config, bootstrap, mock) {
+export function createAppThemePreviewDocument(config, bootstrap, mock, normalizer = normalizeHostAppearance.toString()) {
 	const value = JSON.stringify(config).replace(/</g, '\\u003c');
 	const policy = `default-src 'none'; script-src 'nonce-${config.scriptNonce}' ${config.baseUrl}; style-src 'unsafe-inline' ${config.baseUrl}; img-src ${config.baseUrl}; font-src ${config.baseUrl}; connect-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-src 'none'`;
-	const source = `(${bootstrap})(${value}, (${mock}));`.replace(/<\/script/gi, '<\\/script');
+	const source = `(${bootstrap})(${value}, options => (${mock})({...options, normalizeAppearance: (${normalizer})}));`.replace(
+		/<\/script/gi,
+		'<\\/script',
+	);
 	return `<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${policy}"></head><body><main id="app"></main><script nonce="${config.scriptNonce}">${source}</script></body></html>`;
 }
 
@@ -972,5 +990,5 @@ export function createAppThemePreview(ports) {
 export function getAppThemePreviewCode() {
 	return `window.createAppThemePreview = function(options) { return (${serializeBrowserFunction(createAppThemePreview)})({ ...options, window, document,
     subscribeSession: options.subscribeSession || (listener => { if (typeof getThemeRuntime !== 'function') return () => {}; const accounts = getThemeRuntime().accounts; let generation = accounts.getSessionGeneration(); return accounts.subscribe(() => { const next = accounts.getState(); if (next.sessionGeneration !== generation || next.blocked) { generation = next.sessionGeneration; listener(); } }); }),
-    createDocument: config => (${serializeBrowserFunction(createAppThemePreviewDocument)})(config, ${JSON.stringify(serializeBrowserFunction(appThemePreviewFrame))}, ${JSON.stringify(serializeBrowserFunction(createAppPreviewMockSdk))}) }); };`;
+    createDocument: config => (${serializeBrowserFunction(createAppThemePreviewDocument)})(config, ${JSON.stringify(serializeBrowserFunction(appThemePreviewFrame))}, ${JSON.stringify(serializeBrowserFunction(createAppPreviewMockSdk))}, ${JSON.stringify(serializeBrowserFunction(normalizeHostAppearance))}) }); };`;
 }

@@ -502,7 +502,7 @@ export function getGoogleMigrationCode() {
             '<button class="btn btn-secondary btn-sm" onclick="selectAllExportSecrets(true)">' + escapeHTML(t('transferSelectAll')) + '</button>' +
             '<button class="btn btn-secondary btn-sm" onclick="selectAllExportSecrets(false)">' + escapeHTML(t('transferDeselectAll')) + '</button>' +
           '</div>' +
-          '<div class="export-secret-list" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-primary); border-radius: 8px; margin-bottom: 15px;">' +
+          '<div class="export-secret-list dialog-transfer-list">' +
             secrets.map(function(s, i) {
               return '<div class="export-secret-item" style="padding: 12px; border-bottom: 1px solid var(--border-primary); display: flex; align-items: center; gap: 10px;">' +
                 '<input type="checkbox" id="export-' + i + '" checked style="width: 18px; height: 18px;">' +
@@ -510,7 +510,7 @@ export function getGoogleMigrationCode() {
                   '<div style="font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHTML(googleExportDisplayName(s)) + '</div>' +
                   '<div style="font-size: var(--dialog-caption-size); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHTML(s.account || '') + '</div>' +
                 '</div>' +
-                '<span style="font-size: var(--dialog-caption-size); padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);">' + escapeHTML(s.type || 'TOTP') + '</span>' +
+                '<span class="dialog-token-chip">' + escapeHTML(s.type || 'TOTP') + '</span>' +
               '</div>';
             }).join('') +
           '</div>' +
@@ -625,8 +625,8 @@ export function getGoogleMigrationCode() {
               '<p style="margin-bottom: 10px; color: var(--text-secondary);">' + escapeHTML(t('transferQRPage', { page: currentPage + 1, pages: totalPages, start: startIndex, end: endIndex, total: totalSecrets })) + '</p>' :
               '<p style="margin-bottom: 10px; color: var(--text-secondary);">' + escapeHTML(t('transferTotalPrefix')) + totalSecrets + escapeHTML(t('transferKeysSuffix')) + '</p>'
             ) +
-            '<div class="qr-code-container" style="display: flex; justify-content: center; align-items: center; min-height: 250px; background: white; border-radius: 12px; padding: 20px; margin-bottom: 15px;">' +
-              '<div style="color: #666;">' + escapeHTML(t('transferGenerating')) + '</div>' +
+            '<div class="qr-code-container dialog-qr-paper">' +
+              '<div class="dialog-qr-loading">' + escapeHTML(t('transferGenerating')) + '</div>' +
             '</div>' +
             '<div style="margin-bottom: 15px; font-size: var(--dialog-caption-size); color: var(--text-tertiary);">' +
               t('transferGoogleScanHint') +
@@ -658,12 +658,12 @@ export function getGoogleMigrationCode() {
         const qrDataURL = await generateQRCodeDataURL(migrationURL, { width: 250, height: 250 });
         if (renderId !== googleQRCodeRenderId || document.getElementById('exportQRCodeModal') !== modal) return;
         const container = modal.querySelector('.qr-code-container');
-        container.innerHTML = '<img src="' + qrDataURL + '" alt="' + escapeHTML(t('transferMigrationQRAlt')) + '" style="width: 250px; height: 250px; border-radius: 8px;">';
+        container.innerHTML = '<img class="dialog-migration-qr" src="' + qrDataURL + '" alt="' + escapeHTML(t('transferMigrationQRAlt')) + '">';
       } catch (error) {
         if (renderId !== googleQRCodeRenderId || document.getElementById('exportQRCodeModal') !== modal) return;
         console.error('生成二维码失败:', error);
         const container = modal.querySelector('.qr-code-container');
-        container.innerHTML = '<div style="color: #e74c3c;">' + escapeHTML(t('transferGenerationFailed') + localizeMigrationMessage(error.message)) + '</div>';
+        container.innerHTML = '<div class="dialog-qr-failed">' + escapeHTML(t('transferGenerationFailed') + localizeMigrationMessage(error.message)) + '</div>';
       }
     }
 
@@ -735,7 +735,7 @@ export function getGoogleMigrationCode() {
         '</div>' +
         '<div class="modal-body">' +
           '<p data-i18n="transferMigrationConfirm" data-i18n-params="' + escapeHTML(JSON.stringify({ count: parsedSecrets.length })) + '" style="margin-bottom: 15px; color: var(--text-secondary);">' + escapeHTML(t('transferMigrationConfirm', { count: parsedSecrets.length })) + '</p>' +
-          '<div class="migration-preview-list" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-primary); border-radius: 8px; margin-bottom: 15px;">' +
+          '<div class="migration-preview-list dialog-transfer-list">' +
             parsedSecrets.map(function(s, i) {
               return '<div class="migration-preview-item" style="padding: 12px; border-bottom: 1px solid var(--border-primary); display: flex; align-items: center; gap: 10px;">' +
                 '<input type="checkbox" id="migrate-' + i + '" checked style="width: 18px; height: 18px;">' +
@@ -743,7 +743,7 @@ export function getGoogleMigrationCode() {
                   '<div' + (googleMigrationEntryNames(s).serviceName ? '' : ' data-i18n="transferImportedKey"') + ' style="font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHTML(googleMigrationSavedServiceName(s)) + '</div>' +
                   '<div style="font-size: var(--dialog-caption-size); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHTML(s.name || '') + '</div>' +
                 '</div>' +
-                '<span style="font-size: var(--dialog-caption-size); padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);">' + escapeHTML(s.type || 'TOTP') + '</span>' +
+                '<span class="dialog-token-chip">' + escapeHTML(s.type || 'TOTP') + '</span>' +
               '</div>';
             }).join('') +
           '</div>' +
@@ -809,7 +809,7 @@ export function getGoogleMigrationCode() {
               escapeHTML(t('transferFailedLabel')) + '<span style="color: var(--dialog-danger); font-weight: bold;">' + failCount + '</span>' + escapeHTML(t('transferCountUnit')) +
             '</div>' +
           '</div>' +
-          '<div style="background: var(--bg-secondary); border-radius: 8px; padding: 15px; margin-bottom: 15px;">' +
+          '<div class="dialog-transfer-summary">' +
             '<div style="font-weight: 600; margin-bottom: 10px; color: var(--dialog-danger);">' + escapeHTML(t('transferFailureDetails')) + '</div>' +
             '<div style="font-size: var(--dialog-caption-size); color: var(--text-secondary); white-space: pre-wrap; line-height: 1.6;">' + escapeHTML(localizedDetails) + '</div>' +
           '</div>' +

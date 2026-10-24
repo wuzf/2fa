@@ -28,35 +28,29 @@ export function getToolsCode() {
     function showQRScanAndDecode() {
       // 预加载 jsQR（解析二维码图片需要）
       if (typeof ensureJsQR === 'function') ensureJsQR().catch(() => {});
-      hideToolsModal();
-      showQRDecodeModal();
+      return openThemeToolChild('qrDecodeModal',()=>showQRDecodeModal(),()=>hideQRDecodeModal());
     }
 
     function showQRGenerateTool() {
       // 预加载 qrcode-generator（生成二维码需要）
       if (typeof ensureQRCodeGen === 'function') ensureQRCodeGen().catch(() => {});
-      hideToolsModal();
-      showQRGenerateModal();
+      return openThemeToolChild('qrGenerateModal',()=>showQRGenerateModal(),()=>hideQRGenerateModal());
     }
 
     function showBase32Tool() {
-      hideToolsModal();
-      showBase32Modal();
+      return openThemeToolChild('base32Modal',()=>showBase32Modal(),()=>hideBase32Modal());
     }
 
     function showTimestampTool() {
-      hideToolsModal();
-      showTimestampModal();
+      return openThemeToolChild('timestampModal',()=>showTimestampModal(),()=>hideTimestampModal());
     }
 
     function showKeyCheckTool() {
-      hideToolsModal();
-      showKeyCheckModal();
+      return openThemeToolChild('keyCheckModal',()=>showKeyCheckModal(),()=>hideKeyCheckModal());
     }
 
     function showKeyGeneratorTool() {
-      hideToolsModal();
-      showKeyGeneratorModal();
+      return openThemeToolChild('keyGeneratorModal',()=>showKeyGeneratorModal(),()=>hideKeyGeneratorModal());
     }
 
     function showWebdavTool() {

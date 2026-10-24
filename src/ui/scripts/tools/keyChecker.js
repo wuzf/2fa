@@ -103,7 +103,7 @@ export function getKeyCheckerToolCode() {
         '</div>';
 
       if (!result.isValid && result.suggestions.length > 0) {
-        html += '<div style="margin-top: 15px; padding: 10px; background: var(--dialog-warning-bg); border-radius: 6px;">' +
+        html += '<div class="dialog-key-warning">' +
           '<div style="font-weight: 600; margin-bottom: 8px; color: var(--dialog-warning);">' + t('toolKeySuggestions') + '</div>' +
           '<div style="font-size: var(--dialog-caption-size); color: var(--dialog-warning);">' +
           result.suggestions.map(suggestion => '• ' + suggestion).join('<br>') +

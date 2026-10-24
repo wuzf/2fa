@@ -1,10 +1,19 @@
 /* global structuredClone */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { zipSync } from 'fflate';
 import { ThemeStore } from '../../src/storage/theme-store.js';
 import { THEME_OPERATION_HEADER, THEME_PREVIEW_OWNER_HEADER } from '../../src/api/themes.js';
-import { normalizeAppThemeImport, exportAppTheme, normalizeAsset } from '../../src/themes/index.js';
+import {
+	normalizeAppThemeImport,
+	exportAppTheme,
+	exportTheme,
+	getBuiltinTheme,
+	normalizeAppearance,
+	normalizeAsset,
+} from '../../src/themes/index.js';
 import { appThemeFixture, appPng, encodeAppText } from '../helpers/app-theme.js';
 import { APP_VERSION } from '../../src/utils/version.js';
+import { publicThemeFixture } from '../helpers/public-appearance.js';
 
 class Storage {
 	data = new Map();
@@ -100,6 +109,90 @@ const previewFile = (h, cap, path = 'entry.js', options = {}) =>
 		...options,
 	});
 
+describe('automatic import HTTP contract', () => {
+	it.each(['raw', 'multipart'])('detects app %s uploads without publishing or executing them', async (transport) => {
+		const h = harness();
+		const source = await appThemeFixture({ 'entry.js': 'throw new Error("do not execute on import"); export const mount=()=>{};' });
+		let body = source.archive;
+		if (transport === 'multipart') {
+			body = new FormData();
+			body.set('file', new File([source.archive], 'my-theme.zip', { type: 'application/zip' }));
+		}
+		const response = await h.request('/api/themes/import', { body });
+		expect(response.status).toBe(201);
+		const { theme } = await response.json();
+		expect(theme).toMatchObject({ kind: 'app', manifest: { themeApiVersion: 2 } });
+		expect((await h.request(privateFile(theme))).status).toBe(200);
+		expect((await h.request(publicFile(theme), { operation: 'public' })).status).toBe(404);
+		expect((await (await h.request('/api/appearance')).json()).revision).toBe(0);
+		expect((await (await h.request('/api/themes')).json()).themes.some((pkg) => pkg.packageId === theme.packageId)).toBe(false);
+		expect((await (await h.request('/api/themes?format=app')).json()).themes.map((pkg) => pkg.packageId)).toEqual([theme.packageId]);
+	});
+
+	it.each(['css', 'json', 'zip'])('continues installing v1 %s uploads without a format selector', async (extension) => {
+		const h = harness();
+		const manifest = { themeApiVersion: 1, id: 'legacy-http', name: 'Legacy', version: '1.0.0', styles: 'theme.css' };
+		const css = 'body{color:red}';
+		const body =
+			extension === 'zip'
+				? zipSync({ '2fa-theme.json': encodeAppText(JSON.stringify(manifest)), 'theme.css': encodeAppText(css) })
+				: extension === 'json'
+					? JSON.stringify({ manifest, css })
+					: css;
+		const response = await h.request('/api/themes/import', {
+			body,
+			headers: { 'X-File-Name': 'theme.' + extension, ...(extension === 'json' ? { 'Content-Type': 'application/json' } : {}) },
+		});
+		expect(response.status).toBe(201);
+		const { theme } = await response.json();
+		expect(theme.manifest.themeApiVersion).toBe(1);
+		expect((await (await h.request('/api/themes')).json()).themes.some((pkg) => pkg.packageId === theme.packageId)).toBe(true);
+		expect((await (await h.request('/api/themes?format=app')).json()).themes).toEqual([]);
+	});
+
+	it.each(['v1', 'app'])('detects %s full appearance backups and preserves the unpublished restore draft', async (format) => {
+		const h = harness();
+		const asset = await normalizeAsset(appPng, 'brand.png');
+		const appearance = { branding: { name: 'Restored personal vault', logo: `/theme-assets/${asset.hash}/${asset.name}` } };
+		let backup;
+		if (format === 'app') {
+			const pkg = await normalizeAppThemeImport({ bytes: (await appThemeFixture()).archive });
+			backup = await exportAppTheme(pkg, { appearance, assets: [asset] });
+		} else {
+			const pkg = getBuiltinTheme('builtin:fluent');
+			const normalized = await normalizeAppearance(pkg, appearance, { resolveAsset: async () => asset });
+			backup = await exportTheme(pkg, { appearance: normalized.appearance, assets: normalized.assets });
+		}
+		const ordinary = await h.request('/api/themes/import', { body: backup });
+		expect(ordinary.status).toBe(400);
+		expect(await ordinary.json()).toMatchObject({ error: 'THEME_RESTORE_REQUIRED' });
+		const restored = await h.request('/api/appearance/restore-inspect', { body: backup });
+		expect(restored.status).toBe(201);
+		const result = await restored.json();
+		expect(result.theme.manifest.themeApiVersion).toBe(format === 'app' ? 2 : 1);
+		expect(result.appearance.branding).toMatchObject(appearance.branding);
+		expect(result.appearance.resources.map((resource) => resource.hash)).toEqual([asset.hash]);
+		expect((await h.request(`/api/appearance/assets/${asset.hash}`)).status).toBe(200);
+		expect((await h.request(appearance.branding.logo, { operation: 'public' })).status).toBe(404);
+		expect((await (await h.request('/api/appearance')).json()).revision).toBe(0);
+	});
+
+	it('rejects damaged app bytes before writing package, blob, or quota records', async () => {
+		const h = harness();
+		const source = await appThemeFixture();
+		const body = zipSync({
+			'2fa-theme.json': encodeAppText(JSON.stringify(source.manifest)),
+			'entry.js': encodeAppText('export const changed=true;'),
+		});
+		const response = await h.request('/api/themes/import', { body });
+		expect(response.status).toBe(400);
+		expect(await response.json()).toMatchObject({ error: 'THEME_APP_HASH' });
+		expect((await h.storage.list({ prefix: 'theme:package:' })).size).toBe(0);
+		expect((await h.storage.list({ prefix: 'theme:blob:' })).size).toBe(0);
+		expect(await h.storage.get('theme:quota')).toBeUndefined();
+	});
+});
+
 describe('app appearance publication', () => {
 	it('enforces declared host compatibility for preview, HTTP and internal publish, and rollback before publication', async () => {
 		const h = harness();
@@ -169,8 +262,8 @@ describe('app appearance publication', () => {
 		const h = harness(),
 			pkg = await h.install(await appThemeFixture());
 		const mark = h.store.markAppPackagePublic.bind(h.store);
-		const injected = vi.spyOn(h.store, 'markAppPackagePublic').mockImplementation(async (tx, id) => {
-			await mark(tx, id);
+		const injected = vi.spyOn(h.store, 'markAppPackagePublic').mockImplementation(async (tx, id, publication) => {
+			await mark(tx, id, publication);
 			throw new Error('publication interrupted');
 		});
 		await expect(h.store.applyInstalledAppearance(apply(pkg.packageId))).rejects.toThrow('publication interrupted');
@@ -184,6 +277,174 @@ describe('app appearance publication', () => {
 		expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
 		expect(await results.find((result) => result.status === 409).json()).toMatchObject({ error: 'THEME_REVISION_CONFLICT' });
 		expect((await (await h.request('/api/appearance')).json()).revision).toBe(1);
+	});
+
+	it.each([
+		['missing-chunk', 'THEME_ASSET_INCOMPLETE'],
+		['changed-chunk', 'THEME_HASH_MISMATCH'],
+		['short-chunk', 'THEME_ASSET_INCOMPLETE'],
+		['missing-role', 'THEME_ASSET_INCOMPLETE'],
+		['not-ready', 'THEME_ASSET_INCOMPLETE'],
+		['wrong-size', 'THEME_ASSET_INCOMPLETE'],
+		['changed-document', 'THEME_HASH_MISMATCH'],
+		['changed-inventory', 'THEME_HASH_MISMATCH'],
+		['changed-document-pointer', 'THEME_HASH_MISMATCH'],
+	])('rejects %s introduced after preparation without publishing any references', async (damage, code) => {
+		const h = harness();
+		// Damage the second chunk so checking only the entry file's first chunk
+		// cannot accidentally satisfy the publication integrity contract.
+		const source = await appThemeFixture({ 'entry.js': 'export const ready=true;/*' + 'x'.repeat(128 * 1024) + '*/' });
+		const pkg = await h.install(source);
+		const file = pkg.files[0];
+		const record = await h.storage.get('theme:package:' + pkg.packageId);
+		const before = await (await h.request('/api/appearance')).json();
+		const body = apply(pkg.packageId);
+		const prepare = h.store.prepareAppAppearance.bind(h.store);
+		vi.spyOn(h.store, 'prepareAppAppearance').mockImplementation(async (input, options) => {
+			const result = await prepare(input, options);
+			const key = 'theme:chunk:' + file.hash + ':1';
+			const bytes = await h.storage.get(key);
+			if (damage === 'missing-chunk') {
+				await h.storage.delete(key);
+			} else if (damage === 'changed-chunk') {
+				bytes[0] ^= 1;
+				await h.storage.put(key, bytes);
+			} else if (damage === 'short-chunk') {
+				await h.storage.put(key, bytes.slice(1));
+			} else if (['missing-role', 'not-ready', 'wrong-size'].includes(damage)) {
+				const metaKey = 'theme:blob:' + file.hash;
+				const meta = await h.storage.get(metaKey);
+				if (damage === 'missing-role') {
+					meta.kind = 'document';
+					meta.kinds = ['document'];
+				} else if (damage === 'not-ready') {
+					meta.status = 'writing';
+				} else {
+					meta.size += 1;
+				}
+				await h.storage.put(metaKey, meta);
+			} else if (damage === 'changed-document-pointer') {
+				const replacement = await h.store.saveDocument({ ...pkg, manifest: { ...pkg.manifest, name: 'Replacement' } });
+				await h.storage.put('theme:package:' + pkg.packageId, { ...record, document: replacement.hash });
+			} else {
+				const documentKey = 'theme:chunk:' + record.document + ':0';
+				const original = new TextDecoder().decode(await h.storage.get(documentKey));
+				// Preserve length and valid JSON: parsing alone would miss this edit.
+				const modified =
+					damage === 'changed-inventory'
+						? original.replaceAll('entry.js', 'other.js')
+						: original.replace('App storage test', 'Bad storage test');
+				expect(modified.length).toBe(original.length);
+				expect(modified).not.toBe(original);
+				await h.storage.put(documentKey, encodeAppText(modified));
+			}
+			return result;
+		});
+		const response = await h.json('/api/appearance', body, 'PUT');
+		expect(response.status).toBe(503);
+		expect(await response.json()).toMatchObject({ error: code });
+		expect(await (await h.request('/api/appearance')).json()).toEqual(before);
+		expect((await h.storage.get('theme:package:' + pkg.packageId)).public).toBe(false);
+		expect(await h.storage.get('theme:receipt:' + body.operationId)).toBeUndefined();
+		expect((await h.request(publicFile(pkg), { operation: 'public' })).status).toBe(404);
+	});
+
+	it('keeps personal asset validation atomic after prepared package publication', async () => {
+		const h = harness(),
+			pkg = await h.install(await appThemeFixture());
+		const asset = await normalizeAsset(appPng, 'personal.png');
+		await h.store.saveBlob(asset);
+		const before = await (await h.request('/api/appearance')).json();
+		const prepare = h.store.prepareAppAppearance.bind(h.store);
+		vi.spyOn(h.store, 'prepareAppAppearance').mockImplementation(async (input, options) => {
+			const result = await prepare(input, options);
+			await h.storage.delete('theme:chunk:' + asset.hash + ':0');
+			return result;
+		});
+		const body = { ...apply(pkg.packageId), branding: { logo: '/theme-assets/' + asset.hash + '/' + asset.name } };
+		const response = await h.json('/api/appearance', body, 'PUT');
+		expect(response.status).toBe(503);
+		expect(await response.json()).toMatchObject({ error: 'THEME_ASSET_INCOMPLETE' });
+		expect(await (await h.request('/api/appearance')).json()).toEqual(before);
+		expect((await h.storage.get('theme:package:' + pkg.packageId)).public).toBe(false);
+		expect((await h.storage.get('theme:blob:' + asset.hash)).public).toBe(false);
+		expect(await h.storage.get('theme:receipt:' + body.operationId)).toBeUndefined();
+	});
+
+	it.each([false, true])('cannot reuse a preparation context after a completed or failed publication (failure=%s)', async (failure) => {
+		const h = harness(),
+			pkg = await h.install(await appThemeFixture());
+		let publication;
+		const prepare = h.store.prepareAppAppearance.bind(h.store);
+		vi.spyOn(h.store, 'prepareAppAppearance').mockImplementation(async (input, options) => {
+			publication = options.publication;
+			const result = await prepare(input, options);
+			if (failure) {
+				throw new Error('preparation interrupted');
+			}
+			return result;
+		});
+		const body = apply(pkg.packageId);
+		const response = await h.json('/api/appearance', body, 'PUT');
+		expect(response.status).toBe(failure ? 500 : 200);
+		await expect(h.storage.transaction((tx) => h.store.markAppPackagePublic(tx, pkg.packageId, publication))).rejects.toMatchObject({
+			code: 'THEME_HASH_MISMATCH',
+		});
+		const current = await (await h.request('/api/appearance')).json();
+		expect(current.revision).toBe(failure ? 0 : 1);
+		if (!failure) {
+			expect(current.active.packageId).toBe(pkg.packageId);
+			expect(await (await h.json('/api/appearance', body, 'PUT')).json()).toMatchObject({
+				revision: 1,
+				replayed: true,
+				active: current.active,
+			});
+		}
+	});
+
+	it('serializes deletion and garbage collection behind preparation and preserves newly published bytes', async () => {
+		const h = harness(),
+			pkg = await h.install(await appThemeFixture());
+		let release, prepared;
+		const held = new Promise((resolve) => {
+			release = resolve;
+		});
+		const started = new Promise((resolve) => {
+			prepared = resolve;
+		});
+		const prepare = h.store.prepareAppAppearance.bind(h.store);
+		vi.spyOn(h.store, 'prepareAppAppearance').mockImplementation(async (input, options) => {
+			const result = await prepare(input, options);
+			await expireBlobs(h.storage);
+			prepared();
+			await held;
+			return result;
+		});
+		const publication = h.json('/api/appearance', apply(pkg.packageId), 'PUT');
+		await started;
+		let deleted = false,
+			collected = false;
+		const deletion = h.request('/api/themes/' + pkg.packageId, { method: 'DELETE' }).then((response) => {
+			deleted = true;
+			return response;
+		});
+		const collection = h.store.alarm().then(() => {
+			collected = true;
+		});
+		try {
+			expect((await (await h.request('/api/appearance')).json()).revision).toBe(0);
+			expect(deleted).toBe(false);
+			expect(collected).toBe(false);
+			expect((await h.request(publicFile(pkg), { operation: 'public' })).status).toBe(404);
+		} finally {
+			release();
+		}
+		expect((await publication).status).toBe(200);
+		expect((await deletion).status).toBe(409);
+		await collection;
+		expect((await (await h.request('/api/appearance')).json()).active).toMatchObject({ revision: 1, packageId: pkg.packageId });
+		expect((await h.storage.get('theme:blob:' + pkg.files[0].hash)).status).toBe('ready');
+		expect(await (await h.request(publicFile(pkg), { operation: 'public' })).text()).toBe('export const mount = () => {};');
 	});
 
 	it('preserves separate same-ID profiles and restores the complete previous app configuration under a new revision', async () => {
@@ -372,7 +633,7 @@ describe('app theme storage and publication boundary', () => {
 	it('separates explicit app installation/listing from v1 while permitting HTTP app publish and rollback', async () => {
 		const h = harness(),
 			source = await appThemeFixture();
-		expect((await h.request('/api/themes/import', { body: source.archive })).status).toBe(400);
+		expect((await h.request('/api/themes/import?format=v1', { body: source.archive })).status).toBe(400);
 		const pkg = await h.install(source);
 		expect(pkg).toMatchObject({ kind: 'app', assets: [] });
 		expect(pkg.files[0]).not.toHaveProperty('bytes');
@@ -580,7 +841,7 @@ describe('app theme storage and publication boundary', () => {
 		},
 	);
 
-	it('shares the 20-version and 50MiB quota with v1 and preserves deduplicated blobs after deletion/GC', async () => {
+	it.each(['', '?format=app'])('shares quota and retains deduplicated blobs with automatic/explicit app imports (%s)', async (query) => {
 		const h = harness();
 		const a = await h.install(await appThemeFixture()),
 			b = await h.install(await appThemeFixture(undefined, { version: '1.0.1' }));
@@ -588,7 +849,7 @@ describe('app theme storage and publication boundary', () => {
 		for (let index = 0; index < 18; index++) {
 			await h.store.install({ name: 'v1.css', bytes: encodeAppText(`body { color: #${index.toString(16).padStart(6, '0')} }`) });
 		}
-		const tooMany = await h.request('/api/themes/import?format=app', {
+		const tooMany = await h.request('/api/themes/import' + query, {
 			body: (await appThemeFixture(undefined, { version: '1.0.2' })).archive,
 		});
 		expect(await tooMany.json()).toMatchObject({ error: 'THEME_VERSION_CAPACITY' });
@@ -602,14 +863,14 @@ describe('app theme storage and publication boundary', () => {
 		await h.store.alarm();
 		expect(await h.storage.get('theme:blob:' + shared)).toBeUndefined();
 		await h.storage.put('theme:quota', { bytes: 50 * 1024 * 1024 });
-		const capacity = await h.request('/api/themes/import?format=app', {
+		const capacity = await h.request('/api/themes/import' + query, {
 			body: (await appThemeFixture({ 'entry.js': 'export const newCode=true;' })).archive,
 		});
 		expect(await capacity.json()).toMatchObject({ error: 'THEME_CAPACITY' });
 		expect((await h.storage.list({ prefix: 'theme:package:' })).size).toBe(18);
 	});
 
-	it('allows committed app resources and appearance reads during a suspended upload', async () => {
+	it.each(['', '?format=app'])('allows published reads and serializes writes during a suspended import (%s)', async (query) => {
 		const h = harness(),
 			source = await appThemeFixture(),
 			pkg = await h.install(source);
@@ -621,7 +882,12 @@ describe('app theme storage and publication boundary', () => {
 				controller.enqueue(source.archive.subarray(0, 10));
 			},
 		});
-		const pending = h.request('/api/themes/import?format=app', { body });
+		const pending = h.request('/api/themes/import' + query, { body });
+		let applied = false;
+		const writing = h.json('/api/appearance', apply('builtin:fluent'), 'PUT').then((response) => {
+			applied = true;
+			return response;
+		});
 		try {
 			await vi.waitFor(async () => expect((await h.storage.get('theme:rate:import')).length).toBe(2));
 			const reads = await Promise.race([
@@ -629,11 +895,13 @@ describe('app theme storage and publication boundary', () => {
 				new Promise((_, reject) => setTimeout(() => reject(new Error('read blocked by upload')), 1000)),
 			]);
 			expect(reads.map((response) => response.status)).toEqual([200, 200, 200]);
+			expect(applied).toBe(false);
 		} finally {
 			producer.enqueue(source.archive.subarray(10));
 			producer.close();
 		}
 		expect((await pending).status).toBe(201);
+		expect((await writing).status).toBe(200);
 	});
 
 	it('protects a materializing app read from deletion and blob GC until its response owns the bytes', async () => {
@@ -677,7 +945,7 @@ describe('app theme storage and publication boundary', () => {
 		expect((await h.request(publicFile(pkg), { operation: 'public' })).status).toBe(404);
 	});
 
-	it('reuses URL/Release download guards and does not publish a downloaded package', async () => {
+	it.each(['', '?format=app'])('reuses URL/Release guards and does not publish a downloaded package (%s)', async (query) => {
 		const h = harness(),
 			source = await appThemeFixture();
 		const fetcher = vi.fn(async (url) =>
@@ -690,7 +958,7 @@ describe('app theme storage and publication boundary', () => {
 				: new Response(source.archive),
 		);
 		vi.stubGlobal('fetch', fetcher);
-		const response = await h.json('/api/themes/import?format=app', { url: 'https://github.com/owner/theme' });
+		const response = await h.json('/api/themes/import' + query, { url: 'https://github.com/owner/theme' });
 		expect(response.status).toBe(201);
 		const pkg = (await response.json()).theme;
 		expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
@@ -699,10 +967,115 @@ describe('app theme storage and publication boundary', () => {
 		]);
 		expect((await h.request(publicFile(pkg), { operation: 'public' })).status).toBe(404);
 		fetcher.mockClear();
-		expect((await h.json('/api/themes/import?format=app', { url: 'https://127.0.0.1/theme.zip' })).status).toBe(400);
+		expect((await h.json('/api/themes/import' + query, { url: 'https://127.0.0.1/theme.zip' })).status).toBe(400);
 		expect(fetcher).not.toHaveBeenCalled();
 		fetcher.mockImplementation(async () => new Response(null, { status: 302, headers: { Location: 'https://127.0.0.1/theme.zip' } }));
-		expect((await h.json('/api/themes/import?format=app', { url: 'https://cdn.example.com/theme.zip' })).status).toBe(400);
+		expect((await h.json('/api/themes/import' + query, { url: 'https://cdn.example.com/theme.zip' })).status).toBe(400);
 		expect(fetcher).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('public static appearance publication', () => {
+	it('derives settings on the server, atomically publishes font inventory and rolls back the resolved snapshot', async () => {
+		const h = harness(),
+			pkg = await h.install(await publicThemeFixture());
+		const fontUrl = publicFile(pkg, 'fonts/test.woff2');
+		expect((await h.request(fontUrl, { operation: 'public' })).status).toBe(404);
+		const body = { ...apply(pkg.packageId), settings: { accent: 'blue' } };
+		const response = await h.json('/api/appearance', body, 'PUT');
+		expect(response.status).toBe(200);
+		const saved = await response.json();
+		expect(saved.active.publicAppearance.light.accent).toBe('#123456');
+		expect(saved.active.publicAppearance.fonts[0]).toMatchObject({
+			url: fontUrl,
+			hash: pkg.files.find((f) => f.path === 'fonts/test.woff2').hash,
+		});
+		expect((await h.request(fontUrl, { operation: 'public' })).status).toBe(200);
+		const forged = await h.json(
+			'/api/appearance',
+			{ ...apply(pkg.packageId, 1), publicAppearance: { light: { accent: '#ff0000' } } },
+			'PUT',
+		);
+		expect(forged.status).toBe(400);
+		expect((await (await h.request('/api/appearance')).json()).revision).toBe(1);
+		const updated = await h.json('/api/appearance', { ...apply(pkg.packageId, 1), settings: { handwriting: false } }, 'PUT');
+		expect((await updated.json()).active.publicAppearance.fonts).toHaveLength(0);
+		const rolled = await h.json('/api/appearance/rollback', { expectedRevision: 2, operationId: crypto.randomUUID() });
+		expect((await rolled.json()).active.publicAppearance).toEqual(saved.active.publicAppearance);
+		await expireBlobs(h.storage);
+		await h.store.alarm();
+		expect((await h.request(fontUrl, { operation: 'public' })).status).toBe(200);
+		const exported = await h.request('/api/appearance/export');
+		expect(exported.status).toBe(200);
+		const restored = await normalizeAppThemeImport({ bytes: new Uint8Array(await exported.arrayBuffer()) });
+		expect(restored.packageId).toBe(pkg.packageId);
+		expect(restored.appearance.publicAppearance).toEqual(saved.active.publicAppearance);
+	});
+
+	it('keeps preview fonts capability-bound and never marks unpublished package files public', async () => {
+		const h = harness(),
+			pkg = await h.install(await publicThemeFixture());
+		const capability = await (await preview(h, { packageId: pkg.packageId, settings: {} })).json();
+		expect(capability.appearance.publicAppearance.fonts[0].url).toBe(capability.baseUrl + 'fonts/test.woff2');
+		expect((await previewFile(h, capability, 'fonts/test.woff2')).status).toBe(200);
+		expect((await h.request(publicFile(pkg, 'fonts/test.woff2'), { operation: 'public' })).status).toBe(404);
+		expect((await (await h.request('/api/appearance')).json()).revision).toBe(0);
+		await revoke(h, capability.capabilityId);
+		expect((await previewFile(h, capability, 'fonts/test.woff2')).status).toBe(410);
+	});
+
+	it.each(['public-appearance.json', 'fonts/test.woff2'])(
+		'rejects changed %s bytes after preparation without partial public state',
+		async (path) => {
+			const h = harness(),
+				pkg = await h.install(await publicThemeFixture());
+			const before = await (await h.request('/api/appearance')).json();
+			const file = pkg.files.find((f) => f.path === path),
+				prepare = h.store.prepareAppAppearance.bind(h.store);
+			vi.spyOn(h.store, 'prepareAppAppearance').mockImplementation(async (input, options) => {
+				const result = await prepare(input, options);
+				const key = 'theme:chunk:' + file.hash + ':0',
+					bytes = await h.storage.get(key);
+				bytes[bytes.length - 1] ^= 1;
+				await h.storage.put(key, bytes);
+				return result;
+			});
+			const body = apply(pkg.packageId),
+				response = await h.json('/api/appearance', body, 'PUT');
+			expect(response.status).toBe(503);
+			expect(await (await h.request('/api/appearance')).json()).toEqual(before);
+			expect(await h.storage.get('theme:receipt:' + body.operationId)).toBeUndefined();
+			expect((await h.request(publicFile(pkg, 'fonts/test.woff2'), { operation: 'public' })).status).toBe(404);
+		},
+	);
+
+	it('preserves publication atomicity, CAS and historical snapshots without implicit migration', async () => {
+		const h = harness(),
+			pkg = await h.install(await publicThemeFixture());
+		const mark = h.store.markAppPackagePublic.bind(h.store);
+		const interrupted = vi.spyOn(h.store, 'markAppPackagePublic').mockImplementation(async (...args) => {
+			await mark(...args);
+			throw new Error('interrupted');
+		});
+		await expect(h.store.applyInstalledAppearance(apply(pkg.packageId))).rejects.toThrow('interrupted');
+		expect((await h.request(publicFile(pkg, 'fonts/test.woff2'), { operation: 'public' })).status).toBe(404);
+		interrupted.mockRestore();
+		const responses = await Promise.all([
+			h.json('/api/appearance', apply(pkg.packageId), 'PUT'),
+			h.json('/api/appearance', apply(pkg.packageId), 'PUT'),
+		]);
+		expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
+		const saved = await (await h.request('/api/appearance')).json();
+		const legacy = { ...saved.active };
+		delete legacy.publicAppearance;
+		const document = await h.store.saveDocument(legacy),
+			state = await h.storage.get('theme:state');
+		await h.storage.put('theme:state', { ...state, active: document.hash });
+		const read = await (await h.request('/api/appearance')).json();
+		expect(read.revision).toBe(1);
+		expect(read.active).not.toHaveProperty('publicAppearance');
+		const reapplied = await (await h.json('/api/appearance', apply(pkg.packageId, 1), 'PUT')).json();
+		expect(reapplied.revision).toBe(2);
+		expect(reapplied.active.publicAppearance.fonts).toHaveLength(1);
 	});
 });

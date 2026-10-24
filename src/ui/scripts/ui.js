@@ -665,9 +665,116 @@ export function getUICode() {
 /** Host-owned flows remain reachable when the account view uses a different DOM. */
 export function getHostFlowsCode() {
 	return `
+    const themeHostDialogOwners = new Map();
+    const themeHostChildren = new Map();
+    const themeHostSuspensions = new WeakMap();
+    function themeModalVisible(modal) {
+      return Boolean(modal && modal.isConnected && !modal.hidden && !modal.inert && modal.style.display !== 'none'
+        && (modal.style.display === 'flex' || modal.classList.contains('show')));
+    }
+    function focusThemeHostControl(target) {
+      if (!target?.isConnected || target.disabled || target.closest?.('[hidden],[inert]')) return;
+      const modal = target.closest?.('.modal');
+      if (modal && (!themeModalVisible(modal) || modal.style.visibility === 'hidden')) return;
+      target.focus?.({preventScroll:true});
+    }
+    // Keep the parent flow alive while its child is open. No delayed callback
+    // can resurrect a dismissed parent or an invalidated application scope.
+    function openThemeHostChild(parentId, childId, open, close, moduleName = 'tools') {
+      const parent = document.getElementById(parentId);
+      if (!themeModalVisible(parent)) return {status:'rejected',reason:'parent-unavailable'};
+      const owner = themeHostDialogOwners.get(parentId);
+      const parentSession = typeof modalSessions !== 'undefined' ? modalSessions.get(parent) : null;
+      const session = typeof secretSessionGeneration === 'number' ? secretSessionGeneration : null;
+      const trigger = parent.contains(document.activeElement) ? document.activeElement : parent.querySelector('.close-btn');
+      const valid = () => themeModalVisible(parent)
+        && (typeof modalSessions === 'undefined' || modalSessions.get(parent) === parentSession)
+        && (session === null || secretSessionGeneration === session)
+        && (!owner || (owner.active && owner.context.isCurrent() && themeHostDialogOwners.get(parentId) === owner));
+      const pending = {};
+      owner?.pendingChildren.add(pending);
+      const invoke = () => {
+        if (!valid()) return {status:'rejected',reason:'mount-invalidated'};
+        if (themeHostChildren.has(childId) || themeModalVisible(document.getElementById(childId))) return {status:'rejected',reason:'dialog-busy'};
+        const previousVisibility = parent.style.visibility;
+        let observer, unsubscribe, ended = false;
+        const child = document.getElementById(childId);
+        const relation = {
+          cancel() { finish(false); },
+          owner
+        };
+        function finish(returning) {
+          if (ended) return;
+          ended = true; observer?.disconnect(); unsubscribe?.();
+          if (themeHostChildren.get(childId) === relation) themeHostChildren.delete(childId);
+          owner?.children.delete(relation);
+          const ownsSuspension = themeHostSuspensions.get(parent) === relation;
+          try {
+            if (ownsSuspension && parent.style.visibility === 'hidden') {
+              if (previousVisibility) parent.style.visibility = previousVisibility; else parent.style.removeProperty('visibility');
+            }
+            if (!returning && themeModalVisible(child)) close();
+            if (ownsSuspension) {
+              // Resolve inherited visibility with transitions still suspended.
+              // Otherwise transition:all can leave the trigger unfocusable.
+              const visibility = getComputedStyle(trigger?.isConnected ? trigger : parent).visibility;
+              if (returning && valid() && visibility !== 'hidden' && visibility !== 'collapse') focusThemeHostControl(trigger);
+            }
+          } finally {
+            // A focus/close handler can synchronously start a newer relation.
+            if (themeHostSuspensions.get(parent) === relation) {
+              themeHostSuspensions.delete(parent);
+              parent.removeAttribute('data-theme-host-suspended');
+            }
+          }
+        }
+        try {
+          open();
+          if (!valid() || !themeModalVisible(child)) { finish(false); return {status:'rejected',reason:'dialog-unavailable'}; }
+          themeHostChildren.set(childId, relation); owner?.children.add(relation);
+          themeHostSuspensions.set(parent, relation);
+          parent.setAttribute('data-theme-host-suspended', '');
+          parent.style.visibility = 'hidden';
+          const inspect = () => {
+            if (!valid()) finish(false);
+            else if (!themeModalVisible(child)) finish(true);
+          };
+          observer = new MutationObserver(records => {
+            if (records.some(record => record.target === child || record.target === parent)) inspect();
+          });
+          observer.observe(document.body,{subtree:true,attributes:true,attributeFilter:['style','class','hidden','inert']});
+          if (typeof accountStore !== 'undefined') unsubscribe = accountStore.subscribe(inspect);
+          return {status:'opening'};
+        } catch (error) { finish(false); throw error; }
+      };
+      const ready = () => { try { return invoke(); } finally { owner?.pendingChildren.delete(pending); } };
+      if (moduleName && typeof loadModule === 'function') return loadModule(moduleName).then(ready, () => {
+        owner?.pendingChildren.delete(pending);return {status:'rejected',reason:'module-unavailable'};
+      });
+      return ready();
+    }
+    function openThemeToolChild(childId, open, close) {
+      if (themeModalVisible(document.getElementById('toolsModal'))) return openThemeHostChild('toolsModal',childId,open,close,null);
+      return open();
+    }
+    function openToolsFromMenu(kind) {
+      const entries = {
+        'qr-decode':['qrDecodeModal',()=>{if(typeof ensureJsQR==='function')ensureJsQR().catch(()=>{});showQRDecodeModal();},()=>hideQRDecodeModal()],
+        'qr-generate':['qrGenerateModal',()=>{if(typeof ensureQRCodeGen==='function')ensureQRCodeGen().catch(()=>{});showQRGenerateModal();},()=>hideQRGenerateModal()],
+        base32:['base32Modal',()=>showBase32Modal(),()=>hideBase32Modal()],
+        timestamp:['timestampModal',()=>showTimestampModal(),()=>hideTimestampModal()],
+        'key-check':['keyCheckModal',()=>showKeyCheckModal(),()=>hideKeyCheckModal()],
+        'key-generate':['keyGeneratorModal',()=>showKeyGeneratorModal(),()=>hideKeyGeneratorModal()]
+      };
+      const entry=entries[kind];
+      return entry ? openThemeHostChild('toolsModal',...entry) : {status:'rejected',reason:'invalid-tool'};
+    }
     function openThemeHostDialog(modalId, open, context, moduleName = null) {
       const invoke = () => {
         if (!context.isCurrent()) return { status: 'session-invalidated' };
+        if (themeHostDialogOwners.get(modalId)?.active) return {status:'rejected',reason:'dialog-busy'};
+        const owner = {active:true,context,children:new Set(),pendingChildren:new Set()};
+        themeHostDialogOwners.set(modalId,owner);
         let observer = null;
         let opened = false;
         let settled = false;
@@ -676,10 +783,22 @@ export function getHostFlowsCode() {
         const originalSecretGeneration = typeof secretDialogGeneration === 'number' ? secretDialogGeneration : null;
         const captureSecretOwnership = () => { if (ownedSecretGeneration === null && modalId === 'secretModal' && typeof secretDialogGeneration === 'number' && secretDialogGeneration !== originalSecretGeneration && typeof secretDialogCommandGuard !== 'undefined' && secretDialogCommandGuard?.isCurrent === context.isCurrent) ownedSecretGeneration = secretDialogGeneration; };
         const invalidated = () => {
+          const navigating = owner.children.size > 0 || owner.pendingChildren.size > 0;
+          owner.active = false;
+          for (const child of [...owner.children]) child.cancel();
           if (ownedSecretGeneration !== null && secretDialogGeneration === ownedSecretGeneration && typeof hideSecretModal === 'function') hideSecretModal();
+          // An ordinary open settings form outlives its observer. Only a
+          // still-owned aggregate transition is withdrawn with its child.
+          if (navigating && ['settingsModal','toolsModal'].includes(modalId) && typeof hideModal === 'function') hideModal(modalId);
           finish({ status: 'rejected', reason: 'mount-invalidated' });
         };
-        const closed = new Promise(resolve => { finish = result => { if (settled) return; settled = true; observer?.disconnect(); context.signal?.removeEventListener('abort', invalidated); resolve(result); }; });
+        const closed = new Promise(resolve => { finish = result => {
+          if (settled) return; settled = true; owner.active=false;
+          owner.pendingChildren.clear();
+          for (const child of [...owner.children]) child.cancel();
+          if(themeHostDialogOwners.get(modalId)===owner)themeHostDialogOwners.delete(modalId);
+          observer?.disconnect(); context.signal?.removeEventListener('abort', invalidated); resolve(result);
+        }; });
         context.signal?.addEventListener('abort', invalidated, { once: true });
         const inspect = () => {
           const modal = document.getElementById(modalId);
@@ -714,11 +833,11 @@ export function getHostFlowsCode() {
       let modal = document.getElementById('themeHostStatusModal');
       if (!modal) {
         modal = document.createElement('div'); modal.id = 'themeHostStatusModal'; modal.className = 'modal'; modal.style.display = 'none';
-        modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.dataset.part = 'dialog';
+        modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.dataset.part = 'dialog'; modal.dataset.dialogKind = 'passive';
         const content = document.createElement('div'); content.className = 'modal-content';
         const heading = document.createElement('h2'); heading.id = 'themeHostStatusTitle'; content.append(heading); modal.setAttribute('aria-labelledby', heading.id);
         const body = document.createElement('div'); body.id = 'themeHostStatusBody'; content.append(body);
-        const close = document.createElement('button'); close.type = 'button'; close.className = 'btn btn-secondary'; close.textContent = t('close'); close.onclick = () => hideModal('themeHostStatusModal'); content.append(close);
+        const close = document.createElement('button'); close.type = 'button'; close.className = 'btn btn-secondary'; close.setAttribute('data-dialog-dismiss',''); close.textContent = t('close'); close.onclick = () => hideModal('themeHostStatusModal'); content.append(close);
         modal.append(content); document.body.append(modal);
       }
       if (modal.style.display !== 'none') return { status: 'rejected', reason: 'dialog-busy' };

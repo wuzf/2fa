@@ -19,14 +19,15 @@ export function harness({
 	online = true,
 	write = true,
 	error,
+	savedDraft,
 	code = getAppearanceEditorCode(),
 } = {}) {
 	const window = new Window({ url: 'https://example.com', settings: { disableJavaScriptEvaluation: true } });
 	windows.push(window);
 	window.document.documentElement.lang = 'zh-CN';
 	const initial = { ...createAppearanceDraft(theme).draft, revision: 1 };
-	let saved;
-	const storage = { holdNextPut: false, release: null, log: [] };
+	let saved = savedDraft;
+	const storage = { holdNextPut: false, holdNextDelete: false, failNextPut: false, failNextDelete: false, release: null, log: [] };
 	const operations = [];
 	let processing = false;
 	function processStorage() {
@@ -37,15 +38,24 @@ export function harness({
 		const operation = operations[0];
 		const finish = () =>
 			globalThis.queueMicrotask(() => {
-				operation.request.result = operation.perform();
+				const failKey = operation.mode === 'put' ? 'failNextPut' : operation.mode === 'delete' ? 'failNextDelete' : null;
+				const failed = failKey && storage[failKey];
+				if (failed) {
+					storage[failKey] = false;
+					operation.transaction.error = new Error('IDB write failed');
+					operation.transaction.onabort?.();
+				} else {
+					operation.request.result = operation.perform();
+					operation.transaction.oncomplete?.();
+				}
 				storage.log.push(operation.mode);
-				operation.transaction.oncomplete?.();
 				operations.shift();
 				processing = false;
 				processStorage();
 			});
-		if (operation.mode === 'put' && storage.holdNextPut) {
-			storage.holdNextPut = false;
+		const holdKey = operation.mode === 'put' ? 'holdNextPut' : operation.mode === 'delete' ? 'holdNextDelete' : null;
+		if (holdKey && storage[holdKey]) {
+			storage[holdKey] = false;
 			storage.release = () => {
 				storage.release = null;
 				finish();

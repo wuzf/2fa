@@ -3,6 +3,12 @@ import { assetHashFromUrl, assetUrl, decodeText, normalizeAsset } from './resour
 import { appRecord, assertAppData, validateAppManifest, validateAppSettings } from './appSchema.js';
 import { assertAppPortableBudget, unpackAppTheme, packAppFiles } from './appArchive.js';
 import { normalizeAppFile, validateAppReferences } from './appResources.js';
+import {
+	PUBLIC_APPEARANCE_PATH,
+	PUBLIC_APPEARANCE_LIMITS,
+	normalizePublicAppearanceDescriptor,
+	resolvePublicAppearance,
+} from './publicAppearance.js';
 
 const encoder = new TextEncoder();
 const BRAND_TEXT_FIELDS = ['name', 'description', 'loginText', 'footer'];
@@ -61,6 +67,9 @@ export async function normalizeAppPackage(input, inputFiles) {
 	invariant(inputFiles instanceof Map && inputFiles.size === manifest.files.length, 'THEME_APP_INVENTORY');
 	const files = [];
 	for (const expected of manifest.files) {
+		if (expected.path === PUBLIC_APPEARANCE_PATH) {
+			invariant(expected.size <= PUBLIC_APPEARANCE_LIMITS.bytes, 'THEME_PUBLIC_APPEARANCE_LIMIT');
+		}
 		invariant(inputFiles.has(expected.path), 'THEME_MISSING_FILE', { path: expected.path });
 		files.push(await normalizeAppFile(expected.path, inputFiles.get(expected.path), expected));
 	}
@@ -72,6 +81,11 @@ export async function normalizeAppPackage(input, inputFiles) {
 	}
 	const packageId = await hashBytes(encoder.encode(stableStringify(manifest)));
 	const pkg = { kind: 'app', manifest, packageId, files, assets: [] };
+	const publicFile = files.find((file) => file.path === PUBLIC_APPEARANCE_PATH);
+	if (publicFile) {
+		invariant(publicFile.size <= PUBLIC_APPEARANCE_LIMITS.bytes, 'THEME_PUBLIC_APPEARANCE_LIMIT');
+		pkg.publicAppearanceDescriptor = normalizePublicAppearanceDescriptor(readJson(publicFile.bytes), { manifest, files });
+	}
 	Object.assign(pkg, assertAppPortableBudget(portableFiles(pkg)));
 	return pkg;
 }
@@ -127,6 +141,10 @@ async function appearanceForPackage(pkg, input, suppliedAssets) {
 		branding[key] = BRAND_TEXT_FIELDS.includes(key) ? text : resolveAsset(text);
 	}
 	const appearance = { packageId: pkg.packageId, themeId: pkg.manifest.id, settings, branding };
+	const publicAppearance = resolvePublicAppearance(pkg, settings);
+	if (publicAppearance) {
+		appearance.publicAppearance = publicAppearance;
+	}
 	const retained = Array.from(used, (hash) => assets.get(hash));
 	const portable = portableFiles(pkg, appearance, retained);
 	return { appearance, assets: retained, resourceHashes: retained.map((asset) => asset.hash), ...assertAppPortableBudget(portable) };
@@ -134,6 +152,11 @@ async function appearanceForPackage(pkg, input, suppliedAssets) {
 
 export async function normalizeAppAppearance(pkg, input = {}, { assets = pkg.appearanceAssets ?? [] } = {}) {
 	return appearanceForPackage(await verifyPackage(pkg), input, assets);
+}
+/** Internal composition: validate the package once, then use only that result for its appearance. */
+export async function normalizeAppPackageWithAppearance(pkg, input = {}, { assets = pkg.appearanceAssets ?? [] } = {}) {
+	const current = await verifyPackage(pkg);
+	return { pkg: current, ...(await appearanceForPackage(current, input, assets)) };
 }
 export async function normalizeAppThemeImport(input) {
 	invariant(input?.bytes instanceof Uint8Array || input?.bytes instanceof ArrayBuffer, 'THEME_INVALID_ZIP');
@@ -170,7 +193,17 @@ export async function normalizeAppThemeImport(input) {
 }
 export async function exportAppTheme(pkg, { appearance = pkg.appearance, assets = pkg.appearanceAssets ?? [] } = {}) {
 	const current = await verifyPackage(pkg);
-	const normalized = appearance ? await appearanceForPackage(current, appearance, assets) : undefined;
+	// The projection is internal derived state, never portable input. Recompute
+	// it from verified package bytes/settings when re-exporting a restored pkg.
+	if (appearance) {
+		assertAppData(appearance);
+		appRecord(appearance, ['packageId', 'themeId', 'settings', 'branding', 'publicAppearance']);
+	}
+	const portableAppearance = appearance ? { ...appearance } : undefined;
+	if (portableAppearance) {
+		delete portableAppearance.publicAppearance;
+	}
+	const normalized = portableAppearance ? await appearanceForPackage(current, portableAppearance, assets) : undefined;
 	return packAppFiles(portableFiles(current, normalized?.appearance, normalized?.assets));
 }
 export function getAppThemeSize(pkg) {

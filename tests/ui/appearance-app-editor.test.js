@@ -46,7 +46,10 @@ function network(h, themes, { allowApply = false, extra } = {}) {
 			return special;
 		}
 		if (url === '/api/themes') {
-			return json({ themes: themes.filter((t) => t.kind !== 'app') });
+			// These migration fixtures include legacy presets previously used by this instance.
+			return json({
+				themes: themes.filter((t) => t.kind !== 'app').map((t) => ({ ...t, profile: t.profile || createAppearanceDraft(t).draft })),
+			});
 		}
 		if (url === '/api/themes?format=app') {
 			return json({ themes: themes.filter((t) => t.kind === 'app') });
@@ -60,7 +63,7 @@ function network(h, themes, { allowApply = false, extra } = {}) {
 			const theme = themes.find((t) => t.packageId === payload.packageId);
 			active = { ...createAppearanceDraft(theme).draft, ...payload, revision: active.revision + 1 };
 		}
-		return json({ active, revision: active.revision, capabilities: { write: true } });
+		return json({ active, revision: active.revision, previous: true, capabilities: { write: true } });
 	});
 	return {
 		put,
@@ -156,12 +159,12 @@ describe('full frontend editor configuration', () => {
 		editColor(h, '#112233');
 		await select(h, app.packageId);
 		editColor(h, '#445566');
-		expect(h.document.querySelector('[data-panel=layout]').hidden).toBe(true);
-		expect(h.document.querySelector('[data-panel=advanced]').hidden).toBe(true);
+		expect(h.document.querySelector('[data-panel=layout]')).toBeNull();
+		expect(h.document.querySelector('.appearance-advanced-settings')).toBeNull();
 		await select(h, v1.packageId);
 		panel(h, 'design');
 		expect(h.document.querySelector('input[type=color]').value).toBe('#112233');
-		expect(h.document.querySelector('[data-panel=layout]').hidden).toBe(false);
+		expect(h.document.querySelector('.appearance-layout-settings')).not.toBeNull();
 		await select(h, app.packageId);
 		panel(h, 'design');
 		expect(h.document.querySelector('input[type=color]').value).toBe('#445566');
@@ -240,8 +243,10 @@ describe('full frontend editor configuration', () => {
 		});
 		await h.window.showAppearanceEditor();
 		await select(h, app.packageId);
+		const beforePublish = h.window.authenticatedFetch.mock.calls.length;
 		action(h, 'apply');
 		await flush();
+		expect(h.window.authenticatedFetch.mock.calls.slice(beforePublish).map(([url]) => url)).toEqual(['/api/appearance']);
 		expect(h.window.__2FA_APPEARANCE__.packageId).toBe(app.packageId);
 		expect(h.window.applyAppearance).not.toHaveBeenCalled();
 		expect(h.window.updateAppearanceMetadata).toHaveBeenCalledOnce();
@@ -340,18 +345,16 @@ describe('full frontend editor configuration', () => {
 					: null,
 		});
 		await h.window.showAppearanceEditor();
-		const format = h.document.getElementById('appearanceImportFormat');
-		format.value = 'app';
-		format.dispatchEvent(new h.window.Event('change'));
+		expect(h.document.getElementById('appearanceImportFormat')).toBeNull();
 		h.document.getElementById('appearanceSource').value = 'https://github.com/example/pixel';
 		action(h, 'install');
 		await flush();
-		expect(h.window.authenticatedFetch).toHaveBeenCalledWith('/api/themes/import?format=app', expect.any(Object));
+		expect(h.window.authenticatedFetch).toHaveBeenCalledWith('/api/themes/import', expect.any(Object));
 		const file = h.document.querySelectorAll('input[type=file]')[1];
 		Object.defineProperty(file, 'files', { value: [new h.window.File(['zip'], 'appearance.zip')] });
 		file.dispatchEvent(new h.window.Event('change'));
 		await flush();
-		expect(h.window.authenticatedFetch).toHaveBeenCalledWith('/api/appearance/restore-inspect?format=app', expect.any(Object));
+		expect(h.window.authenticatedFetch).toHaveBeenCalledWith('/api/appearance/restore-inspect', expect.any(Object));
 		expect(net.put).toHaveLength(0);
 		action(h, 'keep');
 		await flush();
@@ -361,6 +364,68 @@ describe('full frontend editor configuration', () => {
 });
 
 describe('editor opaque preview integration', () => {
+	it('pauses queued and new previews during publication and resumes once without overwriting saved feedback', async () => {
+		const app = await appTheme();
+		const h = harness({ theme: app });
+		let finish;
+		network(h, [app], {
+			allowApply: true,
+			extra: (url, options) =>
+				url === '/api/appearance' && options.method === 'PUT'
+					? new Promise((resolve) => {
+							finish = resolve;
+						})
+					: undefined,
+		});
+		const port = previewPort(h);
+		await h.window.showAppearanceEditor();
+		editColor(h, '#123456');
+		action(h, 'apply');
+		expect(h.document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
+		await flush();
+		for (let i = 0; i < 4; i++) {
+			h.window.dispatchEvent(new h.window.Event('resize'));
+		}
+		await tickPreview();
+		expect(port.open).not.toHaveBeenCalled();
+		expect(port.update).not.toHaveBeenCalled();
+		expect(h.document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
+		port.open.mockRejectedValueOnce(new Error('preview unavailable after save'));
+		finish(json({ previous: true, revision: 2, active: { ...h.initial, revision: 2, settings: { accent: '#123456' } } }));
+		await flush();
+		await tickPreview();
+		expect(port.open).toHaveBeenCalledTimes(1);
+		expect(h.document.getElementById('appearanceAppPreviewStatus').textContent).toContain('preview unavailable after save');
+		expect(h.document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceApplied);
+	});
+	it('invalidates an already running preview before saving and ignores its late rejection', async () => {
+		const app = await appTheme();
+		const h = harness({ theme: app });
+		network(h, [app], { allowApply: true });
+		const port = previewPort(h);
+		let failPreview;
+		port.open.mockImplementationOnce(
+			() =>
+				new Promise((_, reject) => {
+					failPreview = reject;
+				}),
+		);
+		await h.window.showAppearanceEditor();
+		await tickPreview();
+		expect(failPreview).toBeTypeOf('function');
+		editColor(h, '#123456');
+		action(h, 'apply');
+		expect(port.close).toHaveBeenCalled();
+		port.status({ status: 'blocked', reason: 'preview-expired' });
+		expect(h.document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
+		await flush();
+		failPreview(new Error('old preview rejected'));
+		await flush();
+		expect(h.document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceApplied);
+		expect(h.document.getElementById('appearanceAppPreviewStatus').textContent).not.toContain('old preview rejected');
+		await tickPreview();
+		expect(port.open).toHaveBeenCalledTimes(2);
+	});
 	it('invalidates pending asset staging on a session change before it can open another capability', async () => {
 		const app = await appTheme();
 		const h = harness({ theme: app });
@@ -625,104 +690,121 @@ it('publishes the actual editor app payload through storage HTTP and preserves s
 	await flush();
 	panel(h, 'design');
 	expect(h.document.querySelector('input[type=color]').value).toBe('#102030');
-	expect(h.document.querySelector('[data-panel=layout]').hidden).toBe(true);
+	expect(h.document.querySelector('[data-panel=layout]')).toBeNull();
+	expect(h.document.querySelector('.appearance-advanced-settings')).toBeNull();
 });
 
-it('runs the editor through the real capability client and server, revoking a late response after close', async () => {
-	// Use untransformed browser source, not Vitest's SSR dynamic-import helper.
-	const output = await build({
-		entryPoints: ['src/ui/scripts/appThemePreview.js'],
-		bundle: true,
-		write: false,
-		format: 'esm',
-		platform: 'node',
-	});
-	const { createAppThemePreview, createAppThemePreviewDocument, appThemePreviewFrame, createAppPreviewMockSdk } = await import(
-		'data:text/javascript;base64,' + Buffer.from(output.outputFiles[0].text).toString('base64')
-	);
-	const app = await appTheme();
-	const store = new ThemeStore(
-		{ storage: new MemoryStorage() },
-		{ SECRETS_KV: { get: async () => null, put: async () => {}, delete: async () => {} } },
-	);
-	const req = (url, options = {}) =>
-		store.fetch(
-			new Request('https://example.com' + url, {
-				...options,
-				headers: { [THEME_OPERATION_HEADER]: 'api', [THEME_PREVIEW_OWNER_HEADER]: 'a'.repeat(64), ...options.headers },
-			}),
-		);
-	expect((await req('/api/themes/import?format=app', { method: 'POST', body: app.fixture.archive })).status).toBe(201);
-	const h = harness();
-	h.initial.revision = 0;
-	let release;
-	let cap;
-	let delayed = false;
-	let invalidateSession;
-	h.window.authenticatedFetch.mockImplementation(async (url, options) => {
-		const response = await req(url, options);
-		if (url === '/api/themes/preview-capabilities') {
-			cap = await response.clone().json();
-			if (delayed) {
-				return new Promise((resolve) => {
-					release = () => resolve(response);
-				});
-			}
-		}
-		return response;
-	});
-	h.window.createAppThemePreview = (options) =>
-		createAppThemePreview({
-			...options,
-			window: h.window,
-			subscribeSession: (listener) => {
-				invalidateSession = listener;
-				return () => {};
-			},
-			createDocument: (config) =>
-				createAppThemePreviewDocument(config, appThemePreviewFrame.toString(), createAppPreviewMockSdk.toString()),
+it.each(['close', 'apply'])(
+	'runs the editor through the real capability client and server, revoking a late response after %s',
+	async (operation) => {
+		// Use untransformed browser source, not Vitest's SSR dynamic-import helper.
+		const output = await build({
+			entryPoints: ['src/ui/scripts/appThemePreview.js'],
+			bundle: true,
+			write: false,
+			format: 'esm',
+			platform: 'node',
 		});
-	await h.window.showAppearanceEditor();
-	await select(h, app.packageId);
-	await tickPreview();
-	let frame = h.document.querySelector('#appearanceAppPreview iframe');
-	expect(frame).not.toBeNull();
-	expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
-	expect(frame.hasAttribute('credentialless')).toBe(true);
-	expect(frame.srcdoc).toContain(cap.entryUrl);
-	expect(frame.srcdoc).toContain('import(config.entryUrl)');
-	expect(frame.srcdoc).not.toContain('allow-same-origin');
-	expect(frame.srcdoc).not.toContain('/api/secrets');
-	expect(h.window.authenticatedFetch.mock.calls.filter(([url]) => url === '/api/themes/preview-capabilities')).toHaveLength(1);
-	action(h, 'keep');
-	await flush();
-	expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
-	expect(h.window.authenticatedFetch).toHaveBeenCalledWith(
-		'/api/themes/preview-capabilities/' + cap.capabilityId,
-		expect.objectContaining({ method: 'DELETE' }),
-	);
-	delayed = true;
-	await h.window.showAppearanceEditor();
-	await tickPreview();
-	expect(release).toBeTypeOf('function');
-	action(h, 'keep');
-	await flush();
-	release();
-	await flush();
-	frame = h.document.querySelector('#appearanceAppPreview iframe');
-	expect(frame).toBeNull();
-	expect(h.window.authenticatedFetch).toHaveBeenCalledWith(
-		'/api/themes/preview-capabilities/' + cap.capabilityId,
-		expect.objectContaining({ method: 'DELETE' }),
-	);
-	delayed = false;
-	await h.window.showAppearanceEditor();
-	await tickPreview();
-	expect(h.document.querySelector('#appearanceAppPreview iframe')).not.toBeNull();
-	invalidateSession();
-	expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
-	expect(h.document.querySelector('[data-appearance-action=apply]').disabled).toBe(true);
-	action(h, 'keep');
-	await flush();
-	expect(h.saved().draft.packageId).toBe(app.packageId);
-});
+		const { createAppThemePreview, createAppThemePreviewDocument, appThemePreviewFrame, createAppPreviewMockSdk } = await import(
+			'data:text/javascript;base64,' + Buffer.from(output.outputFiles[0].text).toString('base64')
+		);
+		const app = await appTheme();
+		const store = new ThemeStore(
+			{ storage: new MemoryStorage() },
+			{ SECRETS_KV: { get: async () => null, put: async () => {}, delete: async () => {} } },
+		);
+		const req = (url, options = {}) =>
+			store.fetch(
+				new Request('https://example.com' + url, {
+					...options,
+					headers: { [THEME_OPERATION_HEADER]: 'api', [THEME_PREVIEW_OWNER_HEADER]: 'a'.repeat(64), ...options.headers },
+				}),
+			);
+		expect((await req('/api/themes/import?format=app', { method: 'POST', body: app.fixture.archive })).status).toBe(201);
+		const h = harness();
+		h.initial.revision = 0;
+		let release;
+		let cap;
+		let delayed = false;
+		let invalidateSession;
+		h.window.authenticatedFetch.mockImplementation(async (url, options) => {
+			const response = await req(url, options);
+			if (url === '/api/themes/preview-capabilities') {
+				cap = await response.clone().json();
+				if (delayed) {
+					return new Promise((resolve) => {
+						release = () => resolve(response);
+					});
+				}
+			}
+			return response;
+		});
+		h.window.createAppThemePreview = (options) =>
+			createAppThemePreview({
+				...options,
+				window: h.window,
+				subscribeSession: (listener) => {
+					invalidateSession = listener;
+					return () => {};
+				},
+				createDocument: (config) =>
+					createAppThemePreviewDocument(config, appThemePreviewFrame.toString(), createAppPreviewMockSdk.toString()),
+			});
+		await h.window.showAppearanceEditor();
+		await select(h, app.packageId);
+		await tickPreview();
+		let frame = h.document.querySelector('#appearanceAppPreview iframe');
+		expect(frame).not.toBeNull();
+		expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
+		expect(frame.hasAttribute('credentialless')).toBe(true);
+		expect(frame.srcdoc).toContain(cap.entryUrl);
+		expect(frame.srcdoc).toContain('import(config.entryUrl)');
+		expect(frame.srcdoc).not.toContain('allow-same-origin');
+		expect(frame.srcdoc).not.toContain('/api/secrets');
+		expect(h.window.authenticatedFetch.mock.calls.filter(([url]) => url === '/api/themes/preview-capabilities')).toHaveLength(1);
+		action(h, 'keep');
+		await flush();
+		expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
+		expect(h.window.authenticatedFetch).toHaveBeenCalledWith(
+			'/api/themes/preview-capabilities/' + cap.capabilityId,
+			expect.objectContaining({ method: 'DELETE' }),
+		);
+		delayed = true;
+		await h.window.showAppearanceEditor();
+		await tickPreview();
+		expect(release).toBeTypeOf('function');
+		if (operation === 'apply') {
+			h.storage.holdNextDelete = true;
+			action(h, 'apply');
+			await vi.waitFor(() => expect(h.storage.release).toBeTypeOf('function'));
+		} else {
+			action(h, 'keep');
+		}
+		await flush();
+		release();
+		await flush();
+		frame = h.document.querySelector('#appearanceAppPreview iframe');
+		expect(frame).toBeNull();
+		expect(h.window.authenticatedFetch).toHaveBeenCalledWith(
+			'/api/themes/preview-capabilities/' + cap.capabilityId,
+			expect.objectContaining({ method: 'DELETE' }),
+		);
+		if (operation === 'apply') {
+			expect(h.document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
+			h.storage.release();
+			await flush();
+			action(h, 'keep');
+			await flush();
+		}
+		delayed = false;
+		await h.window.showAppearanceEditor();
+		await tickPreview();
+		expect(h.document.querySelector('#appearanceAppPreview iframe')).not.toBeNull();
+		invalidateSession();
+		expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
+		expect(h.document.querySelector('[data-appearance-action=apply]').disabled).toBe(true);
+		action(h, 'keep');
+		await flush();
+		expect(h.saved().draft.packageId).toBe(app.packageId);
+	},
+);

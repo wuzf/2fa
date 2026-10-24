@@ -27,6 +27,8 @@ export function appearanceErrorKey(data, status) {
 			'THEME_APP_JAVASCRIPT',
 			'THEME_APP_REFERENCE',
 			'THEME_APP_DYNAMIC_IMPORT',
+			'THEME_PUBLIC_FONT',
+			'THEME_PUBLIC_FONT_RANGE',
 		],
 		appearanceErrorLimit: [
 			'THEME_PACKAGE_LIMIT',
@@ -42,6 +44,8 @@ export function appearanceErrorKey(data, status) {
 			'THEME_REDIRECT_LIMIT',
 			'THEME_CSS_DEPTH',
 			'THEME_APP_JS_LIMIT',
+			'THEME_PUBLIC_APPEARANCE_LIMIT',
+			'THEME_PUBLIC_FONT_LIMIT',
 		],
 		appearanceErrorDownload: [
 			'THEME_INVALID_URL',
@@ -78,6 +82,8 @@ export function appearanceErrorKey(data, status) {
 			'THEME_INVALID_SETTING',
 			'THEME_OPERATION_REUSED',
 			'THEME_INVALID',
+			'THEME_PUBLIC_APPEARANCE',
+			'THEME_PUBLIC_VARIANT',
 		],
 		appearanceErrorRestore: ['THEME_RESTORE_REQUIRED'],
 		appearanceErrorSdk: ['THEME_UNSUPPORTED_SDK', 'THEME_HOST_VERSION_UNSUPPORTED'],

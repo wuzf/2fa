@@ -104,10 +104,197 @@ const status = (h) => h.document.getElementById('appThemeRuntimeStatus');
 const button = (h, index) => status(h).querySelectorAll('button')[index];
 const labeledButton = (h, key) =>
 	[...status(h).querySelectorAll('button')].find((item) => item.textContent === h.window.eval('t(' + JSON.stringify(key) + ')'));
+const statusAction = (h, action) => status(h).querySelector('[data-runtime-action="' + action + '"]');
 
 // These tests exercise the real page, emitted integration, account store, SDK and
 // host dialogs. Only the independently tested app-host factory is an explicit port.
 describe('official shell and full-theme integration', () => {
+	it('keeps the public baseline through preparation and logout, updating it only for the confirmed desired tuple', async () => {
+		const snapshot = (revision, color) =>
+			appearance(revision, {
+				publicAppearance: {
+					formatVersion: 1,
+					packageId,
+					light: { surface: color, radius: 0 },
+					dark: { surface: color, radius: 0 },
+					fonts: [],
+				},
+			});
+		const h = await fixture({ snapshot: snapshot(1, '#abc123') });
+		const baseline = () => h.document.getElementById('public-appearance-baseline')?.textContent;
+		expect(baseline()).toContain('#abc123');
+		h.start();
+		h.running(1);
+		await h.window.updateAppThemeAppearance(snapshot(2, '#def456'));
+		expect(baseline()).toContain('#abc123');
+		h.ports().onFallback({ status: 'official-fallback', reason: 'test-not-ready' });
+		expect(baseline()).toContain('#abc123');
+		h.running(2);
+		expect(baseline()).toContain('#def456');
+		h.running(1);
+		expect(baseline()).toContain('#def456');
+		h.invalidateSecretSession();
+		expect(baseline()).toContain('#def456');
+		await h.window.updateAppThemeAppearance(appearance(3, { packageId: 'c'.repeat(64) }));
+		expect(baseline()).toContain('#def456');
+	});
+	it('shows access checking separately from a confirmed login requirement, then starts after verification', async () => {
+		const h = await fixture({ authenticated: false });
+		h.start();
+		expect(status(h).dataset.phase).toBe('checking-access');
+		expect(status(h).textContent).toContain(h.window.eval('t("appearanceRuntimeCheckingAccess")'));
+		expect(statusAction(h, 'login')).toBeNull();
+		expect(statusAction(h, 'retry')).toBeNull();
+		expect(h.host.start).not.toHaveBeenCalled();
+		h.invalidateSecretSession();
+		expect(status(h).dataset.phase).toBe('login-required');
+		expect(status(h).textContent).toContain(h.window.eval('t("appearanceRuntimeLoginRequired")'));
+		statusAction(h, 'login').click();
+		expect(h.document.getElementById('loginModal').style.display).toBe('flex');
+		h.invalidateSecretSession({ blocked: false });
+		expect(status(h).dataset.phase).toBe('checking-access');
+		h.replaceSecretRecords([record], { source: 'server', accessVerified: true });
+		expect(h.host.start).toHaveBeenCalledOnce();
+		expect(status(h).dataset.phase).toBe('preparing');
+	});
+	it('uses neutral, accurate loading stages without retry, with the existing guarded default-interface action', async () => {
+		const h = await fixture();
+		h.start();
+		expect(status(h).className).toBe('app-theme-status');
+		expect(status(h).getAttribute('role')).toBe('status');
+		expect(status(h).getAttribute('aria-live')).toBe('polite');
+		for (const [phase, key] of [
+			['preparing', 'appearanceRuntimePreparing'],
+			['attaching', 'appearanceRuntimeAttaching'],
+			['importing', 'appearanceRuntimeLoading'],
+			['mounting', 'appearanceRuntimeMounting'],
+		]) {
+			h.ports().onState({ status: phase });
+			expect(status(h).dataset.phase).toBe(phase);
+			expect(status(h).textContent).toContain(h.window.eval('t(' + JSON.stringify(key) + ')'));
+			expect(status(h).getAttribute('aria-busy')).toBe('true');
+			expect(statusAction(h, 'retry')).toBeNull();
+			expect(labeledButton(h, 'appearanceUseDefault')).toBeDefined();
+			expect(labeledButton(h, 'appearanceSafeMode')).toBeUndefined();
+		}
+		const assign = vi.spyOn(h.window.location, 'assign').mockImplementation(() => {});
+		const write = h.beginWrite({ type: 'edit', accountId: record.id });
+		statusAction(h, 'recovery').click();
+		await Promise.resolve();
+		expect(assign).not.toHaveBeenCalled();
+		h.endWrite(write);
+		statusAction(h, 'recovery').click();
+		await Promise.resolve();
+		expect(assign).toHaveBeenCalledWith('https://vault.test/?safeMode=1');
+	});
+	it('keeps failed access verification distinct from login and retries the real account refresh only on explicit clicks', async () => {
+		let next;
+		const fetch = vi.fn(async (url) => {
+			if (url === '/api/secrets') {
+				return next ? next.promise : new Response('{}', { status: 503 });
+			}
+			if (url === '/api/settings') {
+				return Response.json({ language: 'en' });
+			}
+			return new Response('{}', { status: 503 });
+		});
+		const h = await fixture({ authenticated: false, fetch });
+		h.start();
+		await h.loadSecrets();
+		expect(h.runtime.accounts.getState()).toMatchObject({ accessVerified: false, blocked: false, library: { refreshState: 'error' } });
+		expect(status(h).dataset.phase).toBe('access-unavailable');
+		expect(statusAction(h, 'login')).toBeNull();
+		expect(h.host.start).not.toHaveBeenCalled();
+		const requests = () => fetch.mock.calls.filter(([url]) => url === '/api/secrets').length;
+		const before = requests();
+		await h.runtime.otp.refresh();
+		expect(requests()).toBe(before);
+		next = deferred();
+		const retry = statusAction(h, 'retry');
+		retry.click();
+		expect(retry.disabled).toBe(true);
+		expect(status(h).dataset.phase).toBe('checking-access');
+		retry.dispatchEvent(new h.window.MouseEvent('click'));
+		await vi.waitFor(() => expect(requests()).toBe(before + 1));
+		next.resolve(new Response('{}', { status: 503 }));
+		await vi.waitFor(() => expect(status(h).dataset.phase).toBe('access-unavailable'));
+		expect(h.host.start).not.toHaveBeenCalled();
+		expect(statusAction(h, 'login')).toBeNull();
+		next = deferred();
+		statusAction(h, 'retry').click();
+		await vi.waitFor(() => expect(requests()).toBe(before + 2));
+		next.resolve(Response.json([record]));
+		await vi.waitFor(() => expect(h.host.start).toHaveBeenCalledOnce());
+		expect(h.runtime.accounts.getState().accessVerified).toBe(true);
+		expect(status(h).dataset.phase).toBe('preparing');
+		expect(h.host.retry).not.toHaveBeenCalled();
+	});
+	it('retains buttons and keyboard focus across OTP snapshots and restores the same action after a phase or language change', async () => {
+		const h = await fixture();
+		h.start();
+		const recovery = statusAction(h, 'recovery');
+		recovery.focus();
+		for (const now of [60000, 61000, 62000]) {
+			h.setClock(now);
+			await h.runtime.otp.refresh();
+			expect(statusAction(h, 'recovery')).toBe(recovery);
+			expect(h.document.activeElement).toBe(recovery);
+		}
+		h.ports().onState({ status: 'attaching' });
+		expect(h.document.activeElement).toBe(statusAction(h, 'recovery'));
+		h.window.eval('setLanguage("zh-CN", {persist:false})');
+		expect(status(h).textContent).toContain('正在连接主题运行环境');
+		expect(h.document.activeElement).toBe(statusAction(h, 'recovery'));
+		const unrelated = h.document.getElementById('searchInput');
+		unrelated.focus();
+		h.ports().onState({ status: 'importing' });
+		expect(h.document.activeElement).toBe(unrelated);
+	});
+	it('enters retry busy state synchronously so repeated clicks cannot start competing candidates', async () => {
+		const h = await fixture();
+		h.start();
+		h.ports().onFallback({ reason: 'resources-unavailable' });
+		const pending = deferred();
+		h.host.retry.mockReturnValue(pending.promise);
+		const retry = statusAction(h, 'retry');
+		retry.focus();
+		retry.click();
+		expect(retry.disabled).toBe(true);
+		expect(status(h).dataset.phase).toBe('preparing');
+		expect(statusAction(h, 'retry')).toBeNull();
+		expect(h.document.activeElement).toBe(statusAction(h, 'recovery'));
+		retry.dispatchEvent(new h.window.MouseEvent('click'));
+		expect(h.host.retry).toHaveBeenCalledOnce();
+		h.ports().onFallback({ reason: 'resources-unavailable' });
+		expect(statusAction(h, 'retry').disabled).toBe(true);
+		statusAction(h, 'retry').dispatchEvent(new h.window.MouseEvent('click'));
+		expect(h.host.retry).toHaveBeenCalledOnce();
+		pending.resolve({ status: 'preparing' });
+		await vi.waitFor(() => expect(statusAction(h, 'retry').disabled).toBe(false));
+		h.ports().onState({ status: 'preparing' });
+		retry.dispatchEvent(new h.window.MouseEvent('click'));
+		expect(h.host.retry).toHaveBeenCalledOnce();
+	});
+	it('keeps running-with-reason visible and updates its facts without treating it as successful startup', async () => {
+		const h = await fixture();
+		h.start();
+		h.running();
+		expect(status(h).hidden).toBe(true);
+		h.ports().onState({ status: 'running', reason: 'appearance-update-failed:offline' });
+		expect(status(h).hidden).toBe(false);
+		expect(status(h).getAttribute('aria-busy')).toBe('false');
+		expect(statusAction(h, 'retry')).not.toBeNull();
+		h.ports().onRunning({ status: 'running', reason: 'appearance-update-failed:offline', tuple: { appearanceRevision: 1 } });
+		expect(status(h).hidden).toBe(false);
+		const retry = statusAction(h, 'retry');
+		retry.focus();
+		h.ports().onState({ status: 'running', reason: 'appearance-update-failed:incomplete-cache' });
+		expect(status(h).dataset.reason).toBe('appearance-update-failed:incomplete-cache');
+		expect(h.document.activeElement).toBe(statusAction(h, 'retry'));
+		h.ports().onState({ status: 'running', reason: null });
+		h.running();
+		expect(status(h).hidden).toBe(true);
+	});
 	it.each([false, true])('wires one host and canonical shell identity to the shared live core (full=%s)', async (full) => {
 		const h = await fixture({ full });
 		const original = h.window.__2FA_SHELL_CONFIG_ID__;
@@ -214,6 +401,60 @@ describe('official shell and full-theme integration', () => {
 		await vi.waitFor(() => expect(hidden.parentElement.id).toBe('hostThemePanels'));
 		expect(h.document.querySelector('.secret-card')).toBeNull();
 	});
+	it.each(['hidden-accounts', 'offline-queue'].flatMap((kind) => ['escape', 'backdrop', 'button'].map((action) => [kind, action])))(
+		'dismisses the actual %s host panel with %s without changing queue or HOTP state',
+		async (kind, action) => {
+			const h = await fixture({
+				extraSource: `
+        initModalDismissal();
+        window.__panelMessages=[];
+        window.__panelQueue={authRequired:false,operations:[{id:'pending-test',type:'update',name:'Synthetic queued update',timestamp:1,status:'failed',editable:true}]};
+        requestOfflineQueueMessage=async type=>{window.__panelMessages.push(type);return window.__panelQueue;};
+        applyOfflineQueueSummary(window.__panelQueue);
+        window.__readPanelQueue=()=>getOfflineQueueSnapshot();
+      `,
+			});
+			h.replaceSecretRecords([record, { ...record, id: 'hotp-panel', type: 'HOTP', counter: 11 }], {
+				source: 'server',
+				accessVerified: true,
+				hidden: { count: 1, records: [] },
+			});
+			h.start();
+			h.running();
+			const trigger = h.document.createElement('button');
+			trigger.textContent = 'Open panel';
+			h.document.getElementById('appThemeRoot').append(trigger);
+			trigger.focus();
+			const focus = vi.spyOn(trigger, 'focus');
+			const panel = h.document.getElementById(kind === 'hidden-accounts' ? 'hiddenSecrets' : 'offlineQueue');
+			const oldParent = panel.parentNode,
+				oldNext = panel.nextSibling;
+			const queueBefore = h.window.__readPanelQueue();
+			const flow = h.runtime.sdk.host.open({ kind }, { returnFocus: trigger });
+			await vi.waitFor(() => expect(h.document.getElementById('themeHostStatusModal').classList.contains('show')).toBe(true));
+			const modal = h.document.getElementById('themeHostStatusModal');
+			expect(modal.dataset.dialogKind).toBe('passive');
+			expect(panel.parentElement.id).toBe('themeHostStatusBody');
+			if (action === 'escape') {
+				h.document.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+			} else if (action === 'backdrop') {
+				modal.dispatchEvent(new h.window.Event('pointerdown', { bubbles: true }));
+				modal.dispatchEvent(new h.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+			} else {
+				modal.querySelector('[data-dialog-dismiss]').dispatchEvent(new h.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+			}
+			expect(await flow.closed).toEqual({ status: 'closed' });
+			expect(modal.style.display).toBe('none');
+			expect(panel.parentNode).toBe(oldParent);
+			expect(panel.nextSibling).toBe(oldNext);
+			expect(h.document.activeElement).toBe(trigger);
+			expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
+			expect(h.window.__readPanelQueue()).toEqual(queueBefore);
+			expect(h.runtime.accounts.getRecord('hotp-panel').counter).toBe(11);
+			expect(h.window.__panelMessages.every((type) => type === 'OFFLINE_QUEUE_STATUS')).toBe(true);
+			expect(h.document.body.style.position).toBe('');
+		},
+	);
 	it('does not move a visible host panel out of its dialog when the app becomes ready', async () => {
 		const h = await fixture();
 		h.replaceSecretRecords([record], { source: 'server', accessVerified: true, hidden: { count: 1, records: [] } });
@@ -275,17 +516,26 @@ describe('official shell and full-theme integration', () => {
 				h.window.applyAppearance(appearance(2, { packageId: 'c'.repeat(64) }));
 			}
 			h.ports().onRecoveryRequired({ reason: 'theme-stopped' });
-			expect(labeledButton(h, 'appearanceSafeMode')).toBeDefined();
+			expect(labeledButton(h, 'appearanceUseDefault')).toBeDefined();
 			expect(labeledButton(h, 'coreHotpReconcile')).toBeDefined();
 			expect(h.document.querySelector('#officialThemeRoot')).toBeNull();
 			const assign = vi.spyOn(h.window.location, 'assign').mockImplementation(() => {});
 			h.window.confirm = vi.fn(() => true);
-			labeledButton(h, 'appearanceSafeMode').click();
+			const check = labeledButton(h, 'coreHotpReconcile');
+			check.focus();
+			h.setClock(61000);
+			await h.runtime.otp.refresh();
+			expect(labeledButton(h, 'coreHotpReconcile')).toBe(check);
+			expect(h.document.activeElement).toBe(check);
+			labeledButton(h, 'appearanceUseDefault').click();
 			await Promise.resolve();
 			expect(assign).not.toHaveBeenCalled();
 			labeledButton(h, 'coreHotpReconcile').click();
 			await vi.waitFor(() => expect(h.runtime.sdk.getSnapshot().host.operations[0]?.reconciliation).toBe('succeeded'));
-			labeledButton(h, 'appearanceSafeMode').click();
+			const reconciled = labeledButton(h, 'coreHotpReconcile');
+			expect(reconciled).not.toBe(check);
+			expect(h.document.activeElement).toBe(reconciled);
+			labeledButton(h, 'appearanceUseDefault').click();
 			await Promise.resolve();
 			expect(assign).toHaveBeenCalledWith('https://vault.test/?safeMode=1');
 			expect(clipboard.writeText).toHaveBeenCalledOnce();

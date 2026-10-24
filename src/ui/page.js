@@ -14,6 +14,7 @@ import { LANGUAGE_OPTIONS, normalizeLanguage } from '../shared/languages.js';
 import { getAppearanceHead } from './appearance.js';
 import { getBuildId } from '../utils/build.js';
 import { getShellConfigId, getRuntimeTuple, getAdminCodeId } from './runtimeIdentity.js';
+import { getPublicAppearanceHead } from './publicAppearance.js';
 
 /**
  * 创建主页面（密钥管理界面）
@@ -67,7 +68,10 @@ function buildCompleteHTML(lazyLoad = true, customCode = '', appearance = null, 
 	return (
 		getHTMLStart(context.safeMode) +
 		getAppearanceHead(appearance, context) +
-		getStyles() +
+		getStyles().replace(
+			/<\/head>$/,
+			() => getPublicAppearanceHead(appearance, { surface: 'host', safeMode: context.safeMode }) + '</head>',
+		) +
 		getHTMLBody() +
 		getHTMLScripts(lazyLoad) +
 		customCode +
@@ -176,7 +180,7 @@ function getHTMLStart(safeMode = false) {
 function getHTMLBody() {
 	return `
 <body class="fluent-app">
-  <div id="appThemeRuntimeStatus" class="offline-banner show" role="status" hidden></div>
+  <div id="appThemeRuntimeStatus" class="app-theme-status" role="status" aria-live="polite" aria-atomic="true" tabindex="-1" hidden></div>
   <main id="appThemeRoot" hidden></main>
   <div id="hostThemePanels" hidden></div>
   <div id="officialThemeRoot">
@@ -616,7 +620,7 @@ function getHTMLBody() {
       </div>
       
       <div class="tools-list">
-        <button type="button" class="tool-item" onclick="showQRScanAndDecode()">
+        <button type="button" class="tool-item" onclick="openToolsFromMenu('qr-decode')">
           <div class="tool-icon">${dialogIcon('qr')}</div>
           <div class="tool-content">
             <div class="tool-title" data-i18n="toolQrDecodeTitle">二维码解析</div>
@@ -624,7 +628,7 @@ function getHTMLBody() {
           </div>
         </button>
         
-        <button type="button" class="tool-item" onclick="showQRGenerateTool()">
+        <button type="button" class="tool-item" onclick="openToolsFromMenu('qr-generate')">
           <div class="tool-icon">${dialogIcon('qr')}</div>
           <div class="tool-content">
             <div class="tool-title" data-i18n="toolQrGenTitle">二维码生成</div>
@@ -632,7 +636,7 @@ function getHTMLBody() {
           </div>
         </button>
 
-        <button type="button" class="tool-item" onclick="showBase32Tool()">
+        <button type="button" class="tool-item" onclick="openToolsFromMenu('base32')">
           <div class="tool-icon">${dialogIcon('code')}</div>
           <div class="tool-content">
             <div class="tool-title" data-i18n="toolBase32Title">Base32 编解码</div>
@@ -640,7 +644,7 @@ function getHTMLBody() {
           </div>
         </button>
 
-        <button type="button" class="tool-item" onclick="showTimestampTool()">
+        <button type="button" class="tool-item" onclick="openToolsFromMenu('timestamp')">
           <div class="tool-icon">${dialogIcon('clock')}</div>
           <div class="tool-content">
             <div class="tool-title" data-i18n="pageTimestampTitle">时间戳工具</div>
@@ -648,7 +652,7 @@ function getHTMLBody() {
           </div>
         </button>
 
-        <button type="button" class="tool-item" onclick="showKeyCheckTool()">
+        <button type="button" class="tool-item" onclick="openToolsFromMenu('key-check')">
           <div class="tool-icon">${dialogIcon('check')}</div>
           <div class="tool-content">
             <div class="tool-title" data-i18n="toolKeyCheckerTitle">密钥检查器</div>
@@ -656,7 +660,7 @@ function getHTMLBody() {
           </div>
         </button>
 
-        <button type="button" class="tool-item" onclick="showKeyGeneratorTool()">
+        <button type="button" class="tool-item" onclick="openToolsFromMenu('key-generate')">
           <div class="tool-icon">${dialogIcon('key')}</div>
           <div class="tool-content">
             <div class="tool-title" data-i18n="toolKeyGenTitle">密钥生成器</div>
@@ -691,7 +695,7 @@ function getHTMLBody() {
       <div class="tool-section" id="qrResultSection" style="display: none;">
         <div class="section-title" data-i18n="pageGeneratedQr">生成的二维码</div>
         <div class="qr-display">
-          <img id="generatedQRCode" class="qr-image" style="max-width: 300px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />
+          <img id="generatedQRCode" class="qr-image host-qr-image" style="max-width: 300px;" />
           <div class="qr-tip" style="margin-top: 10px; font-size: var(--dialog-caption-size); color: var(--text-tertiary);" data-i18n="pageSaveImageHint">长按保存图片</div>
         </div>
       </div>
@@ -723,7 +727,7 @@ function getHTMLBody() {
             <button class="btn btn-primary" onclick="encodeBase32()" data-i18n="pageEncode">编码</button>
             <button class="btn btn-info" onclick="copyEncodedText()" data-i18n="copy">复制</button>
           </div>
-          <div id="encodedResult" class="result-text" style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 6px; font-family: monospace; font-size: var(--dialog-caption-size); min-height: 0; word-break: break-all; display: none; color: var(--text-primary);"></div>
+          <div id="encodedResult" class="result-text" style="display: none;"></div>
         </div>
       </div>
       
@@ -742,7 +746,7 @@ function getHTMLBody() {
             <button class="btn btn-primary" onclick="decodeBase32()" data-i18n="pageDecode">解码</button>
             <button class="btn btn-info" onclick="copyDecodedText()" data-i18n="copy">复制</button>
           </div>
-          <div id="decodedResult" class="result-text" style="margin-top: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 6px; font-family: monospace; font-size: var(--dialog-caption-size); min-height: 0; word-break: break-all; display: none; color: var(--text-primary);"></div>
+          <div id="decodedResult" class="result-text" style="display: none;"></div>
         </div>
       </div>
       
@@ -760,7 +764,7 @@ function getHTMLBody() {
       
       <div class="tool-section">
         <div class="section-title" data-i18n="pageTotpTime">TOTP 时间信息</div>
-        <div class="time-info" style="background: var(--bg-secondary); padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+        <div class="time-info">
           <div class="info-item" style="display: flex; justify-content: space-between; margin-bottom: 8px;">
             <span class="label" style="font-weight: 600; color: var(--text-primary);" data-i18n="pageCurrentTimestamp">当前时间戳:</span>
             <span class="value" id="currentTimestamp" style="font-family: monospace; color: var(--text-primary);"></span>
@@ -819,7 +823,7 @@ function getHTMLBody() {
       
       <div class="tool-section" id="keyCheckResult" style="display: none;">
         <div class="section-title" data-i18n="pageKeyCheckResult">检查结果</div>
-        <div id="checkResultContent" class="check-result" style="padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+        <div id="checkResultContent" class="check-result">
           <!-- 结果内容将在这里动态生成 -->
         </div>
       </div>
@@ -850,12 +854,12 @@ function getHTMLBody() {
             <div class="video-wrapper">
               <video id="decodeScannerVideo" autoplay playsinline muted></video>
               <div class="scanner-overlay" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none;">
-                <div class="scanner-frame" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60%; height: 60%; border: 2px solid #fff; border-radius: 4px;"></div>
+                <div class="scanner-frame" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60%; height: 60%; border: 2px solid #fff;"></div>
               </div>
             </div>
           </div>
           <div id="decodeScannerStatus" class="scanner-status" style="text-align: center; margin: 10px 0; font-size: var(--dialog-body-size); color: var(--text-secondary);" data-i18n="scannerStarting">正在启动摄像头...</div>
-          <div id="decodeScannerError" class="scanner-error" style="display: none; text-align: center; margin: 10px 0; padding: 10px; background: var(--danger-light); border: 1px solid var(--border-error); border-radius: 6px; color: var(--danger-dark);">
+          <div id="decodeScannerError" class="scanner-error decode-scanner-error" style="display: none;">
             <div id="decodeErrorMessage"></div>
             <button class="btn btn-primary" onclick="retryDecodeCamera()" style="margin-top: 10px;" data-i18n="retry">重试</button>
           </div>
@@ -864,7 +868,7 @@ function getHTMLBody() {
       
       <div class="tool-section" id="decodeResultSection" style="display: none;">
         <div class="section-title" data-i18n="pageDecodedResult">解析结果</div>
-        <div class="decode-result" style="background: var(--bg-secondary); padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+        <div class="decode-result">
           <div class="result-content" id="decodeResultContent" style="font-family: monospace; font-size: var(--dialog-body-size); word-break: break-all; line-height: 1.5; max-height: 200px; overflow-y: auto; color: var(--text-primary);"></div>
           <div class="result-actions" style="display: flex; gap: 10px; margin-top: 15px;">
             <button class="btn btn-info" onclick="copyDecodeResult()" style="flex: 1;" data-i18n="pageCopyContent">复制内容</button>
@@ -873,7 +877,7 @@ function getHTMLBody() {
         </div>
         <div class="qr-section" id="decodeQRSection" style="display: none; text-align: center;">
           <div class="qr-title" style="font-weight: 600; margin-bottom: 10px; color: var(--text-primary);" data-i18n="pageRegeneratedQr">重新生成的二维码</div>
-          <img id="decodeQRCode" class="qr-code" style="max-width: 200px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />
+          <img id="decodeQRCode" class="qr-code host-qr-image" style="max-width: 200px;" />
           <div class="qr-tip" style="margin-top: 8px; font-size: var(--dialog-caption-size); color: var(--text-tertiary);" data-i18n="pageQrPreviewHint">点击二维码可以预览</div>
         </div>
       </div>
@@ -906,7 +910,7 @@ function getHTMLBody() {
       
       <div class="tool-section" id="keyResultSection" style="display: none;">
         <div class="section-title" data-i18n="pageGeneratedResult">生成结果</div>
-        <div class="key-result" style="padding: 15px; border-radius: 4px; margin-bottom: 15px; background: var(--bg-secondary);">
+        <div class="key-result">
           <div class="key-text" id="generatedKeyText" style="font-family: monospace; font-size: var(--dialog-body-size); font-weight: 600; text-align: center; margin-bottom: 15px; word-break: break-all; color: var(--text-primary);"></div>
           <div class="key-actions" style="display: flex; justify-content: center;">
             <button class="btn btn-info" onclick="copyGeneratedKey()" data-i18n="pageCopyKey">复制密钥</button>
@@ -1059,7 +1063,7 @@ function getHTMLBody() {
       </div>
 
       <div class="tool-section">
-        <div id="oneDriveOauthWarning" class="advanced-info" style="display:none; margin-bottom: 12px; padding: 12px; border-radius: 6px; font-size: var(--dialog-caption-size); color: var(--warning-color, #b45309); background: var(--bg-secondary); line-height: 1.6;"></div>
+        <div id="oneDriveOauthWarning" class="advanced-info oauth-warning" style="display:none;"></div>
 
         <div id="oneDriveDestinationList" style="margin-bottom: 15px;"></div>
 
@@ -1104,7 +1108,7 @@ function getHTMLBody() {
       </div>
 
       <div class="tool-section">
-        <div id="googleDriveOauthWarning" class="advanced-info" style="display:none; margin-bottom: 12px; padding: 12px; border-radius: 6px; font-size: var(--dialog-caption-size); color: var(--warning-color, #b45309); background: var(--bg-secondary); line-height: 1.6;"></div>
+        <div id="googleDriveOauthWarning" class="advanced-info oauth-warning" style="display:none;"></div>
 
         <div id="googleDriveDestinationList" style="margin-bottom: 15px;"></div>
 
@@ -1598,7 +1602,7 @@ function getHTMLBody() {
         <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideFreeOTPExportModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
 
-      <div style="margin-bottom: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 4px; font-size: var(--dialog-body-size);">
+      <div class="dialog-export-help">
         <p style="margin: 0 0 10px 0; color: var(--text-primary);">
           <strong data-i18n-html="pageFreeotpCount" data-i18n-count-id="freeotpExportCount">导出 <span id="freeotpExportCount">0</span> 个密钥到 FreeOTP</strong>
         </p>
@@ -1628,7 +1632,7 @@ function getHTMLBody() {
         <button class="close-btn" type="button" aria-label="关闭弹窗" data-dialog-dismiss onclick="hideTOTPAuthExportModal()" data-i18n-aria-label="pageCloseDialog">${dialogIcon('close')}</button>
       </div>
 
-      <div style="margin-bottom: 20px; padding: 15px; background: var(--bg-secondary); border-radius: 4px; font-size: var(--dialog-body-size);">
+      <div class="dialog-export-help">
         <p style="margin: 0 0 10px 0; color: var(--text-primary);">
           <strong data-i18n-html="pageTotpAuthCount" data-i18n-count-id="totpAuthExportCount">导出 <span id="totpAuthExportCount">0</span> 个密钥到 TOTP Authenticator</strong>
         </p>

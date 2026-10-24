@@ -1,11 +1,13 @@
 import { createThemeSdk } from '../runtime/themeSdk.js';
 import { createHostFlows } from '../runtime/hostFlows.js';
+import { createHostAppearanceManager, normalizeHostAppearance } from '../runtime/hostAppearance.js';
 import { serializeBrowserFunction } from './browserSource.js';
 
 /** Host assembly. The official view and app themes share these exact instances. */
 export function getThemeRuntimeCode() {
 	return `
     let themeRuntimeInstance = null;
+    const themeHostAppearanceManager = (${serializeBrowserFunction(createHostAppearanceManager)})({ document, normalize: ${serializeBrowserFunction(normalizeHostAppearance)} });
     const themeEnvironmentListeners = new Set();
     function notifyThemeRuntimeEnvironment(reason) {
       for (const listener of [...themeEnvironmentListeners]) listener(reason);
@@ -75,12 +77,12 @@ export function getThemeRuntimeCode() {
           return null;
         },
         getActiveElement: () => document.activeElement,
-        restoreFocus: element => { if (element?.isConnected && typeof element.focus === 'function') element.focus(); }
+        restoreFocus: element => { if (typeof focusThemeHostControl === 'function') focusThemeHostControl(element); }
       });
       const runtime = (${serializeBrowserFunction(createThemeSdk)})({
         identity: options.identity || { hostBuild: window.__2FA_BUILD_ID__ || '', packageId: null, appearanceRevision: window.__2FA_APPEARANCE__?.revision ?? 0 },
         isMountCurrent: options.isCurrent,
-        accounts, otp, commands, view, hostFlows,
+        accounts, otp, commands, view, hostFlows, hostAppearance: options.hostAppearance,
         environment: {
           getSnapshot: getThemeEnvironmentSnapshot, getClockNow: getCorrectedNowMs,
           subscribe: listener => { themeEnvironmentListeners.add(listener); return () => themeEnvironmentListeners.delete(listener); },
@@ -94,7 +96,9 @@ export function getThemeRuntimeCode() {
     }
     function createAppThemeSdkScope(options = {}) {
       getThemeRuntime();
-      return createThemeSdkScope(options);
+      const hostAppearance = themeHostAppearanceManager.createScope({isCurrent:options.isCurrent});
+      const scope = createThemeSdkScope({...options,hostAppearance});
+      return Object.freeze({...scope,activateHostAppearance:()=>hostAppearance.activate()});
     }
     window.requestAppearanceRuntimeReload = reason => getThemeRuntime().sdk.lifecycle.requestReload(reason);
     function getThemeRuntime() {

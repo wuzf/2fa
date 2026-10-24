@@ -13,6 +13,7 @@
 
 import { createJsonResponse, createErrorResponse } from '../../utils/response.js';
 import { getLogger } from '../../utils/logger.js';
+import { isAppearanceSafeMode } from '../../ui/publicAppearance.js';
 
 /**
  * 处理生成OTP（支持高级参数）
@@ -37,7 +38,14 @@ export async function handleGenerateOTP(secret, request = null, env = null) {
 	const { validateBase32, validateOTPParams } = await import('../../utils/validation.js');
 	const { generateOTP } = await import('../../otp/generator.js');
 	const { createQuickOtpPage, createOtpEntryPage } = await import('../../ui/quickOtp.js');
-	const readAppearance = async () => (env ? (await import('../themes.js')).getPublicAppearance(env) : null);
+	let appearanceRead;
+	const readAppearance = async () => {
+		if (!env || isAppearanceSafeMode(request)) {
+			return null;
+		}
+		appearanceRead ??= (await import('../themes.js')).getPublicAppearance(env);
+		return appearanceRead;
+	};
 
 	if (!secret) {
 		// 如果没有密钥，根据 Accept 头返回友好页面或纯文本使用说明

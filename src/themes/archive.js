@@ -13,7 +13,7 @@ export function assertArchiveFileLimit(name, bytes) {
 }
 
 /** Inspect the central directory before decompression: encrypted/linked/duplicate entries are never started. */
-function inspectDirectory(bytes) {
+function inspectDirectory(bytes, { maxEntries = LIMITS.files + 32, manifestBytes } = {}) {
 	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 	let end = -1;
 	for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 65557); offset--) {
@@ -25,7 +25,7 @@ function inspectDirectory(bytes) {
 	invariant(end >= 0, 'THEME_INVALID_ZIP');
 	invariant(view.getUint16(end + 4, true) === 0 && view.getUint16(end + 6, true) === 0, 'THEME_INVALID_ZIP');
 	const count = view.getUint16(end + 10, true);
-	invariant(count <= LIMITS.files + 32 && count === view.getUint16(end + 8, true), 'THEME_PACKAGE_LIMIT');
+	invariant(count <= maxEntries && count === view.getUint16(end + 8, true), 'THEME_PACKAGE_LIMIT');
 	const size = view.getUint32(end + 12, true);
 	let offset = view.getUint32(end + 16, true);
 	invariant(offset + size === end && count !== 65535, 'THEME_INVALID_ZIP');
@@ -61,6 +61,9 @@ function inspectDirectory(bytes) {
 			'THEME_INVALID_ZIP',
 		);
 		if (!directory) {
+			if (path === '2fa-theme.json' && manifestBytes !== undefined) {
+				invariant(fileSize <= manifestBytes, 'THEME_MANIFEST_LIMIT');
+			}
 			expanded += fileSize;
 			invariant(expanded <= LIMITS.totalBytes, 'THEME_PACKAGE_LIMIT');
 		}
@@ -68,6 +71,50 @@ function inspectDirectory(bytes) {
 	}
 	invariant(offset === end, 'THEME_INVALID_ZIP');
 	return paths;
+}
+
+/** Inspect only the manifest to choose a validator, without inflating other files. */
+export function readArchiveManifest(bytes, { maxEntries, manifestBytes }) {
+	invariant(bytes.length <= LIMITS.restoreUpload, 'THEME_UPLOAD_LIMIT');
+	invariant(bytes.length >= 22, 'THEME_INVALID_ZIP');
+	const expected = inspectDirectory(bytes, { maxEntries, manifestBytes });
+	invariant(expected.has('2fa-theme.json'), 'THEME_MISSING_MANIFEST');
+	const seen = new Set();
+	const chunks = [];
+	let size = 0;
+	let complete = false;
+	const unzip = new Unzip((entry) => {
+		const name = cleanPath(entry.name.endsWith('/') ? entry.name.slice(0, -1) : entry.name);
+		invariant(expected.has(name) && !seen.has(name), 'THEME_DUPLICATE_PATH', { path: name });
+		seen.add(name);
+		if (entry.name !== '2fa-theme.json') {
+			return;
+		}
+		entry.ondata = (error, chunk, final) => {
+			invariant(!error, 'THEME_INVALID_ZIP');
+			size += chunk.length;
+			invariant(size <= manifestBytes, 'THEME_MANIFEST_LIMIT');
+			chunks.push(chunk);
+			complete = final;
+		};
+		entry.start();
+	});
+	unzip.register(UnzipInflate);
+	try {
+		for (let offset = 0; offset < bytes.length; offset += 1024) {
+			unzip.push(bytes.subarray(offset, offset + 1024), offset + 1024 >= bytes.length);
+		}
+	} catch (error) {
+		throw error instanceof ThemeError ? error : new ThemeError('THEME_INVALID_ZIP');
+	}
+	invariant(complete && seen.size === expected.size, 'THEME_INVALID_ZIP');
+	const manifest = new Uint8Array(size);
+	let offset = 0;
+	for (const chunk of chunks) {
+		manifest.set(chunk, offset);
+		offset += chunk.length;
+	}
+	return manifest;
 }
 
 export function unpackTheme(bytes, budget, { restore = false } = {}) {
