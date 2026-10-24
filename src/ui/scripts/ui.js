@@ -286,6 +286,7 @@ export function getUICode() {
 
     // 折叠式菜单控制函数
     function toggleActionMenu() {
+      if (actionPresentation === 'toolbar') return;
       // 刚刚结束拖拽时忽略本次点击，避免拖完立刻弹菜单
       if (fabDragJustHappened) return;
       const mainBtn = document.getElementById('mainActionBtn');
@@ -302,6 +303,7 @@ export function getUICode() {
     }
 
     function openActionMenu() {
+      if (actionPresentation === 'toolbar') return;
       const mainBtn = document.getElementById('mainActionBtn');
       const submenu = document.getElementById('actionSubmenu');
       const overlay = document.getElementById('menuOverlay');
@@ -388,6 +390,28 @@ export function getUICode() {
     // ========== FAB 拖拽：右下角"+"按钮可拖动并记住位置 ==========
     const FAB_POSITION_STORAGE_KEY = '2fa-fab-position';
     let fabDragJustHappened = false;
+    let actionPresentation = 'floating';
+    let disposeFABDrag = null;
+
+    function setActionPresentation(mode) {
+      const nextMode = mode === 'toolbar' ? 'toolbar' : 'floating';
+      if (disposeFABDrag) { disposeFABDrag(); disposeFABDrag = null; }
+      actionPresentation = nextMode;
+      document.documentElement.setAttribute('data-actions-mode', nextMode);
+      fabDragJustHappened = false;
+      const fab = document.querySelector('.action-menu-float');
+      const submenu = document.getElementById('actionSubmenu');
+      if (fab) {
+        fab.classList.remove('dragging');
+        ['left','top','right','bottom'].forEach(name => fab.style.removeProperty(name));
+      }
+      if (submenu) ['left','top','right','bottom'].forEach(name => submenu.style.removeProperty(name));
+      const initial = document.getElementById('fab-init-position');
+      if (initial) initial.remove();
+      if (document.getElementById('mainActionBtn') && submenu && document.getElementById('menuOverlay')) closeActionMenu();
+      if (nextMode === 'floating') initFABDrag();
+    }
+
 
     function loadFABPosition() {
       try {
@@ -400,6 +424,7 @@ export function getUICode() {
     }
 
     function saveFABPosition(x, y) {
+      if (actionPresentation !== 'floating') return;
       try {
         localStorage.setItem(FAB_POSITION_STORAGE_KEY, JSON.stringify({ x: x, y: y }));
       } catch (e) {}
@@ -444,6 +469,7 @@ export function getUICode() {
     }
 
     function applyFABPosition(x, y) {
+      if (actionPresentation !== 'floating') return null;
       const fab = document.querySelector('.action-menu-float');
       if (!fab) return null;
       const w = fab.offsetWidth || 48;
@@ -458,6 +484,7 @@ export function getUICode() {
 
     // 根据 FAB 位置自适应子菜单展开方向（上/下、左/右）
     function updateSubmenuDirection() {
+      if (actionPresentation !== 'floating') return;
       const fab = document.querySelector('.action-menu-float');
       const submenu = document.getElementById('actionSubmenu');
       if (!fab || !submenu) return;
@@ -486,6 +513,7 @@ export function getUICode() {
     }
 
     function initFABDrag() {
+      if (actionPresentation !== 'floating' || disposeFABDrag) return;
       const fab = document.querySelector('.action-menu-float');
       const btn = document.getElementById('mainActionBtn');
       if (!fab || !btn) return;
@@ -521,6 +549,7 @@ export function getUICode() {
       }
 
       function onDown(e) {
+        if (actionPresentation !== 'floating') return;
         if (e.button !== undefined && e.button !== 0) return;
         const p = getPoint(e);
         const rect = fab.getBoundingClientRect();
@@ -534,7 +563,7 @@ export function getUICode() {
       }
 
       function onMove(e) {
-        if (!dragging) return;
+        if (!dragging || actionPresentation !== 'floating') return;
         const p = getPoint(e);
         const dx = p.clientX - startPx;
         const dy = p.clientY - startPy;
@@ -552,7 +581,7 @@ export function getUICode() {
       }
 
       function onUp(e) {
-        if (!dragging) return;
+        if (!dragging || actionPresentation !== 'floating') return;
         dragging = false;
         fab.classList.remove('dragging');
         if (moved) {
@@ -583,7 +612,7 @@ export function getUICode() {
       document.addEventListener('touchcancel', onUp);
 
       // capture-phase 拦截拖拽结束后第一个 click，保证不会误触菜单
-      document.addEventListener('click', function(e) {
+      function onDragClick(e) {
         if (!fabDragJustHappened || !fab.contains(e.target)) {
           return;
         }
@@ -594,17 +623,35 @@ export function getUICode() {
         }
         e.stopPropagation();
         e.preventDefault();
-      }, true);
+      }
+      document.addEventListener('click', onDragClick, true);
 
       // 窗口尺寸变化时重新约束位置，并把约束后的坐标写回 storage，
       // 保证下次进入显示的位置与上次可见状态一致
-      window.addEventListener('resize', function() {
+      function onFABResize() {
+        if (actionPresentation !== 'floating') return;
         if (fab.style.left || fab.style.top) {
           const rect = fab.getBoundingClientRect();
           const next = applyFABPosition(rect.left, rect.top);
           if (next) saveFABPosition(next.x, next.y);
         }
-      });
+      }
+      window.addEventListener('resize', onFABResize);
+      disposeFABDrag = function() {
+        dragging = false;
+        moved = false;
+        fab.classList.remove('dragging');
+        if (dragClickSuppressTimer) clearTimeout(dragClickSuppressTimer);
+        btn.removeEventListener('mousedown', onDown);
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        btn.removeEventListener('touchstart', onDown);
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend', onUp);
+        document.removeEventListener('touchcancel', onUp);
+        document.removeEventListener('click', onDragClick, true);
+        window.removeEventListener('resize', onFABResize);
+      };
     }
 `;
 }

@@ -1,3 +1,4 @@
+import { getPublicAppearance } from './themes.js';
 import { getRequestLanguage } from '../utils/i18n.js';
 /**
  * Google Drive configuration and OAuth API endpoints.
@@ -250,6 +251,7 @@ export async function handleStartGoogleDriveOAuth(request, env) {
 }
 
 export async function handleGoogleDriveOAuthCallback(request, env) {
+	const renderResult = async (payload) => createOAuthPopupResponse(request, payload, await getPublicAppearance(env));
 	const logger = getLogger(env);
 	const url = new URL(request.url);
 	const state = url.searchParams.get('state');
@@ -264,7 +266,7 @@ export async function handleGoogleDriveOAuthCallback(request, env) {
 		const errorDescription = url.searchParams.get('error_description');
 
 		if (errorCode) {
-			return createOAuthPopupResponse(request, {
+			return renderResult({
 				success: false,
 				provider: 'gdrive',
 				id: configId,
@@ -293,7 +295,7 @@ export async function handleGoogleDriveOAuthCallback(request, env) {
 		const messageParts = [testResult.message, result.warning].filter(Boolean);
 
 		if (!testResult.success) {
-			return createOAuthPopupResponse(request, {
+			return renderResult({
 				success: true,
 				severity: 'warning',
 				provider: 'gdrive',
@@ -305,7 +307,7 @@ export async function handleGoogleDriveOAuthCallback(request, env) {
 			});
 		}
 
-		return createOAuthPopupResponse(request, {
+		return renderResult({
 			success: true,
 			severity: 'success',
 			provider: 'gdrive',
@@ -317,7 +319,7 @@ export async function handleGoogleDriveOAuthCallback(request, env) {
 		});
 	} catch (error) {
 		logger.error('处理 Google Drive OAuth 回调失败', { error: error.message }, error);
-		return createOAuthPopupResponse(request, {
+		return renderResult({
 			success: false,
 			provider: 'gdrive',
 			id: configId || undefined,

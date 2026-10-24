@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+// Run with node scripts/deploy.js
 
 /**
  * 自动化部署脚本
@@ -26,7 +26,8 @@ import { readFileSync, rmSync, writeFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
-import { injectWorkerVersion } from './deploy-config.js';
+import { injectWorkerVersion, useBuiltRuntime } from './deploy-config.js';
+import { buildRuntime, writeRuntime } from './build-runtime.js';
 import { applyKvBinding, parseDeploymentArgs, parseNamespaceList, readWorkerNameOverride, resolveKvBinding } from './deploy-namespace.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -93,6 +94,11 @@ try {
 	}
 	console.log('');
 
+	const runtime = await buildRuntime({ rootDir: projectRoot });
+	const runtimePath = join(projectRoot, '.wrangler', `runtime-deploy-${process.pid}`, 'worker.js');
+	writeRuntime(runtimePath, runtime.code);
+	modifiedConfig = useBuiltRuntime(modifiedConfig, `.wrangler/runtime-deploy-${process.pid}/worker.js`);
+	console.log(`   内容构建: ${runtime.buildId}`);
 	console.log('🚀 Step 3: 部署到 Cloudflare Workers...');
 	console.log(`   命令: npx wrangler deploy --config ${basename(deployConfigPath)} ${envArg}`.trim());
 	console.log('   （wrangler.toml 保持不变，修改后的配置只写入上述临时文件）');

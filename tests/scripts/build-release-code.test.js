@@ -18,7 +18,7 @@ describe('build-release script', () => {
 			"const embeddedBuildVersion = typeof globalThis.__BUILD_SW_VERSION__ === 'string' ? globalThis.__BUILD_SW_VERSION__ : '';",
 		);
 		expect(serviceWorkerSource).toContain(
-			"const version = env.SW_VERSION || env.BUILD_TIMESTAMP || embeddedBuildVersion || 'v1';",
+			"const version = getBuildId() || env.SW_VERSION || env.BUILD_TIMESTAMP || embeddedBuildVersion || 'v1';",
 		);
 	});
 

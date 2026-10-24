@@ -396,6 +396,7 @@ export function getAuthCode() {
 
       secrets = [];
       filteredSecrets = [];
+      if (typeof filterAppearanceServices === 'function') filterAppearanceServices([], []);
       currentSearchQuery = '';
       const secretsList = document.getElementById('secretsList');
       if (secretsList) {
@@ -444,6 +445,7 @@ export function getAuthCode() {
 
       secrets = [];
       filteredSecrets = [];
+      if (typeof filterAppearanceServices === 'function') filterAppearanceServices([], []);
       currentSearchQuery = '';
 
       const secretsList = document.getElementById('secretsList');

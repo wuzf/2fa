@@ -4,6 +4,9 @@
  */
 
 import { createOfflinePage } from './offlinePage.js';
+import { getBuildId } from '../utils/build.js';
+import { createSnapshotIndex, createSnapshotManager } from './offlineSnapshots.js';
+import { serializeBrowserFunction } from './scripts/browserSource.js';
 import { OFFLINE_MESSAGES } from './locales/offline.js';
 import { normalizeLanguage } from '../shared/languages.js';
 
@@ -19,7 +22,7 @@ export function createServiceWorker(env = {}) {
 	// 2. env.BUILD_TIMESTAMP - 构建时间戳
 	// 3. __BUILD_SW_VERSION__ - 单文件 release 构建时内嵌的版本号
 	// 4. 'v1' - 默认版本（后备）
-	const version = env.SW_VERSION || env.BUILD_TIMESTAMP || embeddedBuildVersion || 'v1';
+	const version = getBuildId() || env.SW_VERSION || env.BUILD_TIMESTAMP || embeddedBuildVersion || 'v1';
 
 	// 生成缓存名称
 	const CACHE_NAME = `2fa-cache-${version}`;
@@ -39,13 +42,18 @@ export function createServiceWorker(env = {}) {
 
 const CACHE_NAME = '${CACHE_NAME}';
 const RUNTIME_CACHE = '${RUNTIME_CACHE}';
+const BUILD_ID = ${JSON.stringify(getBuildId())};
+const snapshotManager = BUILD_ID ? (${serializeBrowserFunction(createSnapshotManager)})({
+  buildId: BUILD_ID, origin: self.location.origin, caches, fetch,
+  index: (${serializeBrowserFunction(createSnapshotIndex)})(), clients: self.clients
+}) : null;
 const DB_NAME = '2fa-offline-db';
 const DB_VERSION = 1;
 const SW_VERSION = '${version}';
 const STORE_NAME = 'pending-operations';
 const OFFLINE_PAGE = ${JSON.stringify(createOfflinePage())};
 const OFFLINE_MESSAGES = ${JSON.stringify(OFFLINE_MESSAGES)};
-const offlineLanguage = ${normalizeLanguage.toString()};
+const offlineLanguage = ${serializeBrowserFunction(normalizeLanguage)};
 function offlineRequestLanguage(request) {
   const explicit = request.headers.get('X-Language');
   if (typeof explicit === 'string') return offlineLanguage(explicit) || 'en';
@@ -283,54 +291,20 @@ async function updateOperation(operationId, updates, condition = null) {
  * 预缓存静态资源
  */
 self.addEventListener('install', event => {
-  console.log('[SW] 正在安装 Service Worker...');
-  
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      console.log('[SW] 预缓存静态资源...');
-      // 只缓存静态资源，CDN 资源在首次请求时按需缓存
-      return cache.addAll(STATIC_RESOURCES).catch(err => {
-        console.warn('[SW] 预缓存静态资源部分失败:', err);
-        // 即使失败也继续，不影响 Service Worker 安装
-        return Promise.resolve();
-      });
-    }).then(() => {
-      console.log('[SW] Service Worker 安装完成');
-      console.log('[SW] CDN 资源将在首次请求时自动缓存（使用 CORS 模式）');
-      // 立即激活，不等待
-      return self.skipWaiting();
-    }).catch(err => {
-      console.error('[SW] Service Worker 安装失败:', err);
-    })
-  );
+  // Versioned snapshots are staged by authenticated pages. Install never
+  // replaces a working shell with a partial preload or a login redirect.
+  event.waitUntil((async () => {
+    if (!snapshotManager) {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.addAll(STATIC_RESOURCES).catch(() => {});
+    }
+    await self.skipWaiting();
+  })());
 });
 
-/**
- * Service Worker 激活事件
- * 清理旧缓存
- */
 self.addEventListener('activate', event => {
-  console.log('[SW] 正在激活 Service Worker...');
-  
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames
-          .filter(cacheName => {
-            // 删除旧版本缓存
-            return cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE;
-          })
-          .map(cacheName => {
-            console.log('[SW] 删除旧缓存:', cacheName);
-            return caches.delete(cacheName);
-          })
-      );
-    }).then(() => {
-      console.log('[SW] Service Worker 激活完成');
-      // 立即控制所有页面
-      return self.clients.claim();
-    })
-  );
+  // Keep legacy and last-good caches until a complete candidate is promoted.
+  event.waitUntil(self.clients.claim());
 });
 
 /**
@@ -509,7 +483,7 @@ self.addEventListener('fetch', event => {
   if (url.origin === self.location.origin && request.method === 'GET' && url.pathname === '/') {
     let cacheUpdate = Promise.resolve();
     const navigation = (async () => {
-      const cached = await caches.match(request).catch(() => null);
+      const cached = await (snapshotManager ? snapshotManager.match(request) : caches.match(request)).catch(() => null);
       const controller = new AbortController();
       let timer;
       try {
@@ -524,7 +498,7 @@ self.addEventListener('fetch', event => {
           const complete = new Response([204, 205, 304].includes(response.status) ? null : body, {
             status: response.status, statusText: response.statusText, headers: response.headers
           });
-          if (response.status === 200) {
+          if (response.status === 200 && !snapshotManager) {
             const responseToCache = complete.clone();
             cacheUpdate = caches.open(CACHE_NAME)
               .then(cache => cache.put(request, responseToCache))
@@ -539,7 +513,12 @@ self.addEventListener('fetch', event => {
           })
         ]);
       } catch {
-        return cached || new Response(OFFLINE_PAGE, {
+        // Bind only the shell actually served offline, not the speculative
+        // cached lookup made before a successful network navigation.
+        const fallback = snapshotManager
+          ? await snapshotManager.match(request, event.resultingClientId || event.clientId).catch(() => null)
+          : cached;
+        return fallback || new Response(OFFLINE_PAGE, {
           status: 503, statusText: 'Service Unavailable',
           headers: { 'Content-Type': 'text/html; charset=utf-8' }
         });
@@ -619,30 +598,68 @@ self.addEventListener('fetch', event => {
     return;
   }
   
-  // 按需加载的功能模块（导入、导出、扫码、备份等）：网络优先，联网时存一份，
-  // 离线时用当前版本存下的副本，新版本激活时随旧缓存一起删除。
-  // 写缓存交给 waitUntil，响应结束后 Service Worker 不会在写完前被回收
+  // The request build selects its cache, including old pages controlled by a new SW.
   if (url.pathname.startsWith('/modules/') && request.method === 'GET') {
+    const requestedBuild = url.searchParams.get('build');
+    const identified = /^[a-f0-9]{64}$/.test(requestedBuild || '');
+    const cacheName = identified ? '2fa-modules-' + requestedBuild : RUNTIME_CACHE;
     let cacheWrite = Promise.resolve();
-    const moduleResponse = fetch(request).then(response => {
-      if (response.ok) {
-        const responseToCache = response.clone();
-        cacheWrite = caches.open(RUNTIME_CACHE)
-          .then(cache => cache.put(request, responseToCache))
-          .catch(error => console.warn('[SW] 无法缓存功能模块:', url.pathname, error));
+    const keptModule = async () => {
+      if (!identified && BUILD_ID) {
+        // A pre-upgrade page only gets an exact legacy-cache entry.
+        for (const name of await caches.keys()) {
+          if (name.startsWith('2fa-runtime-') && !/[a-f0-9]{64}$/.test(name)) {
+            const cached = await (await caches.open(name)).match(request);
+            if (cached) return cached;
+          }
+        }
+        return null;
       }
-      return response;
-    }).catch(err => caches.match(request).then(cached => {
-      if (cached) return cached;
-      console.error('[SW] 功能模块加载失败:', url.pathname, err);
-      return new Response(offlineText('resourceUnavailable', language), {
-        status: 503,
-        statusText: 'Service Unavailable',
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-      });
-    }));
+      return identified ? (await caches.open(cacheName)).match(request) : caches.match(request);
+    };
+    const moduleResponse = (async () => {
+      try {
+        const response = await fetch(request);
+        if (response.status === 401 || response.status === 403) return response;
+        if (identified && response.ok && response.headers.get('X-2FA-Build') !== requestedBuild) {
+          return (await keptModule()) || new Response('Module build changed; refresh the page', { status: 409 });
+        }
+        if (response.status === 409) return (await keptModule()) || response;
+        if (response.ok && (identified || !BUILD_ID)) {
+          const copy = response.clone();
+          cacheWrite = caches.open(cacheName).then(cache => cache.put(request, copy)).catch(() => {});
+        }
+        // Missing identity must never execute current code in a legacy page.
+        if (!identified && BUILD_ID && response.ok) {
+          return (await keptModule()) || new Response('Refresh required', { status: 409 });
+        }
+        return response;
+      } catch {
+        return (await keptModule()) || new Response(offlineText('resourceUnavailable', language), {
+          status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+        });
+      }
+    })();
     event.respondWith(moduleResponse);
     event.waitUntil(moduleResponse.catch(() => {}).then(() => cacheWrite));
+    return;
+  }
+
+  if (snapshotManager && request.method === 'GET' &&
+      (url.pathname.startsWith('/theme-assets/') || url.pathname === '/manifest.json' || url.pathname.startsWith('/icon-') || url.pathname.startsWith('/apple-touch-icon'))) {
+    event.respondWith((async () => {
+      const bound = await snapshotManager.boundResource(request, event.clientId).catch(() => null);
+      if (bound) return bound;
+        try {
+          const response = await fetch(request);
+          if (response.status >= 500) {
+            return (await snapshotManager.match(request, event.clientId)) || response;
+          }
+          return response;
+        } catch {
+          return (await snapshotManager.match(request, event.clientId)) || new Response('', { status: 503 });
+        }
+    })());
     return;
   }
 
@@ -1201,6 +1218,22 @@ function isQueueClient(event) {
  * 允许页面与 Service Worker 通信
  */
 self.addEventListener('message', event => {
+  if (snapshotManager && (event.data?.type === 'APPEARANCE_SNAPSHOT' || event.data?.type === 'APP_BUILD_PIN')) {
+    const task = (async () => {
+      if (!isQueueClient(event)) throw new Error('Invalid snapshot client');
+      await snapshotManager.pin(event.source?.id, event.data.buildId, event.data.appearance?.revision ?? event.data.revision);
+      const result = event.data.type === 'APPEARANCE_SNAPSHOT'
+        ? await snapshotManager.stage(event.data.appearance, event.data.buildId)
+        : { ready: false, reason: 'pinned' };
+      event.ports?.[0]?.postMessage({ ok: true, ...result });
+    })().catch(error => {
+      console.warn('[SW] Keeping previous appearance snapshot:', error);
+      event.ports?.[0]?.postMessage({ ok: false, ready: false });
+    });
+    event.waitUntil(task);
+    return;
+  }
+
   console.log('[SW] 收到消息:', event.data);
   if (['OFFLINE_QUEUE_STATUS', 'OFFLINE_QUEUE_DETAIL', 'OFFLINE_QUEUE_RESUME', 'OFFLINE_QUEUE_RETRY', 'OFFLINE_QUEUE_CANCEL',
     'OFFLINE_QUEUE_CLAIM', 'OFFLINE_QUEUE_RELEASE'].includes(event.data?.type)) {

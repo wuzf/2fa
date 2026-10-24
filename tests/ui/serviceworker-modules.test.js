@@ -1,11 +1,15 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createServiceWorker } from '../../src/ui/serviceworker.js';
 
-async function requestModule({ fetchImpl, cached = null, put = vi.fn(async () => {}) }) {
+afterEach(() => vi.unstubAllGlobals());
+
+async function requestModule({ fetchImpl, cached = null, put = vi.fn(async () => {}), currentBuild = '', requestedBuild = null }) {
+	vi.stubGlobal('__2FA_BUILD_ID__', currentBuild);
+	vi.stubGlobal('indexedDB', {});
 	const listeners = new Map();
 	const self = { location: { origin: 'https://2fa.example.com' }, addEventListener: (type, callback) => listeners.set(type, callback) };
-	const caches = { match: vi.fn().mockResolvedValue(cached), open: vi.fn(async () => ({ put })) };
+	const caches = { match: vi.fn().mockResolvedValue(cached), open: vi.fn(async () => ({ put, match: async () => cached })), keys: vi.fn(async () => []) };
 	const quietConsole = { log: vi.fn(), error: vi.fn(), warn: vi.fn() };
 	const source = await createServiceWorker({ SW_VERSION: 'module-test' }).text();
 	// eslint-disable-next-line no-new-func
@@ -14,7 +18,7 @@ async function requestModule({ fetchImpl, cached = null, put = vi.fn(async () =>
 	let responsePromise;
 	const lifetime = [];
 	listeners.get('fetch')({
-		request: new Request('https://2fa.example.com/modules/import.js'),
+		request: new Request('https://2fa.example.com/modules/import.js' + (requestedBuild ? '?build=' + requestedBuild : '')),
 		respondWith: (response) => {
 			responsePromise = response;
 		},
@@ -70,5 +74,39 @@ describe('Service Worker lazy modules', () => {
 	it('answers 503 offline when the module was never loaded', async () => {
 		const { response } = await requestModule({ fetchImpl: vi.fn().mockRejectedValue(new TypeError('Network unavailable')) });
 		expect(response.status).toBe(503);
+	});
+	it('stores by the requested build even when the controlling worker is newer', async () => {
+		const requestedBuild = 'a'.repeat(64);
+		const h = await requestModule({ currentBuild: 'b'.repeat(64), requestedBuild,
+			fetchImpl: async () => new Response('old module', { headers: { 'X-2FA-Build': requestedBuild } }),
+		});
+		await Promise.all(h.lifetime);
+		expect(h.caches.open).toHaveBeenCalledWith('2fa-modules-' + requestedBuild);
+		expect(await h.response.text()).toBe('old module');
+	});
+	it('uses an old matching cached module after deployment instead of executing the new build', async () => {
+		const h = await requestModule({ currentBuild: 'b'.repeat(64), requestedBuild: 'a'.repeat(64),
+			cached: new Response('cached old module'), fetchImpl: async () => new Response('refresh', { status: 409 }),
+		});
+		expect(await h.response.text()).toBe('cached old module');
+		expect(h.put).not.toHaveBeenCalled();
+	});
+	it('requires a refresh if no matching module exists after deployment', async () => {
+		const h = await requestModule({ currentBuild: 'b'.repeat(64), requestedBuild: 'a'.repeat(64),
+			fetchImpl: async () => new Response('wrong new module', { headers: { 'X-2FA-Build': 'b'.repeat(64) } }),
+		});
+		expect(h.response.status).toBe(409);
+		expect(h.put).not.toHaveBeenCalled();
+	});
+	it('never masks online authorization denial with an old module', async () => {
+		const h = await requestModule({ currentBuild: 'b'.repeat(64), requestedBuild: 'a'.repeat(64),
+			cached: new Response('old module'), fetchImpl: async () => new Response('login', { status: 401 }),
+		});
+		expect(h.response.status).toBe(401);
+	});
+	it('does not execute a successful unidentified module in a legacy page controlled by the new worker', async () => {
+		const h = await requestModule({ currentBuild: 'b'.repeat(64), fetchImpl: async () => new Response('new module') });
+		expect(h.response.status).toBe(409);
+		expect(h.put).not.toHaveBeenCalled();
 	});
 });

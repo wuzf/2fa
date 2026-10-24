@@ -145,7 +145,7 @@ export function getWorkspaceStyles() {
     .fluent-app .progress-top-fill { background: var(--progress-fill); }
     .fluent-app .main-action-button { --action-btn-shadow: 0 2px 8px #00000026; background: #8e44ad; border: 1px solid #8e44ad; border-radius: 50%; color: #fff; box-shadow: var(--action-btn-shadow); transition: background .12s ease, transform .16s ease; }
     .fluent-app .main-action-button:hover { background: #7d3c98; border-color: #7d3c98; box-shadow: 0 2px 8px #00000026; transform: none; }
-    .fluent-app .main-action-button.active { transform: none; background: #7d3c98; border-color: #7d3c98; }
+    .fluent-app .main-action-button.active, .fluent-app .main-action-button.active:hover { transform: none; background: #7d3c98; border-color: #7d3c98; }
     .fluent-app .main-action-button .dialog-icon { width: 24px; height: 24px; transition: transform .16s ease; }
     .fluent-app .main-action-button.active .dialog-icon { transform: rotate(45deg); }
     .fluent-app .action-submenu { padding: 4px; }
@@ -187,5 +187,5 @@ export function getWorkspaceStyles() {
     @media (prefers-reduced-motion: reduce) {
       .fluent-app .secret-card, .fluent-app .main-action-button, .fluent-app .main-action-button .dialog-icon { transition: none; }
     }
-  `;
+  `.replace(/\.fluent-app(?=\s+(?:[.#:]|\[|[a-zA-Z*>+~]))/g, ':where(.fluent-app)');
 }

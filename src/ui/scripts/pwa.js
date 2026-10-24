@@ -10,6 +10,19 @@
 export function getPWACode() {
 	return `// ==================== PWA Service Worker 注册 ====================
 
+    function publishAppearanceSnapshot(appearance = window.__2FA_APPEARANCE__) {
+      const worker = navigator.serviceWorker && (navigator.serviceWorker.controller || offlineQueueWorker);
+      if (!worker) return;
+      const buildId = window.__2FA_BUILD_ID__ || '';
+      if (!buildId) return;
+      worker.postMessage({ type: 'APP_BUILD_PIN', buildId, revision: appearance?.revision });
+      if (navigator.onLine === false || !appearance ||
+          new URLSearchParams(window.location.search).get('safeMode') === '1' ||
+          new URLSearchParams(window.location.search).get('disableCustomCode') === '1') return;
+      worker.postMessage({ type: 'APPEARANCE_SNAPSHOT', buildId, appearance });
+    }
+    window.addEventListener('appearance-applied', event => publishAppearanceSnapshot(event.detail));
+
     let offlineQueueWorker = null;
     let offlineQueueOperations = [];
     let offlineQueueAuthRequired = false;
@@ -343,6 +356,7 @@ export function getPWACode() {
           // 监听控制器变化
           navigator.serviceWorker.addEventListener('controllerchange', () => {
             console.log('🔄 Service Worker 控制器已更新');
+            publishAppearanceSnapshot();
             requestPendingOperationSync();
             if (offlineQueueResumePending) void drainOfflineQueueResume();
             else void refreshOfflineQueue();
@@ -354,6 +368,7 @@ export function getPWACode() {
             handleServiceWorkerMessage(event.data);
           });
 
+          publishAppearanceSnapshot();
           requestPendingOperationSync(registration);
           if (offlineQueueResumePending) void drainOfflineQueueResume();
           else void refreshOfflineQueue();
@@ -581,6 +596,7 @@ export function getPWACode() {
      * 监听在线/离线状态变化
      */
     window.addEventListener('online', () => {
+      publishAppearanceSnapshot();
       console.log('🌐 网络已连接');
 
       // 移除离线横幅

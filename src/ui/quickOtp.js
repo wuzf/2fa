@@ -1,20 +1,26 @@
 import { dialogIcon } from './dialogIcons.js';
-import { getStandaloneHead, getStandaloneI18nScript, getStandaloneLanguageSelect, getStandaloneText } from './standalone.js';
+import {
+	getStandaloneHead,
+	getStandaloneBrand,
+	getStandaloneI18nScript,
+	getStandaloneLanguageSelect,
+	getStandaloneText,
+} from './standalone.js';
 import { getRequestLanguage } from '../utils/i18n.js';
 import { getQuickOtpScript } from './scripts/quickOtp.js';
 import { getQuickOtpStyles } from './styles/quickOtp.js';
 
 /** Public entry form; API clients still receive the plain-text usage response. */
-export function createOtpEntryPage(request) {
+export function createOtpEntryPage(request, appearance = null) {
 	const language = getRequestLanguage(request, 'en');
 	const t = (key, params) => getStandaloneText(language, key, params);
 	return new Response(
 		`<!DOCTYPE html>
 <html lang="${language}">
-<head>${getStandaloneHead(t('otpEntryPageTitle'), getQuickOtpStyles())}</head>
+<head>${getStandaloneHead(t('otpEntryPageTitle'), getQuickOtpStyles(), appearance)}</head>
 <body>
   <main class="otp-shell" aria-labelledby="otpEntryTitle">
-    <a class="otp-brand" href="/">${dialogIcon('key')}<span>2FA</span></a>
+    ${getStandaloneBrand(appearance, { fallbackIcon: dialogIcon('key') })}
     <section class="standalone-card otp-card otp-entry" aria-label="${t('otpEntrySection')}" data-standalone-aria-label="otpEntrySection">
       <div class="standalone-language-row">${getStandaloneLanguageSelect(language)}</div>
       <header class="otp-header">
@@ -49,7 +55,7 @@ export function createOtpEntryPage(request) {
 			status: 200,
 			headers: {
 				'Content-Type': 'text/html; charset=utf-8',
-				'Cache-Control': 'public, max-age=300',
+				'Cache-Control': appearance ? 'no-cache' : 'public, max-age=300',
 				Vary: 'Accept, Accept-Language, X-Language',
 				'Content-Language': language,
 				'X-Content-Type-Options': 'nosniff',
@@ -70,6 +76,7 @@ export function createQuickOtpPage(otp, options = {}) {
 		validUntil = 0,
 		serverTime,
 		request,
+		appearance = null,
 	} = options;
 	const language = getRequestLanguage(request, 'en');
 	const t = (key, params) => getStandaloneText(language, key, params);
@@ -89,10 +96,10 @@ export function createQuickOtpPage(otp, options = {}) {
 		'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>';
 	const htmlContent = `<!DOCTYPE html>
 <html lang="${language}">
-<head>${getStandaloneHead(t('otpPageTitle'), getQuickOtpStyles())}</head>
+<head>${getStandaloneHead(t('otpPageTitle'), getQuickOtpStyles(), appearance)}</head>
 <body>
   <main class="otp-shell" aria-labelledby="otpTitle">
-    <a class="otp-brand" href="/">${dialogIcon('key')}<span>2FA</span></a>
+    ${getStandaloneBrand(appearance, { fallbackIcon: dialogIcon('key') })}
     <section class="standalone-card otp-card" aria-label="${t('otpSection')}" data-standalone-aria-label="otpSection">
       <div class="standalone-language-row">${getStandaloneLanguageSelect(language)}</div>
       ${isHOTP ? '' : `<div class="progress-container"><div class="progress-bar" id="progress" role="progressbar" aria-label="${t('otpProgress')}" data-standalone-aria-label="otpProgress" aria-valuemin="0" aria-valuemax="100"></div></div>`}

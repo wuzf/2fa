@@ -7,7 +7,7 @@
  * node scripts/build-release.js [--minify] [--output=dist/worker.js]
  */
 
-import { build } from 'esbuild';
+import { buildRuntime } from './build-runtime.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -42,48 +42,18 @@ async function buildRelease() {
     // 生成版本信息
     const buildDate = new Date().toISOString();
     const version = packageJson.version;
-    const serviceWorkerVersion = `v${version}-${buildDate.replace(/[^\d]/g, '').slice(0, 14)}`;
+
 
     console.log('📦 项目信息：');
     console.log(`   名称: ${packageJson.name}`);
     console.log(`   版本: ${version}`);
     console.log(`   构建时间: ${buildDate}\n`);
 
-    // 使用 esbuild 打包
-    console.log('⚙️  正在打包模块...');
-    await build({
-      entryPoints: [join(rootDir, 'src', 'worker.js')],
-      bundle: true,
-      format: 'esm',
-      target: 'es2022',
-      platform: 'neutral',
-      mainFields: ['browser', 'module', 'main'],
-      outfile: outputPath,
-      minify: shouldMinify,
-      sourcemap: false,
-      banner: {
-        js: `/**
- * 2FA Manager - Cloudflare Worker (Release Build)
- *
- * @name ${packageJson.name}
- * @version ${version}
- * @author ${packageJson.author}
- * @license ${packageJson.license}
- * @build ${buildDate}
- *
- * This is a bundled release version for easy deployment.
- * For source code, visit: https://github.com/wuzf/2fa
- */
-`,
-      },
-      define: {
-        'process.env.VERSION': JSON.stringify(version),
-        'process.env.BUILD_DATE': JSON.stringify(buildDate),
-        'globalThis.__BUILD_SW_VERSION__': JSON.stringify(serviceWorkerVersion),
-      },
-      external: [],
-      logLevel: 'info',
-    });
+    // The shared builder embeds globalThis.__BUILD_SW_VERSION__ and resolves
+    // mainFields: ['browser', 'module', 'main'] for every supported entry point.
+    const runtime = await buildRuntime({ rootDir, minify: shouldMinify });
+    const serviceWorkerVersion = runtime.buildId;
+    writeFileSync(outputPath, runtime.code, 'utf8');
 
     // 获取文件大小
     const outputContent = readFileSync(outputPath, 'utf-8');
@@ -102,6 +72,7 @@ async function buildRelease() {
       author: packageJson.author,
       license: packageJson.license,
       buildDate: buildDate,
+      buildId: runtime.buildId,
       minified: shouldMinify,
       fileSizeKB: parseFloat(fileSizeKB),
       repository: packageJson.repository?.url || 'https://github.com/wuzf/2fa',
@@ -170,7 +141,7 @@ wrangler kv namespace create SECRETS_KV
 
 仓库中的 \`wrangler.toml\` 还声明了 Durable Object \`SECRETS_STORE\`：读写密钥的请求都交给它依次处理，避免多台设备同时修改时互相覆盖。一键部署、Workers Builds 和 \`npm run deploy\` 会自动创建它。
 
-直接粘贴 \`worker.js\` 或不带配置执行 \`wrangler deploy worker.js\` 时不会创建这个绑定。应用照常可用，但只有同一个实例收到的请求会依次处理，多台设备同时修改时仍可能丢失其中一次修改。
+直接粘贴 \`worker.js\` 或不带配置执行 \`wrangler deploy worker.js\` 时不会创建这个绑定。账户功能可用，但多设备同时修改保护不可用。主题安装、发布和跨设备保存需要补齐此绑定。主题数据保存在 Durable Object，删除或迁移前须导出完整外观；账户备份不包含主题。
 
 ### 3. 配置密钥（推荐）
 

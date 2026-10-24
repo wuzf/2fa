@@ -7,7 +7,13 @@ import { SUPPORTED_LANGUAGES, normalizeLanguage } from '../shared/languages.js';
 import { encryptData } from './encryption.js';
 import { createHtmlResponse } from './response.js';
 import { dialogIcon } from '../ui/dialogIcons.js';
-import { getStandaloneHead, getStandaloneI18nScript, getStandaloneLanguageSelect, getStandaloneText } from '../ui/standalone.js';
+import {
+	getStandaloneHead,
+	getStandaloneBrand,
+	getStandaloneI18nScript,
+	getStandaloneLanguageSelect,
+	getStandaloneText,
+} from '../ui/standalone.js';
 import { getRequestLanguage, translateServerMessage } from './i18n.js';
 
 const OAUTH_STATE_PREFIX = 'oauth_state_';
@@ -224,7 +230,7 @@ export function extractOAuthProviderError(data, fallbackMessage, translateError)
  * @param {Object} payload - callback result
  * @returns {Response} HTML response
  */
-export function createOAuthPopupResponse(request, payload) {
+export function createOAuthPopupResponse(request, payload, themeAppearance = null) {
 	const { appOrigin, language: requestedLanguage, messageParts, ...messageData } = payload || {};
 	const language = requestedLanguage ? normalizeLanguage(requestedLanguage) || 'en' : getRequestLanguage(request, 'en');
 	const t = (key) => getStandaloneText(language, key);
@@ -273,11 +279,15 @@ export function createOAuthPopupResponse(request, payload) {
     .oauth-result .page-icon { justify-content: center; color: var(--page-${appearance.color}); }
     .oauth-result .page-description { overflow-wrap: anywhere; }
     .oauth-result .page-actions { justify-content: center; }
+    .oauth-brand {display:inline-flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--page-muted);text-decoration:none;font-weight:600;}
   `,
+		themeAppearance,
+		{ brandOnly: true },
 	)}
 </head>
 <body>
   <main class="standalone-card oauth-result" aria-labelledby="oauth-title">
+    ${themeAppearance?.branding?.name || themeAppearance?.branding?.logo ? getStandaloneBrand(themeAppearance, { className: 'oauth-brand' }) : ''}
     <div class="standalone-language-row">${getStandaloneLanguageSelect(language)}</div>
     <div class="page-icon">${dialogIcon(appearance.icon)}</div>
     <h1 class="page-title" id="oauth-title" data-standalone-i18n="oauthResultTitle">${escapeHtml(title)}</h1>

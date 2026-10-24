@@ -268,13 +268,15 @@ const otp = binary % 1000000;
 
 **Service Worker 缓存策略**:
 
-- **主页** (`/`): Network First；网络失败时返回缓存，缓存也不存在时返回离线页
+- **主页** (`/`): 联网优先；新页面、恢复壳及必需主题素材全部准备好之后才推广完整离线快照，网络成功不直接覆盖上一套完整快照
+- **懒加载模块** (`/modules/*.js?build=...`): 请求和响应使用同一 `buildId`；旧标签页只能使用对应构建的模块缓存，缺失时提示先保存编辑再刷新
+- **主题资源**: 私有素材需鉴权且不进入公共缓存；已发布不可变资源用于完整主题快照
 - **Favicon 代理**: Cache First
 - **CDN 库** (jsQR, qrcode): 缓存命中后后台更新，首次请求使用 CORS 获取并缓存
 - **API 请求**（Favicon 代理除外）: 请求网络，不缓存响应；支持的密钥写操作遇到网络错误时进入离线同步队列，其他 API 返回错误
 - **其他同源资源**: Network Only；网络错误时返回 503，无 Service Worker 缓存回退
 - **其他外部资源**: Network Only；网络错误时返回空 404，无 Service Worker 缓存回退
-- 缓存名由部署版本生成：`2fa-cache-${SW_VERSION}`
+- 构建身份由实际 Worker 产物的 SHA-256 生成，与展示版本和 `SW_VERSION` 分离。Service Worker 不在激活时直接删除旧缓存；候选快照在 IndexedDB 中比较目标构建、外观修订号和候选代次后才能切换当前指针
 
 **页面结构**:
 
@@ -300,6 +302,16 @@ const otp = binary % 1000000;
 - 动态迁移预览切换语言时原位更新文本，保留节点、选择和关闭会话，避免重建后盖住正在等待的确认框。
 
 行为回归测试位于 `tests/ui/modal-dismissal.test.js`。
+
+#### 主题与外观边界
+
+主题协议和素材规范化位于 `src/themes/`，权威存储由 `src/storage/theme-store.js` 协调，使用现有 `SECRETS_STORE` 中的独立 `appearance:v1` 对象。不要把外观写入密钥的离线队列，也不要将 KV 素材镜像当作主题权威配置。
+
+主程序拥有展示渲染器和动作回调，主题仅声明布局、CSS 和静态素材，不接收原始密钥。预览在无同源权限的 sandbox iframe 中使用示例数据，不启动实际认证、账户请求或验证码业务调度。页面公开 `data-part` 与 `--2fa-*` 接口，内置主题和第三方主题使用同一协议。示例、绑定格式和预算见 [主题作者指南](THEMES.md)。
+
+外观编辑器维护自己的 IndexedDB 草稿与素材，不参与偏好设置自动保存；编辑会话、草稿未落盘、上传、预览初始化和应用请求必须阻止自动刷新。语言切换和外观应用共用品牌更新逻辑，不能让国际化重置用户设置的标题或 manifest。
+
+状态变更先检查 `operationId` 回执及请求摘要，再检查 `expectedRevision`。重试成功请求返回原结果，跨设备冲突返回 `409` 并保留草稿。资源清理、配额预留、KV 镜像补写由主题对象和 DO alarm 处理，与密钥对象隔离。
 
 ### 6. 工具模块 (`utils/`)
 
@@ -422,9 +434,17 @@ npx wrangler kv namespace create SECRETS_KV --preview
 
 ```bash
 npm run dev
-# 或
-npx wrangler dev --port 8787
+# 指定本地端口
+npm run dev -- --port 8787
 ```
+
+开发、部署和单文件发布共用 `scripts/build-runtime.js`：esbuild 在内存中生成带固定占位符的完整 Worker，计算 SHA-256 后内嵌为 `buildId`。同一产物得到同一身份；代码改变时即使应用版本未变，构建身份也会改变。
+
+`npm run dev` 监听源码变更，更新 `.wrangler/runtime-dev-<进程号>.js`，使用每进程独立的临时 Wrangler 配置，原 `wrangler.toml` 保持只读。`npm run deploy` 使用相同构建器并保留既有 KV／环境选择规则；`npm run build` 在 `dist/worker.js` 和元数据中写入构建身份。
+
+不要用直接 `wrangler dev` 的未打包源码模式验证主题发布或新版离线功能。缺少有效构建身份时只提供内置界面和全量脚本，不伪造版本；使用项目入口或已打包单文件验证完整功能。
+
+服务器只提供当前构建的懒加载模块，并通过 `X-2FA-Build` 返回身份；不匹配的请求返回明确错误。构建回归需覆盖“旧标签页在部署后首次加载模块”，以及两个候选离线快照逆序完成的情况，确保不会执行错配代码或将当前快照倒退。
 
 ### 开发工具配置
 

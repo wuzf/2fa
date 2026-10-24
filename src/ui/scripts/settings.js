@@ -611,6 +611,7 @@ export function getSettingsCode() {
 
     function customCodeReloadBlocked() {
       return hasUnsavedSettingsChanges() || pendingLanguageSaves > 0 || defaultExportFormatPending !== null
+        || (typeof window.hasAppearancePendingChanges === 'function' && window.hasAppearancePendingChanges())
         || Object.values(numericPreferences).some(state => state.saving)
         || document.hidden || hasOtherCustomCodeModal();
     }
@@ -657,6 +658,7 @@ export function getSettingsCode() {
     }
 
     function applySavedCustomCode() {
+      if (window.__2FA_SAFE_MODE__) return;
       if (!customCodeState.reloadRequired || customCodeState.reloading || customCodeState.failed
         || customCodeState.dirty || customCodeState.saving
         || customCodeState.composing.size > 0 || customCodeState.reloadComposing.size > 0) return;

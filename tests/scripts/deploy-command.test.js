@@ -16,6 +16,11 @@ const fixtures = vi.hoisted(() => ({
 	failDeployment: false,
 	failTemporaryWrite: false,
 }));
+// Build correctness is covered separately; this suite guards deployment storage isolation.
+vi.mock('../../scripts/build-runtime.js', () => ({
+	buildRuntime: async () => ({ code: 'export default {}', buildId: 'a'.repeat(64) }),
+	writeRuntime: vi.fn(),
+}));
 vi.mock('fs', () => ({
 	readFileSync: (path) => {
 		if (!fixtures.files.has(String(path))) {

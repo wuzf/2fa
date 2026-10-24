@@ -4,6 +4,7 @@ import { SUPPORTED_LANGUAGES, LANGUAGE_OPTIONS } from '../shared/languages.js';
  * 用于用户首次访问时设置管理员密码
  */
 
+import { getStandaloneBrand, getStandaloneBrandMetadata, getStandaloneBrandTitle } from './standalone.js';
 import { getSetupStyles } from './styles/setup.js';
 import { dialogIcon } from './dialogIcons.js';
 import { LOCALES } from './locales/index.js';
@@ -15,7 +16,7 @@ import { getPageSecurityHeaders } from '../utils/security.js';
  * 创建首次设置页面
  * @returns {Response} HTML响应
  */
-export async function createSetupPage(request) {
+export async function createSetupPage(request, appearance = null) {
 	const initialLanguage = getRequestLanguage(request, 'en');
 	const setupMessages = serverMessages.filter(([source]) =>
 		/密码|设置|^KV 存储未绑定|^请求|^您的请求次数过多|^服务器内部错误/.test(source),
@@ -50,7 +51,8 @@ export async function createSetupPage(request) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>${LOCALES[initialLanguage].setupPageTitle}</title>
+  <title>${getStandaloneBrandTitle(LOCALES[initialLanguage].setupPageTitle, appearance).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</title>
+  ${getStandaloneBrandMetadata(appearance)}
 
   <script>
     (function() {
@@ -72,11 +74,13 @@ export async function createSetupPage(request) {
 
   <style>
     ${getSetupStyles()}
+    .setup-brand {display:inline-flex;gap:8px;align-items:center;margin-bottom:16px;color:inherit;text-decoration:none;font-weight:600;}
   </style>
 </head>
 <body>
   <main class="setup-container">
     <div class="setup-header">
+      ${appearance?.branding?.name || appearance?.branding?.logo ? getStandaloneBrand(appearance, { className: 'setup-brand' }) : ''}
       <div class="setup-header-top">
         <div class="setup-icon" aria-hidden="true">${dialogIcon('lock')}</div>
         <div class="setup-lang-selector">
@@ -200,7 +204,9 @@ export async function createSetupPage(request) {
         if (select.setAttribute) select.setAttribute('aria-label', t('setupLanguage'));
       }
 
-      document.title = t('setupPageTitle');
+      const customBrand = ${JSON.stringify(appearance?.branding?.name || '').replace(/</g, '\\u003c')};
+      const translatedTitle = t('setupPageTitle');
+      document.title = customBrand ? (translatedTitle.includes('2FA') ? translatedTitle.replace(/2FA/g, () => customBrand) : translatedTitle + ' · ' + customBrand) : translatedTitle;
       const title = document.getElementById('setupTitle');
       if (title) title.textContent = t('setupHeaderTitle');
       const desc = document.getElementById('setupDescription');

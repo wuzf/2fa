@@ -149,6 +149,8 @@ export function getI18nCode() {
         const manifest = document.querySelector('link[rel="manifest"]');
         if (manifest) manifest.setAttribute('href', '/manifest.json?lang=' + encodeURIComponent(currentResolvedLanguage));
       }
+      if (typeof updateAppearanceBranding === 'function') updateAppearanceBranding();
+      if (typeof refreshAppearanceLanguage === 'function') refreshAppearanceLanguage();
     }
 
     function setLanguage(lang, options = {}) {

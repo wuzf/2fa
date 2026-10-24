@@ -18,9 +18,34 @@ export function getModuleLoaderCode() {
 	return `
     // ========== 模块懒加载系统 ==========
 
+    function showModuleBuildUpdate() {
+      if (document.getElementById('moduleBuildUpdate')) return;
+      const banner = document.createElement('div');
+      banner.id = 'moduleBuildUpdate';
+      banner.className = 'offline-banner show';
+      banner.setAttribute('role', 'status');
+      const text = document.createElement('span');
+      text.textContent = t('moduleBuildChanged');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-secondary';
+      button.textContent = t('restoreRefresh');
+      button.onclick = () => {
+        if (typeof window.__2FA_REFRESH_BLOCKED__ === 'function' && window.__2FA_REFRESH_BLOCKED__()) {
+          showCenterToast('⚠️', t('moduleRefreshBlocked'));
+          return;
+        }
+        window.location.reload();
+      };
+      banner.append(text, button);
+      document.body.prepend(banner);
+      window.dispatchEvent(new CustomEvent('module-build-mismatch'));
+    }
+
     // 模块加载状态
     let loadingModuleName = null;
     const moduleLoadState = {
+      appearance: { loaded: false, loading: false, code: null },
       import: { loaded: false, loading: false, code: null },
       export: { loaded: false, loading: false, code: null },
       backup: { loaded: false, loading: false, code: null },
@@ -67,7 +92,12 @@ export function getModuleLoaderCode() {
         showLoadingToast(t('moduleLoading', { module: getModuleDisplayName(moduleName) }));
 
         // 从服务器获取模块代码
-        const response = await authenticatedFetch(\`/modules/\${moduleName}.js\`);
+        const buildId = window.__2FA_BUILD_ID__ || '';
+        const response = await authenticatedFetch(\`/modules/\${moduleName}.js?build=\${encodeURIComponent(buildId)}\`);
+        if (response.status === 409 || (response.ok && buildId && response.headers.get('X-2FA-Build') !== buildId)) {
+          showModuleBuildUpdate();
+          throw new Error(t('moduleBuildChanged'));
+        }
 
         if (!response.ok) {
           throw new Error(t('moduleHttpError', { status: response.status }));
@@ -105,6 +135,7 @@ export function getModuleLoaderCode() {
      */
     function getModuleDisplayName(moduleName) {
       const displayNames = {
+        appearance: 'appearanceTitle',
         import: 'moduleImport',
         export: 'moduleExport',
         backup: 'moduleBackup',

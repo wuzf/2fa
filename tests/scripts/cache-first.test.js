@@ -88,7 +88,7 @@ function harness({ cached, online = true } = {}) {
 		function toggleAdvancedOptions() {}
 		const originalRenderSecrets = renderSecrets;
 		renderSecrets = () => secrets.length ? render(secrets) : originalRenderSecrets();
-		return { loadSecrets, handleUnauthorized, commitSecretListChange, createSecretCard, editSecret,
+		return { loadSecrets, handleUnauthorized, commitSecretListChange, createSecretCard, editSecret, bindAccountAppearanceActions,
 			getSecrets: () => secrets,
 			getBlocked: () => secretReadsBlocked,
 			newSession: () => invalidateSecretSession({blocked:false})
@@ -272,7 +272,7 @@ describe('main-page cache-first account reads', () => {
 			expect(offline.fetch).not.toHaveBeenCalled();
 			document.getElementById('secretsList').innerHTML = offline.createSecretCard(legacy);
 			expect(document.querySelector('.secret-name').textContent).toBe('未命名');
-			expect(document.querySelector('[onclick*="editSecret"]').getAttribute('onclick')).toContain('legacy');
+			expect(document.querySelector('[data-account-action="edit"]').closest('[data-account-id]').dataset.accountId).toBe('legacy');
 
 			for (const id of [
 				'secretId',
@@ -293,7 +293,8 @@ describe('main-page cache-first account reads', () => {
 				}
 				document.body.append(input);
 			}
-			offline.editSecret('legacy');
+			offline.bindAccountAppearanceActions();
+			document.querySelector('[data-account-action="edit"]').click();
 			expect(document.getElementById('secretId').value).toBe('legacy');
 			expect(document.getElementById('secretName').value).toBe(name);
 			expect(document.getElementById('secretKey').value).toBe(ACCOUNT.secret);

@@ -7,6 +7,8 @@ import { getCoreCode } from '../../src/ui/scripts/core.js';
 import { getSearchCode } from '../../src/ui/scripts/search.js';
 import { getServiceAggregationCode } from '../../src/ui/scripts/serviceAggregation.js';
 import { getStateCode } from '../../src/ui/scripts/state.js';
+import { createAppearanceController } from '../../src/ui/scripts/appearanceRuntime.js';
+import { getBuiltinTheme } from '../../src/themes/builtins.js';
 
 const html = await (await createMainPage()).text();
 const accounts = [
@@ -63,7 +65,14 @@ function createHarness({ online, viewMode, defaultViewMode }) {
 			),
 	});
 	runInContext(getStateCode() + getSearchCode() + getCoreCode() + getServiceAggregationCode(), api);
-	return { startPage: () => listeners.get('DOMContentLoaded')(), fetch, clock, updateOTPSecretsInBatch, warnings };
+	return {
+		startPage: () => listeners.get('DOMContentLoaded')(),
+		selectViewMode: api.selectViewMode,
+		fetch,
+		clock,
+		updateOTPSecretsInBatch,
+		warnings,
+	};
 }
 
 beforeEach(() => vi.useFakeTimers());
@@ -75,6 +84,24 @@ afterEach(() => {
 });
 
 describe('saved view and sort preferences on cached startup', () => {
+	it('preserves the account grid marker through actual view changes and theme switches', async () => {
+		const h = createHarness({ online: false, viewMode: 'grouped' });
+		h.startPage();
+		await vi.advanceTimersByTimeAsync(0);
+		const list = document.getElementById('secretsList');
+		const controller = createAppearanceController(document);
+		for (const theme of ['compact', 'document', 'compact']) {
+			controller.apply(getBuiltinTheme(theme));
+			for (const mode of ['flat', 'grouped', 'flat']) {
+				await h.selectViewMode(mode);
+				expect(document.getElementById('secretsList')).toBe(list);
+				expect(list.dataset.part).toBe('account-grid');
+				expect(list.dataset.view).toBe(mode);
+				expect(list.querySelectorAll('.secret-card')).toHaveLength(accounts.length);
+			}
+		}
+		expect(h.warnings).not.toHaveBeenCalled();
+	});
 	it.each([
 		{ online: true, viewMode: 'flat' },
 		{ online: false, viewMode: 'flat' },
@@ -95,7 +122,10 @@ describe('saved view and sort preferences on cached startup', () => {
 			const list = document.getElementById('secretsList');
 			const grouped = (defaultViewMode || viewMode) === 'grouped';
 			expect(list.classList.contains('is-grouped')).toBe(grouped);
-			expect(list.style.display).toBe(grouped ? 'block' : 'grid');
+			expect(list.dataset.view).toBe(grouped ? 'grouped' : 'flat');
+			expect(list.style.display).toBe('');
+			expect(list.hidden).toBe(false);
+			expect(window.getComputedStyle(list).display).toBe(grouped ? 'block' : 'grid');
 			expect([...list.querySelectorAll('.otp-code')].map((node) => node.id)).toEqual(
 				grouped ? ['otp-outlook', 'otp-microsoft', 'otp-gmail', 'otp-google'] : ['otp-outlook', 'otp-gmail', 'otp-microsoft', 'otp-google'],
 			);

@@ -96,7 +96,13 @@ class TestElement {
 		this.attributes = new Map();
 		this.classList = new TestClassList(this);
 		this.dataset = {};
-		this.style = {};
+		this.style = {
+			removeProperty(name) {
+				const previous = this[name] || '';
+				delete this[name];
+				return previous;
+			},
+		};
 		this.hidden = false;
 		this.value = '';
 		this.listeners = new Map();
@@ -557,7 +563,9 @@ describe('smart aggregation rendering integration', () => {
 
 		const list = document.getElementById('secretsList');
 		expect(list.classList.contains('is-grouped')).toBe(true);
-		expect(list.style.display).toBe('block');
+		expect(list.getAttribute('data-view')).toBe('grouped');
+		expect(list.hidden).toBe(false);
+		expect(list.style.display).toBeUndefined();
 		expect(list.querySelectorAll('.service-group-title').map((node) => node.textContent)).toEqual(['Google', 'Microsoft', '其他服务']);
 		expect(list.querySelectorAll('.service-group-count').map((node) => node.textContent)).toEqual(['2 个', '2 个', '1 个']);
 		expect(list.querySelectorAll('.secret-card')).toHaveLength(TEST_SECRETS.length);
@@ -569,7 +577,9 @@ describe('smart aggregation rendering integration', () => {
 		await api.selectViewMode('flat');
 
 		expect(list.classList.contains('is-grouped')).toBe(false);
-		expect(list.style.display).toBe('grid');
+		expect(list.getAttribute('data-view')).toBe('flat');
+		expect(list.hidden).toBe(false);
+		expect(list.style.display).toBeUndefined();
 		expect(list.querySelectorAll('.service-group')).toHaveLength(0);
 		expect(list.querySelectorAll('.secret-card')).toHaveLength(TEST_SECRETS.length);
 		expect(groupedOption.classList.contains('active')).toBe(false);

@@ -10,6 +10,8 @@ import { getModalStyles } from './modals.js';
 import { getResponsiveStyles } from './responsive.js';
 import { getDialogStyles } from './dialogs.js';
 import { getWorkspaceStyles } from './workspace.js';
+import { getAppearanceStyles } from './appearance.js';
+import { getAppearanceEditorStyles } from './appearanceEditor.js';
 
 /**
  * 获取完整的样式内容
@@ -19,6 +21,6 @@ export function getStyles() {
 	return `
   <style>
 ${getVariables()}
-${getBaseStyles()}${getComponentStyles()}${getModalStyles()}${getResponsiveStyles()}${getWorkspaceStyles()}${getDialogStyles()}  </style>
+${getBaseStyles()}${getComponentStyles()}${getModalStyles()}${getResponsiveStyles()}${getWorkspaceStyles()}${getDialogStyles()}${getAppearanceStyles()}${getAppearanceEditorStyles()}  </style>
 </head>`;
 }

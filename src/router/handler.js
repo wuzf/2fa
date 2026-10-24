@@ -55,6 +55,8 @@ import {
 } from '../utils/auth.js';
 import { createPreflightResponse } from '../utils/security.js';
 import { getLogger } from '../utils/logger.js';
+import { handleThemeRequest, handleThemeAssetRequest, getPublicAppearance, createDefaultAppearance } from '../api/themes.js';
+import { getBuildId } from '../utils/build.js';
 
 /**
  * 处理HTTP请求的主要函数
@@ -70,6 +72,9 @@ export async function handleRequest(request, env, ctx) {
 	const logger = getLogger(env);
 
 	try {
+		if (pathname.startsWith('/theme-assets/')) {
+			return handleThemeAssetRequest(request, env);
+		}
 		// 时间校准接口必须在设置和认证检查前处理，确保无需访问 KV。
 		if (pathname === '/api/time') {
 			if (method === 'GET') {
@@ -88,7 +93,7 @@ export async function handleRequest(request, env, ctx) {
 				// 已完成设置，重定向到首页
 				return Response.redirect(new URL('/', request.url).toString(), 302);
 			}
-			return await createSetupPage(request);
+			return await createSetupPage(request, getBuildId() ? await getPublicAppearance(env) : null);
 		}
 
 		// 🔧 首次设置 API（不需要认证）
@@ -131,23 +136,39 @@ export async function handleRequest(request, env, ctx) {
 			request.authDetails = authDetails;
 		}
 
+		if (
+			pathname === '/api/themes' ||
+			pathname.startsWith('/api/themes/') ||
+			pathname === '/api/appearance' ||
+			pathname.startsWith('/api/appearance/')
+		) {
+			if (!getBuildId() && !['GET', 'HEAD'].includes(method)) {
+				return createErrorResponse('需要构建应用', '请通过 npm run dev 或 npm run deploy 启用主题发布。', 503, request);
+			}
+			return handleThemeRequest(request, env, ctx);
+		}
+
 		// 静态路由处理
 		if (pathname === '/' || pathname === '') {
 			let customCodes = [];
+			const buildId = getBuildId();
+			const safeMode = url.searchParams.get('safeMode') === '1' || url.searchParams.get('disableCustomCode') === '1';
 			// Recovery mode must remain usable even if saved code hides the UI or throws.
-			if (url.searchParams.get('disableCustomCode') !== '1') {
+			if (!safeMode) {
 				try {
 					customCodes = (await readSettingsSnapshot(env)).customCodes;
 				} catch (error) {
 					logger.warn('读取自定义代码失败，使用默认页面', { errorMessage: error.message });
 				}
 			}
-			return await createMainPage({ customCodes });
+			const appearance = buildId && !safeMode ? await getPublicAppearance(env) : null;
+			return await createMainPage({ customCodes, appearance, buildId, safeMode, lazyLoad: Boolean(buildId) });
 		}
 
 		// PWA Manifest
 		if (pathname === '/manifest.json') {
-			return createManifest(request);
+			const appearance = getBuildId() ? await getPublicAppearance(env) : createDefaultAppearance();
+			return createManifest(request, appearance);
 		}
 
 		// Service Worker
@@ -158,6 +179,13 @@ export async function handleRequest(request, env, ctx) {
 		// PWA 图标（使用默认SVG图标）
 		if (pathname === '/icon-192.png' || pathname === '/icon-512.png') {
 			const size = pathname.includes('512') ? 512 : 192;
+			if (getBuildId()) {
+				const appearance = await getPublicAppearance(env);
+				const icon = appearance.branding?.[size === 512 ? 'icon512' : 'icon192'];
+				if (typeof icon === 'string' && /^\/theme-assets\/[a-f0-9]{64}\//.test(icon)) {
+					return handleThemeAssetRequest(new Request(new URL(icon, request.url), { method: 'GET' }), env);
+				}
+			}
 			return createDefaultIcon(size);
 		}
 
@@ -169,10 +197,17 @@ export async function handleRequest(request, env, ctx) {
 		// 懒加载模块路由（需要认证）
 		if (pathname.startsWith('/modules/')) {
 			const moduleName = pathname.substring(9).replace('.js', ''); // 去掉 '/modules/' 和 '.js'
-			const allowedModules = ['import', 'export', 'backup', 'qrcode', 'tools', 'googleMigration'];
+			const allowedModules = ['import', 'export', 'backup', 'qrcode', 'tools', 'googleMigration', 'appearance'];
 
 			if (!allowedModules.includes(moduleName)) {
 				return createErrorResponse('模块未找到', `不存在的模块: ${moduleName}`, 404, request);
+			}
+			const buildId = getBuildId();
+			if (!buildId || url.searchParams.get('build') !== buildId) {
+				const response = createErrorResponse('应用版本已更新', '请保留未保存内容，刷新页面后再使用此功能。', 409, request);
+				response.headers.set('Cache-Control', 'no-store');
+				response.headers.set('X-2FA-Build', buildId);
+				return response;
 			}
 
 			try {
@@ -185,6 +220,7 @@ export async function handleRequest(request, env, ctx) {
 				return new Response(moduleCode, {
 					headers: {
 						'Content-Type': 'application/javascript; charset=utf-8',
+						'X-2FA-Build': buildId,
 						'Cache-Control': isProd ? 'public, max-age=3600' : 'no-cache, no-store, must-revalidate',
 						'Access-Control-Allow-Origin': '*',
 					},
@@ -233,7 +269,7 @@ export async function handleRequest(request, env, ctx) {
 		// OTP生成路由（支持高级参数）
 		// 处理 /otp（显示使用说明）
 		if (pathname === '/otp') {
-			return await handleGenerateOTP('', request);
+			return await handleGenerateOTP('', request, env);
 		}
 
 		// 处理 /otp/{secret}（生成OTP）
@@ -245,7 +281,7 @@ export async function handleRequest(request, env, ctx) {
 			} catch {
 				secret = pathname.substring(5); // 解码失败则用原值，由后续 validateBase32 报错
 			}
-			return await handleGenerateOTP(secret, request);
+			return await handleGenerateOTP(secret, request, env);
 		}
 
 		// 404处理

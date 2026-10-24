@@ -7,6 +7,7 @@ import { SETTINGS_LOCALES } from './settings.js';
 import { STANDALONE_LOCALES } from './standalone.js';
 import { TRANSFER_LOCALES } from './transfer.js';
 import { CORE_LOCALES } from './core.js';
+import { APPEARANCE_LOCALES } from './appearance.js';
 import { SUPPORTED_LANGUAGES } from '../../shared/languages.js';
 import { localizeDictionary } from '../../shared/locales/index.js';
 
@@ -19,6 +20,7 @@ for (const [language, dictionary] of Object.entries({ 'zh-CN': zhCN, 'zh-TW': zh
 		SETTINGS_LOCALES[language],
 		STANDALONE_LOCALES[language],
 		TRANSFER_LOCALES[language],
+		APPEARANCE_LOCALES[language],
 	);
 }
 

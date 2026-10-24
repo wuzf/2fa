@@ -1,3 +1,4 @@
+import { serializeBrowserFunction } from './browserSource.js';
 import { dialogIcon } from '../dialogIcons.js'; /**
  * Core 核心业务逻辑模块
  * 包含密钥管理、OTP生成、二维码、备份等所有核心功能
@@ -5,6 +6,7 @@ import { dialogIcon } from '../dialogIcons.js'; /**
 
 import { SERVICE_LOGOS } from '../config/serviceLogos.js';
 import { getOfflineSecretsCode } from './offlineCache.js';
+import { createAccountRenderer } from '../themes/renderer.js';
 
 /**
  * 获取 Core 相关代码
@@ -14,6 +16,7 @@ export function getCoreCode() {
 	const serviceLogosJSON = JSON.stringify(SERVICE_LOGOS, null, 2);
 
 	return `${getOfflineSecretsCode()}
+    const accountAppearanceRenderer = (${serializeBrowserFunction(createAccountRenderer)})();
     // ========== Service Logos 配置 ==========
     // 服务名称到域名的映射数据（从 serviceLogos.js 导入）
     const SERVICE_LOGOS = ${serviceLogosJSON};
@@ -216,6 +219,8 @@ export function getCoreCode() {
           initSortDropdownOutsideClose();
         }
 
+        bindAccountAppearanceActions();
+
         // 初始化 FAB 拖拽并还原上次保存的位置
         if (typeof initFABDrag === 'function') {
           initFABDrag();
@@ -393,6 +398,7 @@ export function getCoreCode() {
       secretRenderGeneration += 1;
       secrets = [];
       filteredSecrets = [];
+      if (typeof filterAppearanceServices === 'function') filterAppearanceServices([], []);
       clearOTPIntervalsExcept([]);
       if (typeof clearAllOTPAnimations === 'function') clearAllOTPAnimations();
       if (typeof clearOTPWindowScheduler === 'function') clearOTPWindowScheduler();
@@ -562,81 +568,41 @@ export function getCoreCode() {
       return name.trim() ? name : t('transferUnnamed');
     }
 
-    // 创建密钥卡片
+    // A presentation-only model is shared with isolated theme previews.
     function createSecretCard(secret) {
-      const logoUrl = getServiceLogo(secret.name);
-      const isHOTP = secret.type && secret.type.toUpperCase() === 'HOTP';
-      const displayName = getSecretDisplayName(secret);
-      // These values are used in both text content and quoted tooltip attributes.
-      const nameHTML = escapeHTML(displayName).replace(/"/g, '&quot;');
-      const accountHTML = escapeHTML(secret.account || '').replace(/"/g, '&quot;');
+      const labels = {};
+      ['cardCopyTooltip', 'cardMenuTriggerTitle', 'cardMenuQRCode', 'cardMenuQRCodeTitle',
+        'cardMenuCopyURI', 'cardMenuCopyURITitle', 'cardMenuCopyLink', 'cardMenuCopyLinkTitle',
+        'cardMenuEdit', 'cardMenuEditTitle', 'cardMenuDelete', 'cardMenuDeleteTitle',
+        'copyOtpBtnTitle', 'copyOtpBtnAriaLabel', 'otpNextLabel', 'copyNextOtpBtnTitle', 'counterLabel'
+      ].forEach(key => { if (typeof t === 'function') labels[key] = t(key); });
+      return accountAppearanceRenderer.card({
+        id: secret.id,
+        name: getSecretDisplayName(secret),
+        account: secret.account,
+        logoUrl: getServiceLogo(secret.name),
+        isHOTP: String(secret.type || '').toUpperCase() === 'HOTP',
+        counter: secret.counter
+      }, labels);
+    }
 
-      const cardCopyTooltip = (typeof t === 'function' ? t('cardCopyTooltip') : null) || '点击卡片复制验证码';
-      const cardMenuTriggerTitle = (typeof t === 'function' ? t('cardMenuTriggerTitle') : null) || '账户操作';
-      const cardMenuQRCode = (typeof t === 'function' ? t('cardMenuQRCode') : null) || '二维码';
-      const cardMenuQRCodeTitle = (typeof t === 'function' ? t('cardMenuQRCodeTitle') : null) || '显示验证器二维码';
-      const cardMenuCopyURI = (typeof t === 'function' ? t('cardMenuCopyURI') : null) || '复制 URI';
-      const cardMenuCopyURITitle = (typeof t === 'function' ? t('cardMenuCopyURITitle') : null) || '用于导入验证器的 otpauth:// 配置';
-      const cardMenuCopyLink = (typeof t === 'function' ? t('cardMenuCopyLink') : null) || '复制链接';
-      const cardMenuCopyLinkTitle = (typeof t === 'function' ? t('cardMenuCopyLinkTitle') : null) || '在浏览器中打开并查看验证码';
-      const cardMenuEdit = (typeof t === 'function' ? t('cardMenuEdit') : null) || '编辑';
-      const cardMenuEditTitle = (typeof t === 'function' ? t('cardMenuEditTitle') : null) || '编辑密钥';
-      const cardMenuDelete = (typeof t === 'function' ? t('cardMenuDelete') : null) || '删除';
-      const cardMenuDeleteTitle = (typeof t === 'function' ? t('cardMenuDeleteTitle') : null) || '删除密钥';
-      const copyOtpBtnTitle = (typeof t === 'function' ? t('copyOtpBtnTitle') : null) || '点击复制验证码';
-      const copyOtpBtnAriaLabel = (typeof t === 'function' ? t('copyOtpBtnAriaLabel') : null) || '复制当前验证码';
-      const otpNextLabel = (typeof t === 'function' ? t('otpNextLabel') : null) || '下一个';
-      const copyNextOtpBtnTitle = (typeof t === 'function' ? t('copyNextOtpBtnTitle') : null) || '点击复制下一个验证码';
-      const counterLabel = (typeof t === 'function' ? t('counterLabel') : null) || '计数器: ';
-
-      return '<div class="secret-card" onclick="copyOTPFromCard(event, &quot;' + secret.id + '&quot;)" title="' + cardCopyTooltip + '">' +
-        // TOTP 显示进度条，HOTP 不显示
-        (isHOTP ? '' :
-          '<div class="progress-top">' +
-            '<div class="progress-top-fill" id="progress-' + secret.id + '"></div>' +
-          '</div>'
-        ) +
-        '<div class="card-header">' +
-          '<div class="secret-info">' +
-            '<div class="service-icon">' +
-              (logoUrl ?
-                '<img src="' + logoUrl + '" alt="' + nameHTML + '" style="width: 30px; height: 30px; object-fit: contain; border-radius: 6px;" onerror="this.style.display=&quot;none&quot;; this.nextElementSibling.style.display=&quot;block&quot;;">' +
-                '<span style="display: none;">' + escapeHTML(displayName.charAt(0).toUpperCase()) + '</span>' :
-                '<span>' + escapeHTML(displayName.charAt(0).toUpperCase()) + '</span>'
-              ) +
-            '</div>' +
-            '<div class="secret-text">' +
-            '<h3><span class="secret-name" title="' + nameHTML + '">' + nameHTML + '</span>' + (isHOTP ? '<span class="secret-type">[HOTP]</span>' : '') + '</h3>' +
-            (secret.account ? '<p title="' + accountHTML + '">' + accountHTML + '</p>' : '') +
-            (isHOTP ? '<p id="counter-' + secret.id + '" style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">' + counterLabel + (secret.counter ?? 0) + '</p>' : '') +
-            '</div>' +
-          '</div>' +
-          '<div class="card-menu" title="">' +
-            '<button type="button" class="card-menu-trigger" title="' + cardMenuTriggerTitle + '" aria-label="' + cardMenuTriggerTitle + '" aria-expanded="false" aria-controls="menu-' + secret.id + '" onclick="event.stopPropagation(); toggleCardMenu(&quot;' + secret.id + '&quot;)"><span class="menu-dots" aria-hidden="true">⋮</span></button>' +
-            '<div class="card-menu-dropdown" id="menu-' + secret.id + '">' +
-              '<button type="button" class="menu-item" title="' + cardMenuQRCodeTitle + '" onclick="event.stopPropagation(); showQRCode(&quot;' + secret.id + '&quot;); closeAllCardMenus();">' + cardMenuQRCode + '</button>' +
-              '<button type="button" class="menu-item" title="' + cardMenuCopyURITitle + '" onclick="event.stopPropagation(); copyOTPAuthURL(&quot;' + secret.id + '&quot;); closeAllCardMenus();">' + cardMenuCopyURI + '</button>' +
-              '<button type="button" class="menu-item" title="' + cardMenuCopyLinkTitle + '" onclick="event.stopPropagation(); copyOTPPageURL(&quot;' + secret.id + '&quot;); closeAllCardMenus();">' + cardMenuCopyLink + '</button>' +
-              '<button type="button" class="menu-item" title="' + cardMenuEditTitle + '" onclick="event.stopPropagation(); editSecret(&quot;' + secret.id + '&quot;); closeAllCardMenus();">' + cardMenuEdit + '</button>' +
-              '<button type="button" class="menu-item menu-item-danger" title="' + cardMenuDeleteTitle + '" onclick="event.stopPropagation(); deleteSecret(&quot;' + secret.id + '&quot;); closeAllCardMenus();">' + cardMenuDelete + '</button>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="otp-preview">' +
-          '<div class="otp-main">' +
-            '<div class="otp-code-container">' +
-              '<button type="button" class="otp-code" id="otp-' + secret.id + '" onclick="event.stopPropagation(); copyOTP(&quot;' + secret.id + '&quot;)" title="' + copyOtpBtnTitle + '" aria-label="' + copyOtpBtnAriaLabel + '">------</button>' +
-            '</div>' +
-            // HOTP 不显示"下一个"验证码（因为不是时间基准）
-            (isHOTP ? '' :
-              '<button type="button" class="otp-next-container" onclick="event.stopPropagation(); copyNextOTP(&quot;' + secret.id + '&quot;)" title="' + copyNextOtpBtnTitle + '">' +
-                '<span class="otp-next-label">' + otpNextLabel + '</span>' +
-                '<span class="otp-next-code" id="next-otp-' + secret.id + '">------</span>' +
-              '</button>'
-            ) +
-          '</div>' +
-        '</div>' +
-      '</div>';
+    function bindAccountAppearanceActions() {
+      const container = document.getElementById('secretsList');
+      if (!container || container.dataset.accountActionsBound) return;
+      container.dataset.accountActionsBound = 'true';
+      accountAppearanceRenderer.bind(container, (action, id) => {
+        if (action === 'menu') { toggleCardMenu(id); return; }
+        const handlers = {
+          copy: () => copyOTP(id), next: () => copyNextOTP(id),
+          qr: () => showQRCode(id), uri: () => copyOTPAuthURL(id),
+          link: () => copyOTPPageURL(id), edit: () => editSecret(id),
+          delete: () => deleteSecret(id)
+        };
+        if (handlers[action]) {
+          handlers[action]();
+          if (action !== 'copy' && action !== 'next') closeAllCardMenus();
+        }
+      });
     }
 
     function createServiceGroupSection(group, index, showHeader = true) {
@@ -653,8 +619,8 @@ export function getCoreCode() {
         ? (typeof t === 'function' ? t('groupMatchedCountLabel', { matched: group.matchedCount, total: group.totalCount }) : '匹配 ' + group.matchedCount + ' 个，共 ' + group.totalCount + ' 个')
         : (typeof t === 'function' ? t('groupCountLabel', { count: group.totalCount }) : '共 ' + group.totalCount + ' 个');
 
-      return '<section class="service-group" aria-labelledby="' + headingId + '">' +
-        '<div class="service-group-header">' +
+      return '<section class="service-group" data-part="service-group" aria-labelledby="' + headingId + '">' +
+        '<div class="service-group-header" data-part="group-header">' +
           '<h2 class="service-group-title" id="' + headingId + '">' + escapeHTML(group.name) + '</h2>' +
           '<span class="service-group-count" aria-label="' + escapeHTML(countLabel) + '">' + countText + '</span>' +
         '</div>' +
@@ -679,6 +645,9 @@ export function getCoreCode() {
       const loading = document.getElementById('loading');
       const secretsList = document.getElementById('secretsList');
       const emptyState = document.getElementById('emptyState');
+      const visibleSecrets = typeof filterAppearanceServices === 'function'
+        ? filterAppearanceServices(filteredSecrets, secrets) : filteredSecrets;
+      bindAccountAppearanceActions();
 
       // 重绘会替换 OTP 节点；先取消旧节点上的排队/播放动效，避免 flyer 残留或异步回调命中脱离节点。
       if (typeof clearAllOTPAnimations === 'function') {
@@ -692,7 +661,7 @@ export function getCoreCode() {
 
       loading.style.display = 'none';
 
-      if (currentSearchQuery && filteredSecrets.length === 0) {
+      if ((currentSearchQuery || (typeof hasAppearanceServiceFilter === 'function' && hasAppearanceServiceFilter())) && visibleSecrets.length === 0) {
         clearOTPIntervalsExcept([]);
         secretsList.innerHTML = '';
         secretsList.style.display = 'none';
@@ -727,10 +696,12 @@ export function getCoreCode() {
       emptyState.style.display = 'none';
 
       // 应用排序
-      const sortedSecrets = sortSecrets(filteredSecrets, currentSortType);
+      const sortedSecrets = sortSecrets(visibleSecrets, currentSortType);
       const isGroupedView = currentViewMode === 'grouped';
       secretsList.classList.toggle('is-grouped', isGroupedView);
-      secretsList.style.display = isGroupedView ? 'block' : 'grid';
+      secretsList.style.removeProperty('display');
+      secretsList.hidden = false;
+      secretsList.setAttribute('data-view', isGroupedView ? 'grouped' : 'flat');
 
       if (isGroupedView) {
         const serviceGroups = groupSecretsByServiceFamily(sortedSecrets, secrets, currentGroupSortType);
@@ -766,7 +737,7 @@ export function getCoreCode() {
         startOTPInterval(secret.id, secret);
       });
 
-      clearOTPIntervalsExcept(filteredSecrets);
+      clearOTPIntervalsExcept(visibleSecrets);
     }
 
     // 从卡片点击复制OTP验证码

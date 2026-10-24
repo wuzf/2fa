@@ -33,6 +33,8 @@ import { getSettings, KV_SETTINGS_KEY } from '../utils/settings.js';
 import { createErrorResponse } from '../utils/response.js';
 import { getLogger } from '../utils/logger.js';
 import { createConsistentKV } from './consistent-kv.js';
+import { ThemeStore, THEME_OWNER_KEY } from './theme-store.js';
+import { THEME_OPERATION_HEADER } from '../api/themes.js';
 
 export const SECRETS_STORE_OPERATION_HEADER = 'X-2FA-Store-Operation';
 const SECRETS_STORE_NAME = 'secrets';
@@ -90,6 +92,8 @@ const detachedContext = {
 export class SecretsStore {
 	constructor(state, env) {
 		this.state = state;
+		this.themeEnv = env;
+		this.themeStore = null;
 		this.env = {
 			...env,
 			SECRETS_KV: createConsistentKV({
@@ -106,6 +110,10 @@ export class SecretsStore {
 	}
 
 	async fetch(request) {
+		if (request.headers.has(THEME_OPERATION_HEADER) && !request.headers.has(SECRETS_STORE_OPERATION_HEADER)) {
+			this.themeStore ||= new ThemeStore(this.state, this.themeEnv);
+			return this.themeStore.fetch(request);
+		}
 		const name = request.headers.get(SECRETS_STORE_OPERATION_HEADER);
 		const operation = Object.hasOwn(OPERATIONS, name) ? OPERATIONS[name] : null;
 		if (!operation) {
@@ -140,6 +148,15 @@ export class SecretsStore {
 				this.lastSettingsSaveAt = Date.now();
 			}
 		});
+	}
+
+	async alarm() {
+		// A cold object can receive an alarm before fetch; only appearance:v1 owns
+		// this persisted marker. Secrets/settings instances have no theme jobs.
+		if (await this.state.storage.get(THEME_OWNER_KEY)) {
+			this.themeStore ||= new ThemeStore(this.state, this.themeEnv);
+			return this.themeStore.alarm();
+		}
 	}
 }
 
@@ -182,6 +199,7 @@ export async function runSecretsOperation(name, request, env, ctx) {
 	const body = request.method === 'GET' || request.method === 'HEAD' ? null : await request.arrayBuffer();
 	const createRequest = (extraHeaders = {}) => {
 		const headers = new Headers(request.headers);
+		headers.delete(THEME_OPERATION_HEADER);
 		for (const [key, value] of Object.entries(extraHeaders)) {
 			headers.set(key, value);
 		}

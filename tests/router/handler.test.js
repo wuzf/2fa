@@ -1000,7 +1000,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleGenerateOTP).toHaveBeenCalledWith('', request);
+      expect(handleGenerateOTP).toHaveBeenCalledWith('', request, env);
       expect(response.status).toBe(200);
     });
 
@@ -1012,7 +1012,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleGenerateOTP).toHaveBeenCalledWith('JBSWY3DPEHPK3PXP', request);
+      expect(handleGenerateOTP).toHaveBeenCalledWith('JBSWY3DPEHPK3PXP', request, env);
       expect(response.status).toBe(200);
     });
 
@@ -1026,7 +1026,7 @@ describe('Router Handler', () => {
       const response = await handleRequest(request, env);
 
       // 路由器只从 pathname 提取 secret，查询参数通过 request 传递
-      expect(handleGenerateOTP).toHaveBeenCalledWith('JBSWY3DPEHPK3PXP', request);
+      expect(handleGenerateOTP).toHaveBeenCalledWith('JBSWY3DPEHPK3PXP', request, env);
       expect(response.status).toBe(200);
     });
   });

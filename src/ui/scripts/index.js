@@ -27,6 +27,9 @@ import { getModuleLoaderCode } from './moduleLoader.js';
 import { getVersionCheckCode } from './versionCheck.js';
 import { getBrowserExtensionCode } from './browserExtension.js';
 import { getHiddenSecretsCode } from './hiddenSecrets.js';
+import { getAppearanceClientCode } from '../appearance.js';
+import { getAppearanceRuntimeCode } from './appearanceRuntime.js';
+import { getAppearanceEditorCode } from './appearanceEditor.js';
 
 export { getI18nCode };
 
@@ -36,7 +39,7 @@ export { getI18nCode };
  * @returns {string} 核心JavaScript代码
  */
 export function getCoreScripts() {
-	return `${getI18nCode()}${getSharedTransferMessageLocalizerCode()}${getUtilsCode()}${getModalDismissalCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getBrowserExtensionCode()}${getCoreCode()}${getHiddenSecretsCode()}${getServiceAggregationCode()}${getPWACode()}${getModuleLoaderCode()}${getVersionCheckCode()}`;
+	return `${getAppearanceClientCode()}${getI18nCode()}${getSharedTransferMessageLocalizerCode()}${getUtilsCode()}${getModalDismissalCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getBrowserExtensionCode()}${getCoreCode()}${getHiddenSecretsCode()}${getServiceAggregationCode()}${getAppearanceRuntimeCode()}${getPWACode()}${getModuleLoaderCode()}${getVersionCheckCode()}`;
 }
 
 /**
@@ -47,7 +50,7 @@ export function getCoreScripts() {
 export function getScripts() {
 	// QRCode must come before GoogleMigration, GoogleMigration must come before Export
 	// because Export calls showExportToGoogleModal from GoogleMigration
-	return `${getI18nCode()}${getSharedTransferMessageLocalizerCode()}${getUtilsCode()}${getModalDismissalCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getBrowserExtensionCode()}${getQRCodeCode()}${getGoogleMigrationCode()}${getExportCode()}${getImportCode()}${getBackupCode()}${getToolsCode()}${getCoreCode()}${getHiddenSecretsCode()}${getServiceAggregationCode()}${getPWACode()}${getVersionCheckCode()}`;
+	return `${getAppearanceClientCode()}${getI18nCode()}${getSharedTransferMessageLocalizerCode()}${getUtilsCode()}${getModalDismissalCode()}${getStateCode()}${getTimeCode()}${getAuthCode()}${getOTPCode()}${getUICode()}${getSearchCode()}${getSettingsCode()}${getBrowserExtensionCode()}${getQRCodeCode()}${getGoogleMigrationCode()}${getExportCode()}${getImportCode()}${getBackupCode()}${getToolsCode()}${getCoreCode()}${getHiddenSecretsCode()}${getServiceAggregationCode()}${getAppearanceRuntimeCode()}${getAppearanceEditorCode()}${getPWACode()}${getVersionCheckCode()}`;
 }
 
 /**
@@ -63,6 +66,7 @@ export function getModuleCode(moduleName) {
 		qrcode: getQRCodeCode,
 		tools: getToolsCode,
 		googleMigration: getGoogleMigrationCode,
+		appearance: getAppearanceEditorCode,
 	};
 
 	const moduleGetter = modules[moduleName];

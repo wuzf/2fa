@@ -108,6 +108,10 @@ export function getModalDismissalCode() {
       if (!session || session.pending || button.disabled || getTopModal() !== modal) return;
       session.pending = true;
       try {
+        if (modal.id === 'appearanceModal' && typeof window.requestAppearanceClose === 'function') {
+          await window.requestAppearanceClose();
+          return;
+        }
         let savesSettled = true;
         if (modal.id === 'settingsModal' && typeof flushSettingsBeforeClose === 'function') {
           savesSettled = await waitForModalSettingsSave(session);

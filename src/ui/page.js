@@ -11,6 +11,8 @@ import { APP_VERSION } from '../utils/version.js';
 import { getPageSecurityHeaders } from '../utils/security.js';
 import { getEnabledCustomCode, sanitizeCustomCode } from '../utils/settings.js';
 import { LANGUAGE_OPTIONS, normalizeLanguage } from '../shared/languages.js';
+import { getAppearanceHead } from './appearance.js';
+import { getBuildId } from '../utils/build.js';
 
 /**
  * 创建主页面（密钥管理界面）
@@ -21,11 +23,11 @@ import { LANGUAGE_OPTIONS, normalizeLanguage } from '../shared/languages.js';
  * @returns {Response} HTML响应
  */
 export async function createMainPage(options = {}) {
-	const { lazyLoad = true, customCode = '', customCodes } = options;
+	const { lazyLoad = true, customCode = '', customCodes, appearance = null, safeMode = false, buildId = getBuildId() } = options;
 
 	// 构建完整的HTML内容
 	const enabledCode = customCodes === undefined ? sanitizeCustomCode(customCode) : getEnabledCustomCode({ customCodes });
-	const html = buildCompleteHTML(lazyLoad, enabledCode);
+	const html = buildCompleteHTML(lazyLoad, safeMode ? '' : enabledCode, safeMode ? null : appearance, { buildId, safeMode });
 
 	return new Response(html, {
 		headers: {
@@ -34,6 +36,8 @@ export async function createMainPage(options = {}) {
 			'Cache-Control': 'no-cache, no-store, must-revalidate',
 			Pragma: 'no-cache',
 			Expires: '0',
+			'X-2FA-Build': buildId,
+			'X-2FA-Appearance-Revision': String(safeMode ? 0 : appearance?.revision || 0),
 		},
 	});
 }
@@ -42,10 +46,18 @@ export async function createMainPage(options = {}) {
  * 构建完整的HTML内容
  * @param {boolean} lazyLoad - 是否启用懒加载
  */
-function buildCompleteHTML(lazyLoad = true, customCode = '') {
+function buildCompleteHTML(lazyLoad = true, customCode = '', appearance = null, context = {}) {
 	// Render trusted administrator code as HTML so native script ordering and
 	// DOMContentLoaded/load handlers work, including external scripts.
-	return getHTMLStart() + getStyles() + getHTMLBody() + getHTMLScripts(lazyLoad) + customCode + getHTMLEnd();
+	return (
+		getHTMLStart() +
+		getAppearanceHead(appearance, context) +
+		getStyles() +
+		getHTMLBody() +
+		getHTMLScripts(lazyLoad) +
+		customCode +
+		getHTMLEnd()
+	);
 }
 
 /**
@@ -1131,6 +1143,10 @@ function getHTMLBody() {
           <button type="button" class="settings-tab" data-tab="custom-code" onclick="switchSettingsTab('custom-code')">
             <span class="settings-tab-icon">${dialogIcon('code')}</span>
             <span class="settings-tab-text" data-i18n="settingsTabCustomCode">自定义代码</span>
+          </button>
+          <button type="button" class="settings-tab" onclick="showAppearanceEditor()">
+            <span class="settings-tab-icon">${dialogIcon('sliders')}</span>
+            <span class="settings-tab-text" data-i18n="appearanceTitle">外观与主题</span>
           </button>
         </div>
         <div class="settings-content">

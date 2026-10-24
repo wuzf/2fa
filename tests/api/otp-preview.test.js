@@ -90,6 +90,7 @@ describe('public OTP preview API', () => {
 		await request('digits=8');
 
 		expect(render).toHaveBeenCalledWith('94287082', {
+			appearance: null,
 			request: expect.any(Request),
 			period: 30,
 			remainingTime: 0,

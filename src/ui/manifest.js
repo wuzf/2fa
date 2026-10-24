@@ -11,18 +11,20 @@ import { getStandaloneText } from './standalone.js';
  * @param {Request} request - HTTP 请求对象（用于获取主机名）
  * @returns {Response} Manifest JSON 响应
  */
-export function createManifest(request) {
+export function createManifest(request, appearance = null) {
 	const url = new URL(request.url);
 	const baseUrl = `${url.protocol}//${url.host}`;
 	const language = getRequestLanguage(request, 'en');
 	const t = (key) => getStandaloneText(language, key);
+	const brand = appearance?.branding || {};
+	const icon = (key) => (typeof brand[key] === 'string' && /^\/theme-assets\/[a-f0-9]{64}\//.test(brand[key]) ? brand[key] : null);
 
 	// 简化的 Manifest 配置，确保最佳兼容性
 	const manifest = {
-		name: t('manifestName'),
-		short_name: '2FA',
+		name: brand.name || t('manifestName'),
+		short_name: brand.name ? brand.name.slice(0, 24) : '2FA',
 		lang: language,
-		description: t('manifestDescription'),
+		description: brand.description || t('manifestDescription'),
 		start_url: '/',
 		display: 'standalone',
 		background_color: '#ffffff',
@@ -33,21 +35,21 @@ export function createManifest(request) {
 		// 使用 SVG 格式图标（声明为 any 类型以提高兼容性）
 		icons: [
 			{
-				src: `${baseUrl}/icon-192.png`,
+				src: icon('icon192') ? new URL(icon('icon192'), baseUrl).href : `${baseUrl}/icon-192.png`,
 				sizes: '192x192',
-				type: 'image/svg+xml',
+				type: icon('icon192') ? 'image/png' : 'image/svg+xml',
 				purpose: 'any',
 			},
 			{
-				src: `${baseUrl}/icon-512.png`,
+				src: icon('icon512') ? new URL(icon('icon512'), baseUrl).href : `${baseUrl}/icon-512.png`,
 				sizes: '512x512',
-				type: 'image/svg+xml',
+				type: icon('icon512') ? 'image/png' : 'image/svg+xml',
 				purpose: 'any',
 			},
 			{
-				src: `${baseUrl}/icon-192.png`,
+				src: icon('icon192') ? new URL(icon('icon192'), baseUrl).href : `${baseUrl}/icon-192.png`,
 				sizes: '192x192',
-				type: 'image/svg+xml',
+				type: icon('icon192') ? 'image/png' : 'image/svg+xml',
 				purpose: 'maskable',
 			},
 		],
@@ -91,7 +93,7 @@ export function createManifest(request) {
 		status: 200,
 		headers: {
 			'Content-Type': 'application/manifest+json',
-			'Cache-Control': 'public, max-age=3600',
+			'Cache-Control': appearance ? 'no-cache' : 'public, max-age=3600',
 			'Access-Control-Allow-Origin': '*',
 			'Content-Language': language,
 			Vary: 'Accept-Language, X-Language',

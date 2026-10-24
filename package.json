@@ -10,8 +10,8 @@
     "deploy:package": "node scripts/deploy.js --package",
     "deploy:dev": "node scripts/deploy.js --env development",
     "deploy:direct": "node scripts/deploy.js",
-    "dev": "wrangler dev --env development",
-    "start": "wrangler dev --env development",
+    "dev": "node scripts/dev.js",
+    "start": "node scripts/dev.js",
     "build": "node scripts/build-release.js",
     "build:minify": "node scripts/build-release.js --minify",
     "build:extension": "node scripts/build-extension.js",
@@ -55,6 +55,8 @@
   },
   "dependencies": {
     "aws4fetch": "^1.0.20",
+    "css-tree": "3.2.1",
+    "fflate": "0.8.3",
     "qrcode": "^1.5.3"
   },
   "devDependencies": {
@@ -68,6 +70,7 @@
     "happy-dom": "^20.14.5",
     "husky": "^9.1.7",
     "lint-staged": "^15.3.0",
+    "miniflare": "4.20260317.3",
     "prettier": "^3.4.2",
     "smol-toml": "^1.8.0",
     "vitest": "^4.0.5",

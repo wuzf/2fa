@@ -32,11 +32,12 @@ import { getLogger } from '../../utils/logger.js';
  * @param {Request} request - HTTP请求对象（可选，用于获取参数）
  * @returns {Response} HTTP响应
  */
-export async function handleGenerateOTP(secret, request = null) {
+export async function handleGenerateOTP(secret, request = null, env = null) {
 	// 动态导入（减少初始加载）
 	const { validateBase32, validateOTPParams } = await import('../../utils/validation.js');
 	const { generateOTP } = await import('../../otp/generator.js');
 	const { createQuickOtpPage, createOtpEntryPage } = await import('../../ui/quickOtp.js');
+	const readAppearance = async () => (env ? (await import('../themes.js')).getPublicAppearance(env) : null);
 
 	if (!secret) {
 		// 如果没有密钥，根据 Accept 头返回友好页面或纯文本使用说明
@@ -45,7 +46,7 @@ export async function handleGenerateOTP(secret, request = null) {
 		const wantsHtml = accept.includes('text/html');
 
 		if (wantsHtml) {
-			return createOtpEntryPage(request);
+			return createOtpEntryPage(request, await readAppearance());
 		}
 
 		// 非浏览器（curl / API 调用）保留原有 400 + 文本说明
@@ -124,6 +125,7 @@ export async function handleGenerateOTP(secret, request = null) {
 
 		const remainingTime = type === 'TOTP' ? Math.max(0, (validUntil - serverTime) / 1000) : 0;
 		return createQuickOtpPage(otp, {
+			appearance: await readAppearance(),
 			request,
 			period,
 			remainingTime,
