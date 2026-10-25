@@ -26,7 +26,47 @@ export function getAppThemeStatusStyles() {
     #appThemeStartup { display:none; }
     :root[data-app-theme-startup="pending"] #appThemeStartup { display:flex; }
     #appThemeRuntimeStatus[hidden] { display: none !important; }
-    #appThemeStartup .app-theme-status-message, #appThemeRuntimeStatus .app-theme-status-message {
+    #appThemeRuntimeStatus [hidden] { display: none !important; }
+    #appThemeStartup, #appThemeRuntimeStatus[data-quiet="true"] {
+      flex-direction: column;
+      justify-content: center;
+      min-height: min(50vh, 360px);
+      margin: 0 auto;
+      padding: 24px 16px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      text-align: center;
+    }
+    #appThemeStartup::before, #appThemeRuntimeStatus[data-quiet="true"]::before {
+      content: '';
+      flex: 0 0 auto;
+      width: 20px;
+      height: 20px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: app-theme-loading-spin 900ms linear infinite;
+    }
+    @keyframes app-theme-loading-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      #appThemeStartup::before, #appThemeRuntimeStatus[data-quiet="true"]::before { animation: none; }
+    }
+    #appThemeStartup .app-theme-status-message,
+    #appThemeRuntimeStatus[data-quiet="true"] .app-theme-status-message { flex: 0 0 auto; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+    :root:not([data-app-theme-startup-slow]) #appThemeStartup .app-theme-status-message,
+    #appThemeRuntimeStatus[data-quiet="true"][data-slow="false"] .app-theme-status-message {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    #appThemeStartupRecovery { display: none; }
+    :root[data-app-theme-startup-slow] #appThemeStartupRecovery { display: inline-flex; }
+    #appThemeRuntimeStatus .app-theme-status-message {
       flex: 1 1 240px;
       min-width: 0;
       overflow-wrap: anywhere;

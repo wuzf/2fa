@@ -120,6 +120,134 @@ function setup(options = {}) {
 	return fixture;
 }
 
+function enableCachedAttach(h) {
+	h.transport.tryAttachCached = vi.fn(h.transport.attach.getMockImplementation());
+	return h;
+}
+
+describe('fresh app cached attachment', () => {
+	it('skips preparation on a verified hit while keeping CSS, import and startup reveal ordered', async () => {
+		const styles = deferred(),
+			started = deferred();
+		const h = enableCachedAttach(setup({ loadStyles: vi.fn(() => styles.promise) }));
+		h.transport.startup.mockReturnValueOnce(started.promise);
+		const starting = h.host.start();
+		await vi.waitFor(() => expect(h.ports.loadStyles).toHaveBeenCalledOnce());
+		expect(h.transport.tryAttachCached).toHaveBeenCalledOnce();
+		expect(h.transport.prepare).not.toHaveBeenCalled();
+		expect(h.transport.attach).not.toHaveBeenCalled();
+		expect(h.ports.importModule).not.toHaveBeenCalled();
+		styles.resolve();
+		await vi.waitFor(() => expect(h.transport.startup).toHaveBeenCalledOnce());
+		expect(h.root.firstElementChild.inert).toBe(true);
+		expect(h.root.firstElementChild.style.visibility).toBe('hidden');
+		expect(h.ports.onRunning).not.toHaveBeenCalled();
+		started.resolve({ status: 'ready' });
+		expect((await starting).status).toBe('running');
+		expect(h.root.firstElementChild.inert).toBe(false);
+		expect(h.root.firstElementChild.style.visibility).toBe('');
+	});
+	it.each(['not-prepared', 'evicted'])('repairs an explicit cached %s miss using the original prepare and attach flow', async (reason) => {
+		const h = enableCachedAttach(setup());
+		h.transport.tryAttachCached.mockResolvedValueOnce({ status: 'miss', reason });
+		expect((await h.host.start()).status).toBe('running');
+		expect(h.transport.prepare).toHaveBeenCalledOnce();
+		expect(h.transport.attach).toHaveBeenCalledOnce();
+		expect(h.transport.tryAttachCached.mock.invocationCallOrder[0]).toBeLessThan(h.transport.prepare.mock.invocationCallOrder[0]);
+		expect(h.transport.prepare.mock.invocationCallOrder[0]).toBeLessThan(h.transport.attach.mock.invocationCallOrder[0]);
+		expect(h.transport.attach.mock.invocationCallOrder[0]).toBeLessThan(h.ports.importModule.mock.invocationCallOrder[0]);
+	});
+	it.each(['not-prepared', 'evicted', 'worker-timeout', 'activation-blocked'])(
+		'does not infer a cache miss from an arbitrary blocked reason %s',
+		async (reason) => {
+			const h = enableCachedAttach(setup());
+			h.transport.tryAttachCached.mockResolvedValueOnce({ status: 'blocked', reason });
+			expect(await h.host.start()).toMatchObject({ status: 'official-fallback', reason });
+			expect(h.transport.prepare).not.toHaveBeenCalled();
+			expect(h.transport.attach).not.toHaveBeenCalled();
+			expect(h.ports.importModule).not.toHaveBeenCalled();
+		},
+	);
+	it('keeps running appearance updates on the original two-phase handoff', async () => {
+		const h = enableCachedAttach(setup());
+		await h.host.start();
+		const previous = h.scopes[0];
+		expect((await h.host.updateAppearance(appearance(2))).status).toBe('running');
+		expect(h.transport.tryAttachCached).toHaveBeenCalledOnce();
+		expect(h.transport.prepare).toHaveBeenCalledOnce();
+		expect(h.transport.attach).toHaveBeenCalledOnce();
+		expect(previous.sdk.canAct()).toBe(false);
+	});
+	it('does not use cached attach after any entry code has started, even when its mount failed', async () => {
+		const h = enableCachedAttach(setup());
+		h.mount.mockRejectedValueOnce(new Error('mount failed'));
+		expect((await h.host.start()).status).toBe('blocked-after-load-start');
+		expect((await h.host.retry()).status).toBe('running');
+		expect(h.transport.tryAttachCached).toHaveBeenCalledOnce();
+		expect(h.transport.prepare).toHaveBeenCalledOnce();
+	});
+	it.each(['logout', 'invalidate', 'pagehide', 'dispose'])('never resumes preparation from a late miss after %s', async (action) => {
+		const h = enableCachedAttach(setup()),
+			pending = deferred();
+		h.transport.tryAttachCached.mockReturnValueOnce(pending.promise);
+		const starting = h.host.start();
+		await vi.waitFor(() => expect(h.transport.tryAttachCached).toHaveBeenCalledOnce());
+		if (action === 'pagehide') {
+			h.window.dispatchEvent(new h.window.Event('pagehide'));
+		} else if (action === 'dispose') {
+			h.host.dispose();
+		} else {
+			h[action]();
+		}
+		pending.resolve({ status: 'miss', reason: 'not-prepared' });
+		await starting;
+		expect(h.transport.prepare).not.toHaveBeenCalled();
+		expect(h.transport.attach).not.toHaveBeenCalled();
+		expect(h.ports.importModule).not.toHaveBeenCalled();
+	});
+	it('retains the real cached handoff tail after the host timeout until the old MessageChannel settles', async () => {
+		const requests = [];
+		let replyOld;
+		const serviceWorker = Object.assign(new EventTarget(), {
+			controller: {
+				postMessage(request, [port]) {
+					requests.push(request);
+					const reply = (changes = {}) =>
+						port.postMessage({
+							...request,
+							status: 'ready',
+							compatible: true,
+							resourcesReady: true,
+							recoveryReady: true,
+							workerBuild: build,
+							permitId: 'permit-' + requests.length,
+							inventoryHash: 'd'.repeat(64),
+							...changes,
+						});
+					if (requests.length === 1) {
+						replyOld = () => reply({ status: 'blocked', reason: 'not-prepared' });
+					} else {
+						reply();
+					}
+				},
+			},
+		});
+		const h = setup({
+			attachTimeoutMs: 25,
+			transportFactory: (window) => createRuntimeTransport({ window, navigator: { serviceWorker }, MessageChannel }),
+		});
+		expect(await h.host.start()).toMatchObject({ status: 'official-fallback', reason: 'runtime-attach-timeout' });
+		h.ports.attachTimeoutMs = 1000;
+		const retry = h.host.retry();
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(requests.map((request) => request.type)).toEqual(['RUNTIME_ATTACH']);
+		replyOld();
+		expect((await retry).status).toBe('running');
+		expect(requests.map((request) => request.type)).toEqual(['RUNTIME_ATTACH', 'RUNTIME_ATTACH', 'RUNTIME_STARTED']);
+		expect(h.scopes[0].sdk.canAct()).toBe(true);
+	});
+});
+
 describe('production app host', () => {
 	it('only activates staged host visuals after startup and removes them when a replacement fails after ATTACH', async () => {
 		const scopes = [];

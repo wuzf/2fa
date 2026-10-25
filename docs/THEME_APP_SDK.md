@@ -379,7 +379,11 @@ HOTP 复制包含独立事实：`clipboard`、`reservation`、`localCommit`、`r
 | offline-queue-edit、offline-queue-retry、offline-queue-cancel | `operationId` 来自队列摘要                                                        |
 | offline-queue-status-retry、extension、pwa-install、quick-otp | 无                                                                                |
 
-`listActions()` 的账户/队列入口提供 requires 标记，不能把缺少 account/operationId 的模板直接提交。填写最新 ref 或真实队列 operationId，不把库内 HOTP operationId 当作离线队列 ID。仅使用表内字段，额外未知参数会被拒绝。某项暂不可用时保留可发现的入口和原因，最终许可仍由 open 检查。
+`listActions()` 的账户/队列入口提供 requires 标记，不能把缺少 account/operationId 的模板直接提交。填写最新 ref 或真实队列 operationId，不把库内 HOTP operationId 当作离线队列 ID。仅使用表内字段，额外未知参数会被拒绝，最终许可仍由 open 检查。
+
+`listActions()` 是能力清单，主题应根据功能用途与当前快照组织导航。`requires:null` 只表示无需额外参数，`enabled:true` 也不表示当前需要展示该操作。添加、导入、备份、设置等用户功能暂不可用时，可以保留可发现的入口及原因；隐藏账户、离线队列和队列状态重试则由有对应记录或异常的状态区域承接，无需无条件复制到管理菜单。状态消失时应处理焦点返回，宿主弹窗持有焦点时不要抢焦点；可能消失的状态按钮打开 host flow 时，应传入稳定可见的 `returnFocus`。
+
+会话需区分 `authenticated/unconfirmed/logged-out`：未确认会话仍可能有本地数据，不能移除其退出/锁定路径。安装入口结合 `host.installAvailable` 与 descriptor 可用性展示；更新操作仅在 `host.updateAvailable/versionMismatch` 时提示。恢复默认界面和独立验证码生成器是用户功能，其操作名称可使用 `appearanceUseDefault` 和 `quickOtpTitle`，不要把安全模式状态句或应用标题用作按钮名称。主题自定布局时仍需保留这些能力的合适入口，不改变 SDK 鉴权与命令契约。
 
 ```js
 const account = sdk.getSnapshot().library.accounts.find((item) => item.ref.id === selectedId);

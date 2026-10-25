@@ -27,6 +27,40 @@ export function getAppearanceHead(
         // Host-only first-paint state. No package script/style executes here.
         // With JavaScript disabled the marker is absent and the official DOM stays visible.
         document.documentElement.setAttribute('data-app-theme-startup', 'pending');
+        // The recovery link must become available even if the later core fails
+        // to run. Store presentation timing only; this cannot grant a permit.
+        const startedAt = Date.now();
+        let generation = 0;
+        let timer = null;
+        const presentation = {
+          active: false,
+          slow: false,
+          resume() {
+            if (this.active) return;
+            this.active = true;
+            const current = ++generation;
+            timer = setTimeout(() => {
+              if (!presentation.active || current !== generation || !document.documentElement.hasAttribute('data-app-theme-startup')) return;
+              presentation.slow = true;
+              document.documentElement.setAttribute('data-app-theme-startup-slow', '');
+              window.dispatchEvent(new Event('app-theme-startup-slow'));
+            }, Math.max(0, 2000 - (Date.now() - startedAt)));
+          },
+          stop() {
+            this.active = false;
+            this.slow = false;
+            generation++;
+            clearTimeout(timer);
+            timer = null;
+            document.documentElement.removeAttribute('data-app-theme-startup-slow');
+          }
+        };
+        window.__2FA_APP_STARTUP_PRESENTATION__ = presentation;
+        window.addEventListener('pagehide', () => presentation.stop());
+        window.addEventListener('pageshow', event => {
+          if (event.persisted && document.documentElement.getAttribute('data-app-theme-startup') === 'pending') presentation.resume();
+        });
+        presentation.resume();
         return;
       }
       const mode = document.documentElement.getAttribute('data-theme') || 'light';

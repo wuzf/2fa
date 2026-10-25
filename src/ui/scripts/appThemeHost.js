@@ -222,7 +222,17 @@ export function createAppThemeHost(ports) {
 			session: session().sessionGeneration,
 		};
 		candidate = token;
-		const stillPending = () => !disposed && candidate === token && token.active && session().sessionGeneration === token.session;
+		const stillPending = () => {
+			const activeSession = session();
+			return (
+				!disposed &&
+				candidate === token &&
+				token.active &&
+				activeSession.sessionGeneration === token.session &&
+				!activeSession.blocked &&
+				activeSession.accessVerified === true
+			);
+		};
 		try {
 			const params = new URLSearchParams(win.location.search);
 			if (params.get('safeMode') === '1' || params.get('disableCustomCode') === '1') {
@@ -259,38 +269,54 @@ export function createAppThemeHost(ports) {
 			if (!/^[a-f0-9]{64}$/.test(token.shellConfigId || '')) {
 				throw new Error('shell-identity-unavailable');
 			}
-			const prepared = await bounded(
-				transport.prepare(token.tuple, { expectedShellConfigId: token.shellConfigId }),
-				token,
-				ports.prepareTimeoutMs || 125000,
-				'runtime-prepare-timeout',
-			);
-			if (!stillPending()) {
-				return state;
-			}
-			if (
-				prepared?.status !== 'ready' ||
-				prepared.compatible !== true ||
-				prepared.resourcesReady !== true ||
-				prepared.recoveryReady !== true
-			) {
-				throw new Error(prepared?.reason || 'runtime-incomplete');
-			}
-			publish('attaching', null, token);
 			// Aborting a mount does not cancel a worker's already dispatched ATTACH.
 			// Await that handoff's actual settlement before starting another one, so
 			// a superseded response cannot revoke the newer running permit.
-			const attaching = attachmentTail.then(() => {
+			const attach = (cached = false) => {
+				publish('attaching', null, token);
+				const attaching = attachmentTail.then(() => {
+					if (!stillPending()) {
+						throw new Error('mount-invalidated');
+					}
+					return transport[cached ? 'tryAttachCached' : 'attach'](token.tuple, { expectedShellConfigId: token.shellConfigId });
+				});
+				attachmentTail = attaching.then(
+					() => {},
+					() => {},
+				);
+				return bounded(attaching, token, ports.attachTimeoutMs || 15000, 'runtime-attach-timeout');
+			};
+			let attached;
+			if (!codeStarted && !previous?.active && typeof transport.tryAttachCached === 'function') {
+				attached = await attach(true);
 				if (!stillPending()) {
-					throw new Error('mount-invalidated');
+					return state;
 				}
-				return transport.attach(token.tuple, { expectedShellConfigId: token.shellConfigId });
-			});
-			attachmentTail = attaching.then(
-				() => {},
-				() => {},
-			);
-			const attached = await bounded(attaching, token, ports.attachTimeoutMs || 15000, 'runtime-attach-timeout');
+				if (attached?.status !== 'ready' && attached?.status !== 'miss') {
+					throw new Error(attached?.reason || 'runtime-permission-denied');
+				}
+			}
+			if (!attached || attached.status === 'miss') {
+				publish('preparing', null, token);
+				const prepared = await bounded(
+					transport.prepare(token.tuple, { expectedShellConfigId: token.shellConfigId }),
+					token,
+					ports.prepareTimeoutMs || 125000,
+					'runtime-prepare-timeout',
+				);
+				if (!stillPending()) {
+					return state;
+				}
+				if (
+					prepared?.status !== 'ready' ||
+					prepared.compatible !== true ||
+					prepared.resourcesReady !== true ||
+					prepared.recoveryReady !== true
+				) {
+					throw new Error(prepared?.reason || 'runtime-incomplete');
+				}
+				attached = await attach();
+			}
 			if (!stillPending()) {
 				return state;
 			}

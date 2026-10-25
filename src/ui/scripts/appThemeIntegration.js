@@ -7,8 +7,32 @@ export function getAppThemeIntegrationCode() {
     let renderAppThemeStatus = null;
     function isAppThemeSnapshot(value) { return value?.kind === 'app' || value?.manifest?.themeApiVersion === 2; }
     async function requestAppThemeRecovery(event) {
+      let runtime = typeof themeRuntimeInstance !== 'undefined' ? themeRuntimeInstance : null;
+      if (!runtime) {
+        try { runtime = getThemeRuntime(); } catch {
+          let blocked = true;
+          try {
+            blocked = Boolean((typeof themeRuntimeInstance !== 'undefined' && themeRuntimeInstance) ||
+              (typeof accountStore !== 'undefined' && accountStore.getOperationState().busy) ||
+              (typeof secretDialogSubmission !== 'undefined' && secretDialogSubmission) ||
+              window.__2FA_REFRESH_BLOCKED__?.() ||
+              (typeof customCodeReloadBlocked === 'function' && customCodeReloadBlocked()));
+          } catch { /* An unreadable guard cannot authorize navigation. */ }
+          if (blocked) {
+            event?.preventDefault();
+            if (typeof showCenterToast === 'function') showCenterToast('⚠️',t('moduleRefreshBlocked'));
+            return;
+          }
+          // Before a shared SDK exists, retain the real safe link's native
+          // navigation. Once one exists, all recovery stays on its lifecycle.
+          if (event?.currentTarget?.tagName === 'A') return;
+          event?.preventDefault();
+          window.location.assign('/?safeMode=1');
+          return;
+        }
+      }
       event?.preventDefault();
-      const result = await getThemeRuntime().sdk.lifecycle.requestReload('recovery');
+      const result = await runtime.sdk.lifecycle.requestReload('recovery');
       if (result.status === 'rejected') showCenterToast('⚠️',t('moduleRefreshBlocked'));
     }
     // Before core execution this is a real recovery link. Once core owns any
@@ -36,10 +60,20 @@ export function getAppThemeIntegrationCode() {
     function initializeAppThemeIntegration() {
       if (activeAppThemeHost) return;
       const presentation = document.documentElement;
-      const restoreOfficialPresentation = () => {
+      let runtime;
+      const renderOfficialPresentation = () => {
+        // The shared SDK is already alive when this adapter exists. Do not
+        // recreate a failed runtime just to repaint a fallback shell.
+        if (typeof officialAccountView !== 'undefined' && officialAccountView) officialAccountView.render();
+        else if (runtime && typeof getOfficialAccountView === 'function') getOfficialAccountView().render(runtime.sdk.getSnapshot());
+      };
+      const restoreOfficialPresentation = (focusTarget = null) => {
         const focused=focusedAppThemeStartupControl();
+        const wasHidden=presentation.hasAttribute('data-app-theme-startup');
         presentation.removeAttribute('data-app-theme-startup');
-        transferAppThemeStartupFocus(focused,document.getElementById('searchInput') || document.getElementById('mainActionBtn'));
+        window.__2FA_APP_STARTUP_PRESENTATION__?.stop();
+        if (wasHidden) renderOfficialPresentation();
+        transferAppThemeStartupFocus(focused,focusTarget || document.getElementById('searchInput') || document.getElementById('mainActionBtn'));
       };
       if (window.__2FA_SAFE_MODE__ || !isAppThemeSnapshot(window.__2FA_APPEARANCE__)) {
         restoreOfficialPresentation();return;
@@ -49,9 +83,14 @@ export function getAppThemeIntegrationCode() {
       if (!root || !status || typeof window.createAppThemeHost !== 'function') {
         restoreOfficialPresentation();return;
       }
-      let runtime;
       try {runtime=getThemeRuntime();} catch(error) {
-        restoreOfficialPresentation();console.error('Theme runtime unavailable',error);return;
+        status.hidden=false;status.dataset.phase='official-fallback';status.dataset.reason='runtime-unavailable';
+        status.dataset.quiet='false';status.setAttribute('aria-busy','false');status.replaceChildren();
+        const message=document.createElement('span');message.className='app-theme-status-message';message.textContent=t('appearanceRuntimeUnavailable');
+        const recovery=document.createElement('a');recovery.className='btn btn-secondary';recovery.href='/?safeMode=1';
+        recovery.dataset.runtimeAction='recovery';recovery.textContent=t('appearanceUseDefault');
+        recovery.addEventListener('click',requestAppThemeRecovery);status.append(message,recovery);
+        restoreOfficialPresentation(recovery);console.error('Theme runtime unavailable',error);return;
       }
       let removedOfficial = false;
       let entryStarted = false;
@@ -93,27 +132,35 @@ export function getAppThemeIntegrationCode() {
         const navigation = status.dataset.mode === 'reload-required';
         const session = runtime.accounts.getState();
         const currentPhase = displayedPhase();
+        const pending = runtime.sdk.getSnapshot().host.operations.filter(operation =>
+          operation.type === 'hotp' && operation.status === 'running' && operation.clipboard === 'pending');
+        const loading = ['checking-access','preparing','attaching','importing','mounting'].includes(currentPhase);
+        const quiet = !removedOfficial && loading && !navigation && !pending.length;
+        const hadStartup = presentation.hasAttribute('data-app-theme-startup');
         // Keeping the official model/DOM for pre-entry recovery does not require
         // painting it while a privately permitted theme is being prepared.
         if(!removedOfficial && (entryStarted || !['official-fallback','access-unavailable'].includes(currentPhase))) {
           presentation.setAttribute('data-app-theme-startup','managed');
         } else presentation.removeAttribute('data-app-theme-startup');
+        if (quiet) window.__2FA_APP_STARTUP_PRESENTATION__?.resume();
+        else window.__2FA_APP_STARTUP_PRESENTATION__?.stop();
+        if (hadStartup && !presentation.hasAttribute('data-app-theme-startup') && !removedOfficial) renderOfficialPresentation();
+        const slow = !window.__2FA_APP_STARTUP_PRESENTATION__ || Boolean(window.__2FA_APP_STARTUP_PRESENTATION__.slow);
         const displayReason = currentPhase==='access-unavailable' ? session.library.errorKey || 'access-unavailable' : reason;
         const failed = ['access-unavailable','official-fallback','recovery-required'].includes(currentPhase) || (currentPhase === 'running' && Boolean(reason));
-        const loading = ['checking-access','preparing','attaching','importing','mounting'].includes(currentPhase);
-        const messageKey = navigation ? 'appearancePublishedReload' : {
-          'checking-access':'appearanceRuntimeCheckingAccess','login-required':'appearanceRuntimeLoginRequired',
+        const messageKey = navigation ? 'appearancePublishedReload' : pending.length ? 'coreHotpPendingRecovery' : loading ? 'loading' : {
+          'login-required':'appearanceRuntimeLoginRequired',
           'access-unavailable':'coreConnectionFailed',
-          preparing:'appearanceRuntimePreparing',attaching:'appearanceRuntimeAttaching',
-          importing:'appearanceRuntimeLoading',mounting:'appearanceRuntimeMounting',
           'official-fallback':'appearanceRuntimeUnavailable','recovery-required':'appearanceRuntimeRecovery',
           running:'appearanceRuntimeUnavailable'
-        }[currentPhase] || 'appearanceRuntimePreparing';
+        }[currentPhase] || 'loading';
         // The first running notification precedes onRunning revealing the root.
         // Keep the status focusable until that confirmed handoff is complete.
-        status.hidden = removedOfficial && !navigation && currentPhase === 'running' && !reason;
+        status.hidden = removedOfficial && !navigation && currentPhase === 'running' && !reason && !pending.length;
         status.dataset.phase = navigation ? 'reload-required' : currentPhase;
         status.dataset.reason = displayReason || '';
+        status.dataset.quiet = String(quiet);
+        status.dataset.slow = String(slow);
         status.setAttribute('aria-busy',String(!navigation && loading));
         if (status.hidden) {
           if(statusFocused){
@@ -122,9 +169,8 @@ export function getAppThemeIntegrationCode() {
           }
           return;
         }
-        const pending = runtime.sdk.getSnapshot().host.operations.filter(operation =>
-          operation.type === 'hotp' && operation.status === 'running' && operation.clipboard === 'pending');
-        const signature = JSON.stringify([navigation,currentPhase,displayReason,retryBusy,document.documentElement.lang,t(messageKey),
+        const showRecovery = !quiet || slow || Boolean(startupFocused || statusFocused);
+        const signature = JSON.stringify([navigation,loading?'loading':currentPhase,quiet,slow,showRecovery,displayReason,retryBusy,document.documentElement.lang,t(messageKey),
           pending.map(operation => [operation.operationId,operation.reservation,operation.clipboard,operation.reconciliation,operation.status,
             operation.localCommit,operation.counterAdvanced,operation.reason,operation.recovery])]);
         if (signature === renderedSignature) {
@@ -160,7 +206,8 @@ export function getAppThemeIntegrationCode() {
           } catch(error){if(ownsRetry())showStatus('official-fallback',error?.message || 'theme-retry-failed');}
           finally{retryBusy=false;renderStatus();}
         });retry.disabled=retryBusy;}
-        action('recovery','appearanceUseDefault',()=>void requestAppThemeRecovery());
+        const recovery = action('recovery','appearanceUseDefault',()=>void requestAppThemeRecovery());
+        recovery.hidden = !showRecovery;
         // Recovery controls remain host-owned if a theme stops while clipboard is pending.
         for (const operation of pending) {
           const line=document.createElement('p');line.className='app-theme-status-recovery';line.textContent=t('coreHotpPendingRecovery');
@@ -175,6 +222,7 @@ export function getAppThemeIntegrationCode() {
         transferAppThemeStartupFocus(startupFocused,status.querySelector('[data-runtime-action="recovery"]'));
       };
       renderAppThemeStatus = renderStatus;
+      window.addEventListener('app-theme-startup-slow',renderStatus);
       const showStatus = (nextPhase,nextReason=null) => {phase=nextPhase;reason=nextReason;renderStatus();};
       const removeOfficial = () => {
         if (removedOfficial) return;
@@ -233,10 +281,12 @@ export function getAppThemeIntegrationCode() {
       const unsubscribe=runtime.sdk.subscribe(()=>{maybeStart();renderStatus();});
       const changed=()=>{controllerGeneration++;maybeStart();};
       navigator.serviceWorker?.addEventListener('controllerchange',changed);
-      window.addEventListener('pageshow',event=>{if(event.persisted){attempt='';maybeStart();}});
+      window.addEventListener('pageshow',event=>{if(event.persisted){attempt='';maybeStart();renderStatus();}});
       window.addEventListener('pagehide',event=>{
+        window.__2FA_APP_STARTUP_PRESENTATION__?.stop();
         if(event.persisted)return;
         integrationActive=false;
+        window.removeEventListener('app-theme-startup-slow',renderStatus);
         unsubscribe();navigator.serviceWorker?.removeEventListener('controllerchange',changed);activeAppThemeHost.dispose();
       });
       renderStatus();maybeStart();

@@ -118,8 +118,14 @@ export function getThemeRuntimeCode() {
       };
       const unsubscribeDemand = accounts.subscribe(updateDemand);
       const environmentEvent = () => notifyThemeRuntimeEnvironment('host');
+      const hostInputEvent = event => {
+        // Theme controls commit through the SDK. Publishing their preceding
+        // input event would redraw an old snapshot before native change runs.
+        if (document.getElementById('appThemeRoot')?.contains(event.target)) return;
+        environmentEvent();
+      };
       ['online', 'offline', 'appearance-applied'].forEach(type => window.addEventListener(type, environmentEvent));
-      document.addEventListener('input', environmentEvent);
+      document.addEventListener('input', hostInputEvent);
       let observer = null;
       if (typeof MutationObserver === 'function' && document.body) {
         // Watch host dialogs, not OTP animation attributes or theme DOM.
@@ -132,7 +138,7 @@ export function getThemeRuntimeCode() {
         dispose() {
           unsubscribeDemand(); observer?.disconnect();
           ['online', 'offline', 'appearance-applied'].forEach(type => window.removeEventListener(type, environmentEvent));
-          document.removeEventListener('input', environmentEvent);
+          document.removeEventListener('input', hostInputEvent);
           runtime.dispose();
         }
       });

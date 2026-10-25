@@ -49,6 +49,9 @@ export function getPWACode() {
       const tuple = getCurrentRuntimeTuple();
       if (tuple.mode === 'safe') return preparePublicRecovery();
       await preparePublicRecovery();
+      // The app host owns its complete preparation and admission. A public
+      // recovery result must not be published as this app's offline state.
+      if (tuple.mode === 'app') return;
       let result = await window.twofaRuntimeTransport.prepare(tuple);
       // Only the app host can commit an app permit. Official pages still need
       // a complete pin so a later worker update can classify this live tab.
@@ -85,7 +88,7 @@ export function getPWACode() {
       if (navigator.onLine === false || !appearance ||
           new URLSearchParams(window.location.search).get('safeMode') === '1' ||
           new URLSearchParams(window.location.search).get('disableCustomCode') === '1') return;
-      if (appearance?.kind === 'app' || appearance?.manifest?.themeApiVersion === 2) { void prepareCurrentRuntime(); return; }
+      if (appearance?.kind === 'app' || appearance?.manifest?.themeApiVersion === 2) return;
       worker.postMessage({ type: 'APPEARANCE_SNAPSHOT', buildId, appearance });
       void prepareCurrentRuntime();
     }

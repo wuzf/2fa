@@ -253,7 +253,7 @@ export function createOfficialAccountView(ports) {
 		closeAllCardMenus();
 	}
 	function render(snapshot = sdk.getSnapshot()) {
-		if (disposed) {
+		if (disposed || ports.shouldRender?.() === false) {
 			return;
 		}
 		const container = document.getElementById('secretsList');
@@ -536,7 +536,7 @@ export function createOfficialAccountView(ports) {
 	document.addEventListener('keydown', onKeydown);
 	const unsubscribe = sdk.subscribe(render);
 	const progressTimer = window.setInterval?.(() => {
-		if (!document.hidden) {
+		if (!disposed && !document.hidden && ports.shouldRender?.() !== false) {
 			ports.renderProgress?.(sdk.getSnapshot().library.accounts);
 		}
 	}, 1000);
@@ -573,6 +573,7 @@ export function getOfficialAccountViewCode() {
         const runtime = getThemeRuntime();
         officialAccountView = createOfficialAccountView({
           document, window, sdk: runtime.sdk, renderer: accountAppearanceRenderer,
+          shouldRender: () => !document.documentElement.hasAttribute('data-app-theme-startup'),
           translate: (...args) => t(...args), getLanguage: () => typeof getLanguage === 'function' ? getLanguage() : 'en',
           prepareCopy: target => runtime.prepareCopy(target),
           resetPresentation: () => { if (typeof otpPresentation !== 'undefined') otpPresentation.reset('render'); },

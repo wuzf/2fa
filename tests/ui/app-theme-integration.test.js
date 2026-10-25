@@ -143,7 +143,7 @@ describe('official shell and full-theme integration', () => {
 		h.start();
 		expect(status(h).dataset.phase).toBe('checking-access');
 		expect(h.document.documentElement.getAttribute('data-app-theme-startup')).toBe('managed');
-		expect(status(h).textContent).toContain(h.window.eval('t("appearanceRuntimeCheckingAccess")'));
+		expect(status(h).textContent).toContain(h.window.eval('t("loading")'));
 		expect(statusAction(h, 'login')).toBeNull();
 		expect(statusAction(h, 'retry')).toBeNull();
 		expect(h.host.start).not.toHaveBeenCalled();
@@ -161,21 +161,16 @@ describe('official shell and full-theme integration', () => {
 		expect(h.host.start).toHaveBeenCalledOnce();
 		expect(status(h).dataset.phase).toBe('preparing');
 	});
-	it('uses neutral, accurate loading stages without retry, with the existing guarded default-interface action', async () => {
+	it('keeps loading stages as metadata and uses one plain message with guarded recovery', async () => {
 		const h = await fixture();
 		h.start();
 		expect(status(h).className).toBe('app-theme-status');
 		expect(status(h).getAttribute('role')).toBe('status');
 		expect(status(h).getAttribute('aria-live')).toBe('polite');
-		for (const [phase, key] of [
-			['preparing', 'appearanceRuntimePreparing'],
-			['attaching', 'appearanceRuntimeAttaching'],
-			['importing', 'appearanceRuntimeLoading'],
-			['mounting', 'appearanceRuntimeMounting'],
-		]) {
+		for (const phase of ['preparing', 'attaching', 'importing', 'mounting']) {
 			h.ports().onState({ status: phase });
 			expect(status(h).dataset.phase).toBe(phase);
-			expect(status(h).textContent).toContain(h.window.eval('t(' + JSON.stringify(key) + ')'));
+			expect(status(h).textContent).toContain(h.window.eval('t("loading")'));
 			expect(status(h).getAttribute('aria-busy')).toBe('true');
 			expect(statusAction(h, 'retry')).toBeNull();
 			expect(labeledButton(h, 'appearanceUseDefault')).toBeDefined();
@@ -249,7 +244,7 @@ describe('official shell and full-theme integration', () => {
 		h.ports().onState({ status: 'attaching' });
 		expect(h.document.activeElement).toBe(statusAction(h, 'recovery'));
 		h.window.eval('setLanguage("zh-CN", {persist:false})');
-		expect(status(h).textContent).toContain('正在连接主题运行环境');
+		expect(status(h).textContent).toContain('加载中');
 		expect(h.document.activeElement).toBe(statusAction(h, 'recovery'));
 		const unrelated = h.document.getElementById('searchInput');
 		unrelated.focus();

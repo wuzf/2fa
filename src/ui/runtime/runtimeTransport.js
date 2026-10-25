@@ -58,6 +58,7 @@ export function createRuntimeTransport({
 		type,
 		tuple,
 		{ worker = controller(), timeout = 4000, requireController = true, expectedShellConfigId = window.__2FA_SHELL_CONFIG_ID__ } = {},
+		tryCachedAttach = false,
 	) {
 		if (disposed) {
 			return Promise.resolve(blocked('disposed'));
@@ -78,7 +79,7 @@ export function createRuntimeTransport({
 		if (type !== 'RUNTIME_ACTIVATE' && !/^[a-f0-9]{64}$/.test(expectedShellConfigId || '')) {
 			return Promise.resolve(blocked('reload-required'));
 		}
-		if (['RUNTIME_ATTACH', 'RUNTIME_STARTED'].includes(type) && !prepared) {
+		if (['RUNTIME_ATTACH', 'RUNTIME_STARTED'].includes(type) && !prepared && !tryCachedAttach) {
 			return Promise.resolve(blocked('not-prepared'));
 		}
 		const expectedAttachment = type === 'RUNTIME_ATTACH' ? ++attachmentVersion : null;
@@ -142,6 +143,11 @@ export function createRuntimeTransport({
 					return finish(blocked('controller-changed'));
 				}
 				if (data.status !== 'ready') {
+					// Only a correlated reply from the current controller proves that
+					// ATTACH did not commit a pin. A timeout or local error is ambiguous.
+					if (tryCachedAttach && data.status === 'blocked' && ['not-prepared', 'evicted'].includes(data.reason)) {
+						return finish(Object.freeze({ ...blocked(data.reason), status: 'miss' }));
+					}
 					return finish(blocked(data.reason || 'worker-rejected'));
 				}
 				// skipWaiting resolves before activation. Reload only after the
@@ -158,7 +164,7 @@ export function createRuntimeTransport({
 				if (prepared && ['RUNTIME_ATTACH', 'RUNTIME_STARTED'].includes(type) && data.inventoryHash !== prepared) {
 					return finish(blocked('inventory-changed'));
 				}
-				if (type !== 'RUNTIME_ACTIVATE' && (!data.compatible || !data.resourcesReady || !data.recoveryReady)) {
+				if (type !== 'RUNTIME_ACTIVATE' && (data.compatible !== true || data.resourcesReady !== true || data.recoveryReady !== true)) {
 					return finish(blocked('runtime-incomplete'));
 				}
 				if (type === 'RUNTIME_ATTACH') {
@@ -173,6 +179,11 @@ export function createRuntimeTransport({
 						shellConfigId: expectedShellConfigId,
 						inventoryHash: data.inventoryHash,
 					});
+					if (tryCachedAttach) {
+						// ATTACH itself fully verified this snapshot. Establish its proof
+						// before observers can request STARTED with the returned permit.
+						preparations.set(preparationKey, data.inventoryHash);
+					}
 					permits.set(permit, { controller: expectedController, generation: expectedGeneration, epoch: ++permitEpoch });
 					state = Object.freeze({ status: 'ready', tuple: expectedTuple, compatible: true, resourcesReady: true, recoveryReady: true });
 					emit('ready');
@@ -218,6 +229,8 @@ export function createRuntimeTransport({
 	return Object.freeze({
 		prepare: (tuple, options = {}) => request('RUNTIME_PREPARE', tuple, { ...options, timeout: 150000 }),
 		attach: (tuple, options = {}) => request('RUNTIME_ATTACH', tuple, options),
+		tryAttachCached: (tuple, options = {}) =>
+			request('RUNTIME_ATTACH', tuple, { ...options, worker: controller(), requireController: true }, true),
 		status: (tuple, options = {}) => request('RUNTIME_STATUS', tuple, options),
 		startup: (tuple, options = {}) => request('RUNTIME_STARTED', tuple, options),
 		isPermitCurrent(permit) {

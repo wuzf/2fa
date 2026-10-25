@@ -41,7 +41,36 @@ const withoutScripts = (html) => html.replace(/<script\b[^>]*>[\s\S]*?<\/script>
 function headSource(snapshot = appearance, safeMode = false) {
 	return /<script>([\s\S]*?)<\/script>/.exec(getAppearanceHead(snapshot, { buildId, safeMode }))[1];
 }
-async function htmlPage({ snapshot = appearance, safeMode = false, runHead = true } = {}) {
+function startupClock(window) {
+	let now = 0;
+	let next = 0;
+	const tasks = new Map();
+	const callbacks = [];
+	vi.spyOn(window.Date, 'now').mockImplementation(() => now);
+	window.setTimeout = (callback, delay) => {
+		const id = ++next;
+		tasks.set(id, { callback, at: now + delay });
+		callbacks.push(callback);
+		return id;
+	};
+	window.clearTimeout = (id) => tasks.delete(id);
+	return {
+		callbacks,
+		get pending() {
+			return tasks.size;
+		},
+		advance(ms) {
+			now += ms;
+			for (const [id, task] of [...tasks]) {
+				if (task.at <= now) {
+					tasks.delete(id);
+					task.callback();
+				}
+			}
+		},
+	};
+}
+async function htmlPage({ snapshot = appearance, safeMode = false, runHead = true, controlled = false } = {}) {
 	const window = new Window({
 		url: 'https://vault.test/',
 		settings: { disableJavaScriptEvaluation: true, disableJavaScriptFileLoading: true },
@@ -50,6 +79,7 @@ async function htmlPage({ snapshot = appearance, safeMode = false, runHead = tru
 	const html = await (await createMainPage({ appearance: snapshot, safeMode, buildId })).text();
 	const bodyOffset = html.indexOf('<body');
 	window.document.write(withoutScripts(html.slice(0, bodyOffset)));
+	const clock = controlled ? startupClock(window) : null;
 	if (runHead) {
 		window.eval(headSource(safeMode ? null : snapshot, safeMode));
 	}
@@ -60,7 +90,7 @@ async function htmlPage({ snapshot = appearance, safeMode = false, runHead = tru
 			.replace(/^<body[^>]*>/, '')
 			.replace(/<\/body>[\s\S]*$/, ''),
 	);
-	return { window, document: window.document, html, beforeBody };
+	return { window, document: window.document, html, beforeBody, clock };
 }
 // Resolve the exact emitted HTML/CSS afresh. Happy DOM caches some
 // ancestor-dependent matches; real first-frame painting is checked in Chrome.
@@ -91,10 +121,11 @@ function deferred() {
 	return { promise, resolve, reject };
 }
 const ready = { status: 'ready', compatible: true, resourcesReady: true, recoveryReady: true };
-async function runtimePage({ authenticated = true } = {}) {
+async function runtimePage({ authenticated = true, controlled = false } = {}) {
 	const clipboard = { writeText: vi.fn(async () => {}) };
 	const h = await createRuntimeFixture({ appearance, buildId, clipboard });
 	cleanups.push(() => h.dispose());
+	const presentationClock = controlled ? startupClock(h.window) : null;
 	h.window.eval(headSource());
 	h.setClock(59000);
 	const runtime = h.getThemeRuntime();
@@ -134,6 +165,7 @@ async function runtimePage({ authenticated = true } = {}) {
 		runtime,
 		official,
 		clipboard,
+		presentationClock,
 		transport,
 		importModule,
 		loadStyles,
@@ -159,13 +191,90 @@ async function runtimePage({ authenticated = true } = {}) {
 }
 
 describe('app-theme first-frame presentation', () => {
+	it('keeps the same two-second deadline across access, preparation and attachment', async () => {
+		const h = await runtimePage({ authenticated: false, controlled: true });
+		h.start();
+		const status = h.document.getElementById('appThemeRuntimeStatus');
+		const recovery = () => status.querySelector('[data-runtime-action="recovery"]');
+		expect(status.dataset.quiet).toBe('true');
+		expect(recovery().hidden).toBe(true);
+		h.presentationClock.advance(1000);
+		h.replaceSecretRecords([record], { source: 'local', accessVerified: true });
+		await vi.waitFor(() => expect(h.transport.prepare).toHaveBeenCalledOnce());
+		h.preparation.resolve(ready);
+		await vi.waitFor(() => expect(h.transport.attach).toHaveBeenCalledOnce());
+		expect(status.dataset.phase).toBe('attaching');
+		h.presentationClock.advance(999);
+		expect(recovery().hidden).toBe(true);
+		h.presentationClock.advance(1);
+		expect(status.dataset.slow).toBe('true');
+		expect(recovery().hidden).toBe(false);
+		expect(status.textContent).not.toMatch(/正在连接主题运行环境|Connecting the theme runtime/);
+		officialHidden(h);
+	});
+	it('reveals recovery after the threshold even when body parsing happens later and core never executes', async () => {
+		const h = await htmlPage({ controlled: true, runHead: false });
+		const body = h.document.body.innerHTML;
+		h.document.body.replaceChildren();
+		h.window.eval(headSource());
+		h.clock.advance(2000);
+		expect(h.document.documentElement.hasAttribute('data-app-theme-startup-slow')).toBe(true);
+		h.document.body.innerHTML = body;
+		expect(computed(h, ['#appThemeStartupRecovery'])).toEqual(['inline-flex']);
+		expect(h.document.getElementById('appThemeStartupRecovery').getAttribute('href')).toBe('/?safeMode=1');
+	});
+	it('invalidates a late head timer and resumes only the still-pending head after BFCache restore', async () => {
+		const h = await htmlPage({ controlled: true });
+		const stale = h.clock.callbacks[0];
+		h.window.dispatchEvent(new h.window.Event('pagehide'));
+		h.clock.advance(2500);
+		stale();
+		expect(h.document.documentElement.hasAttribute('data-app-theme-startup-slow')).toBe(false);
+		const restore = new h.window.Event('pageshow');
+		Object.defineProperty(restore, 'persisted', { value: true });
+		h.window.dispatchEvent(restore);
+		h.clock.advance(0);
+		expect(computed(h, ['#appThemeStartupRecovery'])).toEqual(['inline-flex']);
+		h.window.__2FA_APP_STARTUP_PRESENTATION__.stop();
+		h.document.documentElement.removeAttribute(marker);
+		h.window.dispatchEvent(restore);
+		h.clock.advance(5000);
+		expect(h.document.documentElement.hasAttribute('data-app-theme-startup-slow')).toBe(false);
+	});
+	it('keeps failures immediately actionable and renders the current official accounts without another SDK update', async () => {
+		const h = await runtimePage({ controlled: true });
+		h.start();
+		expect(h.document.querySelector('#secretsList .secret-card')).toBeNull();
+		h.preparation.resolve({ status: 'blocked', reason: 'runtime-incomplete' });
+		await vi.waitFor(() => expect(h.host().getState().status).toBe('official-fallback'));
+		const status = h.document.getElementById('appThemeRuntimeStatus');
+		expect(status.dataset.quiet).toBe('false');
+		expect(status.querySelector('[data-runtime-action="recovery"]').hidden).toBe(false);
+		expect(status.querySelector('[data-runtime-action="retry"]')).not.toBeNull();
+		expect(h.document.querySelector('#secretsList .secret-card')).not.toBeNull();
+		h.presentationClock.advance(3000);
+		expect(h.document.documentElement.hasAttribute('data-app-theme-startup-slow')).toBe(false);
+		officialVisible(h);
+	});
+	it('shows confirmed login actions immediately while ordinary loading recovery stays quiet', async () => {
+		const h = await runtimePage({ authenticated: false, controlled: true });
+		h.start();
+		expect(h.document.querySelector('#appThemeRuntimeStatus [data-runtime-action="recovery"]').hidden).toBe(true);
+		h.invalidateSecretSession();
+		const status = h.document.getElementById('appThemeRuntimeStatus');
+		expect(status.dataset.phase).toBe('login-required');
+		expect(status.dataset.quiet).toBe('false');
+		expect(status.querySelector('[data-runtime-action="login"]')).not.toBeNull();
+		expect(status.querySelector('[data-runtime-action="recovery"]').hidden).toBe(false);
+	});
 	it('sets a host-only marker before body parsing, with a script-independent recovery entry', async () => {
 		const h = await htmlPage();
 		expect(h.beforeBody).toBe('pending');
 		officialHidden(h);
 		expect(computed(h, ['#appThemeStartup', '#appThemeRoot'])).toEqual(['flex', 'none']);
 		expect(h.document.querySelector('#appThemeStartupRecovery').getAttribute('href')).toBe('/?safeMode=1');
-		expect(h.document.querySelector('#appThemeStartup').textContent).toContain('正在验证访问权限');
+		expect(h.document.querySelector('#appThemeStartup').textContent).toContain('加载中');
+		expect(computed(h, ['#appThemeStartupRecovery'])).toEqual(['none']);
 		expect(h.document.querySelector('link[data-app-theme]')).toBeNull();
 		expect(h.document.querySelector('script[src*="theme-packages"]')).toBeNull();
 		expect(h.html.indexOf("setAttribute('data-app-theme-startup'")).toBeLessThan(h.html.indexOf('<body'));
@@ -182,9 +291,12 @@ describe('app-theme first-frame presentation', () => {
 		expect(h.document.querySelector('#officialThemeActions button')).not.toBeNull();
 	});
 	it('retains an actual safe URL if core never executes after the head marker', async () => {
-		const h = await htmlPage();
+		const h = await htmlPage({ controlled: true });
 		expect(typeof h.window.requestAppearanceRuntimeReload).toBe('undefined');
 		expect(h.document.getElementById('appThemeStartupRecovery').href).toBe('https://vault.test/?safeMode=1');
+		h.clock.advance(1999);
+		expect(computed(h, ['#appThemeStartupRecovery'])).toEqual(['none']);
+		h.clock.advance(1);
 		expect(computed(h, ['#appThemeStartupRecovery'])).not.toContain('none');
 		officialHidden(h);
 	});

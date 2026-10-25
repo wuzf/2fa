@@ -195,3 +195,162 @@ describe('runtime transport permit lifecycle', () => {
 		expect(h.t.isPermitCurrent(old)).toBe(false);
 	});
 });
+
+describe('verified cached ATTACH admission', () => {
+	it('uses an old worker ATTACH reply directly and establishes STARTED proof before ready observers run', async () => {
+		const h = fixture();
+		expect(await h.t.attach(tuple, { tryCachedAttach: true })).toMatchObject({ status: 'blocked', reason: 'not-prepared' });
+		let started;
+		h.t.subscribe((event) => {
+			if (event.type === 'ready') {
+				started = h.t.startup(tuple);
+			}
+		});
+		const attaching = h.t.tryAttachCached(tuple);
+		expect(h.requests.map(({ request }) => request.type)).toEqual(['RUNTIME_ATTACH']);
+		expect(h.requests[0].request.inventoryHash).toBeUndefined();
+		h.reply(0, { workerBuild: 'e'.repeat(64) });
+		const result = await attaching;
+		expect(result).toMatchObject({ status: 'ready', permit: { workerBuild: 'e'.repeat(64), inventoryHash: hash } });
+		expect(h.t.isPermitCurrent(result.permit)).toBe(true);
+		expect(h.requests[1].request).toMatchObject({ type: 'RUNTIME_STARTED', inventoryHash: hash, shellConfigId: shell, tuple });
+		h.reply(1);
+		expect((await started).status).toBe('ready');
+	});
+	it.each(['not-prepared', 'evicted'])('recognizes only the current old-shaped %s reply as a repairable miss', async (reason) => {
+		const h = fixture();
+		const events = [];
+		h.t.subscribe((event) => events.push(event));
+		const attaching = h.t.tryAttachCached(tuple);
+		const { request, port } = h.requests[0];
+		port.postMessage({
+			protocol: request.protocol,
+			nonce: request.nonce,
+			generation: request.generation,
+			tuple,
+			workerBuild: 'e'.repeat(64),
+			status: 'blocked',
+			reason,
+		});
+		expect(await attaching).toMatchObject({ status: 'miss', reason, resourcesReady: false, recoveryReady: false });
+		expect(events.some((event) => event.type === 'invalidated')).toBe(false);
+		expect(h.t.getState().status).toBe('idle');
+		expect(await h.t.startup(tuple)).toMatchObject({ status: 'blocked', reason: 'not-prepared' });
+		await h.prepare();
+		expect((await h.attach()).status).toBe('ready');
+		expect(h.requests.map(({ request: item }) => item.type)).toEqual(['RUNTIME_ATTACH', 'RUNTIME_PREPARE', 'RUNTIME_ATTACH']);
+	});
+	it.each([
+		{ status: 'miss', reason: 'not-prepared' },
+		{ status: 'blocked', reason: 'storage-unavailable' },
+		{ status: 'blocked', reason: 'activation-blocked' },
+	])('invalidates uncertain or unsupported worker failure $status/$reason', async (failure) => {
+		const h = fixture();
+		const events = [];
+		h.t.subscribe((event) => events.push(event));
+		const attaching = h.t.tryAttachCached(tuple);
+		h.reply(0, failure);
+		expect(await attaching).toMatchObject({ status: 'blocked', reason: failure.reason });
+		expect(events).toContainEqual(expect.objectContaining({ type: 'invalidated', reason: failure.reason }));
+	});
+	it.each([
+		{ compatible: 1 },
+		{ resourcesReady: 'true' },
+		{ recoveryReady: false },
+		{ shellConfigId: 'e'.repeat(64) },
+		{ inventoryHash: 'invalid' },
+		{ permitId: '' },
+		{ workerBuild: 'invalid' },
+	])('rejects incomplete ready proof %j without establishing preparations', async (changes) => {
+		const h = fixture();
+		const attaching = h.t.tryAttachCached(tuple);
+		h.reply(0, changes);
+		expect((await attaching).status).toBe('blocked');
+		expect(await h.t.startup(tuple)).toMatchObject({ status: 'blocked', reason: 'not-prepared' });
+		expect(h.requests).toHaveLength(1);
+	});
+	it('still compares an existing preparation hash on the cached path', async () => {
+		const h = fixture();
+		await h.prepare();
+		const attaching = h.t.tryAttachCached(tuple);
+		expect(h.requests[1].request.inventoryHash).toBe(hash);
+		h.reply(1, { inventoryHash: 'e'.repeat(64) });
+		expect(await attaching).toMatchObject({ status: 'blocked', reason: 'inventory-changed' });
+	});
+	it.each([{ nonce: 'forged' }, { generation: 99 }, { tuple: { ...tuple, appearanceRevision: 2 } }, { protocol: 'unknown' }])(
+		'ignores an uncorrelated miss %j',
+		async (changes) => {
+			const h = fixture();
+			let settled = false;
+			const attaching = h.t.tryAttachCached(tuple).then((result) => {
+				settled = true;
+				return result;
+			});
+			h.reply(0, { status: 'blocked', reason: 'not-prepared', ...changes });
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			expect(settled).toBe(false);
+			h.reply(0, { status: 'blocked', reason: 'evicted' });
+			expect(await attaching).toMatchObject({ status: 'miss', reason: 'evicted' });
+		},
+	);
+	it('does not accept an old controller miss before controllerchange is delivered', async () => {
+		const h = fixture();
+		const attaching = h.t.tryAttachCached(tuple);
+		h.serviceWorker.controller = {};
+		h.reply(0, { status: 'blocked', reason: 'evicted' });
+		expect(await attaching).toMatchObject({ status: 'blocked', reason: 'controller-changed' });
+	});
+	it.each(['pagehide', 'controllerchange'])(
+		'invalidates a pending cached attach on %s rather than accepting a late miss',
+		async (event) => {
+			const h = fixture();
+			const attaching = h.t.tryAttachCached(tuple);
+			(event === 'pagehide' ? h.window : h.serviceWorker).dispatchEvent(new Event(event));
+			h.reply(0, { status: 'blocked', reason: 'not-prepared' });
+			expect((await attaching).status).toBe('blocked');
+			expect(h.t.getState().reason).toBe(event === 'pagehide' ? 'page-hidden' : 'controller-changed');
+		},
+	);
+	it('cannot let a superseded miss revoke a newer cached permit', async () => {
+		const h = fixture();
+		const older = h.t.tryAttachCached(tuple);
+		const newer = h.t.tryAttachCached({ ...tuple, appearanceRevision: 2 });
+		h.reply(1);
+		const current = await newer;
+		h.reply(0, { status: 'blocked', reason: 'not-prepared' });
+		expect(await older).toMatchObject({ status: 'blocked', reason: 'superseded-attach' });
+		expect(h.t.isPermitCurrent(current.permit)).toBe(true);
+	});
+	it('does not downgrade a timeout or a late miss when the pin outcome is unknown', async () => {
+		vi.useFakeTimers();
+		const h = fixture();
+		await h.prepare();
+		const previous = (await h.attach()).permit;
+		const events = [];
+		h.t.subscribe((event) => events.push(event));
+		const attaching = h.t.tryAttachCached(tuple);
+		await vi.advanceTimersByTimeAsync(4000);
+		expect(await attaching).toMatchObject({ status: 'blocked', reason: 'worker-timeout' });
+		expect(h.t.isPermitCurrent(previous)).toBe(false);
+		expect(events).toContainEqual(expect.objectContaining({ type: 'invalidated', reason: 'worker-timeout' }));
+		h.reply(2, { status: 'blocked', reason: 'not-prepared' });
+		expect(h.t.getState().status).toBe('blocked');
+	});
+	it('keeps local same-name failures and caller-supplied workers out of the miss path', async () => {
+		const h = fixture();
+		const foreign = { postMessage: vi.fn() };
+		h.worker.postMessage = () => {
+			throw new Error('not-prepared');
+		};
+		expect(await h.t.tryAttachCached(tuple, { worker: foreign, requireController: false })).toMatchObject({
+			status: 'blocked',
+			reason: 'message-failed',
+		});
+		expect(foreign.postMessage).not.toHaveBeenCalled();
+		h.serviceWorker.controller = null;
+		expect(await h.t.tryAttachCached(tuple, { worker: foreign, requireController: false })).toMatchObject({
+			status: 'blocked',
+			reason: 'no-controller',
+		});
+	});
+});

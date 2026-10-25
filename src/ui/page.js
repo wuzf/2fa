@@ -184,7 +184,7 @@ function getHTMLBody(appearance = null) {
   ${
 		appTheme
 			? `<section id="appThemeStartup" role="status" aria-live="polite" aria-atomic="true">
-    <p class="app-theme-status-message" data-i18n="appearanceRuntimeCheckingAccess">正在验证访问权限，随后启动主题…</p>
+    <p class="app-theme-status-message" data-i18n="loading">加载中...</p>
     <a id="appThemeStartupRecovery" class="btn btn-secondary" href="/?safeMode=1" data-i18n="appearanceUseDefault">使用默认界面</a>
   </section>`
 			: ''

@@ -35,6 +35,77 @@ function fixture(mode = 'official') {
 	return { window, navigator, api, tasks, operations, transport: window.twofaRuntimeTransport };
 }
 
+function fullAppFixture() {
+	const source = getPWACode();
+	const listeners = new Map();
+	const workerListeners = new Map();
+	const on = (target) => (type, listener) => {
+		target.set(type, [...(target.get(type) || []), listener]);
+	};
+	const transport = { prepare: vi.fn(async () => ({ status: 'ready', tuple: { mode: 'safe' } })), attach: vi.fn(), startup: vi.fn() };
+	const registration = { active: {}, addEventListener: vi.fn(), update: vi.fn(async () => {}) };
+	const serviceWorker = {
+		controller: { postMessage: vi.fn() },
+		ready: Promise.resolve(registration),
+		register: vi.fn(async () => registration),
+		addEventListener: on(workerListeners),
+	};
+	const navigator = { serviceWorker, onLine: true };
+	const window = {
+		location: { search: '', reload: vi.fn() },
+		navigator,
+		__2FA_BUILD_ID__: 'a'.repeat(64),
+		__2FA_SHELL_CONFIG_ID__: 'b'.repeat(64),
+		__2FA_RECOVERY_CONFIG_ID__: 'c'.repeat(64),
+		__2FA_APPEARANCE__: { kind: 'app', revision: 1, packageId: 'd'.repeat(64) },
+		twofaRuntimeTransport: transport,
+		addEventListener: on(listeners),
+		dispatchEvent: vi.fn(),
+		matchMedia: () => ({ matches: false }),
+	};
+	const document = { body: { classList: { remove: vi.fn() } }, getElementById: () => null, addEventListener: vi.fn() };
+	// Execute the actual emitted load/online/controller/apply handlers. Queue
+	// and toast effects are unrelated ports and never issue network requests.
+	// eslint-disable-next-line no-new-func
+	const api = new Function(
+		'window',
+		'navigator',
+		'document',
+		'setTimeout',
+		'clearTimeout',
+		'setInterval',
+		'CustomEvent',
+		'console',
+		'getLanguage',
+		'showCenterToast',
+		't',
+		source.slice(source.indexOf('    function getCurrentRuntimeTuple')) +
+			';requestPendingOperationSync=()=>{};refreshOfflineQueue=async()=>{};drainOfflineQueueResume=async()=>{};revalidateSecretsFromServer=()=>{};return {preparePublicRecovery};',
+	)(
+		window,
+		navigator,
+		document,
+		() => 1,
+		() => {},
+		() => 1,
+		CustomEvent,
+		{ log() {}, warn() {} },
+		() => 'en',
+		() => {},
+		(key) => key,
+	);
+	return {
+		window,
+		navigator,
+		transport,
+		api,
+		emit: async (type) => {
+			const target = type === 'controllerchange' ? workerListeners : listeners;
+			await Promise.all((target.get(type) || []).map((listener) => listener(new CustomEvent(type, { detail: window.__2FA_APPEARANCE__ }))));
+		},
+	};
+}
+
 describe('emitted PWA runtime startup', () => {
 	it('publishes worker preparation progress without treating it as an execution permit', () => {
 		const h = fixture();
@@ -65,11 +136,58 @@ describe('emitted PWA runtime startup', () => {
 	});
 	it('never lets background app preparation or recovery prefetch replace the app host pin', async () => {
 		const h = fixture('app');
-		await h.api.prepareCurrentRuntime();
-		expect(h.transport.prepare.mock.calls.map((call) => call[0].mode)).toEqual(['safe', 'app']);
+		expect(await h.api.prepareCurrentRuntime()).toBeUndefined();
+		expect(h.transport.prepare.mock.calls.map((call) => call[0].mode)).toEqual(['safe']);
 		expect(h.transport.attach).not.toHaveBeenCalled();
 		expect(h.transport.startup).not.toHaveBeenCalled();
 	});
+	it.each(['ready', 'blocked'])('does not publish a late safe %s result as app readiness', async (status) => {
+		const h = fixture('app');
+		let release;
+		h.transport.prepare.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					release = resolve;
+				}),
+		);
+		const events = [];
+		h.window.addEventListener('runtime-offline-state', (event) => events.push(event.detail));
+		const pending = h.api.prepareCurrentRuntime();
+		expect(h.transport.prepare).toHaveBeenCalledOnce();
+		release({ status, tuple: { mode: 'safe' } });
+		expect(await pending).toBeUndefined();
+		expect(events).toEqual([]);
+		expect(h.transport.prepare).toHaveBeenCalledOnce();
+		expect(h.transport.attach).not.toHaveBeenCalled();
+	});
+	it('keeps compatibility pins and immediate public recovery on appearance-applied without preparing app twice', async () => {
+		const h = fixture('app');
+		h.window.dispatchEvent(new CustomEvent('appearance-applied', { detail: h.window.__2FA_APPEARANCE__ }));
+		await h.api.preparePublicRecovery();
+		expect(h.navigator.serviceWorker.controller.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'APP_BUILD_PIN' }));
+		expect(h.transport.prepare.mock.calls.map((call) => call[0].mode)).toEqual(['safe']);
+		expect(h.transport.attach).not.toHaveBeenCalled();
+	});
+	it.each(['load', 'online', 'controllerchange', 'appearance-applied'])(
+		'prepares only safe recovery from the actual app %s handler',
+		async (type) => {
+			const h = fullAppFixture();
+			if (type === 'controllerchange') {
+				await h.emit('load');
+				await h.api.preparePublicRecovery();
+				h.transport.prepare.mockClear();
+				h.navigator.serviceWorker.controller.postMessage.mockClear();
+			}
+			await h.emit(type);
+			await h.api.preparePublicRecovery();
+			expect(h.transport.prepare).toHaveBeenCalled();
+			expect(h.transport.prepare.mock.calls.every(([tuple]) => tuple.mode === 'safe')).toBe(true);
+			expect(h.transport.attach).not.toHaveBeenCalled();
+			expect(h.transport.startup).not.toHaveBeenCalled();
+			expect(h.navigator.serviceWorker.controller.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'APP_BUILD_PIN' }));
+			expect(h.window.dispatchEvent.mock.calls.filter(([event]) => event.type === 'runtime-offline-state')).toEqual([]);
+		},
+	);
 	it('attaches the public recovery identity only in a safe page', async () => {
 		const h = fixture('safe');
 		await h.api.prepareCurrentRuntime();

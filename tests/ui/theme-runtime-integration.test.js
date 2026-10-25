@@ -72,6 +72,133 @@ describe('actual browser host assembly', () => {
 		expect(runtime.sdk.getSnapshot().host.busy).toBe(false);
 	});
 
+	it.each(['mode', 'service', 'sort', 'groupSort'].flatMap((control) => [false, true].map((microtask) => [control, microtask])))(
+		'keeps a theme %s select choice through native input then change (microtask=%s)',
+		async (control, microtask) => {
+			const h = await fixture({ accountDOM: false });
+			h.setClock(59000);
+			const runtime = h.getThemeRuntime();
+			h.replaceSecretRecords([record, { ...record, id: 'second', name: 'GitHub', account: 'another@example.test' }], {
+				source: 'server',
+				accessVerified: true,
+			});
+			await runtime.otp.refresh();
+			if (control === 'sort') {
+				runtime.sdk.view.setMode('flat');
+			}
+			const initial = runtime.sdk.getSnapshot().library.view;
+			const bindings = {
+				mode: { key: 'mode', next: 'flat', command: (value) => runtime.sdk.view.setMode(value) },
+				service: {
+					key: 'serviceFilter',
+					next: initial.services[0].groupId,
+					command: (value) => runtime.sdk.view.setServiceFilter(value || null),
+				},
+				sort: { key: 'flatSort', next: 'newest-first', command: (value) => runtime.sdk.view.setSort({ flatSort: value }) },
+				groupSort: { key: 'groupSort', next: 'name-desc', command: (value) => runtime.sdk.view.setSort({ groupSort: value }) },
+			};
+			const binding = bindings[control];
+			const root = h.document.getElementById('appThemeRoot');
+			const select = h.document.createElement('select');
+			for (const value of [initial[binding.key] || '', binding.next]) {
+				const option = h.document.createElement('option');
+				option.value = value;
+				select.append(option);
+			}
+			root.append(select);
+			select.addEventListener('change', () => binding.command(select.value));
+			// A normal controlled theme select renders its current value from each SDK snapshot.
+			const unsubscribe = runtime.sdk.subscribe((snapshot) => {
+				select.value = snapshot.library.view[binding.key] || '';
+			});
+			for (const value of [binding.next, initial[binding.key] || '']) {
+				select.value = value;
+				select.dispatchEvent(new h.window.Event('input', { bubbles: true }));
+				if (microtask) {
+					await Promise.resolve();
+				}
+				expect(select.value).toBe(value);
+				select.dispatchEvent(new h.window.Event('change', { bubbles: true }));
+				expect(runtime.sdk.getSnapshot().library.view[binding.key] || '').toBe(value);
+				if (control === 'mode') {
+					expect(h.window.localStorage.getItem('2fa-view-mode')).toBe(value);
+				}
+				if (control === 'sort') {
+					expect(runtime.sdk.getSnapshot().library.view.resultIds).toEqual(
+						value === 'newest-first' ? ['second', 'totp'] : ['totp', 'second'],
+					);
+				}
+			}
+			unsubscribe();
+		},
+	);
+
+	it('does not publish host input state for a text node inside the theme root', async () => {
+		const h = await fixture({ accountDOM: false });
+		const runtime = h.getThemeRuntime();
+		const text = h.document.createTextNode('theme content');
+		h.document.getElementById('appThemeRoot').append(text);
+		const listener = vi.fn();
+		runtime.sdk.subscribe(listener);
+		listener.mockClear();
+		text.dispatchEvent(new h.window.Event('input', { bubbles: true }));
+		expect(listener).not.toHaveBeenCalled();
+	});
+
+	it.each(['modal', 'panel', 'outside', 'root-absent'])(
+		'keeps host password draft and recovery guards synchronous for %s inputs',
+		async (location) => {
+			const h = await fixture({ accountDOM: false });
+			const runtime = h.getThemeRuntime();
+			const input = h.document.getElementById('settingsNewPassword');
+			if (location === 'panel') {
+				h.document.getElementById('hostThemePanels').append(input);
+			}
+			if (location === 'outside') {
+				h.document.body.append(input);
+			}
+			if (location === 'root-absent') {
+				h.document.getElementById('appThemeRoot').remove();
+			}
+			const assign = vi.spyOn(h.window.location, 'assign').mockImplementation(() => {});
+			input.value = 'synthetic-unsaved-password';
+			input.dispatchEvent(new h.window.Event('input', { bubbles: true }));
+			expect(runtime.sdk.getSnapshot().host.dirty).toBe(true);
+			expect(await runtime.sdk.lifecycle.requestReload('recovery')).toEqual({ status: 'rejected', reason: 'unsaved-or-pending' });
+			expect(assign).not.toHaveBeenCalled();
+			input.value = '';
+			input.dispatchEvent(new h.window.Event('input', { bubbles: true }));
+			expect(runtime.sdk.getSnapshot().host.dirty).toBe(false);
+			expect(await runtime.sdk.lifecycle.requestReload('recovery')).toMatchObject({ status: 'completed' });
+			expect(assign).toHaveBeenCalledWith('https://vault.test/?safeMode=1');
+		},
+	);
+
+	it('keeps host checkbox input/change behavior and removes its input listener on disposal', async () => {
+		const h = await fixture({ accountDOM: false, extraSource: '\nwindow.__createAdditionalScope = createAppThemeSdkScope;' });
+		const runtime = h.getThemeRuntime();
+		const scope = h.window.__createAdditionalScope();
+		const checkbox = h.document.createElement('input');
+		checkbox.type = 'checkbox';
+		h.document.getElementById('hostThemePanels').append(checkbox);
+		const change = vi.fn();
+		checkbox.addEventListener('change', change);
+		const listener = vi.fn();
+		scope.sdk.subscribe(listener);
+		listener.mockClear();
+		checkbox.checked = true;
+		checkbox.dispatchEvent(new h.window.Event('input', { bubbles: true }));
+		checkbox.dispatchEvent(new h.window.Event('change', { bubbles: true }));
+		expect(listener).toHaveBeenCalledTimes(1);
+		expect(change).toHaveBeenCalledTimes(1);
+		expect(checkbox.checked).toBe(true);
+		runtime.dispose();
+		listener.mockClear();
+		checkbox.dispatchEvent(new h.window.Event('input', { bubbles: true }));
+		expect(listener).not.toHaveBeenCalled();
+		scope.dispose();
+	});
+
 	it('publishes dynamically created host dialogs without treating OTP animation as a host change', async () => {
 		const h = await fixture({ accountDOM: false });
 		const runtime = h.getThemeRuntime();
@@ -81,7 +208,7 @@ describe('actual browser host assembly', () => {
 		const flow = runtime.sdk.host.open({ kind: 'hidden-accounts' });
 		await vi.waitFor(() => expect(runtime.sdk.getSnapshot().host.dialogOpen).toBe(true));
 		await vi.waitFor(() => expect(h.document.getElementById('themeHostStatusModal').classList.contains('show')).toBe(true));
-		await new Promise(resolve => setTimeout(resolve, 20));
+		await new Promise((resolve) => setTimeout(resolve, 20));
 		const before = listener.mock.calls.length;
 		const animation = h.document.createElement('div');
 		h.document.body.append(animation);
