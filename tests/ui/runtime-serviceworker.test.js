@@ -25,10 +25,11 @@ async function fixture(options = {}) {
 		addEventListener: (type, listener) => listeners.set(type, listener),
 	};
 	const fetch = vi.fn(h.fetch);
+	const manager = { ...h.manager };
 	const source = (await createServiceWorker().text())
 		.replace(
 			/const snapshotManager = [\s\S]*?\nconst runtimeProtocol =/,
-			'const snapshotManager = {clean:async()=>{}};\nconst runtimeProtocol =',
+			'const snapshotManager = {clean:async()=>{},match:async()=>null};\nconst runtimeProtocol =',
 		)
 		.replace(/const runtimeSnapshots = [\s\S]*?\nconst QR_VENDORS/, 'const runtimeSnapshots = testManager;\nconst QR_VENDORS');
 	// eslint-disable-next-line no-new-func
@@ -38,7 +39,7 @@ async function fixture(options = {}) {
 		fetch,
 		h.caches,
 		{ log() {}, error() {}, warn() {} },
-		h.manager,
+		manager,
 	);
 	async function message(data, from = { type: 'window', id: 'real-tab', url: origin + '/' }) {
 		let reply;
@@ -73,9 +74,50 @@ async function fixture(options = {}) {
 		await Promise.all(tasks);
 		return result;
 	}
-	return { ...h, self, fetch, listeners, message, request };
+	return { ...h, manager, self, fetch, listeners, message, request };
 }
 describe('emitted SW runtime admission and fetch paths', () => {
+	it('revalidates and pins the real complete snapshot when parallel navigation receives 503', async () => {
+		const h = await fixture();
+		await h.prepare();
+		h.fetch.mockResolvedValue(new Response('unavailable', { status: 503 }));
+		expect(await (await h.request('/', 'fresh-navigation')).text()).toBe('NORMAL 1');
+		const state = await h.index.read();
+		expect(state.pins['fresh-navigation']).toMatchObject({ fromFallback: true, cacheName: state.active, tuple: h.current.tuple });
+	});
+	it('rejects a fallback whose package was evicted after the speculative complete lookup', async () => {
+		const h = await fixture();
+		await h.prepare();
+		const active = (await h.index.read()).active;
+		const cache = await h.caches.open(active);
+		let failNetwork;
+		const available = new Promise((resolve) => {
+			failNetwork = resolve;
+		});
+		h.fetch.mockImplementation(async () => {
+			await available;
+			return new Response('unavailable', { status: 503 });
+		});
+		const match = h.manager.matchNavigation;
+		vi.spyOn(h.manager, 'matchNavigation').mockImplementation(async (request, clientId) => {
+			const response = await match(request, clientId);
+			if (!clientId) {
+				expect(response).not.toBeNull();
+				await cache.delete(origin + '/theme-packages/' + packageId + '/chunks/history.js');
+				failNetwork();
+			}
+			return response;
+		});
+		expect((await h.request('/', 'evicted-navigation')).status).toBe(503);
+		expect((await h.index.read()).pins['evicted-navigation']).toBeUndefined();
+	});
+	it.each([401, 403])('does not attach the real cached snapshot when navigation is denied with %i', async (status) => {
+		const h = await fixture();
+		await h.prepare();
+		h.fetch.mockResolvedValue(new Response('denied', { status }));
+		expect((await h.request('/', 'denied-navigation')).status).toBe(status);
+		expect((await h.index.read()).pins['denied-navigation']).toBeUndefined();
+	});
 	it('never force activates on install or claims clients on activation, and rejects the legacy bypass message', async () => {
 		const h = await fixture();
 		const tasks = [];

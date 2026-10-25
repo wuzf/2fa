@@ -153,20 +153,37 @@ export function createRuntimeSnapshotManager({
 		if (!seal || (await seal.json()).inventoryHash !== snapshot.descriptor.inventoryHash) {
 			return false;
 		}
-		for (const resource of snapshot.descriptor.resources) {
-			if (
-				recoveryOnly &&
-				resource.role !== 'recovery' &&
-				resource.role !== 'vendor' &&
-				!(['manifest', 'icon'].includes(resource.role) && new URL(resource.url, origin).searchParams.get('safeMode') === '1')
-			) {
-				continue;
-			}
-			if (!(await verifyResource(await cache.match(absolute(resource.url)), resource, snapshot.tuple))) {
-				return false;
-			}
+		const resources = snapshot.descriptor.resources.filter(
+			(resource) =>
+				!recoveryOnly ||
+				resource.role === 'recovery' ||
+				resource.role === 'vendor' ||
+				(['manifest', 'icon'].includes(resource.role) && new URL(resource.url, origin).searchParams.get('safeMode') === '1'),
+		);
+		let position = 0;
+		let valid = true;
+		// Each slot includes cache lookup, body read and hashing. Drain every
+		// started check on failure before callers can remove or replace a cache.
+		const checks = await Promise.allSettled(
+			Array.from({ length: Math.min(4, resources.length) }, async () => {
+				while (valid && position < resources.length) {
+					const resource = resources[position++];
+					try {
+						if (!(await verifyResource(await cache.match(absolute(resource.url)), resource, snapshot.tuple))) {
+							valid = false;
+						}
+					} catch (error) {
+						valid = false;
+						throw error;
+					}
+				}
+			}),
+		);
+		const failure = checks.find((item) => item.status === 'rejected');
+		if (failure) {
+			throw failure.reason;
 		}
-		return true;
+		return valid;
 	}
 	async function snapshotFor(tuple, shellConfigId) {
 		const state = initialize(await index.read());

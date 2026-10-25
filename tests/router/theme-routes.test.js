@@ -8,6 +8,7 @@ import { getModuleCode } from '../../src/ui/scripts/index.js';
 import { ThemeStore } from '../../src/storage/theme-store.js';
 import { appThemeFixture } from '../helpers/app-theme.js';
 import { createRuntimeManifest } from '../../src/ui/runtimeManifest.js';
+import { createDefaultAppearance } from '../../src/api/themes.js';
 
 vi.mock('../../src/utils/auth.js', async (original) => ({
 	...(await original()),
@@ -119,6 +120,7 @@ describe('theme routes authentication and capabilities', () => {
 		expect(requiresAuth(path)).toBe(true);
 		expect((await handleRequest(request(path), h.env)).status).toBe(401);
 		expect(h.requests).toHaveLength(0);
+		expect(readSettingsSnapshot).not.toHaveBeenCalled();
 	});
 
 	it('requires authentication for writes even in an unbuilt source runtime', async () => {
@@ -163,6 +165,105 @@ describe('theme routes authentication and capabilities', () => {
 		expect((await handleRequest(request('/api/appearance', apply(), 'PUT'), h.env)).status).toBe(409);
 		const replay = await handleRequest(request('/api/appearance', body, 'PUT'), h.env);
 		expect(await replay.json()).toMatchObject({ revision: 1, replayed: true });
+	});
+});
+
+describe('homepage configuration reads', () => {
+	const customCodes = [{ id: 'parallel', code: '<style>body{color:green}</style>', enabled: true }];
+	const gate = () => {
+		let resolve;
+		const promise = new Promise((done) => {
+			resolve = done;
+		});
+		return { promise, resolve };
+	};
+
+	it.each(['settings', 'appearance'])('starts both reads before either settles and waits for both: %s first', async (first) => {
+		const h = environment();
+		await h.store.apply(apply());
+		const saved = await h.store.readAppearance();
+		const settings = gate();
+		const appearance = gate();
+		readSettingsSnapshot.mockImplementationOnce(async () => {
+			await settings.promise;
+			return { customCodes };
+		});
+		const readAppearance = vi.spyOn(h.store, 'readAppearance').mockImplementationOnce(async () => {
+			await appearance.promise;
+			return saved;
+		});
+		const rendering = handleRequest(request('/'), h.env);
+		try {
+			await vi.waitFor(() => {
+				expect(readSettingsSnapshot).toHaveBeenCalledOnce();
+				expect(readAppearance).toHaveBeenCalledOnce();
+			});
+			expect(createMainPage).not.toHaveBeenCalled();
+			if (first === 'settings') {
+				settings.resolve();
+				await readSettingsSnapshot.mock.results[0].value;
+			} else {
+				appearance.resolve();
+				await readAppearance.mock.results[0].value;
+			}
+			expect(createMainPage).not.toHaveBeenCalled();
+		} finally {
+			settings.resolve();
+			appearance.resolve();
+			await rendering;
+		}
+		const expected = { customCodes, appearance: saved.active, buildId: 'fixture-build-2026', safeMode: false, lazyLoad: true };
+		expect(createMainPage).toHaveBeenCalledExactlyOnceWith(expected);
+		expect(await (await rendering).json()).toEqual(expected);
+		expect(h.requests).toHaveLength(1);
+		expect(h.requests[0].request.headers.get('X-2FA-Theme-Operation')).toBe('appearance');
+	});
+
+	it.each([
+		{ settingsFail: true, appearanceFail: false },
+		{ settingsFail: false, appearanceFail: true },
+		{ settingsFail: true, appearanceFail: true },
+	])('retains independent fallbacks: $settingsFail/$appearanceFail', async ({ settingsFail, appearanceFail }) => {
+		const h = environment();
+		await h.store.apply(apply());
+		const saved = await h.store.readAppearance();
+		if (settingsFail) {
+			readSettingsSnapshot.mockRejectedValueOnce(new Error('settings unavailable'));
+		} else {
+			readSettingsSnapshot.mockResolvedValueOnce({ customCodes });
+		}
+		if (appearanceFail) {
+			vi.spyOn(h.store, 'fetch').mockRejectedValueOnce(new Error('appearance unavailable'));
+		}
+		h.env.SECRETS_KV.get.mockClear();
+		const response = await handleRequest(request('/'), h.env);
+		const expected = {
+			customCodes: settingsFail ? [] : customCodes,
+			appearance: appearanceFail ? createDefaultAppearance() : saved.active,
+			buildId: 'fixture-build-2026',
+			safeMode: false,
+			lazyLoad: true,
+		};
+		expect(response.status).toBe(200);
+		expect(createMainPage).toHaveBeenCalledExactlyOnceWith(expected);
+		expect(await response.json()).toEqual(expected);
+		expect(h.env.SECRETS_KV.get).not.toHaveBeenCalled();
+	});
+
+	it('does not begin either read while setup is pending or when setup redirects', async () => {
+		const h = environment();
+		const setup = gate();
+		checkIfSetupRequired.mockImplementationOnce(() => setup.promise);
+		const response = handleRequest(request('/'), h.env);
+		expect(checkIfSetupRequired).toHaveBeenCalledOnce();
+		expect(readSettingsSnapshot).not.toHaveBeenCalled();
+		expect(h.requests).toHaveLength(0);
+		setup.resolve(true);
+		expect((await response).status).toBe(302);
+		expect((await response).headers.get('Location')).toBe('https://vault.example.com/setup');
+		expect(readSettingsSnapshot).not.toHaveBeenCalled();
+		expect(h.requests).toHaveLength(0);
+		expect(createMainPage).not.toHaveBeenCalled();
 	});
 });
 
@@ -313,7 +414,15 @@ describe('theme routes recovery and resource boundary', () => {
 		const h = environment();
 		vi.stubGlobal('__2FA_BUILD_ID__', '');
 		await handleRequest(request('/'), h.env);
-		expect(createMainPage).toHaveBeenCalledWith(expect.objectContaining({ appearance: null, lazyLoad: false, buildId: '' }));
+		expect(createMainPage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				appearance: null,
+				customCodes: [{ id: 'custom', code: '<style>body{color:red}</style>', enabled: true }],
+				lazyLoad: false,
+				buildId: '',
+			}),
+		);
+		expect(readSettingsSnapshot).toHaveBeenCalledExactlyOnceWith(h.env);
 		expect(h.requests).toHaveLength(0);
 	});
 

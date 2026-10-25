@@ -61,6 +61,117 @@ afterEach(() => {
 });
 
 describe('emitted homepage navigation Request boundary', () => {
+	it.each([200, 401, 403])('finishes network %i while the independent cache lookup is still pending', async (status) => {
+		vi.useFakeTimers();
+		let release;
+		const denied = new Response(status === 200 ? 'online shell' : new ReadableStream(), { status });
+		const h = await harness({ fetch: vi.fn(async () => denied) });
+		h.runtime.matchNavigation.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					release = resolve;
+				}),
+		);
+		const operation = h.start(navigation());
+		await vi.advanceTimersByTimeAsync(0);
+		expect(h.fetch).toHaveBeenCalledOnce();
+		const response = await operation.response;
+		expect(response.status).toBe(status);
+		if (status === 200) {
+			expect(await response.text()).toBe('online shell');
+			expect(h.runtime.pinNavigation).toHaveBeenCalledOnce();
+		} else {
+			expect(response).toBe(denied);
+			expect(response.bodyUsed).toBe(false);
+			expect(h.runtime.pinNavigation).not.toHaveBeenCalled();
+		}
+		let backgroundFinished = false;
+		void Promise.all(operation.lifetime).then(() => {
+			backgroundFinished = true;
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		expect(backgroundFinished).toBe(false);
+		release(new Response('late cached shell'));
+		await Promise.all(operation.lifetime);
+		await vi.advanceTimersByTimeAsync(9000);
+		expect(h.fetch.mock.calls[0][1].signal.aborted).toBe(false);
+		expect(vi.getTimerCount()).toBe(0);
+		expect(h.runtime.matchNavigation).toHaveBeenCalledTimes(1);
+	});
+	it.each([400, 1700])('keeps the original short deadline when the cached candidate arrives at %i ms', async (arrival) => {
+		vi.useFakeTimers();
+		let release;
+		const h = await harness({ fetch: vi.fn(async () => new Promise(() => {})) });
+		h.runtime.matchNavigation.mockImplementation(async (_request, clientId) =>
+			clientId
+				? new Response('bound fallback')
+				: new Promise((resolve) => {
+						release = resolve;
+					}),
+		);
+		let finished = false;
+		const operation = h.start(navigation());
+		void operation.response.then(() => {
+			finished = true;
+		});
+		await vi.advanceTimersByTimeAsync(arrival);
+		expect(h.fetch).toHaveBeenCalledOnce();
+		expect(finished).toBe(false);
+		release(new Response('candidate'));
+		if (arrival < 1500) {
+			await vi.advanceTimersByTimeAsync(1499 - arrival);
+			expect(finished).toBe(false);
+			await vi.advanceTimersByTimeAsync(1);
+		} else {
+			await vi.advanceTimersByTimeAsync(0);
+		}
+		expect(await (await operation.response).text()).toBe('bound fallback');
+		expect(h.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+		expect(h.runtime.matchNavigation).toHaveBeenLastCalledWith(expect.any(Request), 'new-client');
+	});
+	it.each(['missing', 'error'])('does not shorten the long deadline for a %s cache candidate', async (outcome) => {
+		vi.useFakeTimers();
+		let finishLookup;
+		const h = await harness({ fetch: vi.fn(async () => new Promise(() => {})) });
+		h.runtime.matchNavigation.mockImplementation((_request, clientId) =>
+			clientId
+				? Promise.resolve(null)
+				: new Promise((resolve, reject) => {
+						finishLookup = () => (outcome === 'error' ? reject(new Error('cache unavailable')) : resolve(null));
+					}),
+		);
+		let finished = false;
+		const operation = h.start(navigation());
+		void operation.response.then(() => {
+			finished = true;
+		});
+		await vi.advanceTimersByTimeAsync(500);
+		finishLookup();
+		await vi.advanceTimersByTimeAsync(7499);
+		expect(finished).toBe(false);
+		await vi.advanceTimersByTimeAsync(1);
+		expect((await operation.response).status).toBe(503);
+		expect(h.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+	});
+	it('does not reinstall a deadline when the speculative lookup settles after fallback', async () => {
+		vi.useFakeTimers();
+		let release;
+		const h = await harness({ fetch: vi.fn(async () => new Promise(() => {})) });
+		h.runtime.matchNavigation.mockImplementation(async (_request, clientId) =>
+			clientId
+				? new Response('fallback')
+				: new Promise((resolve) => {
+						release = resolve;
+					}),
+		);
+		const operation = h.start(navigation());
+		await vi.advanceTimersByTimeAsync(8000);
+		expect(await (await operation.response).text()).toBe('fallback');
+		release(new Response('late candidate'));
+		await Promise.all(operation.lifetime);
+		expect(vi.getTimerCount()).toBe(0);
+		expect(h.runtime.matchNavigation).toHaveBeenCalledTimes(2);
+	});
 	it.each(['/', '/?safeMode=1&lang=zh-CN', '/?disableCustomCode=1&language=de&test-navigation=1'])(
 		'normalizes only the network request while keeping the exact navigation URL and pin identity: %s',
 		async (path) => {

@@ -496,11 +496,25 @@ self.addEventListener('fetch', event => {
   // an already-cached app from opening. This never applies to account writes.
   if (url.origin === self.location.origin && request.method === 'GET' && url.pathname === '/') {
     let cacheUpdate = Promise.resolve();
+    let cacheLookup = Promise.resolve(null);
     const navigation = (async () => {
-      const cached = (runtimeSnapshots ? await runtimeSnapshots.matchNavigation(request).catch(() => null) : null) || await (snapshotManager ? snapshotManager.match(request) : caches.match(request)).catch(() => null);
+      const startedAt = Date.now();
+      // Inspect the offline candidate without delaying the online request.
+      // This lookup has no clientId and cannot bind a shell to this navigation.
+      cacheLookup = (async () => (runtimeSnapshots ? await runtimeSnapshots.matchNavigation(request).catch(() => null) : null) || await (snapshotManager ? snapshotManager.match(request) : caches.match(request)).catch(() => null))();
       const controller = new AbortController();
       let timer;
+      let decided = false;
       try {
+        const deadline = new Promise((_, reject) => {
+          const expire = () => { controller.abort(); reject(new Error('首页加载超时')); };
+          timer = setTimeout(expire, 8000);
+          void cacheLookup.then(cached => {
+            if (!cached || decided) return;
+            clearTimeout(timer);
+            timer = setTimeout(expire, Math.max(0, 1500 - (Date.now() - startedAt)));
+          });
+        });
         const network = (async () => {
           // Buffer navigation HTML through an ordinary same-origin request,
           // without carrying navigation-only destination/mode semantics.
@@ -530,28 +544,29 @@ self.addEventListener('fetch', event => {
             {isCurrent:()=>!controller.signal.aborted}).catch(() => {});
           return complete;
         })();
-        return await Promise.race([
-          network,
-          new Promise((_, reject) => {
-            timer = setTimeout(() => { controller.abort(); reject(new Error('首页加载超时')); }, cached ? 1500 : 8000);
-          })
-        ]);
+        return await Promise.race([network, deadline]);
       } catch {
+        // No late body/pin or late speculative lookup may affect the chosen
+        // fallback. Revalidate and pin only the complete shell actually served.
+        decided = true;
+        controller.abort();
+        clearTimeout(timer);
         // Bind only the shell actually served offline, not the speculative
         // cached lookup made before a successful network navigation.
         const fallback = (runtimeSnapshots ? await runtimeSnapshots.matchNavigation(request, event.resultingClientId || event.clientId).catch(() => null) : null) || (snapshotManager
           ? await snapshotManager.match(request, event.resultingClientId || event.clientId).catch(() => null)
-          : cached);
+          : await cacheLookup);
         return fallback || new Response(OFFLINE_PAGE, {
           status: 503, statusText: 'Service Unavailable',
           headers: { 'Content-Type': 'text/html; charset=utf-8' }
         });
       } finally {
+        decided = true;
         clearTimeout(timer);
       }
     })();
     event.respondWith(navigation);
-    event.waitUntil(navigation.then(() => cacheUpdate));
+    event.waitUntil(Promise.all([navigation.then(() => cacheUpdate), cacheLookup]));
     return;
   }
 

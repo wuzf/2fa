@@ -199,18 +199,21 @@ export async function handleRequest(request, env, ctx) {
 
 		// 静态路由处理
 		if (pathname === '/' || pathname === '') {
-			let customCodes = [];
 			const buildId = getBuildId();
 			const safeMode = url.searchParams.get('safeMode') === '1' || url.searchParams.get('disableCustomCode') === '1';
-			// Recovery mode must remain usable even if saved code hides the UI or throws.
-			if (!safeMode) {
+			const readCustomCodes = async () => {
 				try {
-					customCodes = (await readSettingsSnapshot(env)).customCodes;
+					return (await readSettingsSnapshot(env)).customCodes;
 				} catch (error) {
 					logger.warn('读取自定义代码失败，使用默认页面', { errorMessage: error.message });
+					return [];
 				}
-			}
-			const appearance = buildId && !safeMode ? await getPublicAppearance(env) : null;
+			};
+			// These independent inputs keep their own fallbacks. Recovery must not
+			// start either read, even if saved code or appearance storage is broken.
+			const [customCodes, appearance] = safeMode
+				? [[], null]
+				: await Promise.all([readCustomCodes(), buildId ? getPublicAppearance(env) : null]);
 			return await createMainPage({ customCodes, appearance, buildId, safeMode, lazyLoad: Boolean(buildId) });
 		}
 
