@@ -72,7 +72,7 @@ function buildCompleteHTML(lazyLoad = true, customCode = '', appearance = null, 
 			/<\/head>$/,
 			() => getPublicAppearanceHead(appearance, { surface: 'host', safeMode: context.safeMode }) + '</head>',
 		) +
-		getHTMLBody() +
+		getHTMLBody(appearance) +
 		getHTMLScripts(lazyLoad) +
 		customCode +
 		getHTMLEnd()
@@ -177,9 +177,18 @@ function getHTMLStart(safeMode = false) {
 /**
  * HTML样式部分 - 包含所有原版样式
  */
-function getHTMLBody() {
+function getHTMLBody(appearance = null) {
+	const appTheme = appearance?.kind === 'app' || appearance?.manifest?.themeApiVersion === 2;
 	return `
 <body class="fluent-app">
+  ${
+		appTheme
+			? `<section id="appThemeStartup" role="status" aria-live="polite" aria-atomic="true">
+    <p class="app-theme-status-message" data-i18n="appearanceRuntimeCheckingAccess">正在验证访问权限，随后启动主题…</p>
+    <a id="appThemeStartupRecovery" class="btn btn-secondary" href="/?safeMode=1" data-i18n="appearanceUseDefault">使用默认界面</a>
+  </section>`
+			: ''
+	}
   <div id="appThemeRuntimeStatus" class="app-theme-status" role="status" aria-live="polite" aria-atomic="true" tabindex="-1" hidden></div>
   <main id="appThemeRoot" hidden></main>
   <div id="hostThemePanels" hidden></div>

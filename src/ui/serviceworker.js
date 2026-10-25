@@ -502,7 +502,15 @@ self.addEventListener('fetch', event => {
       let timer;
       try {
         const network = (async () => {
-          const response = await fetch(request, { redirect: 'follow', signal: controller.signal });
+          // Buffer navigation HTML through an ordinary same-origin request,
+          // without carrying navigation-only destination/mode semantics.
+          // Keep the original request for cache keys and client pinning below.
+          const networkRequest = request.mode === 'navigate' ? new Request(request.url, {
+            method: request.method, headers: request.headers, credentials: request.credentials,
+            cache: request.cache, referrer: request.referrer, referrerPolicy: request.referrerPolicy,
+            mode: 'same-origin', redirect: 'follow', signal: controller.signal
+          }) : request;
+          const response = await fetch(networkRequest, { redirect: 'follow', signal: controller.signal });
           if (!response || response.status >= 500) throw new Error('首页暂时无法连接');
           // An explicit authorization denial must never be replaced by an old
           // shell, even if its error response body is incomplete.
@@ -710,7 +718,11 @@ self.addEventListener('fetch', event => {
 
   // 其他请求：网络优先
   event.respondWith(
-    fetch(request, { redirect: 'follow' }).catch(err => {
+    // Let the browser follow navigation redirects: a followed response cannot
+    // satisfy a navigation whose original redirect policy is manual.
+    (url.origin === self.location.origin && request.method === 'GET' && request.mode === 'navigate'
+      ? fetch(request)
+      : fetch(request, { redirect: 'follow' })).catch(err => {
       console.error('[SW] 请求失败:', url.pathname, err);
       // 返回离线页面或错误信息
       return new Response(offlineText('resourceUnavailable', language), {

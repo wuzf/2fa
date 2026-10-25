@@ -22,7 +22,13 @@ export function getAppearanceHead(
     window.__2FA_BUILTIN_THEMES__ = ${json(getBuiltinThemes())};
     (function() {
       const snapshot = window.__2FA_APPEARANCE__;
-      if (!snapshot || window.__2FA_SAFE_MODE__ || snapshot.kind === 'app' || snapshot.manifest?.themeApiVersion === 2) return;
+      if (!snapshot || window.__2FA_SAFE_MODE__) return;
+      if (snapshot.kind === 'app' || snapshot.manifest?.themeApiVersion === 2) {
+        // Host-only first-paint state. No package script/style executes here.
+        // With JavaScript disabled the marker is absent and the official DOM stays visible.
+        document.documentElement.setAttribute('data-app-theme-startup', 'pending');
+        return;
+      }
       const mode = document.documentElement.getAttribute('data-theme') || 'light';
       const tokens = snapshot.manifest?.tokens?.[mode] || {};
       const css = document.createElement('style');

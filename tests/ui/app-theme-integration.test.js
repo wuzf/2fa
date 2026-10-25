@@ -142,6 +142,7 @@ describe('official shell and full-theme integration', () => {
 		const h = await fixture({ authenticated: false });
 		h.start();
 		expect(status(h).dataset.phase).toBe('checking-access');
+		expect(h.document.documentElement.getAttribute('data-app-theme-startup')).toBe('managed');
 		expect(status(h).textContent).toContain(h.window.eval('t("appearanceRuntimeCheckingAccess")'));
 		expect(statusAction(h, 'login')).toBeNull();
 		expect(statusAction(h, 'retry')).toBeNull();
@@ -151,6 +152,9 @@ describe('official shell and full-theme integration', () => {
 		expect(status(h).textContent).toContain(h.window.eval('t("appearanceRuntimeLoginRequired")'));
 		statusAction(h, 'login').click();
 		expect(h.document.getElementById('loginModal').style.display).toBe('flex');
+		expect(h.document.documentElement.getAttribute('data-app-theme-startup')).toBe('managed');
+		h.window.eval('hideLoginModal()');
+		expect(h.document.documentElement.getAttribute('data-app-theme-startup')).toBe('managed');
 		h.invalidateSecretSession({ blocked: false });
 		expect(status(h).dataset.phase).toBe('checking-access');
 		h.replaceSecretRecords([record], { source: 'server', accessVerified: true });
@@ -203,6 +207,7 @@ describe('official shell and full-theme integration', () => {
 		await h.loadSecrets();
 		expect(h.runtime.accounts.getState()).toMatchObject({ accessVerified: false, blocked: false, library: { refreshState: 'error' } });
 		expect(status(h).dataset.phase).toBe('access-unavailable');
+		expect(h.document.documentElement.hasAttribute('data-app-theme-startup')).toBe(false);
 		expect(statusAction(h, 'login')).toBeNull();
 		expect(h.host.start).not.toHaveBeenCalled();
 		const requests = () => fetch.mock.calls.filter(([url]) => url === '/api/secrets').length;
@@ -214,6 +219,7 @@ describe('official shell and full-theme integration', () => {
 		retry.click();
 		expect(retry.disabled).toBe(true);
 		expect(status(h).dataset.phase).toBe('checking-access');
+		expect(h.document.documentElement.getAttribute('data-app-theme-startup')).toBe('managed');
 		retry.dispatchEvent(new h.window.MouseEvent('click'));
 		await vi.waitFor(() => expect(requests()).toBe(before + 1));
 		next.resolve(new Response('{}', { status: 503 }));
@@ -351,6 +357,7 @@ describe('official shell and full-theme integration', () => {
 		expect(root.style.cssText).toBe('');
 		expect(status(h).hidden).toBe(true);
 		expect(h.document.body.classList.contains('app-theme-running')).toBe(true);
+		expect(h.document.documentElement.hasAttribute('data-app-theme-startup')).toBe(false);
 		h.running();
 		expect(await official.copy(record.id)).toEqual({ status: 'rejected', reason: 'mount-invalidated' });
 	});
@@ -626,17 +633,100 @@ describe('official shell and full-theme integration', () => {
 		expect(h.host.start).toHaveBeenCalledTimes(before + 2);
 		unsubscribe();
 	});
-	it('preserves BFCache state, restarts on persisted pageshow, and disposes listeners on a real navigation', async () => {
+	it('ignores stale generation fallback and recovery events after a newer theme confirms running', async () => {
+		const h = await fixture();
+		h.start();
+		h.ports().onState({ status: 'importing', generation: 1, entryStarted: true });
+		await h.window.updateAppThemeAppearance(appearance(2));
+		h.ports().onState({ status: 'preparing', generation: 2, entryStarted: false });
+		h.ports().onRunning({
+			status: 'running',
+			generation: 2,
+			entryStarted: true,
+			tuple: { hostBuild: buildId, sdkApiVersion: 1, packageId, appearanceRevision: 2, mode: 'app' },
+		});
+		for (const callback of [h.ports().onFallback, h.ports().onRecoveryRequired]) {
+			callback({ generation: 1, reason: 'obsolete timeout', entryStarted: true });
+		}
+		expect(status(h).hidden).toBe(true);
+		expect(h.document.documentElement.hasAttribute('data-app-theme-startup')).toBe(false);
+		expect(h.document.getElementById('appThemeRoot').hidden).toBe(false);
+		expect(h.document.getElementById('officialThemeRoot')).toBeNull();
+	});
+	it('cannot replace a newer running presentation with a late retry rejection', async () => {
+		const h = await fixture();
+		h.start();
+		h.ports().onFallback({ generation: 1, reason: 'no-controller' });
+		let reject;
+		h.host.retry.mockReturnValue(
+			new Promise((_, no) => {
+				reject = no;
+			}),
+		);
+		statusAction(h, 'retry').click();
+		h.ports().onState({ status: 'preparing', generation: 2 });
+		h.ports().onRunning({
+			status: 'running',
+			generation: 2,
+			entryStarted: true,
+			tuple: { hostBuild: buildId, sdkApiVersion: 1, packageId, appearanceRevision: 1, mode: 'app' },
+		});
+		reject(new Error('obsolete retry failure'));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(status(h).hidden).toBe(true);
+		expect(status(h).dataset.reason).toBe('');
+		expect(h.document.documentElement.hasAttribute('data-app-theme-startup')).toBe(false);
+	});
+	it('keeps a running theme visible while a same-package update prepares and fails', async () => {
+		const h = await fixture();
+		h.start();
+		h.running();
+		const root = h.document.getElementById('appThemeRoot');
+		const retained = h.document.createElement('button');
+		retained.textContent = 'Retained running view';
+		root.append(retained);
+		await h.window.updateAppThemeAppearance(appearance(2));
+		h.ports().onState({ status: 'preparing', generation: 2 });
+		expect(h.document.documentElement.hasAttribute('data-app-theme-startup')).toBe(false);
+		expect(root.hidden).toBe(false);
+		h.ports().onState({ status: 'running', reason: 'appearance-update-failed:offline', generation: 2, entryStarted: true });
+		expect(root.firstElementChild).toBe(retained);
+		expect(root.hidden).toBe(false);
+		expect(h.document.getElementById('officialThemeRoot')).toBeNull();
+	});
+	it('does not replace theme-owned focus when a running status disappears', async () => {
+		const h = await fixture();
+		h.start();
+		h.running();
+		const root = h.document.getElementById('appThemeRoot');
+		const entry = h.document.createElement('button');
+		entry.textContent = 'Theme entry';
+		root.append(entry);
+		h.ports().onState({ status: 'running', reason: 'appearance-update-failed:offline' });
+		entry.focus();
+		const focus = vi.spyOn(root, 'focus');
+		h.ports().onState({ status: 'running', reason: null });
+		expect(status(h).hidden).toBe(true);
+		expect(h.document.activeElement).toBe(entry);
+		expect(focus).not.toHaveBeenCalled();
+	});
+	it('preserves BFCache presentation, restarts on persisted pageshow, and disposes listeners on a real navigation', async () => {
 		const h = await fixture();
 		h.start();
 		expect(h.host.start).toHaveBeenCalledOnce();
+		h.running();
 		transition(h.window, 'pagehide', true);
 		expect(h.host.dispose).not.toHaveBeenCalled();
 		transition(h.window, 'pageshow', true);
 		expect(h.host.start).toHaveBeenCalledTimes(2);
+		expect(h.document.documentElement.hasAttribute('data-app-theme-startup')).toBe(false);
+		expect(h.document.getElementById('officialThemeRoot')).toBeNull();
+		expect(h.document.getElementById('appThemeRoot').hidden).toBe(false);
 		transition(h.window, 'pagehide', false);
 		expect(h.host.dispose).toHaveBeenCalledOnce();
 		h.worker.dispatchEvent(new h.window.Event('controllerchange'));
 		expect(h.host.start).toHaveBeenCalledTimes(2);
+		h.ports().onFallback({ reason: 'late disposed callback' });
+		expect(h.document.documentElement.hasAttribute('data-app-theme-startup')).toBe(false);
 	});
 });

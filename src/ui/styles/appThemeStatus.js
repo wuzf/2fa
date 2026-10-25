@@ -1,7 +1,8 @@
 /** Host-owned startup and recovery status; independent of the offline warning. */
 export function getAppThemeStatusStyles() {
 	return `
-    #appThemeRuntimeStatus {
+    :root[data-app-theme-startup] body > :is(#officialThemeRoot,#officialThemeActions,#officialThemeFooter) { display:none !important; }
+    #appThemeStartup, #appThemeRuntimeStatus {
       position: relative;
       inset: auto;
       transform: none;
@@ -22,8 +23,10 @@ export function getAppThemeStatusStyles() {
       line-height: 1.5;
       text-align: left;
     }
+    #appThemeStartup { display:none; }
+    :root[data-app-theme-startup="pending"] #appThemeStartup { display:flex; }
     #appThemeRuntimeStatus[hidden] { display: none !important; }
-    #appThemeRuntimeStatus .app-theme-status-message {
+    #appThemeStartup .app-theme-status-message, #appThemeRuntimeStatus .app-theme-status-message {
       flex: 1 1 240px;
       min-width: 0;
       overflow-wrap: anywhere;
@@ -37,7 +40,7 @@ export function getAppThemeStatusStyles() {
       min-width: 0;
     }
     #appThemeRuntimeStatus .app-theme-status-recovery { flex-basis: 100%; margin: 0; }
-    #appThemeRuntimeStatus .btn {
+    #appThemeStartup .btn, #appThemeRuntimeStatus .btn {
       flex: 0 1 auto;
       width: auto;
       max-width: 100%;
