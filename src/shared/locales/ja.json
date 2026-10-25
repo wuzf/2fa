@@ -1918,5 +1918,12 @@
 	"Preparing your theme…": "テーマを準備中…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "テーマをまだ起動できません。標準画面を使い続けるか、再試行できます。",
 	"The theme stopped. Open safe mode to continue using 2FA.": "テーマが停止しました。セーフモードを開いて 2FA の使用を続けてください。",
-	"Loading {module} timed out. Check your connection and try again.": "{module} の読み込みがタイムアウトしました。接続を確認して、もう一度お試しください。"
+	"Loading {module} timed out. Check your connection and try again.": "{module} の読み込みがタイムアウトしました。接続を確認して、もう一度お試しください。",
+	"Version history ({count})": "バージョン履歴（{count}）",
+	"Selected": "選択中",
+	"Saved settings": "保存済みの設定",
+	"Most recently installed": "最後にインストール",
+	"Installed {date}": "{date} にインストール",
+	"Build {id}": "ビルド {id}",
+	"Install time unavailable": "インストール日時不明"
 }

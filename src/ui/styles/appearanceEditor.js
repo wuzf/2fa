@@ -22,6 +22,15 @@ export function getAppearanceEditorStyles() {
     .appearance-theme-card small {grid-column:2;color:var(--dialog-muted,var(--text-secondary));}
     .appearance-theme-swatch {grid-row:1/3;display:flex;align-items:center;justify-content:center;gap:4px;height:48px;border-radius:4px;border:1px solid #8883;}
     .appearance-theme-swatch i {width:12px;height:22px;border-radius:2px;border:1px solid #8883;}
+    #appearanceModal .appearance-installed-themes {display:grid;gap:14px;margin-bottom:20px;min-width:0;}
+    #appearanceModal .appearance-theme-group {min-width:0;}
+    #appearanceModal .appearance-theme-group > .appearance-theme-list {margin-bottom:0;}
+    #appearanceModal .appearance-theme-group > .appearance-version-history {margin:4px 0 0;}
+    #appearanceModal .appearance-version-list {display:grid;gap:8px;padding-bottom:12px;min-width:0;}
+    #appearanceModal .appearance-theme-version {display:grid;gap:4px;text-align:left;width:100%;min-width:0;min-height:44px;box-sizing:border-box;padding:10px;border:1px solid var(--dialog-line,var(--border-primary));border-radius:4px;background:var(--dialog-surface,var(--bg-primary));color:var(--dialog-text,var(--text-primary));font:inherit;cursor:pointer;overflow-wrap:anywhere;}
+    #appearanceModal .appearance-theme-version small {color:var(--dialog-muted,var(--text-secondary));}
+    #appearanceModal .appearance-theme-version[aria-pressed=true] {border-color:var(--dialog-brand,var(--primary));box-shadow:inset 0 0 0 1px var(--dialog-brand,var(--primary));}
+    #appearanceModal .appearance-theme-version:focus-visible {outline:2px solid var(--dialog-brand,var(--primary));outline-offset:2px;}
     #appearanceModal .appearance-disclosure {margin:14px 0;padding:0 12px;border:1px solid var(--dialog-line,var(--border-primary));border-radius:6px;}
     #appearanceModal .appearance-disclosure > summary {min-height:44px;align-content:center;padding:10px 0;box-sizing:border-box;color:var(--dialog-text,var(--text-primary));font-weight:600;cursor:pointer;}
     #appearanceModal .appearance-disclosure > summary:focus-visible {outline:2px solid var(--dialog-brand,var(--primary));outline-offset:2px;}

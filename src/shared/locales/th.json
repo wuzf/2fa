@@ -1918,5 +1918,12 @@
 	"Preparing your theme…": "กำลังเตรียมธีมของคุณ…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "ธีมยังไม่สามารถเริ่มทำงานได้ คุณสามารถใช้มุมมองเริ่มต้นต่อไปหรือลองอีกครั้ง",
 	"The theme stopped. Open safe mode to continue using 2FA.": "ธีมหยุดทำงานแล้ว เปิดโหมดปลอดภัยเพื่อใช้งาน 2FA ต่อไป",
-	"Loading {module} timed out. Check your connection and try again.": "การโหลด {module} หมดเวลา โปรดตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง"
+	"Loading {module} timed out. Check your connection and try again.": "การโหลด {module} หมดเวลา โปรดตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง",
+	"Version history ({count})": "ประวัติเวอร์ชัน ({count})",
+	"Selected": "เลือกแล้ว",
+	"Saved settings": "การตั้งค่าที่บันทึกไว้",
+	"Most recently installed": "ติดตั้งล่าสุด",
+	"Installed {date}": "ติดตั้งเมื่อ {date}",
+	"Build {id}": "บิลด์ {id}",
+	"Install time unavailable": "ไม่มีข้อมูลเวลาติดตั้ง"
 }

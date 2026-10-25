@@ -1918,5 +1918,12 @@
 	"Preparing your theme…": "Đang chuẩn bị giao diện…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "Giao diện chưa thể khởi động. Bạn có thể tiếp tục dùng giao diện mặc định hoặc thử lại.",
 	"The theme stopped. Open safe mode to continue using 2FA.": "Giao diện đã dừng. Mở chế độ an toàn để tiếp tục sử dụng 2FA.",
-	"Loading {module} timed out. Check your connection and try again.": "Quá thời gian tải {module}. Hãy kiểm tra kết nối và thử lại."
+	"Loading {module} timed out. Check your connection and try again.": "Quá thời gian tải {module}. Hãy kiểm tra kết nối và thử lại.",
+	"Version history ({count})": "Lịch sử phiên bản ({count})",
+	"Selected": "Đã chọn",
+	"Saved settings": "Cài đặt đã lưu",
+	"Most recently installed": "Được cài đặt gần đây nhất",
+	"Installed {date}": "Đã cài đặt vào {date}",
+	"Build {id}": "Bản dựng {id}",
+	"Install time unavailable": "Không có thông tin thời gian cài đặt"
 }

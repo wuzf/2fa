@@ -1918,5 +1918,12 @@
 	"Preparing your theme…": "Preparando tu tema…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "Tu tema aún no puede iniciarse. Puedes seguir usando la vista predeterminada o intentarlo de nuevo.",
 	"The theme stopped. Open safe mode to continue using 2FA.": "El tema se ha detenido. Abre el modo seguro para seguir usando 2FA.",
-	"Loading {module} timed out. Check your connection and try again.": "Se agotó el tiempo de carga de {module}. Comprueba tu conexión e inténtalo de nuevo."
+	"Loading {module} timed out. Check your connection and try again.": "Se agotó el tiempo de carga de {module}. Comprueba tu conexión e inténtalo de nuevo.",
+	"Version history ({count})": "Historial de versiones ({count})",
+	"Selected": "Seleccionada",
+	"Saved settings": "Configuración guardada",
+	"Most recently installed": "Instalada más recientemente",
+	"Installed {date}": "Instalada el {date}",
+	"Build {id}": "Compilación {id}",
+	"Install time unavailable": "Fecha de instalación no disponible"
 }

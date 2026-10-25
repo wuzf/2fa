@@ -1918,5 +1918,12 @@
 	"Preparing your theme…": "Подготовка темы…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "Тема пока не может запуститься. Вы можете пользоваться стандартным видом или повторить попытку.",
 	"The theme stopped. Open safe mode to continue using 2FA.": "Тема остановлена. Откройте безопасный режим, чтобы продолжить пользоваться 2FA.",
-	"Loading {module} timed out. Check your connection and try again.": "Время ожидания загрузки {module} истекло. Проверьте подключение и повторите попытку."
+	"Loading {module} timed out. Check your connection and try again.": "Время ожидания загрузки {module} истекло. Проверьте подключение и повторите попытку.",
+	"Version history ({count})": "История версий ({count})",
+	"Selected": "Выбрана",
+	"Saved settings": "Сохранённые настройки",
+	"Most recently installed": "Установлена последней",
+	"Installed {date}": "Установлена {date}",
+	"Build {id}": "Сборка {id}",
+	"Install time unavailable": "Время установки недоступно"
 }

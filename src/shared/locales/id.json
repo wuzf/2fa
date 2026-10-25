@@ -1918,5 +1918,12 @@
 	"Preparing your theme…": "Menyiapkan tema Anda…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "Tema Anda belum dapat dimulai. Anda dapat tetap menggunakan tampilan bawaan atau mencoba lagi.",
 	"The theme stopped. Open safe mode to continue using 2FA.": "Tema berhenti. Buka mode aman untuk terus menggunakan 2FA.",
-	"Loading {module} timed out. Check your connection and try again.": "Waktu pemuatan {module} habis. Periksa koneksi Anda dan coba lagi."
+	"Loading {module} timed out. Check your connection and try again.": "Waktu pemuatan {module} habis. Periksa koneksi Anda dan coba lagi.",
+	"Version history ({count})": "Riwayat versi ({count})",
+	"Selected": "Dipilih",
+	"Saved settings": "Pengaturan tersimpan",
+	"Most recently installed": "Terakhir diinstal",
+	"Installed {date}": "Diinstal pada {date}",
+	"Build {id}": "Versi build {id}",
+	"Install time unavailable": "Waktu instalasi tidak tersedia"
 }

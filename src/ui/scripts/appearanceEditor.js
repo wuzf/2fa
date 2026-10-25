@@ -88,6 +88,8 @@ function appearanceEditorClient(createAppearanceDraft) {
 		version: 0,
 		persisted: 0,
 		library: [],
+		applied: null,
+		versionHistory: new Set(),
 		draft: null,
 		capabilities: { write: false },
 		blobs: new Map(),
@@ -446,6 +448,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 		const revision = appearance.revision || 0;
 		state.remoteRevision = Math.max(state.remoteRevision, revision);
 		if (revision >= state.remoteRevision) {
+			state.applied = clone(appearance.active || null);
 			rememberProfile(appearance.active);
 		}
 		if (!state.applying && !preserveDraft && (replaceDraft || (!state.dirty && !state.pendingApply)) && revision >= state.remoteRevision) {
@@ -573,6 +576,14 @@ function appearanceEditorClient(createAppearanceDraft) {
 		if (!panel || !state.draft) {
 			return;
 		}
+		for (const history of panel.querySelectorAll('.appearance-version-history')) {
+			const key = history.closest('.appearance-theme-group').dataset.themeGroup;
+			if (history.open) {
+				state.versionHistory.add(key);
+			} else {
+				state.versionHistory.delete(key);
+			}
+		}
 		panel.replaceChildren();
 		if (!['library', 'brand', 'design'].includes(state.panel)) {
 			state.panel = 'design';
@@ -660,6 +671,95 @@ function appearanceEditorClient(createAppearanceDraft) {
 		});
 		return details;
 	}
+	function installedThemeGroups(themes) {
+		const groups = new Map();
+		const installedAt = (theme) => {
+			const time = theme.installedAt;
+			return typeof time === 'number' && time > 0 && Number.isFinite(new Date(time).getTime()) ? time : 0;
+		};
+		for (const theme of themes) {
+			const key = profileKey(theme);
+			if (!groups.has(key)) {
+				groups.set(key, { key, versions: [] });
+			}
+			groups.get(key).versions.push(theme);
+		}
+		for (const group of groups.values()) {
+			group.versions.sort((a, b) => installedAt(b) - installedAt(a) || a.packageId.localeCompare(b.packageId));
+			const local = state.localProfiles.get(group.key);
+			const saved = group.versions.find((theme) => theme.profile && profileKey(theme.profile) === group.key)?.profile;
+			const preferred = [state.draft, state.applied, local, saved]
+				.filter((snapshot) => snapshot && profileKey(snapshot) === group.key)
+				.map((snapshot) => group.versions.find((theme) => theme.packageId === snapshot.packageId))
+				.find(Boolean);
+			group.representative = preferred || group.versions[0];
+			group.saved = saved;
+		}
+		return [...groups.values()].sort(
+			(a, b) =>
+				localName(a.representative.manifest.name).localeCompare(localName(b.representative.manifest.name)) || a.key.localeCompare(b.key),
+		);
+	}
+	function renderInstalledThemes(themes) {
+		const list = node('div', 'appearance-installed-themes');
+		for (const group of installedThemeGroups(themes)) {
+			const section = node('section', 'appearance-theme-group');
+			section.dataset.themeGroup = group.key;
+			section.append(themeCards([group.representative]));
+			if (group.versions.length > 1) {
+				const history = node('details', 'appearance-disclosure appearance-version-history');
+				history.open = state.versionHistory.has(group.key);
+				history.append(node('summary', '', tr('appearanceVersionHistory', { count: group.versions.length })));
+				history.addEventListener('toggle', () => {
+					if (!history.isConnected) {
+						return;
+					}
+					if (history.open) {
+						state.versionHistory.add(group.key);
+					} else {
+						state.versionHistory.delete(group.key);
+					}
+				});
+				const versions = node('div', 'appearance-version-list');
+				for (const theme of group.versions) {
+					const row = button('appearancePreview', 'select', 'appearance-theme-version');
+					row.dataset.package = theme.packageId;
+					row.replaceChildren(node('strong', '', theme.manifest.version));
+					row.setAttribute('aria-pressed', String(theme.packageId === state.draft.packageId));
+					const time = typeof theme.installedAt === 'number' ? new Date(theme.installedAt) : null;
+					const date =
+						time && theme.installedAt > 0 && Number.isFinite(time.getTime())
+							? time.toLocaleString(document.documentElement.lang || 'en')
+							: null;
+					row.append(
+						node('small', '', date ? tr('appearanceVersionInstalled', { date }) : tr('appearanceVersionInstalledUnknown')),
+						node('small', '', tr('appearanceVersionBuild', { id: theme.packageId.slice(0, 12) })),
+					);
+					const labels = [];
+					if (theme.packageId === state.draft.packageId) {
+						labels.push(tr('appearanceVersionSelected'));
+					}
+					if (theme.packageId === state.applied?.packageId) {
+						labels.push(tr('appearanceCurrent'));
+					}
+					if (theme.packageId === group.saved?.packageId) {
+						labels.push(tr('appearanceVersionSaved'));
+					}
+					if (theme === group.versions[0]) {
+						labels.push(tr('appearanceVersionRecent'));
+					}
+					if (labels.length) {
+						row.append(node('small', 'appearance-version-state', labels.join(' · ')));
+					}
+					versions.append(row);
+				}
+				history.append(versions);
+				section.append(history);
+			}
+			list.append(section);
+		}
+		return list;
+	}
 	function renderLibrary(panel) {
 		const official = state.library.filter((theme) => theme.packageId === 'builtin:fluent');
 		const installed = state.library.filter((theme) => !theme.packageId.startsWith('builtin:'));
@@ -674,7 +774,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 		);
 		panel.append(themeCards(official));
 		if (installed.length) {
-			panel.append(node('h3', 'settings-section-title', tr('appearanceInstalledThemes')), themeCards(installed));
+			panel.append(node('h3', 'settings-section-title', tr('appearanceInstalledThemes')), renderInstalledThemes(installed));
 		}
 		if (legacy.length) {
 			const compatibility = disclosure('appearanceLegacyThemes', 'legacyExpanded', 'appearance-legacy-themes');
@@ -1101,6 +1201,18 @@ function appearanceEditorClient(createAppearanceDraft) {
 		if (name === 'select') {
 			const theme = state.library.find((item) => item.packageId === target.dataset.package);
 			if (theme) {
+				const history = target.closest('.appearance-version-history');
+				if (history?.open) {
+					state.versionHistory.add(profileKey(theme));
+				}
+				const hadFocus = document.activeElement === target;
+				let focusMoved = false;
+				const trackFocus = (event) => {
+					if (![target, document.body, document.documentElement].includes(event.target)) {
+						focusMoved = true;
+					}
+				};
+				document.addEventListener('focusin', trackFocus);
 				setBusy(true);
 				try {
 					const previous =
@@ -1114,6 +1226,25 @@ function appearanceEditorClient(createAppearanceDraft) {
 					render();
 				} finally {
 					setBusy(false);
+					document.removeEventListener('focusin', trackFocus);
+					const modal = document.getElementById('appearanceModal');
+					if (
+						hadFocus &&
+						!focusMoved &&
+						state.open &&
+						modal &&
+						window.getComputedStyle(modal).display !== 'none' &&
+						(!window.getTopModal || !window.getTopModal() || window.getTopModal() === modal) &&
+						[document.body, document.documentElement, target].includes(document.activeElement)
+					) {
+						const selector = history ? '.appearance-theme-version' : '.appearance-theme-card';
+						const replacement = [...document.querySelectorAll('#appearancePanel ' + selector)].find(
+							(button) => button.dataset.package === theme.packageId,
+						);
+						if (replacement && (!history || replacement.closest('details')?.open)) {
+							replacement.focus({ preventScroll: true });
+						}
+					}
 				}
 			}
 			return;
@@ -1558,6 +1689,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 				state.revision = data.revision;
 				state.remoteRevision = Math.max(state.remoteRevision, data.revision);
 				state.draft = data.active;
+				state.applied = clone(data.active);
 				rememberProfile(data.active);
 				state.reloadRequired ||= Boolean((isApp(running) || isApp(data.active)) && running?.packageId !== data.active?.packageId);
 				window.__2FA_APPEARANCE__ = data.active;
@@ -1862,11 +1994,13 @@ function appearanceEditorClient(createAppearanceDraft) {
 		}
 		ensureEditor();
 		state.open = true;
+		state.versionHistory.clear();
 		setBusy(true);
 		state.ready = false;
 		state.nonce = uid();
 		state.library = window.__2FA_BUILTIN_THEMES__ || state.library;
 		state.draft = clone(window.__2FA_APPEARANCE__ || state.draft || {});
+		state.applied = clone(window.__2FA_APPEARANCE__ || null);
 		state.revision = state.draft.revision || 0;
 		state.remoteRevision = Math.max(state.remoteRevision, state.revision);
 		state.dirty = false;

@@ -1918,5 +1918,12 @@
 	"Preparing your theme…": "Temanız hazırlanıyor…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "Temanız henüz başlatılamıyor. Varsayılan görünümü kullanmaya devam edebilir veya yeniden deneyebilirsiniz.",
 	"The theme stopped. Open safe mode to continue using 2FA.": "Tema durdu. 2FA kullanmaya devam etmek için güvenli modu açın.",
-	"Loading {module} timed out. Check your connection and try again.": "{module} yüklemesi zaman aşımına uğradı. Bağlantınızı kontrol edip yeniden deneyin."
+	"Loading {module} timed out. Check your connection and try again.": "{module} yüklemesi zaman aşımına uğradı. Bağlantınızı kontrol edip yeniden deneyin.",
+	"Version history ({count})": "Sürüm geçmişi ({count})",
+	"Selected": "Seçili",
+	"Saved settings": "Kaydedilen ayarlar",
+	"Most recently installed": "En son yüklenen",
+	"Installed {date}": "{date} tarihinde yüklendi",
+	"Build {id}": "Derleme {id}",
+	"Install time unavailable": "Kurulum zamanı mevcut değil"
 }

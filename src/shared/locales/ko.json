@@ -1918,5 +1918,12 @@
 	"Preparing your theme…": "테마 준비 중…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "아직 테마를 시작할 수 없습니다. 기본 화면을 계속 사용하거나 다시 시도할 수 있습니다.",
 	"The theme stopped. Open safe mode to continue using 2FA.": "테마가 중지되었습니다. 2FA를 계속 사용하려면 안전 모드를 여세요.",
-	"Loading {module} timed out. Check your connection and try again.": "{module} 불러오기 시간이 초과되었습니다. 연결을 확인하고 다시 시도하세요."
+	"Loading {module} timed out. Check your connection and try again.": "{module} 불러오기 시간이 초과되었습니다. 연결을 확인하고 다시 시도하세요.",
+	"Version history ({count})": "버전 기록 ({count})",
+	"Selected": "선택됨",
+	"Saved settings": "저장된 설정",
+	"Most recently installed": "가장 최근에 설치됨",
+	"Installed {date}": "설치일: {date}",
+	"Build {id}": "빌드 {id}",
+	"Install time unavailable": "설치 시간 정보 없음"
 }
