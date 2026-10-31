@@ -231,12 +231,11 @@ export function createAppearanceController(document, options = {}) {
 		const manifest = snapshot.manifest || {};
 		const settings = snapshot.settings || {};
 		const builtinFluent = snapshot.packageId === 'builtin:fluent';
-		const nativeLayout = builtinFluent && JSON.stringify(snapshot.layout || manifest.layout) === JSON.stringify(manifest.layout);
+		const nativeLayout = builtinFluent;
 		// The default Fluent preset is the published workspace. Its generic theme
 		// tokens are editor defaults, not a request to restyle an untouched page.
 		const nativeStyles =
 			builtinFluent &&
-			!snapshot.branding?.background &&
 			(manifest.settings || []).every((field) => settings[field.key] === undefined || settings[field.key] === field.default);
 		const content = JSON.parse(JSON.stringify({ ...(manifest.content || {}), ...(snapshot.content || {}) }));
 		const standardContentLabels = {
@@ -261,13 +260,7 @@ export function createAppearanceController(document, options = {}) {
 			const value = Object.prototype.hasOwnProperty.call(settings, field.key) ? settings[field.key] : field.default;
 			const binding = field.binding || {};
 			if (binding.type === 'variable' && /^--(?:theme|2fa)-[a-z0-9-]+$/i.test(binding.name)) {
-				const result =
-					field.type === 'asset'
-						? resolvedAsset(value)
-							? 'url(' + JSON.stringify(resolvedAsset(value)) + ')'
-							: 'none'
-						: String(value ?? '') + (field.type === 'number' ? binding.unit || '' : '');
-				variables += binding.name + ':' + result + ';';
+				variables += binding.name + ':' + String(value ?? '') + (field.type === 'number' ? binding.unit || '' : '') + ';';
 			} else if (binding.type === 'attribute' && /^data-theme-option-[a-z0-9-]+$/.test(binding.name)) {
 				root.setAttribute(binding.name, String(value ?? ''));
 				knownAttributes.push(binding.name);
@@ -275,9 +268,6 @@ export function createAppearanceController(document, options = {}) {
 				content[binding.component] = { ...content[binding.component], [binding.field]: value };
 			}
 		});
-		if (snapshot.branding?.background) {
-			variables += '--2fa-background-image:url(' + JSON.stringify(resolvedAsset(snapshot.branding.background)) + ');';
-		}
 		const tokens = ['light', 'dark']
 			.map((mode) => {
 				const values = Object.entries(manifest.tokens?.[mode] || {})
@@ -289,7 +279,6 @@ export function createAppearanceController(document, options = {}) {
 			.join('\n');
 		setStyle('appearance-theme-css', nativeStyles ? '' : tokens + '\n' + (snapshot.css || ''));
 		setStyle('appearance-config-css', nativeStyles ? '' : ':root[data-theme]{' + variables + '}');
-		setStyle('appearance-custom-css', snapshot.customCss || '');
 		document.getElementById('appearance-first-paint')?.remove();
 		root.dataset.themeId = snapshot.themeId || manifest.id || 'fluent';
 		if (nativeStyles) {
@@ -410,31 +399,11 @@ export function createAppearanceController(document, options = {}) {
 			layoutRoot.dataset.trailing = String(!layoutRoot.querySelector('[data-region="trailing"]').hidden);
 			const brand = components.get('brand');
 			brand.replaceChildren();
-			const branding = snapshot.branding || {};
-			const logo = resolvedAsset(branding.logo || branding.logoUrl);
-			if (logo) {
-				const image = element('img');
-				image.src = logo;
-				image.alt = '';
-				brand.append(image);
-			}
 			const identity = element('div');
 			const title = element('strong');
-			title.textContent = branding.name || '2FA';
+			title.textContent = '2FA';
 			identity.append(title);
-			if (branding.description) {
-				const description = element('p');
-				description.textContent = branding.description;
-				identity.append(description);
-			}
 			brand.append(identity);
-			const footer = components.get('footer');
-			footer.querySelector('[data-part="custom-footer"]')?.remove();
-			if (branding.footer) {
-				const text = element('p', 'custom-footer');
-				text.textContent = branding.footer;
-				footer.prepend(text);
-			}
 			renderNavigation();
 			if (nativeLayout) {
 				layoutRoot.classList.remove('appearance-layout');
@@ -447,10 +416,6 @@ export function createAppearanceController(document, options = {}) {
 						placed.add(wrapper);
 					}
 				});
-				// Branding is opt-in; an untouched Fluent page has no extra title row.
-				if (branding.name || branding.description || logo) {
-					layoutRoot.prepend(brand);
-				}
 			}
 		}
 		options.onApplied?.(snapshot);

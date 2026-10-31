@@ -1,7 +1,6 @@
 /** Versioned data-only theme protocol. Keep this module usable in Workers and browsers. */
 export const LIMITS = Object.freeze({
 	upload: 12 * 1024 * 1024,
-	restoreUpload: 12 * 1024 * 1024,
 	totalBytes: 10 * 1024 * 1024,
 	files: 64,
 	cssBytes: 256 * 1024,
@@ -48,7 +47,7 @@ export const COMPONENTS = Object.freeze([
 ]);
 const REQUIRED = ['search', 'view-controls', 'system-status', 'accounts', 'actions'];
 const REPEATED = ['text', 'image', 'links'];
-const TYPES = ['boolean', 'color', 'number', 'select', 'text', 'textarea', 'asset'];
+const TYPES = ['boolean', 'color', 'number', 'select', 'text', 'textarea'];
 const ID = /^[a-zA-Z0-9_-]{1,64}$/;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const encoder = new TextEncoder();
@@ -337,7 +336,7 @@ export function validateManifest(input, { builtin = false } = {}) {
 
 export function validateAppearance(input, manifest) {
 	record(input, 'appearance');
-	onlyKeys(input, ['packageId', 'themeId', 'settings', 'layout', 'content', 'branding', 'customCss'], 'appearance');
+	onlyKeys(input, ['packageId', 'themeId', 'settings'], 'appearance');
 	const values = record(input.settings ?? {}, 'settings');
 	const settings = {};
 	for (const key of Object.keys(values)) {
@@ -352,28 +351,12 @@ export function validateAppearance(input, manifest) {
 		invariant(validateSettingValue(field, value), 'THEME_INVALID_SETTING', { key: field.key });
 		settings[field.key] = value;
 	}
-	const brand = record(input.branding ?? {}, 'branding');
-	const allowedBrand = ['name', 'description', 'logo', 'icon192', 'icon512', 'appleTouchIcon', 'loginText', 'footer', 'background'];
-	onlyKeys(brand, allowedBrand, 'brand');
-	const outputBrand = Object.fromEntries(Object.entries(brand).map(([key, value]) => [key, text(value, 'brand.' + key)]));
-	const customCss = text(input.customCss, 'customCss', LIMITS.cssBytes);
-	invariant(utf8Size(customCss) <= LIMITS.cssBytes, 'THEME_CSS_LIMIT');
-	const layout = validateLayout(input.layout ?? manifest.layout);
-	const contentIds = new Set(
-		Object.values(layout)
-			.flat()
-			.map((entry) => entry.id),
-	);
-	const inheritedContent = Object.fromEntries(Object.entries(manifest.content).filter(([id]) => contentIds.has(id)));
-	const content = validateContent({ ...inheritedContent, ...(input.content ?? {}) }, layout);
 	return {
 		packageId: text(input.packageId, 'packageId', 128),
 		themeId: manifest.id,
 		settings,
-		layout,
-		content,
-		branding: outputBrand,
-		customCss,
+		layout: manifest.layout,
+		content: manifest.content,
 	};
 }
 

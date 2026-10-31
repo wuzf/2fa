@@ -1,10 +1,10 @@
 # 完整前端主题与 SDK API 1
 
-本文面向独立主题仓库作者，对应当前实现的 `themeApiVersion: 2`、`kind: "app"`、`sdkApiVersion: 1`。用户安装、草稿、品牌、离线与安全模式说明见 [主题指南](THEMES.md)。v1 CSS/layout 主题仍使用原协议，不能把 JS 塞进 v1 包。
+本文面向独立主题仓库作者，对应当前实现的 `themeApiVersion: 2`、`kind: "app"`、`sdkApiVersion: 1`。用户安装、离线与安全模式说明见 [主题指南](THEMES.md)。v1 CSS/layout 主题仍使用原协议，不能把 JS 塞进 v1 包。
 
 <!-- APP_THEME_ACTIVATION_STATUS -->
 
-完整前端运行层已通过独立审核，普通 app 安装、联网隔离预览、发布和回滚入口已开放。发布不会跳过设备端的完整资源准备、SDK 许可及安全恢复检查；不要修改 Service Worker 来绕过这些检查。
+完整前端运行层已通过独立审核，社区目录安装、联网隔离预览和发布入口已开放。发布不会跳过设备端的完整资源准备、SDK 许可及安全恢复检查；不要修改 Service Worker 来绕过这些检查。
 
 完整主题正式运行于 2FA 同源页面，**不是安全沙箱**。SDK 不直接提供种子、认证 fetch 或原始离线写队列，但这不意味着主题脚本没有同源页面权限。包扫描用于资源与构建兼容校验，不是对任意 JavaScript 的安全审计；清单的 `capabilities` 也是描述性字符串，不是授权或隔离机制。
 
@@ -24,16 +24,16 @@ export function mount({ root, sdk, appearance, signal }) {
 
 `mount` 可以返回 Promise、清理函数，或含可选 `update/unmount` 的对象。主机在完整资源准备和当前页面许可就绪后才导入入口；正式 app 只在已确认的账户会话下启动。不要在模块顶层启动定时器、读账户或改页面；把所有有副作用的工作放入 `mount`。
 
-| 参数         | 合同                                                                                              |
-| ------------ | ------------------------------------------------------------------------------------------------- |
-| `root`       | 本次挂载的独立 DOM 根节点；不是整个 document，也不是官方账户 DOM                                  |
-| `sdk`        | 本次挂载的 API 1 实例，账户内核与官方界面共用                                                     |
-| `appearance` | 冻结的 `{kind, packageId, package, revision, settings, branding, baseUrl, files}`；与账户快照分开 |
-| `signal`     | 本次挂载的 AbortSignal；失效后停止新命令和界面反馈                                                |
+| 参数         | 合同                                                                                    |
+| ------------ | --------------------------------------------------------------------------------------- |
+| `root`       | 本次挂载的独立 DOM 根节点；不是整个 document，也不是官方账户 DOM                        |
+| `sdk`        | 本次挂载的 API 1 实例，账户内核与官方界面共用                                           |
+| `appearance` | 冻结的 `{kind, packageId, package, revision, settings, baseUrl, files}`；与账户快照分开 |
+| `signal`     | 本次挂载的 AbortSignal；失效后停止新命令和界面反馈                                      |
 
-`appearance.package` 为 `{id,name,version}`；`files` 每项为 `{path,url,mime,size,hash}`。使用 `appearance.settings` 和 `appearance.branding`，不要试图修改冻结对象。品牌包含 `name/description/loginText/footer/logo/icon192/icon512/appleTouchIcon/background`；图标由主机管理。设置中的 asset 和品牌图片可能是主机 URL，使用收到的完整值；需要构建包内文件时可使用 `new URL('./assets/picture.png', import.meta.url)`。
+`appearance.package` 为 `{id,name,version}`；`files` 每项为 `{path,url,mime,size,hash}`。使用 `appearance.settings`，不要试图修改冻结对象。主机不再向主题提供品牌信息，站点名称固定为 2FA；需要构建包内文件时可使用 `new URL('./assets/picture.png', import.meta.url)`。
 
-完整导航用于不同包的切换、升级与回滚；同包配置变化可以在当前页重新准备、卸载和挂载。**不能假设只会调用 `update`，也不能要求每次重新求值 ESM 顶层。** 预览支持 `update`，未实现时使用同一预览授权重新挂载。每次重新挂载都获得新的 scope，不能复用上次的 SDK、复制票据、DOM 引用或异步结果。
+完整导航用于不同包的切换与升级；同包配置变化可以在当前页重新准备、卸载和挂载。**不能假设只会调用 `update`，也不能要求每次重新求值 ESM 顶层。** 预览支持 `update`，未实现时使用同一预览授权重新挂载。每次重新挂载都获得新的 scope，不能复用上次的 SDK、复制票据、DOM 引用或异步结果。
 
 `unmount` 和 `signal.abort` 不会撤销已经开始的原生剪贴板或服务端事务，也不能收回任意同源 ESM 已求值的权限。所有异步回调须再次检查挂载、会话和有关账户的代次，再更新界面；业务事实交给主机记录。
 
@@ -61,7 +61,7 @@ export function mount({ root, sdk, appearance, signal }) {
 	};
 	function render(snapshot) {
 		if (!active || signal.aborted) return;
-		title.textContent = config.branding.name || config.package.name;
+		title.textContent = config.package.name;
 		settings.textContent = sdk.i18n.t('fabSettings');
 		const byId = new Map(snapshot.library.accounts.map((account) => [account.ref.id, account]));
 		list.replaceChildren(
@@ -206,7 +206,7 @@ await writeFile('release/2fa-theme.zip', zipSync(entries));
 路径与引用规则：
 
 - 文件路径为 1–240 字符的 ASCII 相对路径，仅允许字母、数字、`.`、`_`、`-`、`/`；无空段、`.`/`..` 段、反斜杠、查询串、fragment、百分号或大小写等价冲突。
-- `2fa-theme.json` 不放进 `files`；`appearance.json` 与 `appearance-assets/` 是完整外观备份的保留路径，不属于普通主题构建。
+- `2fa-theme.json` 不放进 `files`；包内不能出现清单之外的文件。
 - JS 只接受 `.js/.mjs` ESM。静态 import/export 与动态 `import()` 必须引用包内相对路径；动态目标必须是字符串字面量或无插值模板。可用 `import('./chunks/detail.js')`，不可用包名裸 import、CDN import 或 `import(variable)`。将框架及依赖打包进产物。
 - `../` 只可用于引用并必须留在包内。`new URL('./assets/picture.png', import.meta.url)` 的静态目标也会核对 inventory。任意运行时代码的行为不由这些静态检查保证安全。
 - CSS 通过 `styles` 数组声明，最多 32 项；不要把 `import './theme.css'` 留在浏览器 ESM 中。CSS `@import`、`url()` 与 image-set 素材必须是包内相对资源；不依赖远程字体或 CSS。规则支持的本文件 `#fragment` 不产生新的文件。
@@ -219,10 +219,10 @@ await writeFile('release/2fa-theme.zip', zipSync(entries));
 | 完整便携表示（含清单、个人配置、素材、许可证） | 10 MiB / 256 文件                                   |
 | manifest `files`                               | 1–255 项，给清单留出名额；备份另需配置/个人素材名额 |
 | 单份 JS / CSS                                  | 4 MiB / 1 MiB                                       |
-| 清单或 appearance.json                         | 128 KiB                                             |
+| 清单                                           | 128 KiB                                             |
 | 非内置主题 / 全实例去重素材                    | 与 v1 共用 20 个主题 / 50 MiB；同主题更新不另占名额 |
 
-`id` 使用 1–64 位字母、数字、下划线或短横线，不能使用 `builtin-` 前缀。`version` 为 SemVer；同系列沿用 id，内容变化得到新不可变 packageId。可选 `minHostVersion` 是最低主机 SemVer，主机在预览、应用、回滚时检查；仅设置 `sdkApiVersion:1` 不会跳过主机版本或完整资源检查。
+`id` 使用 1–64 位字母、数字、下划线或短横线，不能使用 `builtin-` 前缀。`version` 为 SemVer；同系列沿用 id，内容变化得到新不可变 packageId。可选 `minHostVersion` 是最低主机 SemVer，主机在预览和应用时检查；仅设置 `sdkApiVersion:1` 不会跳过主机版本或完整资源检查。
 
 ### PR 上架到社区目录
 
@@ -247,22 +247,21 @@ themes/<manifest.id>/
 
 上架不是使用主题的前提。用户仍可上传个人 ZIP、粘贴公开 HTTPS 下载地址，或导入作者 GitHub 仓库／具体 Release 地址。直接导入 GitHub 时，正式 Release 必须非草稿、非预发布，且含唯一名为 **`2fa-theme.zip`** 的附件。2FA 不在服务器执行 npm install/build。个人导入同样遵循单主题覆盖规则，安装后需预览并应用。
 
-## 主题设置与品牌
+## 主题设置
 
 v2 设置只包含纯数据，没有 v1 `binding`、layout、content、tokens、customCss，也不支持服务器迁移 JavaScript。清单最多 64 个字段：
 
-| 类型                | 字段规则                                               |
-| ------------------- | ------------------------------------------------------ |
-| `boolean`           | 布尔默认值                                             |
-| `color`             | `#RGB/#RGBA/#RRGGBB/#RRGGBBAA`                         |
-| `number`            | 有限数字，可带 min/max 和正数 step                     |
-| `select`            | 1–64 个 `{value,label}` 字符串选项，默认值必须匹配     |
-| `text` / `textarea` | 最大 2048 / 16384 字符，不含 NUL                       |
-| `asset`             | 图片或 WOFF2 引用；默认值为空或 inventory 中的资源路径 |
+| 类型                | 字段规则                                           |
+| ------------------- | -------------------------------------------------- |
+| `boolean`           | 布尔默认值                                         |
+| `color`             | `#RGB/#RGBA/#RRGGBB/#RRGGBBAA`                     |
+| `number`            | 有限数字，可带 min/max 和正数 step                 |
+| `select`            | 1–64 个 `{value,label}` 字符串选项，默认值必须匹配 |
+| `text` / `textarea` | 最大 2048 / 16384 字符，不含 NUL                   |
 
 每项允许 `key/type/label/description/default/min/max/step/options`，不接受未知字段。v2 字段标签和说明目前是字符串，**不接受 v1 的 `translations` 字段**；主题自有界面翻译由作者提供，主机入口标签使用 `sdk.i18n.t`。
 
-编辑器按“格式 + id”保存配置，升级时保留相同类型的合法值，失效值回退默认并提示。包内 asset 会映射到新版本相同路径，路径缺失时提示调整；个人 hash 素材保留。app → v1 → app 切换时完整品牌保留。`appearance.settings` 是主机外观配置，`sdk.preferences` 则是用户语言、明暗与显示偏好，两者不是同一份状态。
+编辑器按“格式 + id”保存配置，升级时保留相同类型的合法值，失效值回退默认并提示。`appearance.settings` 是主机外观配置，`sdk.preferences` 则是用户语言、明暗与显示偏好，两者不是同一份状态。
 
 ## SDK 快照与方法
 
@@ -438,16 +437,16 @@ if (account) {
 }
 ```
 
-`light` / `dark` 及每项变体 patch 采用 `sdk.host.setAppearance()` 相同的有限 token 规则，允许部分字段，遗漏字段使用官方 fallback。不会执行 JavaScript、表达式、条件、字符串插值或任意 CSS。未知字段、外部 URL、CSS 值、非法字体声明均拒绝。品牌继续通过既有 branding 保存。
+`light` / `dark` 及每项变体 patch 采用 `sdk.host.setAppearance()` 相同的有限 token 规则，允许部分字段，遗漏字段使用官方 fallback。不会执行 JavaScript、表达式、条件、字符串插值或任意 CSS。未知字段、外部 URL、CSS 值、非法字体声明均拒绝。
 
 - `variants` 可省略，最多 4 个不重复 setting，每个 values 最多 16 项。只可引用 manifest 中已有 boolean/select；boolean 的 JSON 键是 `"true"` / `"false"`，select 键必须是合法 option.value。可省略无需覆盖的值；按 variants 声明顺序浅覆盖 light/dark token，fontFamily 和 shadow 整体替换。patch 至少含 light/dark 之一，省略的模式保持前值。只使用服务端验证后的 settings。
 - `fonts` 可省略，最多 4 个 family、64 个 face。family 为受限非 generic 名称，path 必须与同包已验证 `font/woff2` 清单精确匹配；字体魔数、长度和 SHA 沿用完整包校验。weight 默认 400，可为 100–900 的整数或有序 `[min,max]`；style 仅 normal/italic，默认 normal；font-display 固定 swap。
 - unicodeRange 可省略；单项不超过 32 KiB / 4096 段，仅接受 `U+码点`、`U+起点-终点`、尾部 `?` wildcard。解析后检查 0–0x10FFFF、排序合并相邻/重叠区间，再生成规范 CSS；不直接拼接输入。主机只输出解析后 light/dark 引用的家族及其分片，使用 packageId 派生内部 family 防止跨包冲突。主题运行态仍使用自己的原 family。
 - 描述原文件最大 128 KiB；描述和字体均计入原包文件数与总大小预算，没有额外上传/公共资源豁免。
 
-服务端从包字节与设置派生 `snapshot.publicAppearance`，内容只有有限 light/dark、当前同包字体 URL/hash/size 及包身份，没有完整 variants/settings、账户或认证数据。此字段由主机拥有，PUT/预览请求不能自行覆盖。导出不携带可伪造投影，恢复/再次导出从已验证包重新生成；发布仍须完成全部文件最终验证与 CAS 原子事务，GC 和离线 inventory 沿用完整包引用。
+服务端从包字节与设置派生 `snapshot.publicAppearance`，内容只有有限 light/dark、当前同包字体 URL/hash/size 及包身份，没有完整 variants/settings、账户或认证数据。此字段由主机拥有，PUT/预览请求不能自行覆盖。发布仍须完成全部文件最终验证与 CAS 原子事务，GC 和离线 inventory 沿用完整包引用。
 
-公开描述用于首页登录 baseline、快速/独立 OTP、首次设置及站内 OAuth 返回页；不运行 app entry 或包 CSS。OAuth 的旧 v1 行为仍只有品牌，不因新能力启用旧 css/customCss。safeMode 或 disableCustomCode 时各入口都跳过外观读取/字体/描述；离线恢复兜底、自包含 HTML 导出与 JSON 错误维持独立默认。独立分享 OTP 不增加秘密缓存或离线能力。
+公开描述用于首页登录 baseline、快速/独立 OTP、首次设置及站内 OAuth 返回页；不运行 app entry 或包 CSS。OAuth 返回页不启用 v1 主题 CSS。safeMode 或 disableCustomCode 时各入口都跳过外观读取/字体/描述；离线恢复兜底、自包含 HTML 导出与 JSON 错误维持独立默认。独立分享 OTP 不增加秘密缓存或离线能力。
 
 首页公共 baseline 与运行态视觉各自拥有 style/scope：主题成功 running 后运行态优先；登出/失效只撤销运行态而保留已发布 baseline。只有确认 current tuple 的同包设置更新才能更新 DOM baseline，失败候选/迟到 owner 不更新；跨包沿用刷新边界。旧主机发布的快照缺少派生字段时只读不迁移，重新应用后才启用。预览投影字体使用现有 capability URL，不提前公开包文件，也不改变父页面 baseline。
 
@@ -455,7 +454,7 @@ if (account) {
 
 正式运行前主机会准备当前完整构建、所有包文件和恢复壳，因此不要在主题中自行选择 worker、执行 skipWaiting、清理应用缓存或把新版文件补入旧版组合。服务端已发布、主题运行成功和本设备离线就绪分别判断；需要刷新时使用 lifecycle 入口，不直接 location.reload。安全恢复 URL 为 `/?safeMode=1`，旧 `?disableCustomCode=1` 继续有效。
 
-发布前至少完成：320/390/768/1440 宽度、浅/深色、长文字、全部支持语言；分组/平铺与各排序；当前码/下一码、HOTP pending/未知/对账；菜单实际命中、键盘和焦点恢复；主机编辑保存、导入导出、同步、队列；配置迁移、包升级、v1↔v2、回滚；首次无 controller、离线资源缺失、安全模式、BFCache 和旧异步结果。遵循 `prefers-reduced-motion`，并提供加载、空、无结果、离线和登录状态，不用示例数据掩盖失败。
+发布前至少完成：320/390/768/1440 宽度、浅/深色、长文字、全部支持语言；分组/平铺与各排序；当前码/下一码、HOTP pending/未知/对账；菜单实际命中、键盘和焦点恢复；主机编辑保存、同步、队列；配置迁移、包升级、v1↔v2；首次无 controller、离线资源缺失、安全模式、BFCache 和旧异步结果。遵循 `prefers-reduced-motion`，并提供加载、空、无结果、离线和登录状态，不用示例数据掩盖失败。
 
 独立参考实现名为 **`2fa-theme-pixel`**；当前工作区与主项目并列，可查看 [本地 Pixel README](../../2fa-theme-pixel/README.md)。这是本地相对链接，只有两个仓库按该目录结构检出时可用；没有假定它已经发布到任何远端仓库。它使用主机 SDK、独立构建与合成开发壳，开发壳测试不替代正式安装和实机验收。
 

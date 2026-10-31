@@ -76,26 +76,13 @@ export function getAppearanceHead(
 export function getAppearanceClientCode() {
 	return `
     function updateAppearanceBranding(snapshot = window.__2FA_APPEARANCE__) {
-      const brand = window.__2FA_SAFE_MODE__ ? {} : snapshot?.branding || {};
       const language = typeof getLanguage === 'function' ? getLanguage() : document.documentElement.lang;
-      const fallbackTitle = typeof t === 'function' ? t('appTitle') : '2FA';
-      document.title = brand.name || fallbackTitle;
-      const setMeta = (name,value) => { const meta = document.querySelector('meta[name="' + name + '"]'); if(meta && value !== undefined) meta.content = value; };
-      setMeta('application-name', brand.name || '2FA');
-      setMeta('apple-mobile-web-app-title', brand.name || '2FA');
-      setMeta('description', brand.description || (typeof t === 'function' ? t('pageDescription') : '2FA'));
+      document.title = typeof t === 'function' ? t('appTitle') : '2FA';
+      const description = document.querySelector('meta[name="description"]');
+      if(description) description.content = typeof t === 'function' ? t('pageDescription') : '2FA';
       const revision = snapshot?.revision || 0;
       const manifest = document.querySelector('link[rel="manifest"]');
       if(manifest) manifest.href = '/manifest.json?appearance=' + revision + '&lang=' + encodeURIComponent(language || 'en') + (window.__2FA_SAFE_MODE__ ? '&safeMode=1' : '');
-      const iconUrl = value => typeof value === 'string' && /^\\/(?:theme-assets|theme-packages)\\/[a-f0-9]{64}\\//.test(value) ? value : '';
-      const icon = iconUrl(brand.icon192 || brand.icon512);
-      const defaultIcon = '/icon-192.png' + (window.__2FA_SAFE_MODE__ ? '?safeMode=1' : '');
-      document.querySelectorAll('link[rel="icon"],link[rel="shortcut icon"]').forEach(link => {
-        link.href = icon || defaultIcon; link.type = icon ? 'image/png' : 'image/svg+xml';
-      });
-      document.querySelectorAll('link[rel="apple-touch-icon"]').forEach(link => { link.href = iconUrl(brand.appleTouchIcon) || icon || defaultIcon; });
-      const login = document.getElementById('loginModal');
-      if(login) { let note = document.getElementById('appearanceLoginMessage'); if(!note){note=document.createElement('p');note.id='appearanceLoginMessage';note.className='settings-desc';login.querySelector('.modal-content')?.append(note);} note.textContent=brand.loginText || '';note.hidden=!brand.loginText; }
       let safe = document.getElementById('appearanceSafeBanner');
       if(window.__2FA_SAFE_MODE__ && !safe) {
         safe=document.createElement('div');safe.id='appearanceSafeBanner';safe.className='appearance-safe-banner';

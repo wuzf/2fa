@@ -81,16 +81,7 @@ export async function createRuntimeManifest(request, { appearance, buildId, cust
 			await fromResponse(manifestPath, createManifest(new Request(new URL(manifestPath, url.origin)), appearance), 'manifest');
 		}
 		for (const size of [192, 512]) {
-			const brandUrl = appearance?.branding?.['icon' + size];
-			if (brandUrl) {
-				const resource = resources.get(brandUrl);
-				if (!resource) {
-					throw new Error('Missing registered branding icon');
-				}
-				add({ ...resource, url: '/icon-' + size + '.png', role: 'icon' });
-			} else {
-				await fromResponse('/icon-' + size + '.png', createDefaultIcon(size), 'icon');
-			}
+			await fromResponse('/icon-' + size + '.png', createDefaultIcon(size), 'icon');
 		}
 	}
 	for (const language of SUPPORTED_LANGUAGES) {

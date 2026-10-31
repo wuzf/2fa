@@ -17,17 +17,14 @@ export function createManifest(request, appearance = null) {
 	const language = getRequestLanguage(request, 'en');
 	const t = (key) => getStandaloneText(language, key);
 	const safeMode = url.searchParams.get('safeMode') === '1' || url.searchParams.get('disableCustomCode') === '1';
-	const brand = safeMode ? {} : appearance?.branding || {};
-	const icon = (key) =>
-		typeof brand[key] === 'string' && /^\/(?:theme-assets|theme-packages)\/[a-f0-9]{64}\//.test(brand[key]) ? brand[key] : null;
 	const defaultIcon = (size) => `${baseUrl}/icon-${size}.png${safeMode ? '?safeMode=1' : ''}`;
 
 	// 简化的 Manifest 配置，确保最佳兼容性
 	const manifest = {
-		name: brand.name || t('manifestName'),
-		short_name: brand.name ? brand.name.slice(0, 24) : '2FA',
+		name: t('manifestName'),
+		short_name: '2FA',
 		lang: language,
-		description: brand.description || t('manifestDescription'),
+		description: t('manifestDescription'),
 		start_url: safeMode ? '/?safeMode=1' : '/',
 		display: 'standalone',
 		background_color: '#ffffff',
@@ -38,21 +35,21 @@ export function createManifest(request, appearance = null) {
 		// 使用 SVG 格式图标（声明为 any 类型以提高兼容性）
 		icons: [
 			{
-				src: icon('icon192') ? new URL(icon('icon192'), baseUrl).href : defaultIcon(192),
+				src: defaultIcon(192),
 				sizes: '192x192',
-				type: icon('icon192') ? 'image/png' : 'image/svg+xml',
+				type: 'image/svg+xml',
 				purpose: 'any',
 			},
 			{
-				src: icon('icon512') ? new URL(icon('icon512'), baseUrl).href : defaultIcon(512),
+				src: defaultIcon(512),
 				sizes: '512x512',
-				type: icon('icon512') ? 'image/png' : 'image/svg+xml',
+				type: 'image/svg+xml',
 				purpose: 'any',
 			},
 			{
-				src: icon('icon192') ? new URL(icon('icon192'), baseUrl).href : defaultIcon(192),
+				src: defaultIcon(192),
 				sizes: '192x192',
-				type: icon('icon192') ? 'image/png' : 'image/svg+xml',
+				type: 'image/svg+xml',
 				purpose: 'maskable',
 			},
 		],

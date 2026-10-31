@@ -1,62 +1,56 @@
-/** Theme editor follows the existing Fluent dialog controls, with a responsive live canvas. */
+/** Theme picker with a live preview; follows the Fluent dialog tokens. */
 export function getAppearanceEditorStyles() {
 	return `
-    #appearanceModal .appearance-modal-content {width:min(1320px,96vw);max-width:1320px;height:min(880px,94dvh);max-height:94dvh;padding:0;display:flex;flex-direction:column;overflow:hidden;background:var(--dialog-surface,var(--bg-primary));}
-    #appearanceModal .modal-header {padding:20px 24px;margin:0;flex-shrink:0;}
-    .appearance-workspace {display:grid;grid-template-columns:minmax(280px,350px) minmax(0,1fr);min-height:0;flex:1;}
-    .appearance-controls {display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--dialog-line,var(--border-primary));}
-    .appearance-tabs {display:flex;flex-wrap:wrap;gap:3px;padding:10px;border-bottom:1px solid var(--dialog-line,var(--border-primary));}
-    .appearance-tab {border:0;background:transparent;color:var(--dialog-muted,var(--text-secondary));padding:9px 10px;border-radius:4px;font:inherit;cursor:pointer;}
-    .appearance-tab.active {background:var(--dialog-selected,var(--bg-hover));color:var(--dialog-brand,var(--primary));font-weight:600;}
-    .appearance-panel {overflow:auto;overscroll-behavior:contain;min-height:0;padding:20px;}
-    .appearance-field {display:flex;flex-direction:column;gap:7px;margin:0 0 18px;color:var(--dialog-text,var(--text-primary));min-width:0;}
-    .appearance-field-label {font-size:13px;font-weight:600;}
-    .appearance-field input:not([type=file]),.appearance-field select,.appearance-field textarea,.appearance-layout-item select {box-sizing:border-box;width:100%;min-height:36px;padding:7px 9px;border:1px solid var(--dialog-stroke,var(--border-secondary));border-radius:4px;background:var(--dialog-surface,var(--bg-primary));color:var(--dialog-text,var(--text-primary));font:inherit;}
-    .appearance-field textarea {min-height:140px;resize:vertical;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.6;}
-    .appearance-field input[type=color] {height:40px;padding:3px;}
-    .appearance-field :is(input,textarea,select):focus-visible,.appearance-tab:focus-visible,.appearance-theme-card:focus-visible {outline:2px solid var(--dialog-brand,var(--primary));outline-offset:2px;}
-    .appearance-theme-list {display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:20px;}
-    .appearance-theme-card {text-align:left;display:grid;grid-template-columns:64px minmax(0,1fr);gap:3px 12px;align-items:center;padding:12px;border:1px solid var(--dialog-line,var(--border-primary));border-radius:7px;background:var(--dialog-surface,var(--bg-primary));color:var(--dialog-text,var(--text-primary));cursor:pointer;font:inherit;}
-    .appearance-theme-card[aria-pressed=true] {border-color:var(--dialog-brand,var(--primary));box-shadow:inset 0 0 0 1px var(--dialog-brand,var(--primary));}
-    .appearance-theme-card strong {font-size:14px;overflow-wrap:anywhere;}
-    .appearance-theme-card small {grid-column:2;color:var(--dialog-muted,var(--text-secondary));}
-    .appearance-theme-swatch {grid-row:1/3;display:flex;align-items:center;justify-content:center;gap:4px;height:48px;border-radius:4px;border:1px solid #8883;}
-    .appearance-theme-swatch i {width:12px;height:22px;border-radius:2px;border:1px solid #8883;}
-    #appearanceModal .appearance-installed-themes {display:grid;gap:14px;margin-bottom:20px;min-width:0;}
-    #appearanceModal .appearance-theme-group {min-width:0;}
-    #appearanceModal .appearance-theme-group > .appearance-theme-list {margin-bottom:0;}
-    #appearanceModal .appearance-catalog {margin:20px 0;padding-top:16px;border-top:1px solid var(--dialog-line,var(--border-primary));}
-    #appearanceModal .appearance-catalog-list {display:grid;gap:10px;margin:12px 0;}
-    #appearanceModal .appearance-catalog-card {display:grid;gap:5px;width:100%;min-width:0;text-align:left;padding:12px;border:1px solid var(--dialog-line,var(--border-primary));border-radius:7px;background:var(--dialog-surface,var(--bg-primary));color:var(--dialog-text,var(--text-primary));font:inherit;cursor:pointer;overflow-wrap:anywhere;}
-    #appearanceModal .appearance-catalog-card small {color:var(--dialog-muted,var(--text-secondary));}
-    #appearanceModal .appearance-catalog-card[aria-pressed=true] {border-color:var(--dialog-brand,var(--primary));box-shadow:inset 0 0 0 1px var(--dialog-brand,var(--primary));}
-    #appearanceModal .appearance-catalog-card:focus-visible {outline:2px solid var(--dialog-brand,var(--primary));outline-offset:2px;}
-    #appearanceModal .appearance-catalog-action,.appearance-catalog-submit {color:var(--dialog-brand,var(--primary));font-size:13px;font-weight:600;}
-    #appearanceModal .appearance-catalog-card:disabled {cursor:default;opacity:.6;}
-    #appearanceModal .appearance-disclosure {margin:14px 0;padding:0 12px;border:1px solid var(--dialog-line,var(--border-primary));border-radius:6px;}
-    #appearanceModal .appearance-disclosure > summary {min-height:44px;align-content:center;padding:10px 0;box-sizing:border-box;color:var(--dialog-text,var(--text-primary));font-weight:600;cursor:pointer;}
-    #appearanceModal .appearance-disclosure > summary:focus-visible {outline:2px solid var(--dialog-brand,var(--primary));outline-offset:2px;}
-    #appearanceModal .appearance-disclosure:not([open]) > :not(summary) {display:none;}
-    #appearanceModal .appearance-disclosure[open] > summary {margin-bottom:10px;border-bottom:1px solid var(--dialog-line,var(--border-primary));}
-    .appearance-import-actions {display:flex;flex-wrap:wrap;gap:8px;margin:14px 0;}
-    .appearance-file-button {position:relative;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;}
-    .appearance-file-button input[type=file] {position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;}
-    .appearance-asset-field {display:flex;flex-direction:column;gap:8px;}
-    .appearance-asset-name {overflow-wrap:anywhere;color:var(--dialog-muted,var(--text-secondary));max-height:50px;overflow:hidden;}
-    .appearance-layout-region {padding-bottom:14px;margin-bottom:12px;border-bottom:1px solid var(--dialog-line,var(--border-primary));}
-    .appearance-layout-item {display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;align-items:center;}
-    .appearance-layout-item strong {flex-basis:100%;font-size:12px;}
-    .appearance-layout-item select {flex:1;min-width:100px;width:auto;}
-    .appearance-layout-item .appearance-field {flex-basis:100%;}
-    .appearance-preview-section {display:flex;flex-direction:column;gap:12px;padding:16px;background:var(--dialog-subtle,var(--bg-secondary));min-width:0;min-height:0;}
-    .appearance-preview-toolbar {display:flex;gap:6px;flex-wrap:wrap;}
-    .appearance-preview-viewport {flex:1;min-height:180px;overflow:hidden;background:var(--dialog-surface,var(--bg-primary));border:1px solid var(--dialog-line,var(--border-primary));border-radius:6px;}
+    #appearanceModal .appearance-modal-content {width:min(1240px,96vw);max-width:1240px;height:min(820px,94dvh);max-height:94dvh;padding:0;display:flex;flex-direction:column;overflow:hidden;background:var(--dialog-surface,var(--bg-primary));}
+    #appearanceModal .modal-header {padding:18px 24px;margin:0;flex-shrink:0;border-bottom:1px solid var(--dialog-line,var(--border-primary));}
+    #appearanceModal .appearance-workspace {display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);min-height:0;flex:1;}
+    #appearanceModal .appearance-panel {overflow:auto;overscroll-behavior:contain;min-height:0;padding:20px 20px 24px;border-right:1px solid var(--dialog-line,var(--border-primary));display:flex;flex-direction:column;gap:24px;}
+    #appearanceModal .appearance-section {display:flex;flex-direction:column;gap:12px;min-width:0;}
+    #appearanceModal .appearance-section-head {display:flex;align-items:center;justify-content:space-between;gap:8px;}
+    #appearanceModal .appearance-section-title {margin:0;font-size:13px;font-weight:600;color:var(--dialog-text,var(--text-primary));}
+    #appearanceModal .appearance-note {margin:0;font-size:12px;line-height:1.5;color:var(--dialog-muted,var(--text-secondary));}
+    #appearanceModal .appearance-note-row {display:flex;align-items:center;justify-content:space-between;gap:12px;}
+    #appearanceModal .appearance-link {border:0;background:none;padding:2px 0;font:inherit;font-size:12px;color:var(--dialog-brand,var(--primary));cursor:pointer;}
+    #appearanceModal .appearance-link:hover {text-decoration:underline;}
+    #appearanceModal .appearance-theme-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+    #appearanceModal .appearance-theme-item {position:relative;min-width:0;}
+    #appearanceModal .appearance-theme-card {width:100%;height:100%;display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:8px;text-align:left;border:1px solid var(--dialog-line,var(--border-primary));border-radius:8px;background:var(--dialog-surface,var(--bg-primary));color:var(--dialog-text,var(--text-primary));font:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s;}
+    #appearanceModal .appearance-theme-card:hover {border-color:var(--dialog-stroke,var(--border-secondary));box-shadow:0 2px 6px #0000000f;}
+    #appearanceModal .appearance-theme-card[aria-pressed=true] {border-color:var(--dialog-brand,var(--primary));box-shadow:inset 0 0 0 1px var(--dialog-brand,var(--primary));}
+    #appearanceModal .appearance-theme-card:disabled {cursor:default;opacity:.6;}
+    #appearanceModal .appearance-theme-swatch {display:flex;align-items:center;justify-content:center;gap:5px;height:44px;border-radius:5px;border:1px solid #8882;}
+    #appearanceModal .appearance-theme-swatch i {width:12px;height:20px;border-radius:3px;border:1px solid #8883;}
+    #appearanceModal .appearance-theme-text {display:flex;flex-direction:column;gap:2px;min-width:0;}
+    #appearanceModal .appearance-theme-text strong {font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    #appearanceModal .appearance-theme-text small {font-size:11px;color:var(--dialog-muted,var(--text-secondary));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    #appearanceModal .appearance-theme-delete {position:absolute;top:4px;right:4px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:50%;background:var(--dialog-surface,var(--bg-primary));color:var(--dialog-muted,var(--text-secondary));font-size:15px;line-height:1;cursor:pointer;opacity:0;transition:opacity .15s;box-shadow:0 1px 3px #0003;}
+    #appearanceModal .appearance-theme-item:hover .appearance-theme-delete,#appearanceModal .appearance-theme-delete:focus-visible {opacity:1;}
+    #appearanceModal .appearance-theme-delete:hover {color:var(--dialog-danger,var(--danger));}
+    #appearanceModal .appearance-settings-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+    #appearanceModal .appearance-field {display:flex;flex-direction:column;gap:6px;margin:0;color:var(--dialog-text,var(--text-primary));min-width:0;}
+    #appearanceModal .appearance-field:has(textarea) {grid-column:1/-1;}
+    #appearanceModal .appearance-field-label {font-size:12px;font-weight:600;}
+    #appearanceModal .appearance-field-help {font-size:11px;color:var(--dialog-muted,var(--text-secondary));}
+    #appearanceModal .appearance-field :is(input,select,textarea) {box-sizing:border-box;width:100%;min-height:34px;padding:6px 8px;border:1px solid var(--dialog-stroke,var(--border-secondary));border-radius:6px;background:var(--dialog-surface,var(--bg-primary));color:var(--dialog-text,var(--text-primary));font:inherit;font-size:13px;}
+    #appearanceModal .appearance-field textarea {min-height:96px;resize:vertical;}
+    #appearanceModal .appearance-field input[type=color] {padding:3px;cursor:pointer;}
+    #appearanceModal :is(.appearance-field :is(input,select,textarea),.appearance-theme-card,.appearance-segment,.appearance-scene,.appearance-link,.appearance-theme-delete):focus-visible {outline:2px solid var(--dialog-brand,var(--primary));outline-offset:2px;}
+    #appearanceModal .appearance-preview-section {display:flex;flex-direction:column;gap:12px;padding:16px;background:var(--dialog-subtle,var(--bg-secondary));min-width:0;min-height:0;}
+    #appearanceModal .appearance-preview-toolbar {display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+    #appearanceModal .appearance-segmented {display:inline-flex;padding:2px;gap:2px;border-radius:7px;background:var(--dialog-surface,var(--bg-primary));border:1px solid var(--dialog-line,var(--border-primary));}
+    #appearanceModal .appearance-segment {border:0;background:transparent;padding:5px 12px;border-radius:5px;font:inherit;font-size:12px;color:var(--dialog-muted,var(--text-secondary));cursor:pointer;}
+    #appearanceModal .appearance-segment[aria-pressed=true] {background:var(--dialog-selected,var(--bg-hover));color:var(--dialog-text,var(--text-primary));font-weight:600;}
+    #appearanceModal .appearance-scene {margin-left:auto;min-height:30px;padding:4px 8px;border:1px solid var(--dialog-line,var(--border-primary));border-radius:6px;background:var(--dialog-surface,var(--bg-primary));color:var(--dialog-text,var(--text-primary));font:inherit;font-size:12px;}
+    #appearanceModal .appearance-preview-viewport {flex:1;min-height:180px;overflow:hidden;background:var(--dialog-surface,var(--bg-primary));border:1px solid var(--dialog-line,var(--border-primary));border-radius:8px;}
     #appearancePreview {display:block;border:0;transform-origin:top left;background:white;max-width:none;}
-    .appearance-status {min-height:20px;padding:8px 24px;font-size:12px;color:var(--dialog-muted,var(--text-secondary));overflow-wrap:anywhere;}
-    .appearance-status[data-error=true] {color:var(--dialog-danger,var(--danger));}
-    .appearance-footer-actions {display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding:12px 24px 20px;border-top:1px solid var(--dialog-line,var(--border-primary));}
+    #appearanceAppPreview,#appearanceAppPreview iframe {border:0;max-width:none;}
+    #appearanceModal .appearance-preview-status {display:flex;align-items:center;gap:8px;margin:0;font-size:12px;color:var(--dialog-muted,var(--text-secondary));}
+    #appearanceModal .appearance-footer {display:flex;align-items:center;gap:12px;padding:12px 24px;border-top:1px solid var(--dialog-line,var(--border-primary));flex-shrink:0;}
+    #appearanceModal .appearance-status {flex:1;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--dialog-muted,var(--text-secondary));overflow-wrap:anywhere;}
+    #appearanceModal .appearance-status[data-error=true] {color:var(--dialog-danger,var(--danger));}
+    #appearanceModal .appearance-footer-actions {display:flex;gap:8px;margin-left:auto;}
     .appearance-safe-banner {position:relative;padding:12px 20px;text-align:center;background:#fff4ce;color:#5c4100;font:14px/1.5 system-ui;z-index:100;}
     .appearance-safe-banner button {margin-left:12px;padding:5px 12px;cursor:pointer;}
-    @media(max-width:760px){#appearanceModal .appearance-modal-content{width:100vw;height:100dvh;max-height:100dvh;border-radius:0;}.appearance-workspace{display:flex;flex-direction:column;overflow:auto;}.appearance-controls{min-height:350px;max-height:60dvh;flex-shrink:0;border-right:0;}.appearance-preview-section{min-height:380px;flex-shrink:0;}.appearance-panel{padding:16px;}.appearance-footer-actions{padding:10px;}.appearance-footer-actions .btn{min-height:40px;flex:1;}.appearance-status{padding:6px 12px;}.appearance-field input,.appearance-field select{font-size:16px!important;}}
+    @media(max-width:760px){#appearanceModal .appearance-modal-content{width:100vw;height:100dvh;max-height:100dvh;border-radius:0;}#appearanceModal .modal-header{padding:14px 16px;}#appearanceModal .appearance-workspace{display:flex;flex-direction:column;overflow:auto;}#appearanceModal .appearance-panel{border-right:0;overflow:visible;padding:16px;flex-shrink:0;}#appearanceModal .appearance-preview-section{min-height:420px;flex-shrink:0;}#appearanceModal .appearance-footer{padding:10px 12px;flex-wrap:wrap;}#appearanceModal .appearance-footer-actions{width:100%;}#appearanceModal .appearance-footer-actions .btn{flex:1;min-height:40px;}#appearanceModal .appearance-field :is(input,select){font-size:16px;}#appearanceModal .appearance-theme-delete{opacity:1;}}
   `;
 }

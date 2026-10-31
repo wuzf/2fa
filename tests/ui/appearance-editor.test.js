@@ -2,51 +2,88 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { build } from 'esbuild';
 import { describe, expect, it, vi } from 'vitest';
-import { harness, flush } from '../helpers/appearance-editor.js';
+import {
+	harness,
+	flush,
+	tickPreview,
+	json,
+	control,
+	act,
+	themeCard,
+	chooseTheme,
+	editSetting,
+	status,
+	methods,
+	putBodies,
+} from '../helpers/appearance-editor.js';
 import { createAppearanceDraft } from '../../src/ui/scripts/appearanceEditor.js';
 import { appearanceErrorKey, localizeAppearanceError } from '../../src/ui/scripts/appearanceMessages.js';
 import { getBuiltinTheme } from '../../src/themes/builtins.js';
 import { validateAppearance } from '../../src/themes/schema.js';
 import { LOCALES } from '../../src/ui/locales/index.js';
-import { normalizeAsset } from '../../src/themes/resources.js';
 
-const appearanceInput = (draft) =>
-	Object.fromEntries(['packageId', 'themeId', 'settings', 'layout', 'content', 'branding', 'customCss'].map((key) => [key, draft[key]]));
+const zh = LOCALES['zh-CN'];
+const appearanceInput = (draft) => Object.fromEntries(['packageId', 'themeId', 'settings'].map((key) => [key, draft[key]]));
+const deferred = () => {
+	let resolve, reject;
+	const promise = new Promise((done, fail) => {
+		resolve = done;
+		reject = fail;
+	});
+	return { promise, resolve, reject };
+};
+const published = (h, revision = 2, accent = '#123456') => ({
+	revision,
+	active: { ...h.initial, revision, settings: { ...h.initial.settings, accent } },
+});
+const editAccent = (h, value = '#ff0000') => editSetting(h, 'accent', value);
 
 describe('appearance editor draft migration', () => {
-	it('restores the selected theme profile while retaining the current instance brand', () => {
+	it('restores the selected theme profile and keeps no brand, layout overrides or custom CSS', () => {
 		const theme = getBuiltinTheme('document');
-		theme.profile = {
-			...createAppearanceDraft(theme).draft,
-			settings: { accent: '#123456', radius: '24px' },
-			customCss: 'body{color:red}',
-			branding: { name: 'Older brand' },
-		};
-		theme.profile.layout.trailing = [];
-		theme.profile.content = {};
-		const result = createAppearanceDraft(theme, { themeId: 'compact', branding: { name: 'Current brand' } });
+		theme.profile = { ...createAppearanceDraft(theme).draft, settings: { accent: '#123456', radius: '24px' } };
+		const result = createAppearanceDraft(theme, { themeId: 'compact', settings: { accent: '#abcdef' } });
 		expect(result.draft.settings.accent).toBe('#123456');
-		expect(result.draft.layout.trailing).toEqual([]);
-		expect(result.draft.content).toEqual({});
-		expect(result.draft.customCss).toBe('body{color:red}');
-		expect(result.draft.branding.name).toBe('Current brand');
+		expect(result.draft.layout).toEqual(theme.manifest.layout);
+		for (const field of ['branding', 'customCss', 'assets']) {
+			expect(result.draft).not.toHaveProperty(field);
+		}
+		expect(
+			createAppearanceDraft(theme, { themeId: 'document', manifest: theme.manifest, settings: { accent: '#00ff00' } }).draft.settings
+				.accent,
+		).toBe('#00ff00');
 	});
 
 	it('checks narrowed numeric ranges and color types, and explicitly resets saved profiles', () => {
+		const size = { key: 'size', type: 'number', label: 'Size', default: 14, min: 12, max: 30 };
+		const older = getBuiltinTheme('fluent');
+		older.manifest.settings.push(size);
 		const theme = getBuiltinTheme('fluent');
-		const previous = createAppearanceDraft(theme).draft;
-		previous.settings.fontSize = 999;
+		theme.manifest.settings.push({ ...size, max: 20 });
+		const previous = createAppearanceDraft(older).draft;
+		previous.settings.size = 28;
 		previous.settings.accent = 'not-a-color';
 		const migrated = createAppearanceDraft(theme, previous);
 		expect(migrated.draft.settings.accent).toBe('#0078d4');
-		expect(migrated.changes.map((item) => item.key)).toEqual(expect.arrayContaining(['fontSize', 'accent']));
+		expect(migrated.draft.settings.size).toBe(14);
+		expect(migrated.changes.map((item) => item.key)).toEqual(expect.arrayContaining(['size', 'accent']));
 		expect(() => validateAppearance(appearanceInput(migrated.draft), theme.manifest)).not.toThrow();
-		theme.profile = { ...previous, settings: { accent: '#abcdef' }, customCss: 'body{display:none}' };
-		expect(createAppearanceDraft(theme, { branding: { name: 'Keep me' } }, { reset: true }).draft).toMatchObject({
-			customCss: '',
-			branding: { name: 'Keep me' },
-			settings: { accent: '#0078d4' },
-		});
+		theme.profile = { ...previous, settings: { accent: '#abcdef' } };
+		expect(createAppearanceDraft(theme, {}).draft.settings.accent).toBe('#abcdef');
+		expect(createAppearanceDraft(theme, {}, { reset: true }).draft.settings.accent).toBe('#0078d4');
+		expect(createAppearanceDraft(theme, {}, { reset: true }).changes).toEqual([]);
+	});
+
+	it('creates app drafts without v1 css, layout or content fields', () => {
+		const theme = { ...getBuiltinTheme('document'), kind: 'app', packageId: 'f'.repeat(64) };
+		theme.manifest = { ...theme.manifest, kind: 'app' };
+		const { draft } = createAppearanceDraft(theme, { themeId: 'document', settings: { accent: '#111111' } });
+		expect(draft.kind).toBe('app');
+		for (const field of ['css', 'layout', 'content']) {
+			expect(draft).not.toHaveProperty(field);
+		}
+		// A v1 draft with the same id is another profile, so its values are not carried over.
+		expect(draft.settings.accent).not.toBe('#111111');
 	});
 });
 
@@ -96,625 +133,386 @@ describe('appearance editor controls', () => {
 			platform: 'node',
 		});
 		const module = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
-		const { window, document } = harness({ code: module.getAppearanceEditorCode(), error: { error: 'THEME_IN_USE' } });
-		await window.showAppearanceEditor();
-		document.querySelector('[data-appearance-action="select"]').click();
-		document.querySelector('[data-appearance-action="delete"]').click();
-		await flush();
-		expect(document.getElementById('appearanceStatus').textContent).toContain(LOCALES['zh-CN'].appearanceErrorInUse);
+		const theme = { ...getBuiltinTheme('document'), packageId: 'f'.repeat(64) };
+		const h = harness({ theme, code: module.getAppearanceEditorCode(), error: { error: 'THEME_IN_USE' } });
+		await h.window.showAppearanceEditor();
+		editAccent(h);
+		expect(control(h, 'apply').disabled).toBe(false);
+		await act(h, 'delete');
+		expect(status(h).textContent).toContain(zh.appearanceErrorInUse);
+		expect(status(h).dataset.error).toBe('true');
 	});
-	it('localizes built-in fields and renders resource upload plus authored descriptions', async () => {
-		const builtIn = harness();
-		await builtIn.window.showAppearanceEditor();
-		builtIn.document.querySelector('[data-panel="design"]').click();
-		expect(builtIn.document.getElementById('appearancePanel').textContent).toContain('验证码字体');
-		expect(builtIn.document.getElementById('appearancePanel').textContent).not.toContain('Accent color');
-		expect(builtIn.document.querySelector('input[type="file"]').accept).toContain('.woff2');
+
+	it('renders one panel with library, catalog and localized settings and none of the removed tools', async () => {
+		const h = harness();
+		await h.window.showAppearanceEditor();
+		const panel = h.document.getElementById('appearancePanel');
+		expect(panel.textContent).toContain(zh.appearanceLibrary);
+		expect(panel.textContent).toContain(zh.appearanceCommunityThemes);
+		expect(panel.textContent).toContain(zh.appearanceThemeSettings);
+		expect(panel.textContent).toContain(zh.appearanceFont);
+		expect(panel.textContent).toContain(zh.appearanceDensity);
+		expect(panel.textContent).not.toContain('Accent color');
+		expect(h.document.querySelector('[data-theme-setting=accent]').type).toBe('color');
+		expect(h.document.querySelector('[data-theme-setting=radius]').tagName).toBe('SELECT');
+		for (const removed of [
+			'[data-panel]',
+			'.appearance-tab',
+			'#appearanceSource',
+			'input[type=file]',
+			'[data-appearance-action=install]',
+			'[data-appearance-action=export]',
+			'[data-appearance-action=import]',
+			'[data-appearance-action=keep]',
+			'[data-appearance-action=discard]',
+			'[data-appearance-action=rollback]',
+			'#appearanceModal textarea',
+		]) {
+			expect(h.document.querySelector(removed), removed).toBeNull();
+		}
+		expect([...h.document.querySelectorAll('.appearance-footer-actions button')].map((button) => button.dataset.appearanceAction)).toEqual([
+			'close',
+			'apply',
+		]);
 		const theme = getBuiltinTheme('fluent');
 		theme.packageId = 'external';
 		theme.manifest.settings[0].translations = { 'zh-CN': { label: '作者配色', description: '作者说明' } };
 		const custom = harness({ theme });
 		await custom.window.showAppearanceEditor();
-		custom.document.querySelector('[data-panel="design"]').click();
 		expect(custom.document.getElementById('appearancePanel').textContent).toContain('作者配色');
 		expect(custom.document.getElementById('appearancePanel').textContent).toContain('作者说明');
 	});
 
-	it('keeps server writes disabled without a binding while local resource uploads remain available', async () => {
-		const { window, document } = harness({ write: false });
-		await window.showAppearanceEditor();
-		expect(document.querySelector('[data-appearance-action="apply"]').disabled).toBe(true);
-		expect(document.querySelector('[data-appearance-action="install"]').disabled).toBe(true);
-		document.querySelector('[data-panel="design"]').click();
-		expect(document.querySelector('input[type="file"]').disabled).toBe(false);
-	});
-
-	it('deletes repeated component content and persists the actions mode without breaking schema', async () => {
-		const { window, document, saved } = harness();
-		await window.showAppearanceEditor();
-		document.querySelector('[data-panel="design"]').click();
-		document.querySelector('.appearance-advanced-settings').open = true;
-		document.querySelector('.appearance-layout-settings').open = true;
-		const actions = [...document.querySelectorAll('.appearance-layout-item')].find(
-			(row) => row.querySelector('strong').textContent === '操作',
-		);
-		const mode = actions.querySelector('select[aria-label="操作"]');
-		mode.value = 'floating';
-		mode.dispatchEvent(new window.Event('change'));
-		const text = [...document.querySelectorAll('.appearance-layout-item')].find(
-			(row) => row.querySelector('strong').textContent === '文字',
-		);
-		[...text.querySelectorAll('button')].find((button) => button.textContent === LOCALES['zh-CN'].delete).click();
-		document.querySelector('[data-appearance-action="keep"]').click();
-		await flush();
-		expect(saved().draft.content.welcome).toBeUndefined();
-		expect(saved().draft.layout.header.find((item) => item.type === 'actions').mode).toBe('floating');
-		expect(() => validateAppearance(appearanceInput(saved().draft), saved().draft.manifest)).not.toThrow();
-	});
-
-	it('shows the correct translated reason for a protected version instead of a revision conflict', async () => {
-		const { window, document } = harness({ error: { error: 'THEME_IN_USE', message: '原始服务器文本' } });
-		await window.showAppearanceEditor();
-		document.querySelector('[data-appearance-action="delete"]').click();
-		await flush();
-		expect(document.getElementById('appearanceStatus').textContent).toContain(LOCALES['zh-CN'].appearanceErrorInUse);
-		expect(document.getElementById('appearanceStatus').textContent).not.toContain('原始服务器文本');
-	});
-
-	it('keeps restored personal resources as local blobs so a saved draft survives server cleanup', async () => {
-		const { window, document, initial, saved } = harness();
-		await window.showAppearanceEditor();
-		const hash = 'b'.repeat(64);
-		const resource = { hash, name: 'logo.png', mime: 'image/png', url: '/theme-assets/' + hash + '/logo.png' };
+	it('renders boolean, text, textarea and number settings and stores typed values', async () => {
 		const theme = getBuiltinTheme('document');
-		const appearance = { ...initial, branding: { logo: resource.url }, resources: [resource] };
-		window.authenticatedFetch.mockImplementation(async (url) => {
-			if (url === '/api/appearance/restore-inspect') {
-				return new Response(JSON.stringify({ theme, appearance }));
-			}
-			if (url === '/api/themes') {
-				return new Response(JSON.stringify({ themes: [theme] }));
-			}
-			if (url.startsWith('/api/appearance/assets/')) {
-				return new Response(new Uint8Array([1, 2, 3]), { headers: { 'Content-Type': 'image/png' } });
-			}
-			return new Response(JSON.stringify({ active: initial, revision: 1, capabilities: { write: true } }));
-		});
-		const file = document.querySelectorAll('input[type="file"]')[1];
-		Object.defineProperty(file, 'files', { value: [new window.File(['example'], 'appearance.zip')] });
-		file.dispatchEvent(new window.Event('change'));
-		await flush();
-		expect(document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceInstalled);
-		document.querySelector('[data-appearance-action="keep"]').click();
-		await flush();
-		expect(saved().draft.branding.logo).toMatch(/^local:/);
-		expect(saved().blobs).toHaveLength(1);
-		expect([...new Uint8Array(await saved().blobs[0][1].blob.arrayBuffer())]).toEqual([1, 2, 3]);
+		theme.packageId = 'f'.repeat(64);
+		theme.manifest.settings = [
+			{ key: 'flag', label: 'Flag', type: 'boolean', default: false },
+			{ key: 'title', label: 'Title', type: 'text', default: 'Hello' },
+			{ key: 'notes', label: 'Notes', type: 'textarea', default: '' },
+			{ key: 'size', label: 'Size', type: 'number', default: 14, min: 10, max: 20, step: 1 },
+		];
+		const h = harness({ theme });
+		await h.window.showAppearanceEditor();
+		const size = h.document.querySelector('[data-theme-setting=size]');
+		expect([size.min, size.max, size.step]).toEqual(['10', '20', '1']);
+		expect(h.document.querySelector('[data-theme-setting=notes]').tagName).toBe('TEXTAREA');
+		expect(h.document.querySelector('[data-theme-setting=title]').value).toBe('Hello');
+		editSetting(h, 'flag', 'true');
+		editSetting(h, 'title', 'Changed');
+		editSetting(h, 'notes', 'Line');
+		editSetting(h, 'size', '18');
+		await act(h, 'apply');
+		expect(putBodies(h)[0].settings).toEqual({ flag: true, title: 'Changed', notes: 'Line', size: 18 });
+	});
+
+	it('keeps apply disabled until the draft changes and while there is no binding', async () => {
+		const h = harness();
+		await h.window.showAppearanceEditor();
+		expect(status(h).hidden).toBe(true);
+		expect(control(h, 'apply').disabled).toBe(true);
+		editAccent(h);
+		expect(control(h, 'apply').disabled).toBe(false);
+		const unbound = harness({ write: false });
+		await unbound.window.showAppearanceEditor();
+		expect(status(unbound).textContent).toBe(zh.appearanceNoBinding);
+		editAccent(unbound);
+		expect(control(unbound, 'apply').disabled).toBe(true);
+		expect(themeCard(unbound, 'builtin:document').disabled).toBe(false);
+	});
+
+	it('resets settings to the theme defaults', async () => {
+		const h = harness();
+		h.initial.settings.accent = '#123456';
+		await h.window.showAppearanceEditor();
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe('#123456');
+		await act(h, 'reset');
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe(getBuiltinTheme('document').manifest.settings[0].default);
+		expect(control(h, 'apply').disabled).toBe(false);
+	});
+
+	it('toggles the segmented width and mode controls with aria-pressed', async () => {
+		const h = harness();
+		await h.window.showAppearanceEditor();
+		const pressed = (name) =>
+			[...h.document.querySelectorAll('[data-appearance-action="' + name + '"]')]
+				.filter((button) => button.getAttribute('aria-pressed') === 'true')
+				.map((button) => button.dataset.value);
+		expect(pressed('width')).toEqual(['1440']);
+		expect(pressed('mode')).toEqual(['light']);
+		expect(control(h, 'width', 1440).closest('[role=group]')).not.toBeNull();
+		await act(h, 'width', 390);
+		await act(h, 'mode', 'dark');
+		expect(pressed('width')).toEqual(['390']);
+		expect(pressed('mode')).toEqual(['dark']);
+		expect(control(h, 'apply').disabled).toBe(true);
 	});
 
 	it('previews an offline scene from immutable cached resources and sends translated labels', async () => {
-		const { window, document, initial } = harness({ online: false });
+		const h = harness({ online: false });
 		const hash = 'c'.repeat(64);
-		initial.resources = [{ hash, name: 'font.woff2', mime: 'font/woff2', url: '/theme-assets/' + hash + '/font.woff2' }];
+		h.initial.resources = [{ hash, name: 'font.woff2', mime: 'font/woff2', url: '/theme-assets/' + hash + '/font.woff2' }];
 		const match = vi.fn(async () => new Response(new Uint8Array([1, 2, 3])));
-		Object.defineProperty(window, 'caches', { value: { match } });
-		await window.showAppearanceEditor();
-		const frame = document.getElementById('appearancePreview');
+		Object.defineProperty(h.window, 'caches', { value: { match } });
+		await h.window.showAppearanceEditor();
+		expect(status(h).textContent).toBe(zh.appearanceOffline);
+		const frame = h.document.getElementById('appearancePreview');
 		frame.contentWindow.postMessage = vi.fn();
 		frame.onload();
-		const scenes = document.getElementById('appearanceScene');
+		await act(h, 'mode', 'dark');
+		const scenes = h.document.getElementById('appearanceScene');
 		scenes.value = 'offline';
-		scenes.dispatchEvent(new window.Event('change'));
-		await new Promise((resolve) => setTimeout(resolve, 180));
+		scenes.dispatchEvent(new h.window.Event('change'));
+		await tickPreview();
 		const message = frame.contentWindow.postMessage.mock.calls.at(-1)[0];
-		expect(message.scene).toBe('offline');
-		expect(message.labels.cardMenuEdit).toBe(LOCALES['zh-CN'].cardMenuEdit);
-		expect(message.labels.appearanceWelcomeTitle).toBe(LOCALES['zh-CN'].appearanceWelcomeTitle);
+		expect(message).toMatchObject({ type: 'appearance-preview', scene: 'offline', mode: 'dark', language: 'zh-CN' });
+		expect(message.labels.cardMenuEdit).toBe(zh.cardMenuEdit);
 		expect(message.resources[0].hash).toBe(hash);
 		expect(match).toHaveBeenCalledWith('https://example.com/theme-assets/' + hash + '/font.woff2');
-		expect(window.authenticatedFetch).not.toHaveBeenCalled();
+		expect(h.window.authenticatedFetch).not.toHaveBeenCalled();
+		expect(frame.style.width).toBe('1440px');
+		await act(h, 'width', 390);
+		await tickPreview();
+		expect(frame.style.width).toBe('390px');
 	});
 });
 
-describe('appearance publication feedback and response adoption', () => {
-	const json = (value) => new Response(JSON.stringify(value));
-	const applyButton = (h) => h.document.querySelector('[data-appearance-action="apply"]');
-	const status = (h) => h.document.getElementById('appearanceStatus');
-	function edit(h, value = 'local brand') {
-		h.document.querySelector('[data-panel="brand"]').click();
-		const input = h.document.querySelector('#appearancePanel input[type="text"]');
-		input.value = value;
-		input.dispatchEvent(new h.window.Event('input'));
-	}
-	const published = (h, revision = 2) => ({
-		revision,
-		previous: true,
-		active: { ...h.initial, revision, branding: { name: 'published ' + revision } },
-	});
-	const deferred = () => {
-		let resolve, reject;
-		const promise = new Promise((done, fail) => {
-			resolve = done;
-			reject = fail;
-		});
-		return { promise, resolve, reject };
-	};
-
+describe('appearance publication', () => {
 	it('shows saving synchronously and adopts a complete PUT response without a follow-up GET', async () => {
 		const h = harness();
 		await h.window.showAppearanceEditor();
-		edit(h);
+		editAccent(h, '#123456');
 		const pending = deferred();
 		h.window.authenticatedFetch.mockReset().mockReturnValue(pending.promise);
 		h.window.applyAppearance = vi.fn();
-		applyButton(h).click();
-		expect(status(h).textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
+		control(h, 'apply').click();
+		expect(status(h).textContent).toBe(zh.appearanceSaving);
 		expect(status(h).getAttribute('aria-live')).toBe('polite');
-		expect(applyButton(h).textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
-		expect(applyButton(h).disabled).toBe(true);
-		applyButton(h).click();
+		expect(control(h, 'apply').disabled).toBe(true);
+		control(h, 'apply').click();
 		await flush();
 		expect(h.window.authenticatedFetch).toHaveBeenCalledTimes(1);
-		pending.resolve(json(published(h)));
+		const body = putBodies(h)[0];
+		expect(Object.keys(body).sort()).toEqual(['expectedRevision', 'operationId', 'packageId', 'settings']);
+		expect(body).toMatchObject({ expectedRevision: 1, packageId: 'builtin:document', settings: { accent: '#123456' } });
+		pending.resolve(json(published(h, 2, '#123456')));
 		await flush();
 		expect(h.window.authenticatedFetch).toHaveBeenCalledTimes(1);
-		expect(h.window.__2FA_APPEARANCE__).toEqual(published(h).active);
-		expect(h.window.applyAppearance).toHaveBeenCalledWith(published(h).active);
-		expect(h.saved()).toBeUndefined();
-		expect(status(h).textContent).toBe(LOCALES['zh-CN'].appearanceApplied);
-		expect(applyButton(h).textContent).toBe(LOCALES['zh-CN'].appearanceApply);
-		expect(applyButton(h).disabled).toBe(false);
+		expect(h.window.__2FA_APPEARANCE__).toEqual(published(h, 2, '#123456').active);
+		expect(h.window.applyAppearance).toHaveBeenCalledWith(published(h, 2, '#123456').active);
+		expect(status(h).textContent).toBe(zh.appearanceApplied);
+		expect(control(h, 'apply').disabled).toBe(true);
+		await h.window.requestAppearanceClose();
+		expect(h.window.showConfirmDialog).not.toHaveBeenCalled();
 	});
 
-	it.each(['invalid-json', 'missing-active', 'missing-previous', 'mismatched-revision'])(
+	it('keeps edits after a publication out of the running appearance snapshot', async () => {
+		const h = harness();
+		await h.window.showAppearanceEditor();
+		editAccent(h, '#111111');
+		h.window.authenticatedFetch.mockReset().mockResolvedValue(json(published(h, 2, '#111111')));
+		control(h, 'apply').click();
+		await flush();
+		editAccent(h, '#222222');
+		expect(h.window.__2FA_APPEARANCE__.settings.accent).toBe('#111111');
+		await h.window.requestAppearanceClose();
+		await flush();
+		await h.window.showAppearanceEditor();
+		expect(h.document.querySelector('[data-theme-setting="accent"]').value).toBe('#111111');
+	});
+
+	it.each(['invalid-json', 'missing-active', 'mismatched-revision', 'replayed receipt'])(
 		'reads current appearance when the PUT response is %s',
 		async (reason) => {
 			const h = harness();
 			await h.window.showAppearanceEditor();
-			edit(h);
+			editAccent(h);
 			const data = published(h);
 			if (reason === 'missing-active') {
 				delete data.active;
 			}
-			if (reason === 'missing-previous') {
-				delete data.previous;
-			}
 			if (reason === 'mismatched-revision') {
 				data.active.revision = 1;
+			}
+			if (reason === 'replayed receipt') {
+				data.replayed = true;
 			}
 			h.window.authenticatedFetch
 				.mockReset()
 				.mockImplementation(async (_url, options = {}) =>
 					options.method === 'PUT' ? (reason === 'invalid-json' ? new Response('{') : json(data)) : json(published(h, 3)),
 				);
-			applyButton(h).click();
-			await flush();
-			expect(h.window.authenticatedFetch.mock.calls.map(([, options]) => options?.method || 'GET')).toEqual(['PUT', 'GET']);
+			await act(h, 'apply');
+			expect(methods(h)).toEqual(['PUT', 'GET']);
 			expect(h.window.__2FA_APPEARANCE__.revision).toBe(3);
+			expect(status(h).textContent).toBe(zh.appearanceApplied);
 		},
 	);
 
-	it('retries a lost response with the same operation and reads current state instead of adopting an old receipt', async () => {
+	it('keeps the draft after a lost response and retries against the same baseline', async () => {
 		const h = harness();
 		await h.window.showAppearanceEditor();
-		edit(h);
+		editAccent(h, '#abcdef');
 		let writes = 0;
 		h.window.authenticatedFetch.mockReset().mockImplementation(async (_url, options = {}) => {
 			if (options.method === 'PUT') {
 				if (++writes === 1) {
 					throw new Error('response lost after commit');
 				}
-				return json({ ...published(h), replayed: true });
+				return json({ ...published(h, 2, '#abcdef'), replayed: true });
 			}
-			return json(published(h, 3));
+			return json(published(h, 2, '#abcdef'));
 		});
-		applyButton(h).click();
-		await flush();
-		const saved = h.saved();
-		expect(saved.draft.branding.name).toBe('local brand');
+		await act(h, 'apply');
 		expect(status(h).dataset.error).toBe('true');
-		applyButton(h).click();
-		await flush();
-		const calls = h.window.authenticatedFetch.mock.calls;
-		expect(calls.map(([, options]) => options?.method || 'GET')).toEqual(['PUT', 'PUT', 'GET']);
-		expect(JSON.parse(calls[1][1].body).operationId).toBe(saved.pendingApply.id);
-		expect(h.window.__2FA_APPEARANCE__).toEqual(published(h, 3).active);
-		expect(h.saved()).toBeUndefined();
+		expect(status(h).textContent).toContain('response lost after commit');
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe('#abcdef');
+		expect(control(h, 'apply').disabled).toBe(false);
+		await act(h, 'apply');
+		expect(methods(h)).toEqual(['PUT', 'PUT', 'GET']);
+		expect(putBodies(h).map((body) => body.expectedRevision)).toEqual([1, 1]);
+		expect(h.window.__2FA_APPEARANCE__.settings.accent).toBe('#abcdef');
 	});
 
-	it('keeps the baseline and pending request when a remote revision arrives while PUT is pending', async () => {
+	it('reports a revision conflict and reloads the server state only after confirming discard', async () => {
 		const h = harness();
 		await h.window.showAppearanceEditor();
-		edit(h);
+		editAccent(h, '#abcdef');
+		const remote = published(h, 4, '#00ff00');
+		h.window.authenticatedFetch.mockImplementation(async (url, options = {}) => {
+			if (options.method === 'PUT') {
+				return json({ error: 'THEME_REVISION_CONFLICT' }, 409);
+			}
+			if (url === '/api/appearance') {
+				return json({ ...remote, capabilities: { write: true } });
+			}
+			return json({ themes: url === '/api/themes' ? [getBuiltinTheme('document')] : [] });
+		});
+		await act(h, 'apply');
+		expect(status(h).textContent).toContain(zh.appearanceConflict);
+		expect(control(h, 'reload')).not.toBeNull();
+		h.window.showConfirmDialog.mockResolvedValueOnce(false);
+		await act(h, 'reload');
+		expect(h.window.showConfirmDialog).toHaveBeenLastCalledWith(
+			expect.objectContaining({ i18n: expect.objectContaining({ message: 'appearanceDiscardChanges' }) }),
+		);
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe('#abcdef');
+		await act(h, 'reload');
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe('#00ff00');
+		expect(control(h, 'apply').disabled).toBe(true);
+		editAccent(h, '#111111');
+		h.window.authenticatedFetch.mockClear();
+		h.window.authenticatedFetch.mockImplementation(async () => json(published(h, 5, '#111111')));
+		await act(h, 'apply');
+		expect(putBodies(h)[0].expectedRevision).toBe(4);
+	});
+
+	it('rejects a response older than a remote revision that arrived while PUT was pending', async () => {
+		const h = harness();
+		await h.window.showAppearanceEditor();
+		editAccent(h);
 		const pending = deferred();
 		h.window.authenticatedFetch.mockReset().mockReturnValue(pending.promise);
-		applyButton(h).click();
+		h.window.applyAppearance = vi.fn();
+		control(h, 'apply').click();
 		await flush();
-		const saved = h.saved();
 		h.window.dispatchEvent(new h.window.CustomEvent('appearance-updated-elsewhere', { detail: { revision: 3 } }));
-		pending.resolve(json(published(h)));
+		pending.resolve(json(published(h, 2)));
 		await flush();
-		expect(h.saved()).toEqual(saved);
-		expect(h.storage.log).not.toContain('delete');
-		expect(h.window.__2FA_APPEARANCE__).toEqual(h.initial);
-		expect(status(h).textContent).toContain(LOCALES['zh-CN'].appearanceConflict);
-	});
-
-	function richDraft() {
-		const theme = getBuiltinTheme('document');
-		const draft = createAppearanceDraft(theme).draft;
-		draft.branding = { name: 'kept draft', logo: 'local:picture' };
-		return {
-			draft,
-			revision: 1,
-			dirty: true,
-			blobs: [['local:picture', { blob: new Blob(['image bytes'], { type: 'image/png' }), name: 'image.png', mime: 'image/png' }]],
-			profiles: [['v1:compact', createAppearanceDraft(getBuiltinTheme('compact')).draft]],
-			migration: [{ key: 'accent', reason: 'changed', value: '#123456' }],
-		};
-	}
-	it.each([false, true])(
-		'restores the entire draft after a revision changes during IDB deletion (restore fails: %s)',
-		async (failRestore) => {
-			const h = harness({ savedDraft: richDraft() });
-			await h.window.showAppearanceEditor();
-			h.window.applyAppearance = vi.fn();
-			h.window.authenticatedFetch
-				.mockReset()
-				.mockImplementation(async (url) =>
-					json(url === '/api/appearance/assets' ? { asset: { hash: 'a'.repeat(64), name: 'image.png' } } : published(h)),
-				);
-			h.storage.holdNextDelete = true;
-			applyButton(h).click();
-			await flush();
-			expect(h.storage.release).toBeTypeOf('function');
-			const saved = h.saved();
-			expect(saved.pendingApply.id).toBeTypeOf('string');
-			expect(saved.blobs).toHaveLength(1);
-			expect(saved.profiles).toHaveLength(1);
-			expect(saved.migration).toHaveLength(1);
-			h.window.dispatchEvent(new h.window.CustomEvent('appearance-updated-elsewhere', { detail: { revision: 3 } }));
-			h.storage.failNextPut = failRestore;
-			h.storage.release();
-			await flush();
-			expect(h.window.applyAppearance).not.toHaveBeenCalled();
-			expect(h.window.__2FA_APPEARANCE__).toEqual(h.initial);
-			expect(status(h).textContent).toContain(LOCALES['zh-CN'][failRestore ? 'appearanceDraftFailed' : 'appearanceConflict']);
-			if (failRestore) {
-				expect(h.saved()).toBeUndefined();
-				h.document.querySelector('[data-appearance-action="keep"]').click();
-				await flush();
-			}
-			expect(h.saved()).toEqual(saved);
-			expect(h.saved().revision).toBe(1);
-			if (!failRestore) {
-				// The remembered remote revision stays 3 even though the draft baseline is 1.
-				const deletions = h.storage.log.filter((mode) => mode === 'delete').length;
-				applyButton(h).click();
-				await flush();
-				expect(h.storage.log.filter((mode) => mode === 'delete')).toHaveLength(deletions);
-				expect(h.saved().pendingApply.id).toBe(saved.pendingApply.id);
-			}
-		},
-	);
-
-	it('preserves the retry identity after IDB deletion aborts and can later complete', async () => {
-		const h = harness();
-		await h.window.showAppearanceEditor();
-		edit(h);
-		h.window.authenticatedFetch.mockReset().mockImplementation(async () => json(published(h)));
-		h.storage.failNextDelete = true;
-		applyButton(h).click();
-		await flush();
-		const saved = h.saved();
-		expect(saved.draft.branding.name).toBe('local brand');
-		expect(h.window.__2FA_APPEARANCE__).toEqual(h.initial);
-		expect(applyButton(h).disabled).toBe(false);
-		applyButton(h).click();
-		await flush();
-		expect(JSON.parse(h.window.authenticatedFetch.mock.calls[1][1].body).operationId).toBe(saved.pendingApply.id);
-		expect(h.saved()).toBeUndefined();
-		expect(h.window.__2FA_APPEARANCE__.revision).toBe(2);
-	});
-
-	it('distinguishes uploading from saving and restores retry controls on failure', async () => {
-		const h = harness({ savedDraft: richDraft() });
-		await h.window.showAppearanceEditor();
-		const upload = deferred(),
-			save = deferred();
-		h.window.authenticatedFetch.mockReset().mockImplementation((url) => (url === '/api/appearance/assets' ? upload.promise : save.promise));
-		applyButton(h).click();
-		expect(status(h).textContent).toBe(LOCALES['zh-CN'].appearanceUploading);
-		expect(applyButton(h).textContent).toBe(LOCALES['zh-CN'].appearanceUploading);
-		upload.resolve(json({ asset: { hash: 'a'.repeat(64), name: 'image.png' } }));
-		await flush();
-		expect(status(h).textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
-		save.reject(new Error('save unavailable'));
-		await flush();
-		expect(status(h).textContent).toContain('save unavailable');
-		expect(applyButton(h).textContent).toBe(LOCALES['zh-CN'].appearanceApply);
-		expect(applyButton(h).disabled).toBe(false);
-		expect(h.saved().blobs).toHaveLength(1);
-	});
-});
-
-describe('appearance editor lifecycle', () => {
-	it.each(['apply', 'rollback', 'reload'])('remembers the latest saved profile after %s through A to B to A', async (action) => {
-		const h = harness({ theme: getBuiltinTheme('fluent') });
-		const themes = [getBuiltinTheme('fluent'), getBuiltinTheme('compact')];
-		themes[1].profile = createAppearanceDraft(themes[1]).draft;
-		let active = h.initial;
-		const response = () =>
-			new Response(JSON.stringify({ revision: active.revision, active, previous: true, capabilities: { write: true } }));
-		h.window.authenticatedFetch.mockImplementation(async (url, options = {}) => {
-			if (url === '/api/themes') {
-				return new Response(JSON.stringify({ themes }));
-			}
-			if (options.method === 'PUT') {
-				const payload = JSON.parse(options.body);
-				active = { ...active, ...payload, revision: active.revision + 1 };
-			}
-			return response();
-		});
-		await h.window.showAppearanceEditor();
-		if (action === 'apply') {
-			h.document.querySelector('[data-panel="design"]').click();
-			const accent = h.document.querySelector('input[type="color"]');
-			accent.value = '#ff0000';
-			accent.dispatchEvent(new h.window.Event('input'));
-		} else {
-			active = { ...active, revision: 2, settings: { ...active.settings, accent: '#ff0000' } };
-			if (action === 'reload') {
-				h.window.dispatchEvent(new h.window.CustomEvent('appearance-updated-elsewhere', { detail: { revision: 2 } }));
-			}
-		}
-		h.document.querySelector('[data-appearance-action="' + action + '"]').click();
-		await flush();
-		expect(active.settings.accent).toBe('#ff0000');
-		for (const id of ['builtin:compact', 'builtin:fluent']) {
-			h.document.querySelector('[data-panel="library"]').click();
-			const card = [...h.document.querySelectorAll('.appearance-theme-card')].find((node) => node.dataset.package === id);
-			card.click();
-		}
-		h.document.querySelector('[data-panel="design"]').click();
-		expect(h.document.querySelector('input[type="color"]').value).toBe('#ff0000');
-		h.document.querySelector('[data-appearance-action="apply"]').click();
-		await flush();
-		expect(active.settings.accent).toBe('#ff0000');
-	});
-
-	it.each([
-		['image/jpeg', 'photo.jpg', [255, 216, 255, 224, 0, 6, 74, 70, 73, 70, 255, 217]],
-		['image/webp', 'photo.webp', [82, 73, 70, 70, 12, 0, 0, 0, 87, 69, 66, 80, 86, 80, 56, 32, 0, 0, 0, 0]],
-		['image/gif', 'photo.gif', [...Buffer.from('GIF89a'), 1, 0, 1, 0, 0, 0, 0, 59]],
-	])('applies URL-imported %s assets using server-validated filenames and bytes', async (mime, name, bytes) => {
-		const h = harness();
-		const asset = await normalizeAsset(new Uint8Array(bytes), name);
-		const uploads = [];
-		let active = h.initial;
-		h.window.authenticatedFetch.mockImplementation(async (url, options = {}) => {
-			if (url === '/api/themes') {
-				return new Response(JSON.stringify({ themes: [getBuiltinTheme('document')] }));
-			}
-			if (url === '/api/appearance/assets') {
-				if (options.body instanceof FormData) {
-					const file = options.body.get('file');
-					const normalized = await normalizeAsset(new Uint8Array(await file.arrayBuffer()), file.name);
-					uploads.push(normalized);
-					return new Response(JSON.stringify({ asset: normalized }));
-				}
-				return new Response(JSON.stringify({ asset }));
-			}
-			if (url.startsWith('/api/appearance/assets/')) {
-				return new Response(new Uint8Array(bytes), { headers: { 'Content-Type': mime } });
-			}
-			if (options.method === 'PUT') {
-				active = { ...active, ...JSON.parse(options.body), revision: 2 };
-			}
-			return new Response(JSON.stringify({ active, revision: active.revision, capabilities: { write: true } }));
-		});
-		await h.window.showAppearanceEditor();
-		h.document.querySelector('[data-panel="brand"]').click();
-		const url = h.document.querySelector('input[type="url"]');
-		url.value = 'https://cdn.example.com/' + name;
-		url.nextElementSibling.click();
-		await vi.waitFor(() => expect(h.document.querySelector('[data-appearance-action="apply"]').disabled).toBe(false));
-		h.document.querySelector('[data-appearance-action="apply"]').click();
-		await vi.waitFor(() => expect(h.document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceApplied));
-		expect(uploads).toHaveLength(1);
-		expect(uploads[0]).toMatchObject({ hash: asset.hash, mime, name: asset.name });
-		expect(active.branding.logo).toBe('/theme-assets/' + asset.hash + '/' + asset.name);
-	});
-	function editBrand(h, value) {
-		h.document.querySelector('[data-panel="brand"]').click();
-		const input = h.document.querySelector('#appearancePanel input[type="text"]');
-		input.value = value;
-		input.dispatchEvent(new h.window.Event('input'));
-	}
-
-	it.each(['discard', 'reload', 'rollback'])('serializes %s after pending writes and prevents stale draft resurrection', async (action) => {
-		const h = harness();
-		await h.window.showAppearanceEditor();
-		h.storage.holdNextPut = true;
-		editBrand(h, 'first pending');
-		await new Promise((resolve) => setTimeout(resolve, 280));
-		expect(h.storage.release).toBeTypeOf('function');
-		editBrand(h, 'second pending');
-		await new Promise((resolve) => setTimeout(resolve, 280));
-		if (action === 'reload') {
-			h.window.dispatchEvent(new h.window.CustomEvent('appearance-updated-elsewhere', { detail: { revision: 1 } }));
-		}
-		h.document.querySelector('[data-appearance-action="' + action + '"]').click();
-		await flush();
-		h.storage.release();
-		await flush();
-		await new Promise((resolve) => setTimeout(resolve, 280));
-		expect(h.saved()).toBeUndefined();
-		expect(h.storage.log.filter((mode) => mode !== 'get')).toEqual(['put', 'delete']);
-		if (action !== 'discard') {
-			await h.window.requestAppearanceClose();
-		}
-		expect(h.window.hasAppearancePendingChanges()).toBe(false);
-		await h.window.showAppearanceEditor();
-		h.document.querySelector('[data-panel="brand"]').click();
-		expect(h.document.querySelector('#appearancePanel input[type="text"]').value).not.toMatch(/pending/);
+		expect(h.window.__2FA_APPEARANCE__).toBe(h.initial);
+		expect(h.window.applyAppearance).not.toHaveBeenCalled();
+		expect(status(h).textContent).toContain(zh.appearanceConflict);
+		expect(control(h, 'reload')).not.toBeNull();
 	});
 
 	it('takes the current server snapshot when a clean editor opens on an older page', async () => {
 		const h = harness();
-		const remote = { ...h.initial, revision: 2, branding: { name: 'remote brand' } };
-		h.window.authenticatedFetch.mockImplementation(
-			async (url) =>
-				new Response(
-					JSON.stringify(
-						url === '/api/themes'
-							? { themes: [getBuiltinTheme('document')] }
-							: { revision: 2, active: remote, capabilities: { write: true } },
-					),
-				),
+		const remote = published(h, 2, '#00ff00');
+		h.window.authenticatedFetch.mockImplementation(async (url) =>
+			json(url === '/api/themes' ? { themes: [getBuiltinTheme('document')] } : { ...remote, themes: [], capabilities: { write: true } }),
 		);
 		await h.window.showAppearanceEditor();
-		h.document.querySelector('[data-panel="brand"]').click();
-		expect(h.document.querySelector('#appearancePanel input[type="text"]').value).toBe('remote brand');
-		editBrand(h, 'next brand');
-		h.document.querySelector('[data-appearance-action="apply"]').click();
-		await flush();
-		const put = h.window.authenticatedFetch.mock.calls.find(([, options]) => options?.method === 'PUT');
-		expect(JSON.parse(put[1].body).expectedRevision).toBe(2);
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe('#00ff00');
+		editAccent(h, '#111111');
+		await act(h, 'apply');
+		expect(putBodies(h)[0].expectedRevision).toBe(2);
 	});
+});
 
-	it('retains the dirty baseline across installation even when another device advances the revision', async () => {
+describe('appearance editor lifecycle', () => {
+	it('asks before closing with unapplied changes and closes a clean editor directly', async () => {
 		const h = harness();
 		await h.window.showAppearanceEditor();
-		editBrand(h, 'local edit');
-		const theme = getBuiltinTheme('document');
-		theme.packageId = 'updated-document';
-		theme.manifest.version = '2.0.0';
-		const remote = { ...h.initial, revision: 2, branding: { name: 'remote brand' } };
-		h.window.authenticatedFetch.mockImplementation(async (url, options = {}) => {
-			if (url === '/api/themes/import') {
-				return new Response(JSON.stringify({ theme }));
-			}
-			if (url === '/api/themes') {
-				return new Response(JSON.stringify({ themes: [theme] }));
-			}
-			if (options.method === 'PUT') {
-				return new Response(JSON.stringify({ error: 'THEME_REVISION_CONFLICT' }), { status: 409 });
-			}
-			return new Response(JSON.stringify({ revision: 2, active: remote, capabilities: { write: true } }));
-		});
-		h.document.querySelector('[data-panel="library"]').click();
-		h.document.getElementById('appearanceSource').value = 'https://themes.example/theme.zip';
-		h.document.querySelector('[data-appearance-action="install"]').click();
-		await flush();
-		h.document.querySelector('[data-appearance-action="apply"]').click();
-		await flush();
-		const put = h.window.authenticatedFetch.mock.calls.find(([, options]) => options?.method === 'PUT');
-		expect(JSON.parse(put[1].body)).toMatchObject({ expectedRevision: 1, branding: { name: 'local edit' } });
-		expect(h.document.getElementById('appearanceStatus').textContent).toContain(LOCALES['zh-CN'].appearanceConflict);
+		expect(h.window.hasAppearancePendingChanges()).toBe(true);
+		await act(h, 'close');
+		expect(h.window.showConfirmDialog).not.toHaveBeenCalled();
+		expect(h.document.getElementById('appearanceModal').style.display).toBe('none');
+		expect(h.window.hasAppearancePendingChanges()).toBe(false);
+		await h.window.showAppearanceEditor();
+		editAccent(h, '#abcdef');
+		h.window.showConfirmDialog.mockResolvedValueOnce(false);
+		await act(h, 'close');
+		expect(h.window.showConfirmDialog).toHaveBeenCalledWith(
+			expect.objectContaining({ i18n: expect.objectContaining({ message: 'appearanceDiscardChanges' }) }),
+		);
+		expect(h.document.getElementById('appearanceModal').style.display).toBe('block');
+		const event = new h.window.Event('beforeunload', { cancelable: true });
+		h.window.dispatchEvent(event);
+		expect(event.defaultPrevented).toBe(true);
+		await h.window.requestAppearanceClose();
+		expect(h.document.getElementById('appearanceModal').style.display).toBe('none');
+		await h.window.showAppearanceEditor();
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe(h.initial.settings.accent);
+		expect(h.window.authenticatedFetch.mock.calls.some(([, options]) => options?.method)).toBe(false);
 	});
 
 	it('refreshes write capabilities after reconnecting without rebasing an offline draft', async () => {
 		const h = harness({ online: false });
 		await h.window.showAppearanceEditor();
-		editBrand(h, 'offline edit');
-		expect(h.document.querySelector('[data-appearance-action="apply"]').disabled).toBe(true);
+		editAccent(h, '#abcdef');
+		expect(control(h, 'apply').disabled).toBe(true);
 		h.window.authenticatedFetch.mockImplementation(async (url, options = {}) => {
 			if (url === '/api/themes') {
-				return new Response(JSON.stringify({ themes: [getBuiltinTheme('document')] }));
+				return json({ themes: [getBuiltinTheme('document')] });
 			}
 			if (options.method === 'PUT') {
-				return new Response(JSON.stringify({ error: 'THEME_REVISION_CONFLICT' }), { status: 409 });
+				return json({ error: 'THEME_REVISION_CONFLICT' }, 409);
 			}
-			return new Response(JSON.stringify({ revision: 2, active: { ...h.initial, revision: 2 }, capabilities: { write: true } }));
+			return json({ revision: 2, themes: [], active: { ...h.initial, revision: 2 }, capabilities: { write: true } });
 		});
 		h.network.onLine = true;
 		h.window.dispatchEvent(new h.window.Event('online'));
 		await flush();
-		expect(h.document.querySelector('[data-appearance-action="apply"]').disabled).toBe(false);
-		expect(h.document.querySelector('#appearancePanel input[type="text"]').value).toBe('offline edit');
-		h.document.querySelector('[data-appearance-action="apply"]').click();
-		await flush();
-		const put = h.window.authenticatedFetch.mock.calls.find(([, options]) => options?.method === 'PUT');
-		expect(JSON.parse(put[1].body).expectedRevision).toBe(1);
+		expect(control(h, 'apply').disabled).toBe(false);
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe('#abcdef');
+		expect(status(h).textContent).toContain(zh.appearanceConflict);
+		await act(h, 'apply');
+		expect(putBodies(h)[0].expectedRevision).toBe(1);
+		h.network.onLine = false;
+		h.window.dispatchEvent(new h.window.Event('offline'));
+		expect(control(h, 'apply').disabled).toBe(true);
+		expect(status(h).textContent).toContain(zh.appearanceOffline);
+		expect(control(h, 'reload')).not.toBeNull();
 	});
 
-	it('keeps the operation identity after a successful apply whose follow-up read fails', async () => {
-		const h = harness();
+	it('remembers each theme profile through A to B to A within the session', async () => {
+		const h = harness({ theme: getBuiltinTheme('fluent') });
+		const themes = [getBuiltinTheme('fluent'), getBuiltinTheme('compact')];
+		h.window.authenticatedFetch.mockImplementation(async (url) =>
+			json(url === '/api/themes' ? { themes } : { themes: [], revision: 1, active: h.initial, capabilities: { write: true } }),
+		);
+		// The applied compact preset stays listed while another theme is selected.
+		Object.assign(h.initial, createAppearanceDraft(themes[1]).draft);
 		await h.window.showAppearanceEditor();
-		editBrand(h, 'retry me');
-		let attempts = 0;
-		let failRead = false;
-		h.window.authenticatedFetch.mockImplementation(async (url, options = {}) => {
-			if (options.method === 'PUT') {
-				attempts += 1;
-				failRead = attempts === 1;
-				return new Response('{}');
-			}
-			if (failRead) {
-				failRead = false;
-				throw new Error('Lost follow-up response');
-			}
-			return new Response(JSON.stringify({ revision: 2, active: { ...h.initial, revision: 2 }, capabilities: { write: true } }));
-		});
-		h.document.querySelector('[data-appearance-action="apply"]').click();
-		await flush();
-		h.document.querySelector('[data-appearance-action="apply"]').click();
-		await flush();
-		const puts = h.window.authenticatedFetch.mock.calls
-			.filter(([, options]) => options?.method === 'PUT')
-			.map(([, options]) => JSON.parse(options.body));
-		expect(puts).toHaveLength(2);
-		expect(puts[1].operationId).toBe(puts[0].operationId);
-		expect(h.saved()).toBeUndefined();
-	});
-
-	it('blocks apply and discard until all icon sizes are generated, then commits them together', async () => {
-		const h = harness();
-		await h.window.showAppearanceEditor();
-		h.document.querySelector('[data-panel="brand"]').click();
-		const images = [];
-		h.window.Image = class {
-			constructor() {
-				this.width = 512;
-				this.height = 512;
-				images.push(this);
-			}
-		};
-		const generated = [];
-		const getContext = vi.spyOn(h.window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage() {} });
-		const toBlob = vi.spyOn(h.window.HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (callback) {
-			generated.push({ callback, size: this.width });
-		});
-		try {
-			const file = h.document.querySelectorAll('#appearancePanel input[type="file"]')[1];
-			Object.defineProperty(file, 'files', { value: [new Blob(['image'], { type: 'image/png' })] });
-			file.dispatchEvent(new h.window.Event('change'));
-			expect(h.document.querySelector('[data-appearance-action="apply"]').disabled).toBe(true);
-			expect(h.document.querySelector('[data-appearance-action="discard"]').disabled).toBe(true);
-			await h.window.requestAppearanceClose();
-			expect(h.document.getElementById('appearanceModal').style.display).toBe('block');
-			images[0].onload();
-			await flush();
-			for (let i = 0; i < 3; i++) {
-				expect(h.document.querySelector('[data-appearance-action="apply"]').disabled).toBe(true);
-				expect(h.saved()?.draft.branding?.icon192).toBeUndefined();
-				generated[i].callback(new Blob([String(generated[i].size)], { type: 'image/png' }));
-				await flush();
-			}
-			expect(generated.map((item) => item.size)).toEqual([192, 512, 180]);
-			expect(h.document.querySelector('[data-appearance-action="apply"]').disabled).toBe(false);
-			h.document.querySelector('[data-appearance-action="keep"]').click();
-			await flush();
-			expect(h.saved().draft.branding).toMatchObject({
-				icon192: expect.stringMatching(/^local:/),
-				icon512: expect.stringMatching(/^local:/),
-				appleTouchIcon: expect.stringMatching(/^local:/),
-			});
-			expect(h.saved().blobs).toHaveLength(3);
-		} finally {
-			getContext.mockRestore();
-			toBlob.mockRestore();
-		}
+		await chooseTheme(h, 'builtin:fluent');
+		editAccent(h, '#ff0000');
+		await chooseTheme(h, 'builtin:compact');
+		expect(themeCard(h, 'builtin:compact').getAttribute('aria-pressed')).toBe('true');
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).not.toBe('#ff0000');
+		editAccent(h, '#00ff00');
+		await chooseTheme(h, 'builtin:fluent');
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe('#ff0000');
+		await chooseTheme(h, 'builtin:compact');
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe('#00ff00');
 	});
 });

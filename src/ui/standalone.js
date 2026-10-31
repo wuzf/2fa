@@ -226,49 +226,8 @@ function escapeStandaloneText(value) {
 	);
 }
 
-function standaloneAsset(value, appearance) {
-	const resource = (appearance?.resources || []).find((entry) => entry.hash === value || entry.name === value);
-	const url = resource?.url || value;
-	return typeof url === 'string' && /^\/theme-assets\/[a-f0-9]{64}\//.test(url) ? url : '';
-}
-
-/** Safe brand metadata is suitable for setup and OAuth, where custom CSS is disabled. */
-export function getStandaloneBrandMetadata(appearance) {
-	const branding = appearance?.branding || {};
-	let output = branding.name
-		? '<meta name="application-name" data-standalone-brand-name content="' + escapeStandaloneText(branding.name) + '">'
-		: '';
-	if (branding.description) {
-		output += '<meta name="description" content="' + escapeStandaloneText(branding.description) + '">';
-	}
-	const icon = standaloneAsset(branding.icon192 || branding.logo, appearance);
-	if (icon) {
-		output += '<link rel="icon" href="' + escapeStandaloneText(icon) + '">';
-	}
-	const apple = standaloneAsset(branding.appleTouchIcon, appearance);
-	if (apple) {
-		output += '<link rel="apple-touch-icon" href="' + escapeStandaloneText(apple) + '">';
-	}
-	return output;
-}
-
-export function getStandaloneBrand(appearance, { className = 'otp-brand', fallbackIcon = '' } = {}) {
-	const branding = appearance?.branding || {};
-	const logo = standaloneAsset(branding.logo, appearance);
-	return (
-		'<a class="' +
-		escapeStandaloneText(className) +
-		'" href="/">' +
-		(logo ? '<img width="24" height="24" style="object-fit:contain" src="' + escapeStandaloneText(logo) + '" alt="">' : fallbackIcon) +
-		'<span>' +
-		escapeStandaloneText(branding.name || '2FA') +
-		'</span></a>'
-	);
-}
-
-export function getStandaloneBrandTitle(title, appearance) {
-	const brand = appearance?.branding?.name;
-	return brand ? (title.includes('2FA') ? title.replace(/2FA/g, () => brand) : title + ' · ' + brand) : title;
+export function getStandaloneBrand({ className = 'otp-brand', fallbackIcon = '' } = {}) {
+	return '<a class="' + escapeStandaloneText(className) + '" href="/">' + fallbackIcon + '<span>2FA</span></a>';
 }
 
 /** Standalone surfaces inherit public tokens, without mounting workspace components. */
@@ -301,18 +260,7 @@ function getStandaloneAppearanceStyles(appearance) {
 			continue;
 		}
 		const value = appearance.settings?.[field.key] ?? field.default;
-		variables +=
-			field.binding.name +
-			':' +
-			(field.type === 'asset'
-				? standaloneAsset(value, appearance)
-					? 'url(' + JSON.stringify(standaloneAsset(value, appearance)) + ')'
-					: 'none'
-				: String(value ?? '') + (field.type === 'number' ? field.binding.unit || '' : '')) +
-			';';
-	}
-	if (appearance.branding?.background) {
-		variables += '--2fa-background-image:url(' + JSON.stringify(standaloneAsset(appearance.branding.background, appearance)) + ');';
+		variables += field.binding.name + ':' + String(value ?? '') + (field.type === 'number' ? field.binding.unit || '' : '') + ';';
 	}
 	css +=
 		':root[data-theme]{' +
@@ -327,20 +275,18 @@ function getStandaloneAppearanceStyles(appearance) {
     .token-value,.next-token-value {font-family:var(--2fa-code-font);}
     .page-button,.page-button:hover {background:var(--page-brand);border-color:var(--page-brand);}
   `;
-	return css + '\n' + (appearance.customCss || '');
+	return css;
 }
 
 export function getStandaloneHead(title, extraStyles = '', appearance = null, { brandOnly = false, safeMode = false } = {}) {
 	if (safeMode) {
 		appearance = null;
 	}
-	title = getStandaloneBrandTitle(title, appearance);
 	const safeTitle = String(title).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	return `
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>${safeTitle}</title>
-    ${getStandaloneBrandMetadata(appearance)}
     <script>${getStandaloneThemeScript()}</script>
     <style>${(getStandaloneStyles() + extraStyles + (brandOnly ? '' : getStandaloneAppearanceStyles(appearance))).replace(/<\/style/gi, '<\\/style')}</style>
     ${getPublicAppearanceHead(appearance, { surface: 'standalone', safeMode })}

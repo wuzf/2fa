@@ -282,7 +282,7 @@ describe('finite public appearance rendering', () => {
 		expect(oauth).toContain('const targetOrigin = "https://vault.example"');
 		const v1 = { branding: { name: 'Brand' }, css: '.v1-package{}', customCss: '.v1-custom{}', manifest: { settings: [] } };
 		const old = await createOAuthPopupResponse(request, { success: false, provider: 'onedrive' }, v1).text();
-		expect(old).toContain('Brand');
+		expect(old).not.toContain('Brand');
 		expect(old).not.toContain('.v1-package');
 		expect(old).not.toContain('.v1-custom');
 	});

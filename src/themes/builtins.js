@@ -64,13 +64,6 @@ const settings = [
 		binding: { type: 'attribute', name: 'data-theme-option-density' },
 	},
 	{
-		key: 'background',
-		type: 'asset',
-		label: 'Background image',
-		default: '',
-		binding: { type: 'variable', name: '--2fa-background-image' },
-	},
-	{
 		key: 'font',
 		type: 'select',
 		label: 'Font',
@@ -82,112 +75,6 @@ const settings = [
 		],
 		binding: { type: 'variable', name: '--2fa-font' },
 	},
-	{
-		key: 'codeFont',
-		type: 'select',
-		label: 'Code font',
-		default: 'ui-monospace,monospace',
-		options: [
-			{ value: 'ui-monospace,monospace', label: 'Monospace' },
-			{ value: 'system-ui,sans-serif', label: 'System' },
-			{ value: 'Georgia,serif', label: 'Serif' },
-		],
-		binding: { type: 'variable', name: '--2fa-code-font' },
-	},
-	{
-		key: 'fontSize',
-		type: 'number',
-		label: 'Font size',
-		default: 14,
-		min: 12,
-		max: 24,
-		step: 1,
-		binding: { type: 'variable', name: '--2fa-font-size', unit: 'px' },
-	},
-	{
-		key: 'pageWidth',
-		type: 'select',
-		label: 'Page width',
-		default: '1440px',
-		options: ['900px', '1100px', '1200px', '1440px', '1680px', '100%'].map((value) => ({ value, label: value })),
-		binding: { type: 'variable', name: '--2fa-page-width' },
-	},
-	{
-		key: 'spacing',
-		type: 'select',
-		label: 'Spacing',
-		default: '20px',
-		options: ['8px', '10px', '12px', '16px', '20px', '24px', '32px'].map((value) => ({ value, label: value })),
-		binding: { type: 'variable', name: '--2fa-gap' },
-	},
-	{
-		key: 'cardPadding',
-		type: 'select',
-		label: 'Card padding',
-		default: '20px',
-		options: ['8px', '12px', '16px', '20px', '24px', '32px'].map((value) => ({ value, label: value })),
-		binding: { type: 'variable', name: '--2fa-card-padding' },
-	},
-	{
-		key: 'iconSize',
-		type: 'select',
-		label: 'Icon size',
-		default: '40px',
-		options: ['24px', '30px', '32px', '40px', '48px', '56px'].map((value) => ({ value, label: value })),
-		binding: { type: 'variable', name: '--2fa-icon-size' },
-	},
-	{
-		key: 'shadow',
-		type: 'select',
-		label: 'Shadow',
-		default: '0 4px 20px rgb(30 50 80/6%)',
-		options: [
-			{ value: 'none', label: 'None' },
-			{ value: '0 4px 20px rgb(30 50 80/6%)', label: 'Soft' },
-			{ value: '0 8px 32px rgb(0 0 0/20%)', label: 'Strong' },
-		],
-		binding: { type: 'variable', name: '--2fa-shadow' },
-	},
-	{
-		key: 'columns',
-		type: 'select',
-		label: 'Columns',
-		default: 'auto',
-		options: [{ value: 'auto', label: 'Automatic' }, ...['1', '2', '3'].map((value) => ({ value, label: value }))],
-		binding: { type: 'attribute', name: 'data-theme-option-columns' },
-	},
-	{
-		key: 'animation',
-		type: 'select',
-		label: 'Animation',
-		default: '160ms',
-		options: [
-			{ value: '0ms', label: 'None' },
-			{ value: '160ms', label: 'Soft' },
-			{ value: '300ms', label: 'Strong' },
-		],
-		binding: { type: 'variable', name: '--2fa-animation-duration' },
-	},
-	{
-		key: 'surfaceOpacity',
-		type: 'number',
-		label: 'Surface opacity',
-		default: 1,
-		min: 0.2,
-		max: 1,
-		step: 0.05,
-		binding: { type: 'variable', name: '--2fa-opacity' },
-	},
-	{
-		key: 'backgroundBlur',
-		type: 'number',
-		label: 'Background blur',
-		default: 0,
-		min: 0,
-		max: 30,
-		step: 1,
-		binding: { type: 'variable', name: '--2fa-blur', unit: 'px' },
-	},
 ];
 
 const baseCss = `
@@ -195,8 +82,6 @@ const baseCss = `
 [data-part="code"],[data-part="next-code"]{font-family:var(--2fa-code-font)}
 [data-theme-option-density="compact"] [data-part="account"]{padding:calc(var(--2fa-card-padding)*.75);gap:calc(var(--2fa-gap)*.75)}
 [data-part="region-leading"],[data-part="region-trailing"]{min-width:0}
-@media (min-width: 768px){[data-theme-option-columns="1"] [data-part="account-grid"],[data-theme-option-columns="1"] .service-group-grid{grid-template-columns:1fr}[data-theme-option-columns="2"] [data-part="account-grid"],[data-theme-option-columns="2"] .service-group-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (min-width: 1200px){[data-theme-option-columns="3"] [data-part="account-grid"],[data-theme-option-columns="3"] .service-group-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (prefers-reduced-motion: reduce){:root{--2fa-animation-duration:0ms}}
 `;
 

@@ -1,17 +1,27 @@
 /* global structuredClone */
 import { describe, expect, it, vi } from 'vitest';
 import { build } from 'esbuild';
-import { harness, flush } from '../helpers/appearance-editor.js';
+import {
+	harness,
+	flush,
+	tickPreview,
+	json,
+	control,
+	act,
+	chooseTheme,
+	editSetting,
+	status,
+	putBodies,
+} from '../helpers/appearance-editor.js';
 import { appThemeFixture, appPng } from '../helpers/app-theme.js';
-import { normalizeAppThemeImport, normalizeAppAppearance, normalizeAsset } from '../../src/themes/index.js';
+import { normalizeAppThemeImport } from '../../src/themes/index.js';
 import { createAppearanceDraft } from '../../src/ui/scripts/appearanceEditor.js';
 import { getBuiltinTheme } from '../../src/themes/builtins.js';
 import { LOCALES } from '../../src/ui/locales/index.js';
 import { ThemeStore } from '../../src/storage/theme-store.js';
-import { THEME_OPERATION_HEADER } from '../../src/api/themes.js';
-import { THEME_PREVIEW_OWNER_HEADER } from '../../src/api/themes.js';
+import { THEME_OPERATION_HEADER, THEME_PREVIEW_OWNER_HEADER } from '../../src/api/themes.js';
 
-const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+const zh = LOCALES['zh-CN'];
 async function appTheme(options = {}) {
 	const fixture = await appThemeFixture(
 		{ 'entry.js': 'export const mount=()=>({unmount(){}});', 'brand.png': appPng },
@@ -23,55 +33,31 @@ async function appTheme(options = {}) {
 	);
 	return { ...(await normalizeAppThemeImport({ bytes: fixture.archive })), fixture };
 }
-const action = (h, name) => h.document.querySelector('[data-appearance-action="' + name + '"]').click();
-const panel = (h, name) => h.document.querySelector('[data-panel="' + name + '"]').click();
-async function select(h, id) {
-	panel(h, 'library');
-	[...h.document.querySelectorAll('.appearance-theme-card')].find((e) => e.dataset.package === id).click();
-	await flush();
-}
-function editColor(h, value) {
-	panel(h, 'design');
-	const control = h.document.querySelector('input[type=color]');
-	control.value = value;
-	control.dispatchEvent(new h.window.Event('input'));
-}
-const tickPreview = () => new Promise((resolve) => setTimeout(resolve, 160));
-function network(h, themes, { allowApply = false, extra } = {}) {
+const editColor = (h, value) => editSetting(h, 'accent', value);
+function network(h, themes, { extra } = {}) {
 	let active = h.initial;
-	const put = [];
 	h.window.authenticatedFetch.mockImplementation(async (url, options = {}) => {
 		const special = await extra?.(url, options);
 		if (special) {
 			return special;
 		}
 		if (url === '/api/themes') {
-			// These migration fixtures include legacy presets previously used by this instance.
-			return json({
-				themes: themes.filter((t) => t.kind !== 'app').map((t) => ({ ...t, profile: t.profile || createAppearanceDraft(t).draft })),
-			});
+			return json({ themes: themes.filter((t) => t.kind !== 'app') });
 		}
 		if (url === '/api/themes?format=app') {
 			return json({ themes: themes.filter((t) => t.kind === 'app') });
 		}
+		if (url === '/api/themes/catalog') {
+			return json({ themes: [] });
+		}
 		if (url === '/api/appearance' && options.method === 'PUT') {
 			const payload = JSON.parse(options.body);
-			put.push(payload);
-			if (!allowApply) {
-				return json({ code: 'THEME_RESOURCE_BUSY' }, 409);
-			}
 			const theme = themes.find((t) => t.packageId === payload.packageId);
-			active = { ...createAppearanceDraft(theme).draft, ...payload, revision: active.revision + 1 };
+			active = { ...createAppearanceDraft(theme).draft, settings: payload.settings, revision: active.revision + 1 };
 		}
-		return json({ active, revision: active.revision, previous: true, capabilities: { write: true } });
+		return json({ active, revision: active.revision, capabilities: { write: true } });
 	});
-	return {
-		put,
-		active: () => active,
-		setActive: (value) => {
-			active = value;
-		},
-	};
+	return { active: () => active };
 }
 function previewPort(h) {
 	let status;
@@ -94,40 +80,9 @@ function previewPort(h) {
 	});
 	return { ...port, status: (next) => status(next), invalidateSession: () => invalidated() };
 }
+const previewStatus = (h) => h.document.getElementById('appearanceAppPreviewStatus');
 
-describe('full frontend editor configuration', () => {
-	it('migrates package asset URLs to the new version and reports removed assets without losing personal resources', async () => {
-		const old = await appTheme({ settings: [{ key: 'picture', type: 'asset', default: 'brand.png' }] });
-		const next = await appTheme({ version: '2.0.0', settings: [{ key: 'picture', type: 'asset', default: 'brand.png' }] });
-		const previous = createAppearanceDraft(old).draft;
-		previous.settings.picture = '/theme-packages/' + old.packageId + '/brand.png';
-		const migrated = createAppearanceDraft(next, previous);
-		expect(migrated.draft.settings.picture).toBe('brand.png');
-		await expect(
-			normalizeAppAppearance(next, { packageId: next.packageId, settings: migrated.draft.settings, branding: {} }),
-		).resolves.toMatchObject({ appearance: { settings: { picture: 'brand.png' } } });
-		const fixture = await appThemeFixture(
-			{ 'entry.js': 'export const mount=()=>{};' },
-			{ id: old.manifest.id, version: '3.0.0', settings: [{ key: 'picture', type: 'asset', default: '' }] },
-		);
-		const removed = await normalizeAppThemeImport({ bytes: fixture.archive });
-		const reset = createAppearanceDraft(removed, previous);
-		expect(reset.draft.settings.picture).toBe('');
-		expect(reset.changes).toContainEqual({ key: 'picture', reason: 'asset-missing', value: '' });
-		const personal = await normalizeAsset(appPng, 'brand.png');
-		previous.settings.picture = '/theme-assets/' + personal.hash + '/' + personal.name;
-		const carried = createAppearanceDraft(removed, previous);
-		expect(carried.draft.settings.picture).toBe(previous.settings.picture);
-		await expect(
-			normalizeAppAppearance(
-				removed,
-				{ packageId: removed.packageId, settings: carried.draft.settings, branding: {} },
-				{ assets: [personal] },
-			),
-		).resolves.toMatchObject({ appearance: { settings: { picture: previous.settings.picture } } });
-		previous.settings.picture = 'local:kept-blob';
-		expect(createAppearanceDraft(removed, previous).draft.settings.picture).toBe('local:kept-blob');
-	});
+describe('app theme configuration', () => {
 	it('keeps the app draft branch executable in the minified emitted editor', async () => {
 		const output = await build({
 			entryPoints: ['src/ui/scripts/appearanceEditor.js'],
@@ -143,364 +98,104 @@ describe('full frontend editor configuration', () => {
 		const h = harness({ code: module.getAppearanceEditorCode() });
 		network(h, [getBuiltinTheme('document'), app]);
 		await h.window.showAppearanceEditor();
-		await select(h, app.packageId);
+		await chooseTheme(h, app.packageId);
+		await tickPreview();
+		expect(h.document.getElementById('appearancePreview').style.display).toBe('none');
+		expect(h.document.getElementById('appearanceAppPreview').hidden).toBe(false);
 		editColor(h, '#112233');
-		action(h, 'keep');
-		await flush();
-		expect(h.saved().draft).toMatchObject({ kind: 'app', settings: { accent: '#112233' } });
-		expect(h.saved().draft).not.toHaveProperty('layout');
+		await act(h, 'apply');
+		expect(putBodies(h)[0]).toMatchObject({ packageId: app.packageId, settings: { accent: '#112233' } });
+		expect(Object.keys(putBodies(h)[0]).sort()).toEqual(['expectedRevision', 'operationId', 'packageId', 'settings']);
 	});
-	it('separates identical v1/app IDs, excludes v1 controls and keeps A to B to A local values across reopen', async () => {
+
+	it('separates identical v1/app IDs and keeps A to B to A local values', async () => {
 		const app = await appTheme();
-		const v1 = getBuiltinTheme('document');
-		const h = harness();
-		network(h, [v1, app]);
-		await h.window.showAppearanceEditor();
-		editColor(h, '#112233');
-		await select(h, app.packageId);
-		editColor(h, '#445566');
-		expect(h.document.querySelector('[data-panel=layout]')).toBeNull();
-		expect(h.document.querySelector('.appearance-advanced-settings')).toBeNull();
-		await select(h, v1.packageId);
-		panel(h, 'design');
-		expect(h.document.querySelector('input[type=color]').value).toBe('#112233');
-		expect(h.document.querySelector('.appearance-layout-settings')).not.toBeNull();
-		await select(h, app.packageId);
-		panel(h, 'design');
-		expect(h.document.querySelector('input[type=color]').value).toBe('#445566');
-		action(h, 'keep');
-		await flush();
-		expect(h.saved().draft.kind).toBe('app');
-		for (const key of ['layout', 'content', 'customCss', 'css']) {
-			expect(h.saved().draft).not.toHaveProperty(key);
-		}
-		await h.window.showAppearanceEditor();
-		await select(h, v1.packageId);
-		panel(h, 'design');
-		expect(h.document.querySelector('input[type=color]').value).toBe('#112233');
-	});
-	it('uses app version profiles and exposes changed or removed settings before apply', async () => {
-		const app = await appTheme({
-			settings: [
-				{ key: 'size', type: 'number', default: 12, min: 10, max: 20 },
-				{ key: 'new', type: 'boolean', default: true },
-			],
-		});
-		app.profile = {
-			kind: 'app',
-			themeId: 'document',
-			packageId: 'old',
-			manifest: {
-				kind: 'app',
-				settings: [
-					{ key: 'size', type: 'number' },
-					{ key: 'removed', type: 'text' },
-				],
-			},
-			settings: { size: 99, removed: 'old' },
-		};
 		const h = harness();
 		network(h, [getBuiltinTheme('document'), app]);
 		await h.window.showAppearanceEditor();
-		await select(h, app.packageId);
-		panel(h, 'design');
-		expect(h.document.querySelector('input[type=number]').value).toBe('12');
-		expect(h.document.querySelector('.appearance-migration').textContent).toContain('removed');
-		expect(h.document.querySelector('.appearance-migration').textContent).toContain('size');
+		editColor(h, '#010203');
+		await chooseTheme(h, app.packageId);
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe('#aa2233');
+		expect(h.document.querySelectorAll('[data-theme-setting]')).toHaveLength(1);
+		editColor(h, '#040506');
+		await chooseTheme(h, 'builtin:document');
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe('#010203');
+		await chooseTheme(h, app.packageId);
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe('#040506');
 	});
-	it('cancels trust without a PUT, then sends only app fields and keeps a resource-busy rejected draft', async () => {
+
+	it('shows the migration note when a newer app version changes saved settings', async () => {
+		const old = await appTheme({ version: '1.0.0', settings: [{ key: 'size', label: 'Size', type: 'number', default: 14, max: 30 }] });
+		const next = await appTheme({ version: '2.0.0', settings: [{ key: 'size', label: 'Size', type: 'number', default: 14, max: 20 }] });
+		const h = harness({ theme: old });
+		h.initial.settings.size = 28;
+		network(h, [next]);
+		await h.window.showAppearanceEditor();
+		expect(h.document.getElementById('appearancePanel').textContent).not.toContain(zh.appearanceMigration);
+		await chooseTheme(h, next.packageId);
+		expect(h.document.getElementById('appearancePanel').textContent).toContain(zh.appearanceMigration);
+		expect(h.document.querySelector('[data-theme-setting=size]').value).toBe('14');
+	});
+
+	it('cancels trust without a PUT and asks only once per package after acceptance', async () => {
 		const app = await appTheme();
 		const h = harness();
-		const net = network(h, [getBuiltinTheme('document'), app]);
+		network(h, [getBuiltinTheme('document'), app]);
 		await h.window.showAppearanceEditor();
-		await select(h, app.packageId);
-		editColor(h, '#334455');
+		await chooseTheme(h, app.packageId);
 		h.window.showConfirmDialog.mockResolvedValueOnce(false);
-		action(h, 'apply');
-		await flush();
-		expect(net.put).toHaveLength(0);
-		action(h, 'apply');
-		await flush();
-		expect(net.put).toHaveLength(1);
-		expect(Object.keys(net.put[0]).sort()).toEqual(['branding', 'expectedRevision', 'operationId', 'packageId', 'settings'].sort());
-		expect(h.window.showConfirmDialog.mock.calls.at(-1)[0].i18n.message).toBe('appearanceAppTrust');
-		expect(h.saved().draft.settings.accent).toBe('#334455');
-		expect(h.document.getElementById('appearanceStatus').textContent).toContain(LOCALES['zh-CN'].appearanceErrorBusy);
-		action(h, 'apply');
-		await flush();
-		expect(net.put[1].operationId).toBe(net.put[0].operationId);
+		await act(h, 'apply');
+		expect(putBodies(h)).toHaveLength(0);
+		expect(control(h, 'apply').disabled).toBe(false);
+		await act(h, 'apply');
+		expect(putBodies(h)).toHaveLength(1);
+		editColor(h, '#123123');
+		await act(h, 'apply');
+		expect(putBodies(h)).toHaveLength(2);
+		expect(h.window.showConfirmDialog.mock.calls.map(([options]) => options.i18n.message)).toEqual([
+			'appearanceAppTrust',
+			'appearanceAppTrust',
+		]);
 	});
-	it('publishes app metadata without mounting a new package and requests a guarded reload after closing', async () => {
+
+	it('publishes another app package without mounting it and offers a guarded reload', async () => {
 		const app = await appTheme();
 		const h = harness();
-		network(h, [getBuiltinTheme('document'), app], { allowApply: true });
+		network(h, [getBuiltinTheme('document'), app]);
 		h.window.applyAppearance = vi.fn();
-		h.window.updateAppearanceMetadata = vi.fn();
-		h.window.requestAppearanceRuntimeReload = vi.fn(async () => {
-			expect(h.window.hasAppearancePendingChanges()).toBe(false);
-			expect(h.document.getElementById('appearanceModal').style.display).toBe('none');
-			return { status: 'completed' };
-		});
+		const applied = vi.fn();
+		h.window.addEventListener('appearance-applied', applied);
+		h.window.requestAppearanceRuntimeReload = vi.fn(async () => ({ status: 'blocked' }));
 		await h.window.showAppearanceEditor();
-		await select(h, app.packageId);
-		const beforePublish = h.window.authenticatedFetch.mock.calls.length;
-		action(h, 'apply');
-		await flush();
-		expect(h.window.authenticatedFetch.mock.calls.slice(beforePublish).map(([url]) => url)).toEqual(['/api/appearance']);
-		expect(h.window.__2FA_APPEARANCE__.packageId).toBe(app.packageId);
+		await chooseTheme(h, app.packageId);
+		await act(h, 'apply');
 		expect(h.window.applyAppearance).not.toHaveBeenCalled();
-		expect(h.window.updateAppearanceMetadata).toHaveBeenCalledOnce();
-		expect(h.document.getElementById('appearanceStatus').textContent).toContain(LOCALES['zh-CN'].appearancePublishedReload);
-		action(h, 'refresh-runtime');
-		await flush();
+		expect(applied).toHaveBeenCalledOnce();
+		expect(h.window.__2FA_APPEARANCE__.packageId).toBe(app.packageId);
+		expect(status(h).textContent).toContain(zh.appearancePublishedReload);
+		await act(h, 'refresh-runtime');
 		expect(h.window.requestAppearanceRuntimeReload).toHaveBeenCalledWith('theme-change');
+		expect(h.document.getElementById('appearanceModal').style.display).toBe('block');
+		expect(status(h).textContent).toContain(zh.moduleRefreshBlocked);
 	});
-	it('updates the current app configuration in place and keeps saved profiles on selection and remote reload', async () => {
+
+	it('updates the running app configuration in place when the package does not change', async () => {
 		const app = await appTheme();
 		const h = harness({ theme: app });
-		const net = network(h, [getBuiltinTheme('document'), app], { allowApply: true });
+		network(h, [app]);
+		previewPort(h);
 		h.window.applyAppearance = vi.fn();
 		await h.window.showAppearanceEditor();
 		editColor(h, '#123456');
-		action(h, 'apply');
-		await flush();
+		await act(h, 'apply');
 		expect(h.window.applyAppearance).toHaveBeenCalledWith(expect.objectContaining({ settings: { accent: '#123456' } }));
-		await select(h, 'builtin:document');
-		await select(h, app.packageId);
-		panel(h, 'design');
-		expect(h.document.querySelector('input[type=color]').value).toBe('#123456');
-		net.setActive({ ...net.active(), revision: 3, settings: { accent: '#654321' } });
-		h.window.dispatchEvent(new h.window.CustomEvent('appearance-updated-elsewhere', { detail: { revision: 3 } }));
-		action(h, 'reload');
-		await flush();
-		await select(h, 'builtin:document');
-		await select(h, app.packageId);
-		panel(h, 'design');
-		expect(h.document.querySelector('input[type=color]').value).toBe('#654321');
-	});
-	it('preserves all brand fields across app to v1 and keeps package images as local bytes', async () => {
-		const app = await appTheme();
-		const h = harness({ theme: app });
-		Object.assign(h.initial.branding, {
-			name: 'Pixel',
-			description: 'desc',
-			loginText: 'welcome',
-			footer: 'foot',
-			logo: 'brand.png',
-			background: 'brand.png',
-			icon192: 'brand.png',
-			icon512: 'brand.png',
-			appleTouchIcon: 'brand.png',
-		});
-		network(h, [getBuiltinTheme('document'), app], {
-			extra: async (url) => (url.includes('/files/') ? new Response(appPng, { headers: { 'Content-Type': 'image/png' } }) : null),
-		});
-		await h.window.showAppearanceEditor();
-		await select(h, 'builtin:document');
-		action(h, 'keep');
-		await flush();
-		expect(h.saved().draft.branding).toMatchObject({ name: 'Pixel', description: 'desc', loginText: 'welcome', footer: 'foot' });
-		for (const key of ['logo', 'background', 'icon192', 'icon512', 'appleTouchIcon']) {
-			const ref = h.saved().draft.branding[key];
-			expect(ref).toMatch(/^local:/);
-			expect(new Uint8Array(await new Map(h.saved().blobs).get(ref).blob.arrayBuffer())).toEqual(appPng);
-		}
-		await h.window.showAppearanceEditor();
-		await select(h, app.packageId);
-		action(h, 'keep');
-		await flush();
-		expect(h.saved().draft.branding.name).toBe('Pixel');
-		expect(h.saved().draft.branding.logo).toMatch(/^local:/);
-	});
-	it('keeps the entire offline draft when a private package brand cannot be carried to another theme', async () => {
-		const app = await appTheme();
-		const h = harness({ theme: app });
-		h.initial.branding.logo = 'brand.png';
-		network(h, [getBuiltinTheme('document'), app]);
-		await h.window.showAppearanceEditor();
-		h.network.onLine = false;
-		h.window.dispatchEvent(new h.window.Event('offline'));
-		await select(h, 'builtin:document');
-		expect(h.document.getElementById('appearanceStatus').textContent).toContain(LOCALES['zh-CN'].appearanceOfflineBrand);
-		action(h, 'keep');
-		await flush();
-		expect(h.saved().draft.packageId).toBe(app.packageId);
-		expect(h.saved().draft.branding.logo).toBe('brand.png');
-	});
-	it('routes app installation and restore inspection separately and never applies either automatically', async () => {
-		const app = await appTheme();
-		const h = harness();
-		const net = network(h, [getBuiltinTheme('document'), app], {
-			extra: async (url) =>
-				url.includes('restore-inspect') || url.startsWith('/api/themes/import')
-					? json({
-							theme: app,
-							appearance: {
-								packageId: app.packageId,
-								themeId: app.manifest.id,
-								settings: { accent: '#abcdef' },
-								branding: { name: 'restored' },
-							},
-						})
-					: null,
-		});
-		await h.window.showAppearanceEditor();
-		expect(h.document.getElementById('appearanceImportFormat')).toBeNull();
-		h.document.getElementById('appearanceSource').value = 'https://github.com/example/pixel';
-		action(h, 'install');
-		await flush();
-		expect(h.window.authenticatedFetch).toHaveBeenCalledWith('/api/themes/import', expect.any(Object));
-		const file = h.document.querySelectorAll('input[type=file]')[1];
-		Object.defineProperty(file, 'files', { value: [new h.window.File(['zip'], 'appearance.zip')] });
-		file.dispatchEvent(new h.window.Event('change'));
-		await flush();
-		expect(h.window.authenticatedFetch).toHaveBeenCalledWith('/api/appearance/restore-inspect', expect.any(Object));
-		expect(net.put).toHaveLength(0);
-		action(h, 'keep');
-		await flush();
-		expect(h.saved().draft.settings.accent).toBe('#abcdef');
-		expect(h.saved().draft.branding.name).toBe('restored');
+		expect(status(h).textContent).toBe(zh.appearanceApplied);
+		expect(control(h, 'refresh-runtime')).toBeNull();
 	});
 });
 
 describe('editor opaque preview integration', () => {
-	it('pauses queued and new previews during publication and resumes once without overwriting saved feedback', async () => {
-		const app = await appTheme();
-		const h = harness({ theme: app });
-		let finish;
-		network(h, [app], {
-			allowApply: true,
-			extra: (url, options) =>
-				url === '/api/appearance' && options.method === 'PUT'
-					? new Promise((resolve) => {
-							finish = resolve;
-						})
-					: undefined,
-		});
-		const port = previewPort(h);
-		await h.window.showAppearanceEditor();
-		editColor(h, '#123456');
-		action(h, 'apply');
-		expect(h.document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
-		await flush();
-		for (let i = 0; i < 4; i++) {
-			h.window.dispatchEvent(new h.window.Event('resize'));
-		}
-		await tickPreview();
-		expect(port.open).not.toHaveBeenCalled();
-		expect(port.update).not.toHaveBeenCalled();
-		expect(h.document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
-		port.open.mockRejectedValueOnce(new Error('preview unavailable after save'));
-		finish(json({ previous: true, revision: 2, active: { ...h.initial, revision: 2, settings: { accent: '#123456' } } }));
-		await flush();
-		await tickPreview();
-		expect(port.open).toHaveBeenCalledTimes(1);
-		expect(h.document.getElementById('appearanceAppPreviewStatus').textContent).toContain('preview unavailable after save');
-		expect(h.document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceApplied);
-	});
-	it('invalidates an already running preview before saving and ignores its late rejection', async () => {
-		const app = await appTheme();
-		const h = harness({ theme: app });
-		network(h, [app], { allowApply: true });
-		const port = previewPort(h);
-		let failPreview;
-		port.open.mockImplementationOnce(
-			() =>
-				new Promise((_, reject) => {
-					failPreview = reject;
-				}),
-		);
-		await h.window.showAppearanceEditor();
-		await tickPreview();
-		expect(failPreview).toBeTypeOf('function');
-		editColor(h, '#123456');
-		action(h, 'apply');
-		expect(port.close).toHaveBeenCalled();
-		port.status({ status: 'blocked', reason: 'preview-expired' });
-		expect(h.document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
-		await flush();
-		failPreview(new Error('old preview rejected'));
-		await flush();
-		expect(h.document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceApplied);
-		expect(h.document.getElementById('appearanceAppPreviewStatus').textContent).not.toContain('old preview rejected');
-		await tickPreview();
-		expect(port.open).toHaveBeenCalledTimes(2);
-	});
-	it('invalidates pending asset staging on a session change before it can open another capability', async () => {
-		const app = await appTheme();
-		const h = harness({ theme: app });
-		const asset = await normalizeAsset(appPng, 'brand.png');
-		let release;
-		network(h, [app], {
-			extra: async (url) =>
-				url === '/api/appearance/assets'
-					? new Promise((resolve) => {
-							release = () => resolve(json({ asset }));
-						})
-					: null,
-		});
-		const port = previewPort(h);
-		await h.window.showAppearanceEditor();
-		await tickPreview();
-		panel(h, 'brand');
-		const file = h.document.querySelector('input[type=file]');
-		Object.defineProperty(file, 'files', { value: [new Blob([appPng], { type: 'image/png' })] });
-		file.dispatchEvent(new h.window.Event('change'));
-		await flush();
-		action(h, 'refresh-preview');
-		await flush();
-		expect(release).toBeTypeOf('function');
-		port.invalidateSession();
-		expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
-		expect(h.document.querySelector('[data-appearance-action=apply]').disabled).toBe(true);
-		release();
-		await flush();
-		await tickPreview();
-		expect(port.open).toHaveBeenCalledOnce();
-		action(h, 'keep');
-		await flush();
-		expect(h.saved().draft.branding.logo).toMatch(/^local:/);
-		expect(h.saved().blobs).toHaveLength(1);
-	});
-	it('treats local: in text as text and still opens the actual app preview', async () => {
-		const app = await appTheme({ settings: [{ key: 'label', type: 'text', default: 'local: 2fa' }] });
-		const h = harness({ theme: app });
-		h.initial.branding = { name: 'local: authenticator', footer: 'Use local: accounts' };
-		network(h, [app]);
-		const port = previewPort(h);
-		await h.window.showAppearanceEditor();
-		await tickPreview();
-		expect(port.open).toHaveBeenCalledWith(
-			expect.objectContaining({ appearance: { settings: { label: 'local: 2fa' }, branding: h.initial.branding } }),
-		);
-	});
-	it('carries published brand resource bytes into the v1 offline preview and persisted draft', async () => {
-		const app = await appTheme();
-		const asset = await normalizeAsset(appPng, 'brand.png');
-		const url = '/theme-assets/' + asset.hash + '/' + asset.name;
-		const h = harness({ theme: app });
-		h.initial.branding = { logo: url, background: url };
-		h.initial.resources = [{ hash: asset.hash, name: asset.name, mime: asset.mime, url }];
-		network(h, [getBuiltinTheme('document'), app]);
-		Object.defineProperty(h.window, 'caches', { value: { match: vi.fn(async () => new Response(appPng)) } });
-		await h.window.showAppearanceEditor();
-		await select(h, 'builtin:document');
-		h.network.onLine = false;
-		h.window.dispatchEvent(new h.window.Event('offline'));
-		const frame = h.document.getElementById('appearancePreview');
-		frame.contentWindow.postMessage = vi.fn();
-		frame.onload();
-		await tickPreview();
-		const payload = frame.contentWindow.postMessage.mock.calls.at(-1)[0];
-		expect(payload.snapshot.branding).toEqual({ logo: url, background: url });
-		expect(payload.resources).toHaveLength(1);
-		expect(new Uint8Array(payload.resources[0].bytes)).toEqual(appPng);
-		expect(h.window.caches.match).toHaveBeenCalledWith('https://example.com' + url);
-		action(h, 'keep');
-		await flush();
-		expect(h.saved().draft.resources).toEqual(h.initial.resources);
-	});
-	it('opens once, updates config/mode/width without capability churn and closes synchronously', async () => {
+	it('opens once, updates settings/mode/width without capability churn and closes synchronously', async () => {
 		const app = await appTheme();
 		const h = harness({ theme: app });
 		network(h, [app]);
@@ -508,100 +203,28 @@ describe('editor opaque preview integration', () => {
 		await h.window.showAppearanceEditor();
 		await tickPreview();
 		expect(port.open).toHaveBeenCalledOnce();
+		expect(port.open).toHaveBeenLastCalledWith(
+			expect.objectContaining({ packageId: app.packageId, language: 'zh-CN', scene: 'workspace' }),
+		);
 		editColor(h, '#123456');
-		h.document.querySelector('[data-mode=dark]').click();
-		h.document.querySelector('[data-width="390"]').click();
+		await act(h, 'mode', 'dark');
+		await act(h, 'width', 390);
 		await tickPreview();
 		expect(port.open).toHaveBeenCalledOnce();
 		expect(port.update).toHaveBeenLastCalledWith(
-			expect.objectContaining({ appearance: { settings: { accent: '#123456' }, branding: {} }, mode: 'dark' }),
+			expect.objectContaining({ appearance: { settings: { accent: '#123456' } }, mode: 'dark' }),
 		);
 		expect(h.document.querySelector('#appearanceAppPreview iframe').style.width).toBe('390px');
-		action(h, 'keep');
-		await flush();
+		await act(h, 'close');
+		expect(h.window.showConfirmDialog).toHaveBeenCalledOnce();
 		expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
 		expect(port.close).toHaveBeenCalled();
 		await h.window.showAppearanceEditor();
 		await tickPreview();
 		expect(port.open).toHaveBeenCalledTimes(2);
 	});
-	it('stages new personal assets only on manual refresh and keeps local blobs for offline drafts', async () => {
-		const app = await appTheme();
-		const h = harness({ theme: app });
-		const asset = await normalizeAsset(appPng, 'brand.png');
-		let uploads = 0;
-		network(h, [app], {
-			extra: async (url, options) => {
-				if (url === '/api/appearance/assets') {
-					uploads++;
-					const file = options.body.get('file');
-					expect(await file.arrayBuffer()).toEqual(appPng.buffer.slice(appPng.byteOffset, appPng.byteOffset + appPng.byteLength));
-					return json({ asset });
-				}
-			},
-		});
-		const port = previewPort(h);
-		await h.window.showAppearanceEditor();
-		await tickPreview();
-		panel(h, 'brand');
-		const file = h.document.querySelector('input[type=file]');
-		Object.defineProperty(file, 'files', { value: [new Blob([appPng], { type: 'image/png' })] });
-		file.dispatchEvent(new h.window.Event('change'));
-		await flush();
-		await tickPreview();
-		expect(uploads).toBe(0);
-		expect(port.open).toHaveBeenCalledOnce();
-		expect(h.document.getElementById('appearanceAppPreviewStatus').textContent).toBe(LOCALES['zh-CN'].appearancePreviewChanged);
-		action(h, 'refresh-preview');
-		await flush();
-		expect(uploads).toBe(1);
-		expect(port.open).toHaveBeenCalledTimes(2);
-		expect(port.open.mock.calls[1][0].appearance.branding.logo).toMatch(/^\/theme-assets\//);
-		h.network.onLine = false;
-		h.window.dispatchEvent(new h.window.Event('offline'));
-		expect(port.close).toHaveBeenCalled();
-		action(h, 'keep');
-		await flush();
-		expect(h.saved().draft.branding.logo).toMatch(/^local:/);
-		expect(h.saved().blobs).toHaveLength(1);
-	});
-	it('ignores late asset staging after close and does not reopen an offline preview', async () => {
-		const app = await appTheme();
-		const h = harness({ theme: app });
-		const asset = await normalizeAsset(appPng, 'brand.png');
-		let release;
-		network(h, [app], {
-			extra: async (url) =>
-				url === '/api/appearance/assets'
-					? new Promise((resolve) => {
-							release = () => resolve(json({ asset }));
-						})
-					: null,
-		});
-		const port = previewPort(h);
-		await h.window.showAppearanceEditor();
-		await tickPreview();
-		panel(h, 'brand');
-		const file = h.document.querySelector('input[type=file]');
-		Object.defineProperty(file, 'files', { value: [new Blob([appPng], { type: 'image/png' })] });
-		file.dispatchEvent(new h.window.Event('change'));
-		await flush();
-		action(h, 'refresh-preview');
-		await flush();
-		expect(release).toBeTypeOf('function');
-		action(h, 'keep');
-		await flush();
-		release();
-		await flush();
-		expect(port.open).toHaveBeenCalledOnce();
-		expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
-		h.network.onLine = false;
-		await h.window.showAppearanceEditor();
-		await tickPreview();
-		expect(port.open).toHaveBeenCalledOnce();
-		expect(h.saved().blobs).toHaveLength(1);
-	});
-	it('shows preview expiry and resource-change recovery while preserving the editable draft', async () => {
+
+	it('shows preview expiry with a refresh action while preserving the editable draft', async () => {
 		const app = await appTheme();
 		const h = harness({ theme: app });
 		network(h, [app]);
@@ -610,13 +233,86 @@ describe('editor opaque preview integration', () => {
 		await tickPreview();
 		editColor(h, '#abcdef');
 		port.status({ status: 'blocked', reason: 'preview-expired' });
-		expect(h.document.getElementById('appearanceAppPreviewStatus').textContent).toBe(LOCALES['zh-CN'].appearancePreviewExpired);
-		action(h, 'refresh-preview');
-		await flush();
+		expect(previewStatus(h).hidden).toBe(false);
+		expect(previewStatus(h).textContent).toContain(zh.appearancePreviewExpired);
+		await act(h, 'refresh-preview');
 		expect(port.open).toHaveBeenCalledTimes(2);
-		action(h, 'keep');
+		expect(previewStatus(h).hidden).toBe(true);
+		expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe('#abcdef');
+	});
+
+	it('reports a failed preview without blocking edits', async () => {
+		const app = await appTheme();
+		const h = harness({ theme: app });
+		network(h, [app]);
+		const port = previewPort(h);
+		port.open.mockRejectedValueOnce(new Error('preview unavailable'));
+		await h.window.showAppearanceEditor();
+		await tickPreview();
+		expect(previewStatus(h).textContent).toContain('preview unavailable');
+		editColor(h, '#abcdef');
+		expect(control(h, 'apply').disabled).toBe(false);
+	});
+
+	it('stops the preview and blocks writes when the session is invalidated', async () => {
+		const app = await appTheme();
+		const h = harness({ theme: app });
+		network(h, [app]);
+		const port = previewPort(h);
+		await h.window.showAppearanceEditor();
+		await tickPreview();
+		editColor(h, '#abcdef');
+		port.invalidateSession();
+		expect(port.close).toHaveBeenCalled();
+		expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
+		expect(control(h, 'apply').disabled).toBe(true);
+		expect(status(h).textContent).toBe(zh.loginModalDesc);
+		await tickPreview();
+		expect(port.open).toHaveBeenCalledOnce();
+		expect(previewStatus(h).textContent).toContain(zh.appearancePreviewBlocked);
+	});
+
+	it('stops the preview while offline and reopens it after reconnecting', async () => {
+		const app = await appTheme();
+		const h = harness({ theme: app });
+		network(h, [app]);
+		const port = previewPort(h);
+		await h.window.showAppearanceEditor();
+		await tickPreview();
+		h.network.onLine = false;
+		h.window.dispatchEvent(new h.window.Event('offline'));
+		expect(port.close).toHaveBeenCalled();
+		expect(previewStatus(h).textContent).toContain(zh.appearancePreviewOffline);
+		editColor(h, '#abcdef');
+		await tickPreview();
+		expect(port.open).toHaveBeenCalledOnce();
+		h.network.onLine = true;
+		h.window.dispatchEvent(new h.window.Event('online'));
 		await flush();
-		expect(h.saved().draft.settings.accent).toBe('#abcdef');
+		editColor(h, '#abcdee');
+		await tickPreview();
+		expect(port.open).toHaveBeenCalledTimes(2);
+		expect(control(h, 'apply').disabled).toBe(false);
+	});
+
+	it('ignores a late preview rejection after the editor closes', async () => {
+		const app = await appTheme();
+		const h = harness({ theme: app });
+		network(h, [app]);
+		const port = previewPort(h);
+		let fail;
+		port.open.mockImplementationOnce(
+			() =>
+				new Promise((_, reject) => {
+					fail = reject;
+				}),
+		);
+		await h.window.showAppearanceEditor();
+		await tickPreview();
+		await act(h, 'close');
+		fail(new Error('old preview rejected'));
+		await flush();
+		expect(previewStatus(h).textContent).not.toContain('old preview rejected');
 	});
 });
 
@@ -648,163 +344,133 @@ class MemoryStorage {
 		}
 	}
 }
-it('publishes the actual editor app payload through storage HTTP and preserves saved settings on reload', async () => {
-	const app = await appTheme();
+/** Installs the fixture the way a catalog download does and exposes the store's HTTP API. */
+async function themeStore(app, headers = {}) {
 	const store = new ThemeStore(
 		{ storage: new MemoryStorage() },
 		{ SECRETS_KV: { get: async () => null, put: async () => {}, delete: async () => {} } },
 	);
-	const req = (url, options = {}) =>
-		store.fetch(new Request('https://example.com' + url, { ...options, headers: { [THEME_OPERATION_HEADER]: 'api', ...options.headers } }));
-	expect((await req('/api/themes/import?format=app', { method: 'POST', body: app.fixture.archive })).status).toBe(201);
+	await store.install({ bytes: app.fixture.archive, name: '2fa-theme.zip', expectedPackageId: app.packageId });
+	return (url, options = {}) =>
+		store.fetch(
+			new Request('https://example.com' + url, {
+				...options,
+				headers: { [THEME_OPERATION_HEADER]: 'api', ...headers, ...options.headers },
+			}),
+		);
+}
+
+it('publishes the actual editor app payload through storage HTTP and preserves saved settings on reload', async () => {
+	const app = await appTheme();
+	const req = await themeStore(app);
 	const h = harness();
 	h.initial.revision = 0;
-	let publication;
-	h.window.authenticatedFetch.mockImplementation((url, options) => {
-		const pending = req(url, options);
-		if (url === '/api/appearance' && options?.method === 'PUT') {
-			publication = pending;
-		}
-		return pending;
-	});
+	h.window.authenticatedFetch.mockImplementation((url, options) => req(url, options));
 	await h.window.showAppearanceEditor();
-	await select(h, app.packageId);
+	await chooseTheme(h, app.packageId);
 	editColor(h, '#102030');
-	action(h, 'apply');
-	await vi.waitFor(() => expect(publication).toBeDefined());
-	expect((await publication).status).toBe(200);
-	await flush();
+	await act(h, 'apply');
+	await vi.waitFor(() => expect(status(h).textContent).toContain(zh.appearancePublishedReload));
 	const published = await (await req('/api/appearance')).json();
 	expect(published.revision).toBe(1);
-	expect(h.window.__2FA_APPEARANCE__.settings.accent).toBe('#102030');
-	expect(h.saved()).toBeUndefined();
-	const payload = JSON.parse(h.window.authenticatedFetch.mock.calls.find(([, options]) => options?.method === 'PUT')[1].body);
-	expect(payload).toMatchObject({ expectedRevision: 0, packageId: app.packageId, settings: { accent: '#102030' } });
 	expect(published.active.settings.accent).toBe('#102030');
+	expect(h.window.__2FA_APPEARANCE__.settings.accent).toBe('#102030');
+	const payload = putBodies(h)[0];
+	expect(payload).toMatchObject({ expectedRevision: 0, packageId: app.packageId, settings: { accent: '#102030' } });
 	expect(await (await req('/api/appearance', { method: 'PUT', body: JSON.stringify(payload) })).json()).toMatchObject({
 		revision: 1,
 		replayed: true,
 	});
 	h.window.dispatchEvent(new h.window.CustomEvent('appearance-updated-elsewhere', { detail: { revision: 1 } }));
-	action(h, 'reload');
-	await flush();
-	panel(h, 'design');
-	expect(h.document.querySelector('input[type=color]').value).toBe('#102030');
-	expect(h.document.querySelector('[data-panel=layout]')).toBeNull();
-	expect(h.document.querySelector('.appearance-advanced-settings')).toBeNull();
+	await act(h, 'reload');
+	expect(h.document.querySelector('[data-theme-setting=accent]').value).toBe('#102030');
+	expect(control(h, 'apply').disabled).toBe(true);
 });
 
-it.each(['close', 'apply'])(
-	'runs the editor through the real capability client and server, revoking a late response after %s',
-	async (operation) => {
-		// Use untransformed browser source, not Vitest's SSR dynamic-import helper.
-		const output = await build({
-			entryPoints: ['src/ui/scripts/appThemePreview.js'],
-			bundle: true,
-			write: false,
-			format: 'esm',
-			platform: 'node',
-		});
-		const { createAppThemePreview, createAppThemePreviewDocument, appThemePreviewFrame, createAppPreviewMockSdk } = await import(
-			'data:text/javascript;base64,' + Buffer.from(output.outputFiles[0].text).toString('base64')
-		);
-		const app = await appTheme();
-		const store = new ThemeStore(
-			{ storage: new MemoryStorage() },
-			{ SECRETS_KV: { get: async () => null, put: async () => {}, delete: async () => {} } },
-		);
-		const req = (url, options = {}) =>
-			store.fetch(
-				new Request('https://example.com' + url, {
-					...options,
-					headers: { [THEME_OPERATION_HEADER]: 'api', [THEME_PREVIEW_OWNER_HEADER]: 'a'.repeat(64), ...options.headers },
-				}),
-			);
-		expect((await req('/api/themes/import?format=app', { method: 'POST', body: app.fixture.archive })).status).toBe(201);
-		const h = harness();
-		h.initial.revision = 0;
-		let release;
-		let cap;
-		let delayed = false;
-		let invalidateSession;
-		h.window.authenticatedFetch.mockImplementation(async (url, options) => {
-			const response = await req(url, options);
-			if (url === '/api/themes/preview-capabilities') {
-				cap = await response.clone().json();
-				if (delayed) {
-					return new Promise((resolve) => {
-						release = () => resolve(response);
-					});
-				}
+it('runs the editor through the real capability client and server, revoking a late response after close', async () => {
+	// Use untransformed browser source, not Vitest's SSR dynamic-import helper.
+	const output = await build({
+		entryPoints: ['src/ui/scripts/appThemePreview.js'],
+		bundle: true,
+		write: false,
+		format: 'esm',
+		platform: 'node',
+	});
+	const { createAppThemePreview, createAppThemePreviewDocument, appThemePreviewFrame, createAppPreviewMockSdk } = await import(
+		'data:text/javascript;base64,' + Buffer.from(output.outputFiles[0].text).toString('base64')
+	);
+	const app = await appTheme();
+	const req = await themeStore(app, { [THEME_PREVIEW_OWNER_HEADER]: 'a'.repeat(64) });
+	const h = harness();
+	h.initial.revision = 0;
+	let release;
+	let cap;
+	let delayed = false;
+	let invalidateSession;
+	h.window.authenticatedFetch.mockImplementation(async (url, options) => {
+		const response = await req(url, options);
+		if (url === '/api/themes/preview-capabilities') {
+			cap = await response.clone().json();
+			if (delayed) {
+				return new Promise((resolve) => {
+					release = () => resolve(response);
+				});
 			}
-			return response;
+		}
+		return response;
+	});
+	h.window.createAppThemePreview = (options) =>
+		createAppThemePreview({
+			...options,
+			window: h.window,
+			subscribeSession: (listener) => {
+				invalidateSession = listener;
+				return () => {};
+			},
+			createDocument: (config) =>
+				createAppThemePreviewDocument(config, appThemePreviewFrame.toString(), createAppPreviewMockSdk.toString()),
 		});
-		h.window.createAppThemePreview = (options) =>
-			createAppThemePreview({
-				...options,
-				window: h.window,
-				subscribeSession: (listener) => {
-					invalidateSession = listener;
-					return () => {};
-				},
-				createDocument: (config) =>
-					createAppThemePreviewDocument(config, appThemePreviewFrame.toString(), createAppPreviewMockSdk.toString()),
-			});
-		await h.window.showAppearanceEditor();
-		await select(h, app.packageId);
-		await tickPreview();
-		let frame = h.document.querySelector('#appearanceAppPreview iframe');
-		expect(frame).not.toBeNull();
-		expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
-		expect(frame.hasAttribute('credentialless')).toBe(true);
-		expect(frame.srcdoc).toContain(cap.entryUrl);
-		expect(frame.srcdoc).toContain('import(config.entryUrl)');
-		expect(frame.srcdoc).not.toContain('allow-same-origin');
-		expect(frame.srcdoc).not.toContain('/api/secrets');
-		expect(h.window.authenticatedFetch.mock.calls.filter(([url]) => url === '/api/themes/preview-capabilities')).toHaveLength(1);
-		action(h, 'keep');
-		await flush();
-		expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
+	const capabilityRequests = () => h.window.authenticatedFetch.mock.calls.filter(([url]) => url === '/api/themes/preview-capabilities');
+	const revoked = (id) =>
 		expect(h.window.authenticatedFetch).toHaveBeenCalledWith(
-			'/api/themes/preview-capabilities/' + cap.capabilityId,
+			'/api/themes/preview-capabilities/' + id,
 			expect.objectContaining({ method: 'DELETE' }),
 		);
-		delayed = true;
-		await h.window.showAppearanceEditor();
-		await tickPreview();
-		expect(release).toBeTypeOf('function');
-		if (operation === 'apply') {
-			h.storage.holdNextDelete = true;
-			action(h, 'apply');
-			await vi.waitFor(() => expect(h.storage.release).toBeTypeOf('function'));
-		} else {
-			action(h, 'keep');
-		}
-		await flush();
-		release();
-		await flush();
-		frame = h.document.querySelector('#appearanceAppPreview iframe');
-		expect(frame).toBeNull();
-		expect(h.window.authenticatedFetch).toHaveBeenCalledWith(
-			'/api/themes/preview-capabilities/' + cap.capabilityId,
-			expect.objectContaining({ method: 'DELETE' }),
-		);
-		if (operation === 'apply') {
-			expect(h.document.getElementById('appearanceStatus').textContent).toBe(LOCALES['zh-CN'].appearanceSaving);
-			h.storage.release();
-			await flush();
-			action(h, 'keep');
-			await flush();
-		}
-		delayed = false;
-		await h.window.showAppearanceEditor();
-		await tickPreview();
-		expect(h.document.querySelector('#appearanceAppPreview iframe')).not.toBeNull();
-		invalidateSession();
-		expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
-		expect(h.document.querySelector('[data-appearance-action=apply]').disabled).toBe(true);
-		action(h, 'keep');
-		await flush();
-		expect(h.saved().draft.packageId).toBe(app.packageId);
-	},
-);
+	await h.window.showAppearanceEditor();
+	await chooseTheme(h, app.packageId);
+	// The real store and capability client are slower than the debounce under a loaded test run.
+	const mounted = () => vi.waitFor(() => expect(h.document.querySelector('#appearanceAppPreview iframe')).not.toBeNull());
+	await mounted();
+	const frame = h.document.querySelector('#appearanceAppPreview iframe');
+	expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
+	expect(frame.hasAttribute('credentialless')).toBe(true);
+	expect(frame.srcdoc).toContain(cap.entryUrl);
+	expect(frame.srcdoc).toContain('import(config.entryUrl)');
+	expect(frame.srcdoc).not.toContain('allow-same-origin');
+	expect(frame.srcdoc).not.toContain('/api/secrets');
+	expect(capabilityRequests()).toHaveLength(1);
+	editColor(h, '#334455');
+	await tickPreview();
+	expect(capabilityRequests()).toHaveLength(1);
+	await act(h, 'apply');
+	await vi.waitFor(() => expect(status(h).textContent).toContain(zh.appearancePublishedReload));
+	expect(h.document.querySelector('#appearanceAppPreview iframe')).not.toBeNull();
+	expect(capabilityRequests()).toHaveLength(1);
+	await act(h, 'close');
+	expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
+	revoked(cap.capabilityId);
+	delayed = true;
+	await h.window.showAppearanceEditor();
+	await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+	const late = cap.capabilityId;
+	await act(h, 'close');
+	release();
+	await vi.waitFor(() => revoked(late));
+	expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
+	delayed = false;
+	await h.window.showAppearanceEditor();
+	await mounted();
+	invalidateSession();
+	expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
+	expect(control(h, 'apply').disabled).toBe(true);
+});

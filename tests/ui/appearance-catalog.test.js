@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { harness, flush } from '../helpers/appearance-editor.js';
+import { harness, flush, json, act, themeCard } from '../helpers/appearance-editor.js';
 import { getBuiltinTheme } from '../../src/themes/builtins.js';
 import { normalizeAppThemeImport } from '../../src/themes/appPackage.js';
 import { appThemeFixture } from '../helpers/app-theme.js';
 import { LOCALES } from '../../src/ui/locales/index.js';
 
-const json = (data, status = 200) => new Response(JSON.stringify(data), { status });
+const zh = LOCALES['zh-CN'];
 const deferred = () => {
 	let resolve;
 	const promise = new Promise((done) => {
@@ -26,11 +26,9 @@ const entry = (pkg) => ({
 	author: 'Example author',
 	packageId: pkg.packageId,
 });
-const card = (h) => h.document.querySelector('.appearance-catalog-card');
-const action = async (h, name) => {
-	h.document.querySelector('[data-appearance-action="' + name + '"]').click();
-	await flush();
-};
+const cards = (h) => [...h.document.querySelectorAll('#appearanceCatalog [data-appearance-action="catalog-install"]')];
+const card = (h) => cards(h)[0];
+const catalogText = (h) => h.document.getElementById('appearanceCatalog').textContent;
 function setup(h, { catalog, installed = [], install } = {}) {
 	h.window.authenticatedFetch.mockImplementation(async (url, options = {}) => {
 		if (url === '/api/themes/catalog') {
@@ -55,40 +53,37 @@ function setup(h, { catalog, installed = [], install } = {}) {
 }
 
 describe('community theme catalog', () => {
-	it('loads independently and preserves typed personal theme URLs and focus when the catalog arrives', async () => {
+	it('loads independently of local themes and renders entries when the catalog arrives', async () => {
 		const pending = deferred();
 		const pkg = await theme();
 		const h = harness({ theme: getBuiltinTheme('fluent') });
 		setup(h, { catalog: () => pending.promise });
 		await h.window.showAppearanceEditor();
-		expect(h.document.querySelector('[data-package="builtin:fluent"]').disabled).toBe(false);
-		const source = h.document.getElementById('appearanceSource');
-		source.value = 'https://example.com/private.zip';
-		source.focus();
+		expect(themeCard(h, 'builtin:fluent').disabled).toBe(false);
+		expect(catalogText(h)).toContain(zh.appearanceCatalogLoading);
+		const accent = h.document.querySelector('[data-theme-setting=accent]');
+		accent.focus();
 		pending.resolve(json({ themes: [entry(pkg)] }));
 		await flush();
+		expect(catalogText(h)).not.toContain(zh.appearanceCatalogLoading);
 		expect(card(h).textContent).toContain(pkg.manifest.name);
-		expect(h.document.getElementById('appearanceSource')).toBe(source);
-		expect(source.value).toBe('https://example.com/private.zip');
-		expect(h.document.activeElement).toBe(source);
-		expect(h.document.querySelector('input[type=file]')).not.toBeNull();
-		expect(h.document.querySelector('.appearance-catalog-submit').href).toBe(
-			'https://github.com/wuzf/2fa-theme-mytheme/blob/main/CONTRIBUTING.md',
-		);
+		expect(card(h).textContent).toContain('1.0.0 · Example author');
+		expect(card(h).title).toBe('A community theme');
+		expect(card(h).getAttribute('aria-pressed')).toBe('false');
+		expect(h.document.activeElement).toBe(accent);
 	});
 
-	it('keeps local themes and personal imports usable after a catalog error and offers retry', async () => {
+	it('keeps local themes usable after a catalog error and offers retry', async () => {
 		const pkg = await theme();
 		const h = harness({ theme: getBuiltinTheme('fluent') });
 		let tries = 0;
 		setup(h, { catalog: () => (++tries === 1 ? json({}, 503) : json({ themes: [entry(pkg)] })) });
 		await h.window.showAppearanceEditor();
 		await flush();
-		expect(h.document.getElementById('appearanceCatalog').textContent).toContain(LOCALES['zh-CN'].appearanceCatalogUnavailable);
-		expect(h.document.querySelector('[data-appearance-action=install]').disabled).toBe(false);
-		expect(h.document.querySelector('[data-package="builtin:fluent"]').disabled).toBe(false);
-		await action(h, 'catalog-retry');
-		expect(card(h)).not.toBeNull();
+		expect(catalogText(h)).toContain(zh.appearanceCatalogUnavailable);
+		expect(themeCard(h, 'builtin:fluent').disabled).toBe(false);
+		await act(h, 'catalog-retry');
+		expect(card(h)).not.toBeUndefined();
 		expect(h.window.authenticatedFetch.mock.calls.filter(([url]) => url === '/api/themes/catalog')).toHaveLength(2);
 	});
 
@@ -96,28 +91,22 @@ describe('community theme catalog', () => {
 		const h = harness({ theme: getBuiltinTheme('fluent'), online: false });
 		await h.window.showAppearanceEditor();
 		expect(h.window.authenticatedFetch).not.toHaveBeenCalled();
-		expect(h.document.querySelector('[data-package="builtin:fluent"]').disabled).toBe(false);
+		expect(themeCard(h, 'builtin:fluent').disabled).toBe(false);
 		expect(h.document.querySelector('[data-appearance-action=catalog-retry]')).not.toBeNull();
-		expect(h.document.querySelector('input[type=file]')).not.toBeNull();
 	});
 
-	it('selects an already installed catalog theme without downloading it again or applying it', async () => {
+	it('hides catalog entries that are already installed and shows the empty state', async () => {
 		const pkg = await theme();
 		const h = harness({ theme: getBuiltinTheme('fluent') });
 		setup(h, { catalog: [entry(pkg)], installed: [pkg] });
 		await h.window.showAppearanceEditor();
 		await flush();
-		card(h).focus();
-		card(h).click();
-		await flush();
-		expect(card(h).getAttribute('aria-pressed')).toBe('true');
-		expect(h.document.activeElement).toBe(card(h));
-		expect(h.window.authenticatedFetch.mock.calls.some(([, options]) => options?.method)).toBe(false);
-		await action(h, 'keep');
-		expect(h.saved().draft.packageId).toBe(pkg.packageId);
+		expect(cards(h)).toHaveLength(0);
+		expect(catalogText(h)).toContain(zh.appearanceCatalogEmpty);
+		expect(themeCard(h, pkg.packageId)).not.toBeNull();
 	});
 
-	it('installs the selected package identity and retains trust confirmation for applying a replacement', async () => {
+	it('installs the selected package identity, selects it without applying and keeps the trust confirmation', async () => {
 		const old = await theme('community', '1.0.0');
 		const next = await theme('community', '2.0.0');
 		const h = harness({ theme: old });
@@ -125,33 +114,35 @@ describe('community theme catalog', () => {
 		setup(h, { catalog: [entry(next)], installed: [old], install });
 		await h.window.showAppearanceEditor();
 		await flush();
-		expect(card(h).textContent).toContain(LOCALES['zh-CN'].appearanceCatalogUpdate);
+		expect(card(h).textContent).toContain(zh.appearanceCatalogUpdate);
 		card(h).click();
 		await flush();
 		expect(install).toHaveBeenCalledWith({ id: 'community', packageId: next.packageId });
-		expect(h.document.querySelectorAll('.appearance-installed-themes .appearance-theme-card')).toHaveLength(1);
-		expect(card(h).getAttribute('aria-pressed')).toBe('true');
+		expect(cards(h)).toHaveLength(0);
+		expect(themeCard(h, next.packageId).getAttribute('aria-pressed')).toBe('true');
+		expect(themeCard(h, old.packageId)).toBeNull();
+		expect(h.document.getElementById('appearanceStatus').textContent).toBe(zh.appearanceInstalled);
 		expect(h.window.__2FA_APPEARANCE__).toBe(h.initial);
 		expect(h.window.showConfirmDialog).not.toHaveBeenCalled();
 		h.window.showConfirmDialog.mockResolvedValue(false);
-		await action(h, 'apply');
+		await act(h, 'apply');
 		expect(h.window.showConfirmDialog).toHaveBeenCalledWith(
 			expect.objectContaining({ i18n: expect.objectContaining({ message: 'appearanceAppTrust' }) }),
 		);
 		expect(h.window.authenticatedFetch.mock.calls.some(([, options]) => options?.method === 'PUT')).toBe(false);
 	});
 
-	it('keeps the draft and installed theme unchanged if a catalog install fails', async () => {
+	it('keeps the draft unchanged if a catalog install fails', async () => {
 		const pkg = await theme();
 		const h = harness({ theme: getBuiltinTheme('fluent') });
-		setup(h, { catalog: [entry(pkg)], install: async () => json({ code: 'THEME_CATALOG_CHANGED' }, 409) });
+		setup(h, { catalog: [entry(pkg)], install: async () => json({ code: 'THEME_PACKAGE_INVALID' }, 400) });
 		await h.window.showAppearanceEditor();
 		await flush();
 		card(h).click();
 		await flush();
-		expect(h.document.querySelector('[data-package="builtin:fluent"]').getAttribute('aria-pressed')).toBe('true');
-		expect(h.document.querySelector('.appearance-installed-themes')).toBeNull();
-		expect(h.saved()).toBeUndefined();
+		expect(themeCard(h, 'builtin:fluent').getAttribute('aria-pressed')).toBe('true');
+		expect(themeCard(h, pkg.packageId)).toBeNull();
+		expect(h.document.querySelector('[data-appearance-action=apply]').disabled).toBe(true);
 		expect(h.document.getElementById('appearanceStatus').dataset.error).toBe('true');
 	});
 
@@ -173,11 +164,11 @@ describe('community theme catalog', () => {
 		card(h).click();
 		await flush();
 		expect(card(h).dataset.package).toBe(latest.packageId);
-		expect(h.saved()).toBeUndefined();
+		expect(h.document.getElementById('appearanceStatus').dataset.error).toBe('true');
 		card(h).click();
 		await flush();
 		expect(install.mock.calls.map(([body]) => body.packageId)).toEqual([old.packageId, latest.packageId]);
-		expect(card(h).getAttribute('aria-pressed')).toBe('true');
+		expect(themeCard(h, latest.packageId).getAttribute('aria-pressed')).toBe('true');
 		expect(h.window.__2FA_APPEARANCE__).toBe(h.initial);
 	});
 
@@ -195,10 +186,10 @@ describe('community theme catalog', () => {
 		expect(card(h).dataset.catalogId).toBe('current');
 		old.resolve(json({ themes: [entry(stale)] }));
 		await flush();
-		expect(card(h).dataset.catalogId).toBe('current');
+		expect(cards(h).map((item) => item.dataset.catalogId)).toEqual(['current']);
 	});
 
-	it('does not adopt a late installation into the draft after another flow hides the editor', async () => {
+	it('keeps the editor open while an installation is pending and never applies the late result', async () => {
 		const pending = deferred();
 		const pkg = await theme();
 		const h = harness({ theme: getBuiltinTheme('fluent') });
@@ -207,11 +198,15 @@ describe('community theme catalog', () => {
 		await flush();
 		card(h).click();
 		await flush();
-		h.window.hideModal('appearanceModal');
+		expect(h.document.getElementById('appearanceStatus').textContent).toBe(zh.appearanceInstalling);
+		expect(h.document.querySelector('[data-appearance-action=apply]').disabled).toBe(true);
+		await h.window.requestAppearanceClose();
+		expect(h.document.getElementById('appearanceModal').style.display).toBe('block');
+		expect(h.window.showConfirmDialog).not.toHaveBeenCalled();
 		pending.resolve(pkg);
 		await flush();
-		expect(h.saved()).toBeUndefined();
 		expect(h.window.__2FA_APPEARANCE__).toBe(h.initial);
-		expect(h.document.querySelector('[data-package="builtin:fluent"]').getAttribute('aria-pressed')).toBe('true');
+		expect(themeCard(h, pkg.packageId).getAttribute('aria-pressed')).toBe('true');
+		expect(h.window.authenticatedFetch.mock.calls.some(([, options]) => options?.method === 'PUT')).toBe(false);
 	});
 });

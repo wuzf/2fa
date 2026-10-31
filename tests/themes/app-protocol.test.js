@@ -3,13 +3,10 @@ import { zipSync, unzipSync } from 'fflate';
 import { build } from 'esbuild';
 import { posix } from 'node:path';
 import { APP_LIMITS, appMime, validateAppManifest } from '../../src/themes/appSchema.js';
-import { packAppFiles, unpackAppTheme } from '../../src/themes/appArchive.js';
+import { unpackAppTheme } from '../../src/themes/appArchive.js';
 import { appResourceHeaders, appResourceUrl } from '../../src/themes/appResources.js';
-import { exportAppTheme, normalizeAppAppearance, normalizeAppPackage, normalizeAppThemeImport } from '../../src/themes/appPackage.js';
+import { normalizeAppAppearance, normalizeAppPackage, normalizeAppThemeImport } from '../../src/themes/appPackage.js';
 import { hashBytes, LIMITS, stableStringify, validateManifest } from '../../src/themes/schema.js';
-import { assetUrl, normalizeAsset } from '../../src/themes/resources.js';
-import { getBuiltinTheme } from '../../src/themes/builtins.js';
-import { normalizeAppearance } from '../../src/themes/package.js';
 
 const encode = (text) => new TextEncoder().encode(text);
 const png = Uint8Array.from(
@@ -33,6 +30,12 @@ async function fixture(contents = { 'entry.js': 'export const mount = () => {};'
 	return { manifest, files, archive: zipSync({ '2fa-theme.json': encode(JSON.stringify(manifest)), ...Object.fromEntries(files) }) };
 }
 const load = (bytes) => normalizeAppThemeImport({ bytes, name: 'theme.zip' });
+// Rebuilds the package's own ZIP (manifest plus registered files) the way a theme author ships it.
+const repack = (pkg, options) =>
+	zipSync(
+		{ '2fa-theme.json': encode(stableStringify(pkg.manifest)), ...Object.fromEntries(pkg.files.map((file) => [file.path, file.bytes])) },
+		options,
+	);
 function pngWithPadding(length) {
 	const body = new Uint8Array(length - png.length - 12);
 	for (let offset = 0; offset < body.length; offset += 65536) {
@@ -82,7 +85,7 @@ describe('app theme package protocol v2', () => {
 	it('uses the entire canonical normalized manifest and inventory as identity, not insertion order', async () => {
 		const source = await fixture(
 			{ 'entry.js': 'export{}', 'assets/p.png': png },
-			{ settings: [{ key: 'picture', type: 'asset', default: 'assets/p.png' }] },
+			{ settings: [{ key: 'title', type: 'text', default: 'Vault' }] },
 		);
 		const a = await normalizeAppPackage(source.manifest, source.files);
 		const b = await normalizeAppPackage(
@@ -93,12 +96,11 @@ describe('app theme package protocol v2', () => {
 		expect(a.packageId).toBe(await hashBytes(encode(stableStringify(a.manifest))));
 		const changed = await normalizeAppPackage({ ...source.manifest, description: 'changed metadata' }, source.files);
 		expect(changed.packageId).not.toBe(a.packageId);
-		const restored = await load(await exportAppTheme(a));
+		const restored = await load(repack(a));
 		expect(restored.packageId).toBe(a.packageId);
 		expect(restored.files).toEqual(a.files);
-		const exported = unzipSync(await exportAppTheme(a));
-		expect(exported['assets/p.png']).toEqual(png);
-		expect(exported['entry.js']).toEqual(source.files.get('entry.js'));
+		expect(restored.files.find((file) => file.path === 'assets/p.png').bytes).toEqual(png);
+		expect(restored.files.find((file) => file.path === 'entry.js').bytes).toEqual(source.files.get('entry.js'));
 	});
 	it('preserves and validates a real minified esbuild graph including export-from, lazy chunks, CSS and import.meta.url', async () => {
 		const virtual = {
@@ -139,7 +141,7 @@ describe('app theme package protocol v2', () => {
 		const source = await fixture(contents, { styles: ['entry.css'] });
 		const pkg = await load(source.archive);
 		expect(pkg.files.filter((file) => file.mime === 'text/javascript').length).toBeGreaterThan(2);
-		expect((await load(await exportAppTheme(pkg))).packageId).toBe(pkg.packageId);
+		expect((await load(repack(pkg))).packageId).toBe(pkg.packageId);
 	});
 	it('understands syntax instead of matching strings, comments, regular expressions or property methods', async () => {
 		const source = await fixture({
@@ -162,7 +164,7 @@ describe('app theme package protocol v2', () => {
 		const source = await fixture({ 'entry.js': js });
 		await expect(load(source.archive)).rejects.toBeInstanceOf(Error);
 	});
-	it('validates CSS imports, escaped URLs, image-set, nested relative paths and declared asset defaults', async () => {
+	it('validates CSS imports, escaped URLs, image-set, nested relative paths and rejects asset settings', async () => {
 		const source = await fixture(
 			{
 				'entry.js': 'export{}',
@@ -171,16 +173,21 @@ describe('app theme package protocol v2', () => {
 				'css/nested/colors.css': 'body{color:red}',
 				'images/p.png': png,
 			},
-			{ styles: ['css/main.css'], settings: [{ key: 'image', type: 'asset', default: 'images/p.png' }] },
+			{ styles: ['css/main.css'] },
 		);
 		expect((await load(source.archive)).files).toHaveLength(4);
 		const bad = await fixture({ 'entry.js': 'export{}', 'main.css': '@import "https://example.org/x.css";' }, { styles: ['main.css'] });
 		await expect(load(bad.archive)).rejects.toMatchObject({ code: 'THEME_APP_REFERENCE' });
 		const missing = await fixture(
-			{ 'entry.js': 'export{}' },
-			{ settings: [{ key: 'image', type: 'asset', default: 'images/missing.png' }] },
+			{ 'entry.js': 'export{}', 'main.css': '.x{background:url("images/missing.png")}' },
+			{ styles: ['main.css'] },
 		);
-		await expect(load(missing.archive)).rejects.toMatchObject({ code: 'THEME_MISSING_ASSET' });
+		await expect(load(missing.archive)).rejects.toBeInstanceOf(Error);
+		const assetSetting = await fixture(
+			{ 'entry.js': 'export{}', 'images/p.png': png },
+			{ settings: [{ key: 'image', type: 'asset', default: 'images/p.png' }] },
+		);
+		await expect(load(assetSetting.archive)).rejects.toMatchObject({ code: 'THEME_INVALID_SETTINGS' });
 	});
 	it('checks actual file magic, MIME, bytes, hash, syntax and full inventory before registration', async () => {
 		const source = await fixture({ 'entry.js': 'export{}', 'images/p.png': png });
@@ -225,7 +232,7 @@ describe('app theme package protocol v2', () => {
 			},
 			(view, center) => view.setUint32(center + 24, 1, true),
 		]) {
-			const bytes = packAppFiles(new Map(Object.entries(unzipSync(source.archive)))),
+			const bytes = zipSync(unzipSync(source.archive), { level: 0 }),
 				view = new DataView(bytes.buffer);
 			const end = bytes.length - 22,
 				center = view.getUint32(end + 16, true);
@@ -234,20 +241,10 @@ describe('app theme package protocol v2', () => {
 		}
 		await expect(load(source.archive.subarray(0, -2))).rejects.toMatchObject({ code: 'THEME_INVALID_ZIP' });
 	});
-	it('requires pure settings data and rejects unregistered personal or remote asset references', async () => {
-		const source = await fixture(
-			{ 'entry.js': 'export{}' },
-			{
-				settings: [
-					{ key: 'image', type: 'asset', default: '' },
-					{ key: 'scale', type: 'number', default: 2, min: 1, max: 4 },
-				],
-			},
-		);
+	it('requires pure settings data and rejects unknown settings', async () => {
+		const source = await fixture({ 'entry.js': 'export{}' }, { settings: [{ key: 'scale', type: 'number', default: 2, min: 1, max: 4 }] });
 		const pkg = await load(source.archive);
-		await expect(normalizeAppAppearance(pkg, { settings: { image: 'https://example.org/bg.png' } })).rejects.toMatchObject({
-			code: 'THEME_MISSING_ASSET',
-		});
+		await expect(normalizeAppAppearance(pkg, { settings: { image: 'https://example.org/bg.png' } })).rejects.toBeInstanceOf(Error);
 		await expect(normalizeAppAppearance(pkg, { settings: { scale: 8 } })).rejects.toMatchObject({ code: 'THEME_INVALID_SETTING' });
 		await expect(normalizeAppAppearance(pkg, { settings: { scale: () => 2 } })).rejects.toMatchObject({ code: 'THEME_INVALID_FIELD' });
 		const getter = {};
@@ -262,125 +259,32 @@ describe('app theme package protocol v2', () => {
 		cyclic.settings = cyclic;
 		await expect(normalizeAppAppearance(pkg, cyclic)).rejects.toMatchObject({ code: 'THEME_INVALID_FIELD' });
 	});
-	it('preserves the complete existing v1 branding through app normalization, portable export and restoration', async () => {
-		const image = await normalizeAsset(png, 'brand.png');
-		const branding = {
-			name: '我的像素 2FA',
-			description: '保留自定义说明\n以及第二行',
-			loginText: '欢迎回来，请解锁你的账户',
-			footer: 'Personal vault · 2026',
-			logo: assetUrl(image),
-			icon192: assetUrl(image),
-			icon512: assetUrl(image),
-			appleTouchIcon: assetUrl(image),
-			background: assetUrl(image),
-		};
-		const v1 = await normalizeAppearance(
-			getBuiltinTheme(),
-			{ branding },
-			{ resolveAsset: async (hash) => (hash === image.hash ? image : null) },
-		);
-		expect(v1.appearance.branding).toEqual(branding);
-		const pkg = await load((await fixture()).archive);
-		const saved = await normalizeAppAppearance(pkg, { branding: v1.appearance.branding }, { assets: v1.assets });
-		expect(saved.appearance.branding).toEqual(branding);
-		const zip = await exportAppTheme(pkg, { appearance: saved.appearance, assets: saved.assets });
-		const portable = JSON.parse(new TextDecoder().decode(unzipSync(zip)['appearance.json']));
-		expect(portable.branding).toEqual({
-			...branding,
-			...Object.fromEntries(
-				['logo', 'icon192', 'icon512', 'appleTouchIcon', 'background'].map((key) => [key, 'appearance-assets/' + image.name]),
-			),
-		});
-		const restored = await load(zip);
-		expect(restored.packageId).toBe(pkg.packageId);
-		expect(restored.appearance.branding).toEqual(branding);
-		expect(restored.appearanceAssets).toHaveLength(1);
-		expect(restored.appearanceAssets[0].bytes).toEqual(png);
-		expect((await normalizeAppAppearance(restored, restored.appearance)).appearance.branding).toEqual(branding);
-	});
-	it('never resolves or rewrites brand text that happens to look like an asset reference', async () => {
-		const reference = '/theme-assets/' + 'a'.repeat(64) + '/label.png';
-		const branding = { name: reference, description: reference, loginText: reference, footer: reference };
-		const pkg = await load((await fixture()).archive);
-		const saved = await normalizeAppAppearance(pkg, { branding });
-		expect(saved.assets).toEqual([]);
-		const zip = await exportAppTheme(pkg, { appearance: saved.appearance });
-		expect(JSON.parse(new TextDecoder().decode(unzipSync(zip)['appearance.json'])).branding).toEqual(branding);
-		expect((await load(zip)).appearance.branding).toEqual(branding);
-	});
-	it.each(['name', 'description', 'loginText', 'footer'])(
-		'preserves v1 %s text limits and rejects malformed values at save and restore',
-		async (field) => {
-			const pkg = await load((await fixture()).archive);
-			const branding = { [field]: '像'.repeat(2048) };
-			const v1 = await normalizeAppearance(getBuiltinTheme(), { branding });
-			const saved = await normalizeAppAppearance(pkg, { branding: v1.appearance.branding });
-			const zip = await exportAppTheme(pkg, { appearance: saved.appearance });
-			expect((await load(zip)).appearance.branding[field]).toBe(branding[field]);
-			for (const value of ['x'.repeat(2049), 'invalid\0text', 123, false, {}, []]) {
-				await expect(normalizeAppAppearance(pkg, { branding: { [field]: value } })).rejects.toMatchObject({ code: 'THEME_INVALID_FIELD' });
-				const files = unzipSync(zip);
-				const appearance = JSON.parse(new TextDecoder().decode(files['appearance.json']));
-				appearance.branding[field] = value;
-				files['appearance.json'] = encode(JSON.stringify(appearance));
-				await expect(load(zipSync(files))).rejects.toMatchObject({ code: 'THEME_INVALID_FIELD' });
-			}
-		},
-	);
-	it('keeps v1 null-to-empty brand semantics and rejects unknown brand fields', async () => {
-		const pkg = await load((await fixture()).archive);
-		const branding = {
-			name: null,
-			description: null,
-			loginText: null,
-			footer: null,
-			logo: null,
-			icon192: null,
-			icon512: null,
-			appleTouchIcon: null,
-			background: null,
-		};
-		const v1 = await normalizeAppearance(getBuiltinTheme(), { branding });
-		const saved = await normalizeAppAppearance(pkg, { branding });
-		expect(saved.appearance.branding).toEqual(v1.appearance.branding);
-		expect((await load(await exportAppTheme(pkg, { appearance: saved.appearance }))).appearance.branding).toEqual(v1.appearance.branding);
-		await expect(normalizeAppAppearance(pkg, { branding: { unsupported: 'value' } })).rejects.toMatchObject({
-			code: 'THEME_UNKNOWN_FIELD',
-		});
-	});
-	it('round trips a legal near-limit full appearance including manifest, license, personal assets and STORE ZIP overhead', async () => {
-		const source = await fixture(
-			{
+	it('loads a legal near-limit package including manifest, license and STORE ZIP overhead', async () => {
+		const build = (length) =>
+			fixture({
 				'entry.js': 'export{}',
 				'licenses/MIT.txt': 'MIT\n' + 'License notice '.repeat(2048),
 				'images/base.png': pngWithPadding(2 * 1024 * 1024),
-			},
-			{ settings: [{ key: 'image', type: 'asset', default: 'images/base.png' }] },
-		);
-		const pkg = await load(source.archive),
-			small = await normalizeAsset(png, 'personal.png');
-		const settings = (asset) => ({ settings: { image: assetUrl(asset) }, branding: { name: 'Personal pixel', logo: assetUrl(asset) } });
-		const baseline = await normalizeAppAppearance(pkg, settings(small), { assets: [small] });
-		const exactSize = png.length + APP_LIMITS.totalBytes - baseline.totalBytes;
-		const asset = await normalizeAsset(pngWithPadding(exactSize), 'personal.png');
-		const saved = await normalizeAppAppearance(pkg, settings(asset), { assets: [asset] });
-		expect(saved.totalBytes).toBe(APP_LIMITS.totalBytes);
-		const zip = await exportAppTheme(pkg, { appearance: saved.appearance, assets: saved.assets });
+				'images/large.png': pngWithPadding(length),
+			});
+		let length = 7 * 1024 * 1024;
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const source = await build(length);
+			const pkg = await normalizeAppPackage(source.manifest, source.files);
+			length += APP_LIMITS.totalBytes - pkg.totalBytes;
+		}
+		const source = await build(length);
+		const zip = zipSync(unzipSync(source.archive), { level: 0 });
 		expect(zip.length).toBeGreaterThan(APP_LIMITS.totalBytes);
 		expect(zip.length).toBeLessThanOrEqual(APP_LIMITS.upload);
-		const restored = await load(zip);
-		expect(restored.appearance).toEqual(saved.appearance);
-		expect(restored.packageId).toBe(pkg.packageId);
-		expect(Buffer.compare(restored.appearanceAssets[0].bytes, asset.bytes)).toBe(0);
-		expect(restored.totalBytes).toBe(APP_LIMITS.totalBytes);
-		expect((await exportAppTheme(restored)).length).toBe(zip.length);
-		const tooLarge = await normalizeAsset(pngWithPadding(exactSize + 1), 'personal.png');
-		await expect(normalizeAppAppearance(pkg, settings(tooLarge), { assets: [tooLarge] })).rejects.toMatchObject({
-			code: 'THEME_APPEARANCE_LIMIT',
-		});
+		const pkg = await load(zip);
+		expect(pkg.totalBytes).toBe(APP_LIMITS.totalBytes);
+		expect(Buffer.compare(pkg.files.find((file) => file.path === 'images/large.png').bytes, source.files.get('images/large.png'))).toBe(0);
+		expect((await normalizeAppAppearance(pkg)).appearance.packageId).toBe(pkg.packageId);
+		const tooLarge = await build(length + 1);
+		await expect(load(zipSync(unzipSync(tooLarge.archive), { level: 0 }))).rejects.toBeInstanceOf(Error);
 	}, 30000);
-	it('counts manifest and appearance files against the 256-file portable budget', async () => {
+	it('counts the manifest against the 256-file portable budget', async () => {
 		const contents = { 'entry.js': 'export{}' };
 		for (let i = 0; i < 254; i++) {
 			contents[`data/${i}.json`] = '{}';
@@ -388,7 +292,9 @@ describe('app theme package protocol v2', () => {
 		const source = await fixture(contents),
 			pkg = await load(source.archive);
 		expect(pkg.fileCount).toBe(256);
-		await expect(normalizeAppAppearance(pkg, {})).rejects.toMatchObject({ code: 'THEME_APPEARANCE_LIMIT' });
+		await expect(normalizeAppAppearance(pkg, {})).resolves.toHaveProperty('appearance');
+		const over = await fixture({ ...contents, 'data/extra.json': '{}' });
+		await expect(load(over.archive)).rejects.toBeInstanceOf(Error);
 	});
 	it('returns stable public paths and restrictive headers without implicitly granting CORS or publication', async () => {
 		const pkg = await load((await fixture()).archive),
@@ -401,7 +307,7 @@ describe('app theme package protocol v2', () => {
 		});
 		expect(appResourceHeaders(file, { public: true })['Cache-Control']).toContain('immutable');
 		expect(appResourceHeaders(file)).not.toHaveProperty('Access-Control-Allow-Origin');
-		expect(unpackAppTheme(await exportAppTheme(pkg)).get('entry.js')).toEqual(file.bytes);
+		expect(unpackAppTheme(repack(pkg)).get('entry.js')).toEqual(file.bytes);
 	});
 	it('rejects declared oversize files, manifest expansion and an oversized input before extraction', async () => {
 		const source = await fixture();

@@ -11,41 +11,7 @@ export function createAppearanceDraft(theme, current = {}, { reset = false } = {
 	const sameTheme = current.themeId === theme.manifest.id && format(current) === format(theme);
 	const profile = format(theme.profile) === format(theme) ? theme.profile : null;
 	const previous = reset ? {} : sameTheme ? current : profile || {};
-	const values = clone(previous.settings || {});
-	if (app && previous.packageId) {
-		const prefix = '/theme-packages/' + previous.packageId + '/';
-		for (const field of theme.manifest.settings) {
-			if (field.type === 'asset' && typeof values[field.key] === 'string' && values[field.key].startsWith(prefix)) {
-				values[field.key] = values[field.key].slice(prefix.length);
-			}
-		}
-	}
-	const migration = migrate(previous.manifest || { settings: [] }, theme.manifest, values);
-	if (app) {
-		for (const field of theme.manifest.settings) {
-			const value = migration.settings[field.key];
-			if (field.type !== 'asset' || !value || /^local:|^\/(?:theme-assets|api\/appearance\/assets)\/[a-f0-9]{64}(?:\/|$)/.test(value)) {
-				continue;
-			}
-			if (!theme.manifest.files?.some((file) => file.path === value && (file.mime?.startsWith('image/') || file.mime === 'font/woff2'))) {
-				migration.settings[field.key] = field.default;
-				if (!migration.changes.some((change) => change.key === field.key)) {
-					migration.changes.push({ key: field.key, reason: 'asset-missing', value: field.default });
-				}
-			}
-		}
-	}
-	const sameVersion = previous.packageId === theme.packageId;
-	const resources = new Map();
-	const brandHashes = new Set(
-		['logo', 'icon192', 'icon512', 'appleTouchIcon', 'background']
-			.map((key) => /^\/(?:theme-assets|api\/appearance\/assets)\/([a-f0-9]{64})(?:\/|$)/.exec(current.branding?.[key] || '')?.[1])
-			.filter(Boolean),
-	);
-	const brandResources = (current.resources || []).filter((resource) => brandHashes.has(resource.hash));
-	for (const resource of [...(theme.assets || theme.resources || []), ...(previous.resources || []), ...brandResources]) {
-		resources.set(resource.hash || resource.url, resource);
-	}
+	const migration = migrate(previous.manifest || { settings: [] }, theme.manifest, clone(previous.settings || {}));
 	return {
 		draft: {
 			packageId: theme.packageId,
@@ -53,21 +19,15 @@ export function createAppearanceDraft(theme, current = {}, { reset = false } = {
 			manifest: clone(theme.manifest),
 			...(app
 				? { kind: 'app' }
-				: {
-						css: theme.css || '',
-						layout: clone(sameVersion && previous.layout ? previous.layout : theme.manifest.layout),
-						content: clone(sameVersion && previous.content ? previous.content : theme.manifest.content || {}),
-						customCss: previous.customCss || '',
-					}),
+				: { css: theme.css || '', layout: clone(theme.manifest.layout), content: clone(theme.manifest.content || {}) }),
 			settings: clone(migration.settings),
-			branding: clone(current.branding || previous.branding || {}),
-			resources: clone([...resources.values()]),
+			resources: clone(theme.assets || theme.resources || []),
 		},
 		changes: previous.manifest ? migration.changes : [],
 	};
 }
 
-/** The editor owns local drafts; only an explicit apply publishes them. */
+/** The editor keeps one in-memory draft; only an explicit apply publishes it. */
 export function getAppearanceEditorCode() {
 	const template = getAppearancePreviewDocument({ nonce: 'APPEARANCEPREVIEWNONCE' });
 	return `${getAppearanceErrorCode()}\nwindow.createAppearancePreviewDocument = function(nonce) { return ${JSON.stringify(template).replace(/</g, '\\u003c')}.split('APPEARANCEPREVIEWNONCE').join(nonce.replace(/[^a-z0-9_-]/gi, '')); };\n(function() { const validateValue = ${serializeBrowserFunction(validateSettingValue)}; const migrate = function(previous, next, values) { return (${serializeBrowserFunction(migrateSettings)})(previous, next, values, validateValue); }; const createDraft = function(theme, current, options) { return (${serializeBrowserFunction(createAppearanceDraft)})(theme, current, options, migrate); }; (${serializeBrowserFunction(appearanceEditorClient)})(createDraft); })();`;
@@ -77,16 +37,10 @@ function appearanceEditorClient(createAppearanceDraft) {
 	const state = {
 		open: false,
 		busy: false,
-		applying: false,
-		applyPhase: null,
-		previewResume: false,
 		dirty: false,
 		revision: 0,
 		remoteRevision: 0,
 		loadGeneration: 0,
-		draftEpoch: 0,
-		version: 0,
-		persisted: 0,
 		library: [],
 		applied: null,
 		catalog: [],
@@ -94,26 +48,21 @@ function appearanceEditorClient(createAppearanceDraft) {
 		catalogGeneration: 0,
 		draft: null,
 		capabilities: { write: false },
-		blobs: new Map(),
-		panel: 'library',
+		profiles: new Map(),
+		migration: [],
 		mode: 'light',
 		scene: 'workspace',
-		migration: [],
 		width: 1440,
 		nonce: '',
 		ready: false,
 		previewTimer: null,
-		persistTimer: null,
-		queue: Promise.resolve(),
 		previewGeneration: 0,
-		localProfiles: new Map(),
-		legacyExpanded: false,
-		advancedExpanded: false,
-		layoutExpanded: false,
 		trustedPackages: new Set(),
 		appPreview: null,
 		appPreviewPackage: null,
-		previewReferences: [],
+		previewTask: null,
+		previewSessionInvalid: false,
+		conflict: false,
 		reloadRequired: false,
 	};
 	const resourceCache = new Map();
@@ -124,9 +73,6 @@ function appearanceEditorClient(createAppearanceDraft) {
 	const uid = () => window.crypto.randomUUID();
 	const isApp = (value) => value?.kind === 'app' || value?.manifest?.kind === 'app';
 	const profileKey = (value) => (isApp(value) ? 'app:' : 'v1:') + (value.themeId || value.manifest?.id);
-	const regions = ['header', 'leading', 'main', 'trailing', 'footer'];
-	const regionKeys = ['appearanceHeader', 'appearanceLeading', 'appearanceMain', 'appearanceTrailing', 'appearanceFooterRegion'];
-	const required = new Set(['search', 'view-controls', 'system-status', 'accounts', 'actions']);
 	const builtinLabels = {
 		'Accent color': 'appearanceAccent',
 		'Corner radius': 'appearanceRadius',
@@ -137,38 +83,10 @@ function appearanceEditorClient(createAppearanceDraft) {
 		Density: 'appearanceDensity',
 		Comfortable: 'appearanceComfortable',
 		Compact: 'appearanceCompactOption',
-		'Background image': 'appearanceBackground',
 		Font: 'appearanceFont',
-		'Code font': 'appearanceCodeFont',
-		'Font size': 'appearanceFontSize',
-		'Page width': 'appearancePageWidth',
-		Spacing: 'appearanceSpacing',
-		'Card padding': 'appearanceCardPadding',
-		'Icon size': 'appearanceIconSize',
-		Shadow: 'appearanceShadow',
-		Columns: 'appearanceColumns',
-		Animation: 'appearanceAnimation',
-		'Surface opacity': 'appearanceOpacity',
-		'Background blur': 'appearanceBlur',
 		System: 'appearanceSystem',
 		Serif: 'appearanceSerif',
 		Monospace: 'appearanceMonospace',
-		None: 'appearanceNone',
-		Strong: 'appearanceStrong',
-		Automatic: 'appearanceAuto',
-	};
-	const componentLabels = {
-		brand: 'appearanceBrand',
-		'service-nav': 'appearanceServiceNavigation',
-		search: 'searchInputPlaceholder',
-		'view-controls': 'appearanceViewComponent',
-		'system-status': 'appearanceStatusComponent',
-		accounts: 'appearanceAllServices',
-		actions: 'appearanceActions',
-		footer: 'appearanceFooterRegion',
-		text: 'appearanceTextComponent',
-		image: 'appearanceImageComponent',
-		links: 'appearanceLinksComponent',
 	};
 	const builtin = () => state.draft?.packageId?.startsWith('builtin:');
 	const optionLabel = (label) => (builtin() && builtinLabels[label] ? tr(builtinLabels[label]) : localName(label));
@@ -176,43 +94,19 @@ function appearanceEditorClient(createAppearanceDraft) {
 		const translated = setting.translations?.[document.documentElement.lang]?.[part];
 		return translated || (part === 'label' ? optionLabel(setting.label || setting.key) : setting.description || '');
 	}
-	let database;
-
-	function db() {
-		if (!database) {
-			database = new Promise((resolve, reject) => {
-				const request = indexedDB.open('2fa-appearance-drafts', 1);
-				request.onupgradeneeded = () => request.result.createObjectStore('drafts');
-				request.onsuccess = () => resolve(request.result);
-				request.onerror = () => {
-					database = null;
-					reject(request.error);
-				};
-			});
-		}
-		return database;
-	}
-	async function draftStore(mode, value) {
-		const connection = await db();
-		return new Promise((resolve, reject) => {
-			const transaction = connection.transaction('drafts', mode === 'get' ? 'readonly' : 'readwrite');
-			const store = transaction.objectStore('drafts');
-			const request = mode === 'get' ? store.get('current') : mode === 'delete' ? store.delete('current') : store.put(value, 'current');
-			transaction.oncomplete = () => resolve(request.result);
-			transaction.onerror = transaction.onabort = () => reject(transaction.error || new Error(tr('appearanceDraftFailed')));
-		});
-	}
 	function message(text, error = false) {
 		const element = document.getElementById('appearanceStatus');
-		if (element) {
-			element.textContent = text;
-			element.dataset.error = String(error);
-			if (state.conflict) {
-				element.append(button('appearanceReload', 'reload'));
-			}
-			if (state.reloadRequired) {
-				element.append(button('appearanceRefreshNow', 'refresh-runtime'));
-			}
+		if (!element) {
+			return;
+		}
+		element.textContent = text;
+		element.dataset.error = String(error);
+		element.hidden = !text;
+		if (state.conflict) {
+			element.append(button('appearanceReload', 'reload', 'btn btn-secondary btn-sm'));
+		}
+		if (state.reloadRequired) {
+			element.append(button('appearanceRefreshNow', 'refresh-runtime', 'btn btn-secondary btn-sm'));
 		}
 	}
 	async function api(url, options = {}) {
@@ -240,36 +134,14 @@ function appearanceEditorClient(createAppearanceDraft) {
 		const modal = document.getElementById('appearanceModal');
 		modal?.setAttribute('aria-busy', String(value));
 		modal?.querySelectorAll('[data-editor-control]').forEach((control) => {
-			control.disabled = value || control.dataset.fixedDisabled === 'true';
+			control.disabled = value;
 		});
-		modal?.querySelectorAll('[data-write]').forEach((button) => {
-			button.disabled = value || !canWrite();
+		modal?.querySelectorAll('[data-write]').forEach((control) => {
+			control.disabled = value || !canWrite();
 		});
-		const applyButton = modal?.querySelector('[data-appearance-action="apply"]');
-		if (applyButton) {
-			applyButton.textContent = tr(state.applyPhase || 'appearanceApply');
-		}
-	}
-	function savingPhase(key) {
-		state.applyPhase = key;
-		setBusy(state.busy);
-		message(tr(key));
-	}
-	function beginPublication() {
-		state.applying = true;
-		state.previewResume = true;
-		state.loadGeneration += 1;
-		clearTimeout(state.previewTimer);
-		state.previewTimer = null;
-		stopAppPreview();
-		savingPhase('appearanceSaving');
-	}
-	function endPublication() {
-		state.applying = false;
-		state.applyPhase = null;
-		if (state.previewResume && state.open) {
-			state.previewResume = false;
-			notifyPreview();
+		const apply = modal?.querySelector('[data-appearance-action="apply"]');
+		if (apply) {
+			apply.disabled = value || !canWrite() || !state.dirty;
 		}
 	}
 	function node(tag, className, text) {
@@ -294,122 +166,22 @@ function appearanceEditorClient(createAppearanceDraft) {
 		row.append(node('span', 'appearance-field-label', label), control);
 		control.dataset.editorControl = '';
 		if (help) {
-			row.append(node('small', 'settings-desc', help));
+			row.append(node('small', 'appearance-field-help', help));
 		}
 		return row;
 	}
-	function input(value, change, type = 'text') {
-		const element = document.createElement(type === 'textarea' ? 'textarea' : 'input');
-		if (type !== 'textarea') {
-			element.type = type;
-		}
-		element.value = value ?? '';
-		element.addEventListener('input', () => {
-			change(type === 'number' ? Number(element.value) : element.value);
-			changed();
-		});
-		return element;
-	}
 	function notifyPreview() {
 		clearTimeout(state.previewTimer);
-		state.previewTimer = null;
-		if (state.applying) {
-			state.previewResume = true;
-			return;
-		}
 		state.previewTimer = setTimeout(() => void preview().catch(previewError), 120);
 	}
 	function changed() {
 		state.dirty = true;
 		if (state.draft?.themeId) {
-			state.localProfiles.set(profileKey(state.draft), clone(state.draft));
+			state.profiles.set(profileKey(state.draft), clone(state.draft));
 		}
-		state.version += 1;
-		message(tr('appearanceUnsaved'));
-		clearTimeout(state.persistTimer);
-		state.persistTimer = setTimeout(() => void persist().catch(() => message(tr('appearanceDraftFailed'), true)), 250);
+		message('');
+		setBusy(state.busy);
 		notifyPreview();
-	}
-	function draftSnapshot() {
-		return {
-			draft: clone(state.draft),
-			revision: state.revision,
-			blobs: Array.from(state.blobs),
-			dirty: state.dirty,
-			pendingApply: state.pendingApply && clone(state.pendingApply),
-			profiles: clone(Array.from(state.localProfiles)),
-			migration: clone(state.migration),
-		};
-	}
-	function persist() {
-		clearTimeout(state.persistTimer);
-		state.persistTimer = null;
-		if (!state.draft) {
-			return state.queue;
-		}
-		const epoch = state.draftEpoch;
-		const version = state.version;
-		const saved = draftSnapshot();
-		const task = state.queue
-			.catch(() => {})
-			.then(() => (epoch === state.draftEpoch ? draftStore('put', saved) : undefined))
-			.then(() => {
-				if (epoch === state.draftEpoch) {
-					state.persisted = Math.max(state.persisted, version);
-				}
-			});
-		state.queue = task;
-		return task;
-	}
-	function clearStoredDraft({ validate, adopt } = {}) {
-		clearTimeout(state.persistTimer);
-		state.persistTimer = null;
-		const epoch = ++state.draftEpoch;
-		const version = state.version;
-		const saved = validate && draftSnapshot();
-		state.loadGeneration += 1;
-		const task = state.queue
-			.catch(() => {})
-			.then(async () => {
-				try {
-					validate?.();
-					await draftStore('delete');
-					validate?.();
-				} catch (error) {
-					if (!validate) {
-						throw error;
-					}
-					// The remote revision may advance while IDB commits. Keep all live
-					// draft state and persist it even if validation/delete failed before
-					// the latest autosave reached IDB (for example during rollback).
-					state.persisted = -1;
-					try {
-						await draftStore('put', saved);
-						state.persisted = version;
-					} catch {
-						throw new Error(tr('appearanceDraftFailed'));
-					}
-					throw error;
-				}
-				if (epoch !== state.draftEpoch) {
-					return;
-				}
-				state.version = 0;
-				state.persisted = 0;
-				state.pendingApply = null;
-				state.dirty = false;
-				state.conflict = false;
-				state.migration = [];
-				state.blobs.clear();
-				state.localProfiles.clear();
-				// No await may separate the final revision check from adoption.
-				adopt?.();
-			});
-		state.queue = task;
-		return task;
-	}
-	function selectedTheme() {
-		return state.library.find((theme) => theme.packageId === state.draft?.packageId);
 	}
 	function rememberProfile(snapshot) {
 		if (!snapshot?.themeId) {
@@ -422,15 +194,14 @@ function appearanceEditorClient(createAppearanceDraft) {
 		}
 	}
 	function makeDraft(theme, previous = {}, options) {
-		const local = state.localProfiles.get(profileKey(theme));
+		const local = state.profiles.get(profileKey(theme));
 		const selected = local && profileKey(previous) !== profileKey(theme) ? { ...theme, profile: local } : theme;
 		const result = createAppearanceDraft(selected, previous, options);
 		state.migration = result.changes;
 		return { revision: state.revision, ...result.draft };
 	}
-	async function load({ replaceDraft = false, preserveDraft = false } = {}) {
+	async function load({ replaceDraft = false } = {}) {
 		const generation = ++state.loadGeneration;
-		const epoch = state.draftEpoch;
 		if (!navigator.onLine) {
 			state.capabilities.write = false;
 			message(tr('appearanceOffline'));
@@ -441,7 +212,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 			api('/api/themes?format=app').then((response) => response.json()),
 			api('/api/appearance').then((response) => response.json()),
 		]);
-		if (generation !== state.loadGeneration || epoch !== state.draftEpoch) {
+		if (generation !== state.loadGeneration) {
 			return;
 		}
 		state.library = [...(library.themes || []), ...(appLibrary.themes || [])];
@@ -449,13 +220,12 @@ function appearanceEditorClient(createAppearanceDraft) {
 		state.previewSessionInvalid = false;
 		const revision = appearance.revision || 0;
 		state.remoteRevision = Math.max(state.remoteRevision, revision);
-		if (revision >= state.remoteRevision) {
-			state.applied = clone(appearance.active || null);
-			rememberProfile(appearance.active);
-		}
-		if (!state.applying && !preserveDraft && (replaceDraft || (!state.dirty && !state.pendingApply)) && revision >= state.remoteRevision) {
+		state.applied = clone(appearance.active || null);
+		rememberProfile(appearance.active);
+		if (replaceDraft || !state.dirty) {
 			state.revision = revision;
 			state.draft = clone(appearance.active || (state.library[0] && makeDraft(state.library[0])) || {});
+			state.dirty = false;
 			state.conflict = false;
 		} else if (state.remoteRevision > state.revision) {
 			state.conflict = true;
@@ -464,6 +234,18 @@ function appearanceEditorClient(createAppearanceDraft) {
 		if (!state.capabilities.write) {
 			message(tr('appearanceNoBinding'));
 		}
+	}
+	function segmented(label, action, items, current) {
+		const group = node('div', 'appearance-segmented');
+		group.setAttribute('role', 'group');
+		group.setAttribute('aria-label', tr(label));
+		for (const [value, key] of items) {
+			const control = button(key, action, 'appearance-segment');
+			control.dataset.value = String(value);
+			control.setAttribute('aria-pressed', String(String(current) === String(value)));
+			group.append(control);
+		}
+		return group;
 	}
 	function ensureEditor() {
 		if (document.getElementById('appearanceModal')) {
@@ -483,39 +265,54 @@ function appearanceEditorClient(createAppearanceDraft) {
 		close.setAttribute('aria-label', tr('close'));
 		header.append(heading, close);
 		const workspace = node('div', 'appearance-workspace');
-		const sidebar = node('div', 'appearance-controls');
-		const tabs = node('nav', 'appearance-tabs');
-		tabs.setAttribute('aria-label', tr('appearanceTitle'));
-		for (const [name, key] of [
-			['library', 'appearanceLibrary'],
-			['brand', 'appearanceBrand'],
-			['design', 'appearanceThemeSettings'],
-		]) {
-			const tab = button(key, 'panel', 'appearance-tab');
-			tab.dataset.panel = name;
-			tabs.append(tab);
-		}
 		const panel = node('div', 'appearance-panel');
 		panel.id = 'appearancePanel';
-		sidebar.append(tabs, panel);
 		const previewSection = node('section', 'appearance-preview-section');
+		previewSection.setAttribute('aria-label', tr('appearancePreview'));
 		const toolbar = node('div', 'appearance-preview-toolbar');
-		for (const [label, width] of [
-			['appearanceDesktop', 1440],
-			['appearanceTablet', 768],
-			['appearanceMobile', 390],
-		]) {
-			const control = button(label, 'width', 'btn btn-secondary btn-sm');
-			control.dataset.width = String(width);
-			toolbar.append(control);
-		}
-		for (const mode of ['light', 'dark']) {
-			const control = button(mode === 'light' ? 'appearanceLight' : 'appearanceDark', 'mode', 'btn btn-secondary btn-sm');
-			control.dataset.mode = mode;
-			toolbar.append(control);
-		}
+		toolbar.id = 'appearancePreviewToolbar';
+		const viewport = node('div', 'appearance-preview-viewport');
+		const frame = document.createElement('iframe');
+		frame.id = 'appearancePreview';
+		frame.title = tr('appearancePreview');
+		frame.setAttribute('sandbox', 'allow-scripts');
+		const appContainer = node('div');
+		appContainer.id = 'appearanceAppPreview';
+		appContainer.hidden = true;
+		viewport.append(frame, appContainer);
+		const previewStatus = node('p', 'appearance-preview-status');
+		previewStatus.id = 'appearanceAppPreviewStatus';
+		previewStatus.setAttribute('role', 'status');
+		previewStatus.hidden = true;
+		previewSection.append(toolbar, viewport, previewStatus);
+		workspace.append(panel, previewSection);
+		const footer = node('div', 'appearance-footer');
+		const status = node('div', 'appearance-status');
+		status.id = 'appearanceStatus';
+		status.setAttribute('role', 'status');
+		status.setAttribute('aria-live', 'polite');
+		status.hidden = true;
+		const actions = node('div', 'appearance-footer-actions');
+		const apply = button('appearanceApply', 'apply', 'btn btn-primary');
+		actions.append(button('cancel', 'close'), apply);
+		footer.append(status, actions);
+		content.append(header, workspace, footer);
+		modal.append(content);
+		document.body.append(modal);
+		modal.addEventListener('click', (event) => {
+			const target = event.target.closest('[data-appearance-action]');
+			if (!target || state.busy) {
+				return;
+			}
+			event.stopPropagation();
+			void action(target.dataset.appearanceAction, target).catch(errorMessage);
+		});
+	}
+	function renderToolbar() {
+		const toolbar = document.getElementById('appearancePreviewToolbar');
 		const scenes = document.createElement('select');
 		scenes.id = 'appearanceScene';
+		scenes.className = 'appearance-scene';
 		scenes.setAttribute('aria-label', tr('appearancePreview'));
 		for (const [scene, label] of [
 			['workspace', 'appearanceSceneWorkspace'],
@@ -527,221 +324,147 @@ function appearanceEditorClient(createAppearanceDraft) {
 			option.value = scene;
 			scenes.append(option);
 		}
+		scenes.value = state.scene;
 		scenes.addEventListener('change', () => {
 			state.scene = scenes.value;
 			notifyPreview();
 		});
-		toolbar.append(scenes);
-		const refreshPreview = button('appearanceRefreshPreview', 'refresh-preview', 'btn btn-secondary btn-sm');
-		refreshPreview.id = 'appearanceRefreshPreview';
-		refreshPreview.hidden = true;
-		toolbar.append(refreshPreview);
-		const viewport = node('div', 'appearance-preview-viewport');
-		const frame = document.createElement('iframe');
-		frame.id = 'appearancePreview';
-		frame.title = tr('appearancePreview');
-		frame.setAttribute('sandbox', 'allow-scripts');
-		viewport.append(frame);
-		const appContainer = node('div');
-		appContainer.id = 'appearanceAppPreview';
-		appContainer.hidden = true;
-		viewport.append(appContainer);
-		const previewStatus = node('p', 'settings-desc');
-		previewStatus.id = 'appearanceAppPreviewStatus';
-		previewStatus.setAttribute('role', 'status');
-		previewSection.append(previewStatus);
-		previewSection.append(toolbar, viewport, node('p', 'settings-desc', tr('appearancePreviewHelp')));
-		workspace.append(sidebar, previewSection);
-		const status = node('div', 'appearance-status');
-		status.id = 'appearanceStatus';
-		status.setAttribute('role', 'status');
-		status.setAttribute('aria-live', 'polite');
-		const actions = node('div', 'appearance-footer-actions');
-		const apply = button('appearanceApply', 'apply', 'btn btn-primary');
-		apply.dataset.write = '';
-		const rollback = button('appearanceRollback', 'rollback');
-		rollback.dataset.write = '';
-		actions.append(button('appearanceDiscardDraft', 'discard'), button('appearanceKeepDraft', 'keep'), rollback, apply);
-		content.append(header, workspace, status, actions);
-		modal.append(content);
-		document.body.append(modal);
-		modal.addEventListener('click', (event) => {
-			const target = event.target.closest('[data-appearance-action]');
-			if (!target || state.busy) {
-				return;
-			}
-			void action(target.dataset.appearanceAction, target).catch(errorMessage);
-		});
+		toolbar.replaceChildren(
+			segmented(
+				'appearancePreview',
+				'width',
+				[
+					[1440, 'appearanceDesktop'],
+					[768, 'appearanceTablet'],
+					[390, 'appearanceMobile'],
+				],
+				state.width,
+			),
+			segmented(
+				'appearancePreview',
+				'mode',
+				[
+					['light', 'appearanceLight'],
+					['dark', 'appearanceDark'],
+				],
+				state.mode,
+			),
+			scenes,
+		);
 	}
-	function render() {
-		const panel = document.getElementById('appearancePanel');
-		if (!panel || !state.draft) {
-			return;
+	function themeName(theme) {
+		if (theme.packageId === 'builtin:fluent') {
+			return tr('appearanceOfficialDefault');
 		}
-		panel.replaceChildren();
-		if (!['library', 'brand', 'design'].includes(state.panel)) {
-			state.panel = 'design';
+		if (theme.packageId.startsWith('builtin:')) {
+			return tr({ document: 'appearanceDocument', compact: 'appearanceCompact' }[theme.manifest.id] || 'appearanceBuiltin');
 		}
-		if (state.migration.length) {
-			const note = node('div', 'appearance-migration', tr('appearanceMigration'));
-			const changes = node('ul');
-			for (const change of state.migration) {
-				const setting = state.draft.manifest.settings.find((entry) => entry.key === change.key);
-				changes.append(node('li', '', setting ? settingLabel(setting) : change.key));
-			}
-			note.append(changes);
-			panel.append(note);
-		}
-		document.querySelectorAll('.appearance-tab').forEach((tab) => {
-			tab.classList.toggle('active', tab.dataset.panel === state.panel);
-			tab.setAttribute('aria-current', tab.dataset.panel === state.panel ? 'page' : 'false');
-		});
-		if (state.panel === 'library') {
-			renderLibrary(panel);
-		} else if (state.panel === 'brand') {
-			renderBrand(panel);
-		} else if (state.panel === 'design') {
-			renderSettings(panel);
-		}
-		setBusy(state.busy);
-		notifyPreview();
+		return localName(theme.manifest.name);
 	}
-	function fileButton(label, restore) {
-		const wrapper = node('label', 'btn btn-secondary appearance-file-button', tr(label));
-		const file = document.createElement('input');
-		file.type = 'file';
-		file.accept = restore ? '.zip' : '.zip,.json,.css';
-		file.dataset.write = '';
-		file.dataset.editorControl = '';
-		file.addEventListener('change', () => {
-			if (file.files[0]) {
-				void importFile(file.files[0], restore).catch(errorMessage);
-			}
-		});
-		wrapper.append(file);
-		return wrapper;
-	}
-	function themeCards(themes) {
-		const cards = node('div', 'appearance-theme-list');
-		for (const theme of themes) {
-			const card = button('appearancePreview', 'select', 'appearance-theme-card');
-			card.dataset.package = theme.packageId;
-			card.replaceChildren();
-			card.setAttribute('aria-pressed', String(theme.packageId === state.draft.packageId));
-			const palette = node('div', 'appearance-theme-swatch');
-			const tokens = theme.manifest.tokens?.light || {};
-			palette.style.backgroundColor = tokens['--2fa-background'] || '#f5f5f5';
-			for (const color of [tokens['--2fa-accent'] || '#0f6cbd', tokens['--2fa-surface'] || '#fff', tokens['--2fa-text'] || '#242424']) {
-				const dot = node('i');
-				dot.style.backgroundColor = color;
-				palette.append(dot);
-			}
-			card.append(
-				palette,
-				node(
-					'strong',
-					'',
-					theme.packageId === 'builtin:fluent'
-						? tr('appearanceOfficialDefault')
-						: theme.packageId.startsWith('builtin:')
-							? tr({ document: 'appearanceDocument', compact: 'appearanceCompact' }[theme.manifest.id])
-							: localName(theme.manifest.name),
-				),
-				node('small', '', theme.builtIn || theme.packageId.startsWith('builtin:') ? tr('appearanceBuiltin') : theme.manifest.version),
-			);
-			if (isApp(theme)) {
-				card.append(node('small', '', tr('appearanceAppTheme')));
-			}
-			if (theme.packageId === state.applied?.packageId) {
-				card.append(node('small', 'appearance-theme-state', tr('appearanceCurrent')));
-			}
-			cards.append(card);
+	function swatch(manifest) {
+		const palette = node('span', 'appearance-theme-swatch');
+		const tokens = manifest?.tokens?.light || {};
+		palette.style.backgroundColor = tokens['--2fa-background'] || '#f5f5f5';
+		for (const color of [tokens['--2fa-accent'] || '#0f6cbd', tokens['--2fa-surface'] || '#fff', tokens['--2fa-text'] || '#242424']) {
+			const dot = node('i');
+			dot.style.backgroundColor = color;
+			palette.append(dot);
 		}
-		return cards;
+		return palette;
 	}
-	function disclosure(label, stateKey, className = '') {
-		const details = node('details', 'appearance-disclosure ' + className);
-		details.open = state[stateKey];
-		details.append(node('summary', '', tr(label)));
-		details.addEventListener('toggle', () => {
-			state[stateKey] = details.open;
-		});
-		return details;
+	function themeCard(theme) {
+		const wrap = node('div', 'appearance-theme-item');
+		const card = button('appearanceCatalogSelect', 'select', 'appearance-theme-card');
+		card.dataset.package = theme.packageId;
+		card.replaceChildren();
+		card.setAttribute('aria-pressed', String(theme.packageId === state.draft?.packageId));
+		const text = node('span', 'appearance-theme-text');
+		text.append(node('strong', '', themeName(theme)));
+		const meta = [theme.packageId.startsWith('builtin:') ? tr('appearanceBuiltin') : theme.manifest.version];
+		if (theme.packageId === state.applied?.packageId) {
+			meta.push(tr('appearanceCurrent'));
+		}
+		text.append(node('small', '', meta.filter(Boolean).join(' · ')));
+		card.append(swatch(theme.manifest), text);
+		wrap.append(card);
+		if (!theme.packageId.startsWith('builtin:')) {
+			const remove = button('appearanceDelete', 'delete', 'appearance-theme-delete');
+			remove.dataset.package = theme.packageId;
+			remove.dataset.write = '';
+			remove.textContent = '×';
+			remove.title = tr('appearanceDelete');
+			remove.setAttribute('aria-label', tr('appearanceDelete') + ': ' + themeName(theme));
+			wrap.append(remove);
+		}
+		return wrap;
 	}
-	function installedThemeGroups(themes) {
-		const groups = new Map();
+	function installedThemes() {
+		const latest = new Map();
 		const installedAt = (theme) => (Number.isFinite(theme.installedAt) && theme.installedAt > 0 ? theme.installedAt : 0);
-		for (const theme of themes) {
-			if (theme.superseded) {
+		for (const theme of state.library) {
+			if (theme.superseded || theme.packageId.startsWith('builtin:')) {
 				continue;
 			}
 			const key = profileKey(theme);
-			const existing = groups.get(key);
+			const existing = latest.get(key);
 			if (
 				!existing ||
-				installedAt(theme) > installedAt(existing.representative) ||
-				(installedAt(theme) === installedAt(existing.representative) &&
-					theme.packageId.localeCompare(existing.representative.packageId) > 0)
+				installedAt(theme) > installedAt(existing) ||
+				(installedAt(theme) === installedAt(existing) && theme.packageId.localeCompare(existing.packageId) > 0)
 			) {
-				groups.set(key, { key, representative: theme });
+				latest.set(key, theme);
 			}
 		}
-		return [...groups.values()].sort(
-			(a, b) =>
-				localName(a.representative.manifest.name).localeCompare(localName(b.representative.manifest.name)) || a.key.localeCompare(b.key),
-		);
+		return [...latest.values()].sort((a, b) => themeName(a).localeCompare(themeName(b)));
 	}
-	function renderInstalledThemes(themes) {
-		const list = node('div', 'appearance-installed-themes');
-		for (const group of installedThemeGroups(themes)) {
-			const section = node('section', 'appearance-theme-group');
-			section.dataset.themeGroup = group.key;
-			section.append(themeCards([group.representative]));
-			list.append(section);
-		}
-		return list;
+	function visibleThemes() {
+		const shown = state.library.filter(
+			(theme) =>
+				theme.packageId === 'builtin:fluent' ||
+				(theme.packageId.startsWith('builtin:') && [state.draft?.packageId, state.applied?.packageId].includes(theme.packageId)),
+		);
+		return [...shown, ...installedThemes()];
 	}
 	function renderCatalog() {
-		const section = node('section', 'appearance-catalog');
+		const section = node('section', 'appearance-section appearance-catalog');
 		section.id = 'appearanceCatalog';
 		section.setAttribute('aria-labelledby', 'appearanceCatalogTitle');
-		const title = node('h3', 'settings-section-title', tr('appearanceCommunityThemes'));
+		const title = node('h3', 'appearance-section-title', tr('appearanceCommunityThemes'));
 		title.id = 'appearanceCatalogTitle';
-		section.append(title, node('p', 'settings-desc', tr('appearanceCatalogHelp')));
+		section.append(title);
+		const available = state.catalog.filter((theme) => !state.library.some((item) => item.packageId === theme.packageId));
 		if (state.catalogStatus === 'loading' || state.catalogStatus === 'idle') {
-			section.append(node('p', 'settings-desc', tr('appearanceCatalogLoading')));
+			section.append(node('p', 'appearance-note', tr('appearanceCatalogLoading')));
 		} else if (state.catalogStatus === 'error') {
-			const status = node('p', 'settings-desc', tr('appearanceCatalogUnavailable'));
+			const row = node('div', 'appearance-note appearance-note-row');
+			const status = node('span', '', tr('appearanceCatalogUnavailable'));
 			status.setAttribute('role', 'status');
-			section.append(status, button('appearanceCatalogRetry', 'catalog-retry'));
-		} else if (!state.catalog.length) {
-			section.append(node('p', 'settings-desc', tr('appearanceCatalogEmpty')));
+			row.append(status, button('appearanceCatalogRetry', 'catalog-retry', 'btn btn-secondary btn-sm'));
+			section.append(row);
+		} else if (!available.length) {
+			section.append(node('p', 'appearance-note', tr('appearanceCatalogEmpty')));
 		}
-		const cards = node('div', 'appearance-catalog-list');
-		for (const theme of state.catalog) {
-			const local = state.library.find((item) => item.packageId === theme.packageId);
-			const family = state.library.some((item) => item.manifest.id === theme.id && isApp(item) === (theme.kind === 'app'));
-			const card = button('appearanceCatalogSelect', 'catalog-select', 'appearance-catalog-card');
+		const cards = node('div', 'appearance-theme-grid');
+		for (const theme of available) {
+			const update = state.library.some((item) => item.manifest.id === theme.id && isApp(item) === (theme.kind === 'app'));
+			const card = button('appearanceCatalogSelect', 'catalog-install', 'appearance-theme-card');
 			card.dataset.catalogId = theme.id;
 			card.dataset.package = theme.packageId;
-			if (!local) {
-				card.dataset.write = '';
-			}
-			card.setAttribute('aria-pressed', String(state.draft?.packageId === theme.packageId));
-			card.replaceChildren(node('strong', '', localName(theme.name)));
-			card.append(node('small', '', [theme.version, theme.author].filter(Boolean).join(' · ')));
+			card.dataset.write = '';
+			card.replaceChildren();
+			card.setAttribute('aria-pressed', 'false');
+			const text = node('span', 'appearance-theme-text');
+			text.append(node('strong', '', localName(theme.name)));
+			text.append(node('small', '', update ? tr('appearanceCatalogUpdate') : [theme.version, theme.author].filter(Boolean).join(' · ')));
 			if (theme.description) {
-				card.append(node('small', 'appearance-catalog-description', localName(theme.description)));
+				card.title = localName(theme.description);
 			}
-			card.append(node('span', 'appearance-catalog-action', tr(!local && family ? 'appearanceCatalogUpdate' : 'appearanceCatalogSelect')));
-			cards.append(card);
+			card.append(swatch(theme.manifest), text);
+			const wrap = node('div', 'appearance-theme-item');
+			wrap.append(card);
+			cards.append(wrap);
 		}
 		section.append(cards);
-		const submit = node('a', 'appearance-catalog-submit', tr('appearanceCatalogSubmit'));
-		submit.href = 'https://github.com/wuzf/2fa-theme-mytheme/blob/main/CONTRIBUTING.md';
-		submit.target = '_blank';
-		submit.rel = 'noopener noreferrer';
-		section.append(submit);
 		return section;
 	}
 	function refreshCatalogSection() {
@@ -749,16 +472,11 @@ function appearanceEditorClient(createAppearanceDraft) {
 		if (!state.open || !current) {
 			return;
 		}
-		const retryFocused = current.contains(document.activeElement) && document.activeElement.dataset.appearanceAction === 'catalog-retry';
 		current.replaceWith(renderCatalog());
 		setBusy(state.busy);
-		if (retryFocused) {
-			document.querySelector('#appearanceCatalog button')?.focus({ preventScroll: true });
-		}
 	}
 	async function loadCatalog() {
 		const generation = ++state.catalogGeneration;
-		const nonce = state.nonce;
 		state.catalogStatus = navigator.onLine ? 'loading' : 'error';
 		refreshCatalogSection();
 		if (!navigator.onLine) {
@@ -766,524 +484,154 @@ function appearanceEditorClient(createAppearanceDraft) {
 		}
 		try {
 			const data = await (await api('/api/themes/catalog')).json();
-			if (!state.open || generation !== state.catalogGeneration || nonce !== state.nonce) {
+			if (!state.open || generation !== state.catalogGeneration) {
 				return;
 			}
 			state.catalog = Array.isArray(data.themes) ? data.themes : [];
 			state.catalogStatus = 'ready';
 		} catch {
-			if (!state.open || generation !== state.catalogGeneration || nonce !== state.nonce) {
+			if (!state.open || generation !== state.catalogGeneration) {
 				return;
 			}
 			state.catalogStatus = 'error';
 		}
 		refreshCatalogSection();
 	}
-	function renderLibrary(panel) {
-		const official = state.library.filter((theme) => theme.packageId === 'builtin:fluent');
-		const installed = state.library.filter((theme) => !theme.packageId.startsWith('builtin:'));
-		const legacy = state.library.filter(
-			(theme) =>
-				theme.packageId.startsWith('builtin:') &&
-				theme.packageId !== 'builtin:fluent' &&
-				(theme.profile ||
-					state.localProfiles.has(profileKey(theme)) ||
-					theme.packageId === state.draft.packageId ||
-					theme.packageId === window.__2FA_APPEARANCE__?.packageId),
-		);
-		panel.append(themeCards(official));
-		if (installed.length) {
-			panel.append(node('h3', 'settings-section-title', tr('appearanceMyThemes')), renderInstalledThemes(installed));
-		}
-		if (legacy.length) {
-			const compatibility = disclosure('appearanceLegacyThemes', 'legacyExpanded', 'appearance-legacy-themes');
-			compatibility.open ||= legacy.some((theme) => theme.packageId === state.draft.packageId);
-			compatibility.append(node('p', 'settings-desc', tr('appearanceLegacyHelp')), themeCards(legacy));
-			panel.append(compatibility);
-		}
-		if (isApp(state.draft)) {
-			panel.append(node('p', 'settings-desc', tr('appearanceAppTrust')));
-		}
-		panel.append(renderCatalog());
-		const imports = node('div', 'appearance-import-actions');
-		imports.append(fileButton('appearanceImport', false), fileButton('appearanceRestore', true));
-		panel.append(imports);
-		panel.append(node('p', 'settings-desc', tr('appearanceImportHelp')));
-		const source = input('', () => {});
-		source.id = 'appearanceSource';
-		source.type = 'url';
-		panel.append(field(tr('appearanceSource'), source));
-		const install = button('appearanceInstall', 'install');
-		install.dataset.write = '';
-		panel.append(install);
-		const exports = node('div', 'appearance-import-actions');
-		for (const [key, act] of [
-			['appearanceExport', 'export'],
-			['appearanceBackup', 'backup'],
-			['appearanceDelete', 'delete'],
-		]) {
-			const control = button(key, act);
-			control.dataset.write = '';
-			exports.append(control);
-		}
-		panel.append(exports);
-	}
-	function assetField(panel, key, label, icon = false) {
-		const wrap = node('div', 'appearance-asset-field');
-		const current = state.draft.branding?.[key];
-		if (current) {
-			wrap.append(node('small', 'appearance-asset-name', current.startsWith('local:') ? tr('appearanceUnsaved') : current));
-		}
-		const upload = node('label', 'btn btn-secondary appearance-file-button', tr('appearanceAssetUpload'));
-		const file = document.createElement('input');
-		file.type = 'file';
-		file.accept = 'image/png,image/jpeg,image/webp,image/gif';
-		file.dataset.editorControl = '';
-		file.addEventListener('change', () => {
-			if (file.files[0]) {
-				void addImage(file.files[0], key, icon).catch(errorMessage);
+	function settingControl(setting) {
+		const value = state.draft.settings[setting.key] ?? setting.default;
+		let control;
+		if (setting.type === 'select' || setting.type === 'boolean') {
+			control = document.createElement('select');
+			const options =
+				setting.type === 'boolean'
+					? [
+							{ value: 'true', label: tr('yes') },
+							{ value: 'false', label: tr('no') },
+						]
+					: setting.options || [];
+			for (const option of options) {
+				const item = typeof option === 'object' ? option : { value: option, label: String(option) };
+				const element = node('option', '', optionLabel(item.label));
+				element.value = String(item.value);
+				control.append(element);
 			}
-		});
-		upload.append(file);
-		wrap.append(upload);
-		const source = document.createElement('input');
-		source.type = 'url';
-		source.placeholder = 'https://';
-		source.dataset.editorControl = '';
-		const load = button('appearanceAssetUrl', 'noop');
-		load.addEventListener('click', () => {
-			if (source.value) {
-				void importImage(source.value, key, icon).catch(errorMessage);
-			}
-		});
-		const remove = button('appearanceAssetRemove', 'noop');
-		remove.addEventListener('click', () => {
-			delete state.draft.branding[key];
-			if (icon) {
-				for (const sizeKey of ['icon192', 'icon512', 'appleTouchIcon']) {
-					delete state.draft.branding[sizeKey];
-				}
-			}
-			changed();
-			render();
-		});
-		wrap.append(source, load, remove);
-		panel.append(field(tr(label), wrap));
-	}
-	function renderBrand(panel) {
-		state.draft.branding ||= {};
-		for (const [key, label] of [
-			['name', 'appearanceName'],
-			['description', 'appearanceDescription'],
-			['loginText', 'appearanceLoginText'],
-			['footer', 'appearanceFooter'],
-		]) {
-			panel.append(
-				field(
-					tr(label),
-					input(state.draft.branding[key], (value) => {
-						state.draft.branding[key] = value;
-					}),
-				),
-			);
-		}
-		assetField(panel, 'logo', 'appearanceLogo');
-		assetField(panel, 'icon512', 'appearanceAppIcon', true);
-		assetField(panel, 'background', 'appearanceBackground');
-		panel.append(node('p', 'settings-desc', tr('appearanceAssetHelp')));
-	}
-	function resourceControl(value, update) {
-		const wrapper = node('div', 'appearance-asset-field');
-		if (value) {
-			wrapper.append(node('small', 'appearance-asset-name', state.blobs.get(value)?.name || value));
-		}
-		const upload = node('label', 'btn btn-secondary appearance-file-button', tr('appearanceResourceUpload'));
-		const file = document.createElement('input');
-		file.type = 'file';
-		file.accept = '.png,.jpg,.jpeg,.webp,.gif,.woff2';
-		file.dataset.editorControl = '';
-		file.addEventListener('change', () => {
-			const selected = file.files[0];
-			if (!selected) {
-				return;
-			}
-			try {
-				if (!/\.(?:png|jpe?g|webp|gif|woff2)$/i.test(selected.name)) {
-					throw new Error(tr('appearanceErrorFormat'));
-				}
-				update(rememberBlob(selected, selected.name));
+			control.value = String(value);
+			control.addEventListener('change', () => {
+				state.draft.settings[setting.key] = setting.type === 'boolean' ? control.value === 'true' : control.value;
 				changed();
-				render();
-			} catch (error) {
-				errorMessage(error);
+			});
+		} else {
+			control = document.createElement(setting.type === 'textarea' ? 'textarea' : 'input');
+			if (setting.type !== 'textarea') {
+				control.type = setting.type === 'number' ? 'number' : setting.type === 'color' ? 'color' : 'text';
 			}
-		});
-		upload.append(file);
-		const source = document.createElement('input');
-		source.type = 'url';
-		source.placeholder = 'https://';
-		source.dataset.editorControl = '';
-		const load = button('appearanceResourceUrl', 'noop');
-		load.dataset.write = '';
-		load.addEventListener('click', () => {
-			if (!source.value || state.busy) {
-				return;
-			}
-			void (async () => {
-				setBusy(true);
-				try {
-					const data = await (
-						await api('/api/appearance/assets', {
-							method: 'POST',
-							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({ url: source.value }),
-						})
-					).json();
-					const asset = data.asset || data;
-					const blob = await (await api('/api/appearance/assets/' + asset.hash)).blob();
-					update(rememberBlob(blob, asset.name));
-					changed();
-					render();
-				} finally {
-					setBusy(false);
+			control.value = value ?? '';
+			for (const name of ['min', 'max', 'step']) {
+				if (setting[name] !== undefined) {
+					control[name] = String(setting[name]);
 				}
-			})().catch(errorMessage);
-		});
-		const remove = button('appearanceResourceRemove', 'noop');
-		remove.addEventListener('click', () => {
-			update('');
-			changed();
-			render();
-		});
-		wrapper.append(upload, source, load, remove);
-		return wrapper;
+			}
+			control.addEventListener('input', () => {
+				state.draft.settings[setting.key] = setting.type === 'number' ? Number(control.value) : control.value;
+				changed();
+			});
+		}
+		control.dataset.themeSetting = setting.key;
+		return field(settingLabel(setting), control, settingLabel(setting, 'description'));
 	}
-	function renderSettings(panel) {
-		if (!state.draft.manifest.settings.length) {
-			panel.append(node('p', 'settings-desc', tr('appearanceNoThemeSettings')));
+	function renderSettings() {
+		const section = node('section', 'appearance-section appearance-settings');
+		const head = node('div', 'appearance-section-head');
+		head.append(node('h3', 'appearance-section-title', tr('appearanceThemeSettings')));
+		const settings = state.draft.manifest?.settings || [];
+		if (settings.length) {
+			head.append(button('appearanceReset', 'reset', 'appearance-link'));
+		}
+		section.append(head);
+		if (state.migration.length) {
+			section.append(node('p', 'appearance-note', tr('appearanceMigration')));
+		}
+		if (!settings.length) {
+			section.append(node('p', 'appearance-note', tr('appearanceNoThemeSettings')));
 		}
 		state.draft.settings ||= {};
-		for (const setting of state.draft.manifest?.settings || []) {
-			const value = state.draft.settings[setting.key] ?? setting.default;
-			let control;
-			if (setting.type === 'select' || setting.type === 'boolean') {
-				control = document.createElement('select');
-				const options =
-					setting.type === 'boolean'
-						? [
-								{ value: 'true', label: tr('yes') },
-								{ value: 'false', label: tr('no') },
-							]
-						: setting.options || [];
-				for (const option of options) {
-					const item = typeof option === 'object' ? option : { value: option, label: String(option) };
-					const element = node('option', '', optionLabel(item.label));
-					element.value = String(item.value);
-					control.append(element);
-				}
-				control.value = String(value);
-				control.addEventListener('change', () => {
-					state.draft.settings[setting.key] = setting.type === 'boolean' ? control.value === 'true' : control.value;
-					changed();
-				});
-			} else if (setting.type === 'asset') {
-				control = resourceControl(value, (reference) => {
-					state.draft.settings[setting.key] = reference;
-				});
-			} else {
-				control = input(
-					value,
-					(next) => {
-						state.draft.settings[setting.key] = next;
-					},
-					setting.type === 'number' ? 'number' : setting.type === 'color' ? 'color' : setting.type === 'textarea' ? 'textarea' : 'text',
-				);
-				if (setting.min !== undefined) {
-					control.min = String(setting.min);
-				}
-				if (setting.max !== undefined) {
-					control.max = String(setting.max);
-				}
-				if (setting.step !== undefined) {
-					control.step = String(setting.step);
-				}
-			}
-			control.dataset.themeSetting = setting.key;
-			panel.append(field(settingLabel(setting), control, settingLabel(setting, 'description')));
+		const grid = node('div', 'appearance-settings-grid');
+		for (const setting of settings) {
+			grid.append(settingControl(setting));
 		}
-		if (!isApp(state.draft)) {
-			const advanced = disclosure('appearanceAdvancedSettings', 'advancedExpanded', 'appearance-advanced-settings');
-			const layout = disclosure('appearanceLayout', 'layoutExpanded', 'appearance-layout-settings');
-			renderLayout(layout);
-			advanced.append(
-				layout,
-				field(
-					tr('appearanceAdvanced'),
-					input(
-						state.draft.customCss,
-						(value) => {
-							state.draft.customCss = value;
-						},
-						'textarea',
-					),
-					tr('appearanceCssHelp'),
-				),
-			);
-			panel.append(advanced);
+		section.append(grid);
+		if (isApp(state.draft)) {
+			section.append(node('p', 'appearance-note', tr('appearanceAppTrust')));
 		}
-		if (state.draft.manifest.settings.length || !isApp(state.draft)) {
-			panel.append(button('appearanceReset', 'reset'));
-		}
+		return section;
 	}
-	function renderLayout(panel) {
-		const layout = state.draft.layout || state.draft.manifest.layout;
-		regions.forEach((region, regionIndex) => {
-			const section = node('section', 'appearance-layout-region');
-			section.append(node('h3', 'settings-section-title', tr(regionKeys[regionIndex])));
-			(layout[region] || []).forEach((raw, index) => {
-				const item = typeof raw === 'string' ? { id: raw, type: raw } : raw;
-				const row = node('div', 'appearance-layout-item');
-				row.append(node('strong', '', tr(componentLabels[item.type]) || item.type));
-				const select = document.createElement('select');
-				select.setAttribute('aria-label', tr('appearanceRegion'));
-				select.dataset.editorControl = '';
-				regions.forEach((name, i) => {
-					const option = node('option', '', tr(regionKeys[i]));
-					option.value = name;
-					option.disabled = item.type === 'accounts' && name !== 'main';
-					select.append(option);
-				});
-				select.value = region;
-				select.addEventListener('change', () => {
-					layout[region].splice(index, 1);
-					layout[select.value].push(item);
-					state.draft.layout = layout;
-					changed();
-					render();
-				});
-				row.append(select);
-				if (item.type === 'actions') {
-					const mode = document.createElement('select');
-					mode.dataset.editorControl = '';
-					mode.setAttribute('aria-label', tr('appearanceActions'));
-					for (const [value, label] of [
-						['floating', 'appearanceFloating'],
-						['toolbar', 'appearanceToolbar'],
-					]) {
-						const option = node('option', '', tr(label));
-						option.value = value;
-						mode.append(option);
-					}
-					mode.value = item.mode || 'floating';
-					mode.addEventListener('change', () => {
-						item.mode = mode.value;
-						layout[region][index] = item;
-						state.draft.layout = layout;
-						changed();
-					});
-					row.append(mode);
-				}
-				for (const [label, step] of [
-					['appearanceMoveUp', -1],
-					['appearanceMoveDown', 1],
-				]) {
-					const move = button(label, 'noop', 'btn btn-secondary btn-sm');
-					move.disabled = index + step < 0 || index + step >= layout[region].length;
-					move.dataset.fixedDisabled = String(move.disabled);
-					move.addEventListener('click', () => {
-						if (index + step < 0 || index + step >= layout[region].length) {
-							return;
-						}
-						[layout[region][index], layout[region][index + step]] = [layout[region][index + step], layout[region][index]];
-						state.draft.layout = layout;
-						changed();
-						render();
-					});
-					row.append(move);
-				}
-				if (!required.has(item.type)) {
-					const visible = document.createElement('input');
-					visible.type = 'checkbox';
-					visible.checked = Boolean(item.hidden);
-					visible.dataset.editorControl = '';
-					visible.addEventListener('change', () => {
-						item.hidden = visible.checked;
-						layout[region][index] = item;
-						state.draft.layout = layout;
-						changed();
-					});
-					row.append(field(tr('appearanceHidden'), visible));
-					const remove = button('delete', 'noop', 'btn btn-secondary btn-sm');
-					remove.addEventListener('click', () => {
-						layout[region].splice(index, 1);
-						if (state.draft.content) {
-							delete state.draft.content[item.id];
-						}
-						state.draft.layout = layout;
-						changed();
-						render();
-					});
-					row.append(remove);
-				}
-				if (['text', 'links', 'image'].includes(item.type)) {
-					state.draft.content ||= clone(state.draft.manifest.content || {});
-					const content = (state.draft.content[item.id] ||= {});
-					const value =
-						item.type === 'links'
-							? (content.items || []).map((link) => link.label + ' | ' + link.href).join('\n')
-							: content.text || content.src || '';
-					if (item.type === 'image') {
-						row.append(
-							field(
-								tr('appearanceContent'),
-								resourceControl(content.src || '', (reference) => {
-									content.src = reference;
-									state.draft.layout = layout;
-								}),
-							),
-						);
-					} else {
-						row.append(
-							field(
-								tr('appearanceContent'),
-								input(
-									value,
-									(next) => {
-										if (item.type === 'links') {
-											content.items = next
-												.split('\n')
-												.filter(Boolean)
-												.map((line) => {
-													const split = line.indexOf('|');
-													return split < 0
-														? { label: line.trim(), href: '' }
-														: { label: line.slice(0, split).trim(), href: line.slice(split + 1).trim() };
-												});
-										} else {
-											content.text = next;
-										}
-										state.draft.layout = layout;
-									},
-									item.type === 'image' ? 'text' : 'textarea',
-								),
-								item.type === 'links' ? tr('appearanceLinksHelp') : '',
-							),
-						);
-					}
-				}
-				section.append(row);
-			});
-			panel.append(section);
-		});
-		for (const [type, label] of [
-			['text', 'appearanceAddText'],
-			['links', 'appearanceAddLinks'],
-			['image', 'appearanceAddImage'],
-		]) {
-			const add = button(label, 'noop');
-			add.addEventListener('click', () => {
-				const id = type + '-' + uid();
-				layout.trailing.push({ id, type });
-				state.draft.content ||= {};
-				state.draft.content[id] = type === 'links' ? { items: [] } : type === 'image' ? { src: '', alt: '' } : { text: '' };
-				state.draft.layout = layout;
-				changed();
-				render();
-			});
-			panel.append(add);
+	function render() {
+		const panel = document.getElementById('appearancePanel');
+		if (!panel || !state.draft) {
+			return;
 		}
+		const mine = node('section', 'appearance-section');
+		mine.append(node('h3', 'appearance-section-title', tr('appearanceLibrary')));
+		const grid = node('div', 'appearance-theme-grid');
+		for (const theme of visibleThemes()) {
+			grid.append(themeCard(theme));
+		}
+		mine.append(grid);
+		panel.replaceChildren(mine, renderCatalog(), ...(state.draft.manifest ? [renderSettings()] : []));
+		renderToolbar();
+		setBusy(state.busy);
 	}
-	async function confirm(key) {
+	async function confirm(key, danger = true) {
 		return window.showConfirmDialog({
 			i18n: { title: 'appearanceTitle', message: key, confirmText: 'confirm', cancelText: 'cancel' },
-			danger: true,
+			danger,
 		});
 	}
-	function preserveSelectionFocus(target) {
-		const hadFocus = document.activeElement === target;
-		let focusMoved = false;
-		const trackFocus = (event) => {
-			if (![target, document.body, document.documentElement].includes(event.target)) {
-				focusMoved = true;
-			}
-		};
-		document.addEventListener('focusin', trackFocus);
-		return () => {
-			document.removeEventListener('focusin', trackFocus);
-			const modal = document.getElementById('appearanceModal');
-			if (
-				!hadFocus ||
-				focusMoved ||
-				!state.open ||
-				!modal ||
-				window.getComputedStyle(modal).display === 'none' ||
-				(window.getTopModal?.() && window.getTopModal() !== modal) ||
-				![document.body, document.documentElement, target].includes(document.activeElement)
-			) {
-				return;
-			}
-			const selector = target.classList.contains('appearance-catalog-card') ? '.appearance-catalog-card' : '.appearance-theme-card';
-			[...document.querySelectorAll('#appearancePanel ' + selector)]
-				.find((item) => item.dataset.package === target.dataset.package)
-				?.focus({ preventScroll: true });
-		};
+	function select(theme) {
+		if (state.draft?.themeId) {
+			state.profiles.set(profileKey(state.draft), clone(state.draft));
+		}
+		stopAppPreview();
+		state.draft = makeDraft(theme, state.draft || {});
+		changed();
+		render();
 	}
 	async function action(name, target) {
-		if (name === 'noop') {
-			return;
-		}
-		if (name === 'panel') {
-			state.panel = target.dataset.panel;
-			render();
-			return;
-		}
-		if (name === 'width') {
-			state.width = Number(target.dataset.width);
+		if (name === 'width' || name === 'mode') {
+			state[name] = name === 'width' ? Number(target.dataset.value) : target.dataset.value;
+			renderToolbar();
 			notifyPreview();
 			return;
 		}
-		if (name === 'mode') {
-			state.mode = target.dataset.mode;
-			notifyPreview();
+		if (name === 'close') {
+			return window.requestAppearanceClose();
+		}
+		if (name === 'refresh-preview') {
+			await preview(true);
 			return;
 		}
 		if (name === 'catalog-retry') {
 			await loadCatalog();
 			return;
 		}
-		if (name === 'catalog-select' && state.library.some((theme) => theme.packageId === target.dataset.package)) {
-			return action('select', target);
-		}
 		if (name === 'select') {
 			const theme = state.library.find((item) => item.packageId === target.dataset.package);
-			if (theme) {
-				const restoreFocus = preserveSelectionFocus(target);
-				setBusy(true);
-				try {
-					const previous =
-						isApp(state.draft) && state.draft.packageId !== theme.packageId
-							? await portableBranding(state.draft, theme.packageId)
-							: state.draft;
-					state.localProfiles.set(profileKey(state.draft), clone(state.draft));
-					stopAppPreview();
-					state.draft = makeDraft(theme, previous);
-					changed();
-					render();
-				} finally {
-					setBusy(false);
-					restoreFocus();
-				}
+			if (theme && theme.packageId !== state.draft?.packageId) {
+				select(theme);
+				document
+					.querySelector('#appearancePanel .appearance-theme-card[data-package="' + theme.packageId + '"]')
+					?.focus({ preventScroll: true });
 			}
 			return;
 		}
-		if (name === 'refresh-preview') {
-			await preview(true);
+		if (name === 'reset') {
+			const theme = state.library.find((item) => item.packageId === state.draft.packageId) || state.draft;
+			state.draft = makeDraft(theme, {}, { reset: true });
+			changed();
+			render();
 			return;
 		}
 		if (name === 'refresh-runtime') {
-			if (state.dirty) {
-				await persist();
-			}
 			close();
 			const result = await window.requestAppearanceRuntimeReload?.('theme-change');
 			if (result?.status !== 'completed') {
@@ -1292,54 +640,12 @@ function appearanceEditorClient(createAppearanceDraft) {
 			}
 			return;
 		}
-		if (name === 'close') {
-			return window.requestAppearanceClose();
-		}
-		if (name === 'keep') {
-			setBusy(true);
-			try {
-				await persist();
-				close();
-			} finally {
-				setBusy(false);
-			}
-			return;
-		}
-		if (name === 'discard') {
-			setBusy(true);
-			try {
-				await clearStoredDraft();
-				state.draft = null;
-				close();
-			} finally {
-				setBusy(false);
-			}
-			return;
-		}
-		if (name === 'reset') {
-			if (await confirm('appearanceResetConfirm')) {
-				state.draft = makeDraft(
-					selectedTheme() || { packageId: state.draft.packageId, manifest: state.draft.manifest, css: state.draft.css },
-					{ branding: state.draft.branding },
-					{ reset: true },
-				);
-				changed();
-				render();
-			}
-			return;
-		}
 		if (name === 'reload') {
-			if (!navigator.onLine) {
-				message(tr('appearanceOffline'));
-				return;
-			}
-			if (state.dirty && !(await confirm('appearanceDiscardDraft'))) {
+			if (state.dirty && !(await confirm('appearanceDiscardChanges'))) {
 				return;
 			}
 			setBusy(true);
 			try {
-				await clearStoredDraft();
-				state.draft = null;
 				await load({ replaceDraft: true });
 				render();
 			} finally {
@@ -1351,24 +657,28 @@ function appearanceEditorClient(createAppearanceDraft) {
 			message(tr(navigator.onLine ? 'appearanceNoBinding' : 'appearanceOffline'), true);
 			return;
 		}
-		const restoreFocus = name === 'catalog-select' ? preserveSelectionFocus(target) : () => {};
-		setBusy(true);
-		const publishing = name === 'apply' || name === 'rollback';
-		if (publishing) {
-			beginPublication();
+		if (name === 'apply') {
+			if (isApp(state.draft) && !state.trustedPackages.has(state.draft.packageId)) {
+				if (!(await confirm('appearanceAppTrust', false))) {
+					return;
+				}
+				state.trustedPackages.add(state.draft.packageId);
+			}
 		}
+		if (name === 'delete' && !(await confirm('appearanceDeleteConfirm'))) {
+			return;
+		}
+		setBusy(true);
 		try {
 			if (name === 'apply') {
-				if ((await apply()) === false) {
-					message(tr(state.dirty ? 'appearanceUnsaved' : 'appearanceSaved'));
-				}
-			} else if (name === 'catalog-select') {
+				message(tr('appearanceSaving'));
+				await apply();
+			} else if (name === 'catalog-install') {
 				const theme = state.catalog.find((item) => item.id === target.dataset.catalogId && item.packageId === target.dataset.package);
 				if (!theme) {
 					return;
 				}
 				const nonce = state.nonce;
-				const current = () => state.open && state.nonce === nonce && document.getElementById('appearanceModal')?.style.display !== 'none';
 				message(tr('appearanceInstalling'));
 				try {
 					const response = await api('/api/themes/catalog/install', {
@@ -1377,338 +687,45 @@ function appearanceEditorClient(createAppearanceDraft) {
 						body: JSON.stringify({ id: theme.id, packageId: theme.packageId }),
 					});
 					const data = await response.json();
-					if (current()) {
-						await installed(data, current);
-					}
-				} catch (error) {
-					if (!current()) {
+					if (!state.open || nonce !== state.nonce) {
 						return;
 					}
+					await load();
+					const installed = data.theme || state.library.find((item) => item.packageId === theme.packageId);
+					if (installed) {
+						select(state.library.find((item) => item.packageId === installed.packageId) || installed);
+					}
+					message(tr('appearanceInstalled'));
+				} catch (error) {
 					if (error.code === 'THEME_CATALOG_CHANGED') {
 						void loadCatalog();
 					}
 					throw error;
 				}
-			} else if (name === 'install') {
-				const url = document.getElementById('appearanceSource').value;
-				const response = await api('/api/themes/import', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ url, operationId: uid() }),
-				});
-				await installed(await response.json());
-			} else if (name === 'export' || name === 'backup') {
-				await download(
-					name === 'backup' ? '/api/appearance/export' : '/api/themes/' + encodeURIComponent(state.draft.packageId) + '/export',
-					name === 'backup' ? '2fa-appearance.zip' : '2fa-theme.zip',
-				);
-			} else if (name === 'delete' && (await confirm('appearanceDeleteConfirm'))) {
-				await api('/api/themes/' + encodeURIComponent(state.draft.packageId), { method: 'DELETE' });
-				await clearStoredDraft();
-				state.draft = null;
-				await load({ replaceDraft: true });
+			} else if (name === 'delete') {
+				const id = target.dataset.package;
+				await api('/api/themes/' + encodeURIComponent(id), { method: 'DELETE' });
+				state.library = state.library.filter((theme) => theme.packageId !== id);
+				const selected = state.draft?.packageId === id;
+				await load({ replaceDraft: selected || !state.dirty });
 				render();
-			} else if (name === 'rollback') {
-				if (await confirm('appearanceRollbackConfirm')) {
-					const response = await api('/api/appearance/rollback', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ expectedRevision: state.revision, operationId: uid() }),
-					});
-					await acceptCurrent(response);
-				} else {
-					message(tr(state.dirty ? 'appearanceUnsaved' : 'appearanceSaved'));
-				}
+				notifyPreview();
 			}
-		} finally {
-			if (publishing) {
-				endPublication();
-			}
-			setBusy(false);
-			restoreFocus();
-		}
-	}
-	async function download(url, name) {
-		const response = await api(url);
-		const objectUrl = URL.createObjectURL(await response.blob());
-		const anchor = document.createElement('a');
-		anchor.href = objectUrl;
-		anchor.download = name;
-		anchor.click();
-		setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-	}
-	async function importFile(file, restore) {
-		if (!canWrite()) {
-			throw new Error(tr('appearanceNoBinding'));
-		}
-		setBusy(true);
-		try {
-			const form = new FormData();
-			form.append('file', file);
-			form.append('operationId', uid());
-			const response = await api(restore ? '/api/appearance/restore-inspect' : '/api/themes/import', {
-				method: 'POST',
-				body: form,
-			});
-			await installed(await response.json());
 		} finally {
 			setBusy(false);
 		}
-	}
-	async function installed(data, current = () => true) {
-		await load({ preserveDraft: true });
-		if (!current()) {
-			return;
-		}
-		const theme = data.theme || state.library.find((item) => item.packageId === data.packageId);
-		if (theme) {
-			const previous = await portableBranding(state.draft || {}, theme.packageId);
-			if (!current()) {
-				return;
-			}
-			if (state.draft?.themeId) {
-				state.localProfiles.set(profileKey(state.draft), clone(state.draft));
-			}
-			stopAppPreview();
-			state.draft = makeDraft(theme, previous);
-			if (data.appearance) {
-				state.draft = makeDraft(theme, { ...data.appearance, manifest: theme.manifest, themeId: theme.manifest.id });
-			}
-			if (data.appearance) {
-				await preserveDraftResources();
-			}
-			changed();
-		}
-		message(tr('appearanceInstalled'));
-		render();
-	}
-	async function portableBranding(draft, nextPackage) {
-		if (!isApp(draft) || draft.packageId === nextPackage) {
-			return draft;
-		}
-		const portable = clone(draft);
-		for (const key of ['logo', 'icon192', 'icon512', 'appleTouchIcon', 'background']) {
-			const value = portable.branding?.[key];
-			if (!value || value.startsWith('local:') || value.startsWith('/theme-assets/')) {
-				continue;
-			}
-			const path = value.startsWith('/theme-packages/' + draft.packageId + '/')
-				? value.slice(('/theme-packages/' + draft.packageId + '/').length)
-				: value;
-			const file = draft.manifest?.files?.find((entry) => entry.path === path && entry.mime.startsWith('image/'));
-			if (!file) {
-				throw new Error(tr('appearanceErrorMissing'));
-			}
-			if (!navigator.onLine) {
-				throw new Error(tr('appearanceOfflineBrand'));
-			}
-			const response = await api('/api/themes/' + encodeURIComponent(draft.packageId) + '/files/' + file.path);
-			portable.branding[key] = rememberBlob(await response.blob(), file.path.split('/').pop());
-		}
-		return portable;
-	}
-	function rememberBlob(blob, name) {
-		if (blob.size > 10 * 1024 * 1024) {
-			throw new Error(tr('appearanceErrorLimit'));
-		}
-		const key = 'local:' + uid();
-		const mime =
-			blob.type ||
-			(/\.woff2$/i.test(name)
-				? 'font/woff2'
-				: /\.png$/i.test(name)
-					? 'image/png'
-					: /\.gif$/i.test(name)
-						? 'image/gif'
-						: /\.webp$/i.test(name)
-							? 'image/webp'
-							: 'image/jpeg');
-		state.blobs.set(key, { blob, name, mime });
-		return key;
-	}
-	async function preserveDraftResources() {
-		const replacements = [];
-		for (const asset of state.draft.resources || []) {
-			const response = await api('/api/appearance/assets/' + asset.hash);
-			const key = rememberBlob(await response.blob(), asset.name);
-			for (const url of [
-				asset.url,
-				'/theme-assets/' + asset.hash + '/' + encodeURIComponent(asset.name),
-				'/api/appearance/assets/' + asset.hash,
-			]) {
-				if (url) {
-					replacements.push([url, key]);
-				}
-			}
-		}
-		state.draft = replaceReferences(state.draft, replacements);
-	}
-	async function resourceBytes(resource) {
-		let bytes = resourceCache.get(resource.hash);
-		if (bytes) {
-			return bytes;
-		}
-		const canonical = '/theme-assets/' + resource.hash + '/' + encodeURIComponent(resource.name);
-		let response;
-		if (navigator.onLine) {
-			try {
-				response = await api('/api/appearance/assets/' + resource.hash);
-			} catch {
-				/* Try the immutable offline copy. */
-			}
-		}
-		if (!response && window.caches) {
-			response = await window.caches.match(new URL(canonical, window.location.origin).href);
-		}
-		if (!response?.ok) {
-			throw new Error(tr('appearanceErrorMissing'));
-		}
-		bytes = await response.arrayBuffer();
-		resourceCache.set(resource.hash, bytes);
-		return bytes;
-	}
-	async function addImage(blob, key, icon, assetName) {
-		if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(blob.type)) {
-			throw new Error(tr('appearanceErrorFormat'));
-		}
-		const wasBusy = state.busy;
-		const draft = state.draft;
-		const epoch = state.draftEpoch;
-		const generated = [];
-		setBusy(true);
-		try {
-			if (icon) {
-				const image = new window.Image();
-				const objectUrl = URL.createObjectURL(blob);
-				try {
-					await new Promise((resolve, reject) => {
-						image.onload = resolve;
-						image.onerror = () => reject(new Error(tr('appearanceErrorFormat')));
-						image.src = objectUrl;
-					});
-					for (const [name, size] of [
-						['icon192', 192],
-						['icon512', 512],
-						['appleTouchIcon', 180],
-					]) {
-						const canvas = document.createElement('canvas');
-						canvas.width = canvas.height = size;
-						const ratio = Math.min(size / image.width, size / image.height);
-						canvas
-							.getContext('2d')
-							.drawImage(
-								image,
-								(size - image.width * ratio) / 2,
-								(size - image.height * ratio) / 2,
-								image.width * ratio,
-								image.height * ratio,
-							);
-						const png = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-						if (!png) {
-							throw new Error(tr('appearanceDraftFailed'));
-						}
-						generated.push({ key: name, blob: png, name: name + '.png' });
-					}
-				} finally {
-					URL.revokeObjectURL(objectUrl);
-				}
-			} else {
-				const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }[blob.type];
-				generated.push({ key, blob, name: assetName || blob.name || 'image.' + extension });
-			}
-			if (state.draft !== draft || state.draftEpoch !== epoch) {
-				return;
-			}
-			const references = Object.fromEntries(generated.map((asset) => [asset.key, rememberBlob(asset.blob, asset.name)]));
-			Object.assign(draft.branding, references);
-			changed();
-			render();
-		} finally {
-			setBusy(wasBusy);
-		}
-	}
-	async function importImage(url, key, icon) {
-		if (!canWrite()) {
-			throw new Error(tr('appearanceOffline'));
-		}
-		setBusy(true);
-		try {
-			const response = await api('/api/appearance/assets', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ url }),
-			});
-			const data = await response.json();
-			const asset = data.asset || data;
-			const file = await api('/api/appearance/assets/' + asset.hash);
-			const blob = await file.blob();
-			await addImage(blob, key, icon, asset.name);
-		} finally {
-			setBusy(false);
-		}
-	}
-	function replaceReferences(value, replacements) {
-		if (typeof value === 'string') {
-			for (const [from, to] of replacements) {
-				value = value.split(from).join(to);
-			}
-			return value;
-		}
-		if (Array.isArray(value)) {
-			return value.map((item) => replaceReferences(item, replacements));
-		}
-		if (value && typeof value === 'object') {
-			return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceReferences(item, replacements)]));
-		}
-		return value;
-	}
-	async function uploadLocalResources(source, { current = () => true, uploading } = {}) {
-		const replacements = [];
-		for (const [key, asset] of state.blobs) {
-			if (!current()) {
-				break;
-			}
-			if (!JSON.stringify(source).includes(key)) {
-				continue;
-			}
-			const form = new FormData();
-			form.append('file', asset.blob, asset.name);
-			uploading?.();
-			const data = await (await api('/api/appearance/assets', { method: 'POST', body: form })).json();
-			const stored = data.asset || data;
-			replacements.push([key, '/theme-assets/' + stored.hash + '/' + encodeURIComponent(stored.name)]);
-		}
-		return replacements;
 	}
 	async function apply() {
-		if (isApp(state.draft) && !state.trustedPackages.has(state.draft.packageId)) {
-			if (!(await confirm('appearanceAppTrust'))) {
-				return false;
-			}
-			state.trustedPackages.add(state.draft.packageId);
-		}
-		const replacements = await uploadLocalResources(state.draft, { uploading: () => savingPhase('appearanceUploading') });
-		savingPhase('appearanceSaving');
-		const draft = replaceReferences(state.draft, replacements);
-		const payload = {
-			expectedRevision: state.revision,
-			operationId: uid(),
-			packageId: draft.packageId,
-			settings: draft.settings,
-			branding: draft.branding,
-			...(!isApp(draft) ? { layout: draft.layout, content: draft.content, customCss: draft.customCss } : {}),
-		};
-		const serialized = JSON.stringify(payload);
-		// Preserve the operation identity for a retry after a lost response.
-		if (state.pendingApply?.contents === JSON.stringify({ ...payload, operationId: '' })) {
-			payload.operationId = state.pendingApply.id;
-		}
-		state.pendingApply = { id: payload.operationId, contents: JSON.stringify({ ...payload, operationId: '' }) };
-		await persist();
+		const draft = state.draft;
 		const response = await api('/api/appearance', {
 			method: 'PUT',
 			headers: { 'Content-Type': 'application/json' },
-			body: payload.operationId === JSON.parse(serialized).operationId ? serialized : JSON.stringify(payload),
+			body: JSON.stringify({
+				expectedRevision: state.revision,
+				operationId: uid(),
+				packageId: draft.packageId,
+				settings: draft.settings,
+			}),
 		});
 		await acceptCurrent(response);
 	}
@@ -1724,39 +741,34 @@ function appearanceEditorClient(createAppearanceDraft) {
 			typeof data.active.themeId === 'string' &&
 			record(data.active.manifest) &&
 			Array.isArray(data.active.manifest.settings) &&
-			record(data.active.settings) &&
-			record(data.active.branding),
+			record(data.active.settings),
 		);
 	}
 	async function acceptCurrent(response) {
 		let data = await response?.json().catch(() => null);
-		// A receipt is a historical commit. Re-read current state even when its
-		// snapshot is valid; another device may have published since that receipt.
-		if (!validAppearanceResponse(data) || data.replayed || typeof data.previous !== 'boolean') {
+		// A receipt is a historical commit; re-read the current state instead.
+		if (!validAppearanceResponse(data) || data.replayed) {
 			data = await (await api('/api/appearance')).json();
 		}
 		if (!validAppearanceResponse(data)) {
 			throw new Error(tr('appearanceErrorFormat'));
 		}
-		const validate = () => {
-			if (data.revision < Math.max(state.revision, state.remoteRevision)) {
-				state.conflict = true;
-				throw new Error(tr('appearanceConflict'));
-			}
-		};
-		await clearStoredDraft({
-			validate,
-			adopt: () => {
-				const running = window.__2FA_APPEARANCE__;
-				state.revision = data.revision;
-				state.remoteRevision = Math.max(state.remoteRevision, data.revision);
-				state.draft = data.active;
-				state.applied = clone(data.active);
-				rememberProfile(data.active);
-				state.reloadRequired ||= Boolean((isApp(running) || isApp(data.active)) && running?.packageId !== data.active?.packageId);
-				window.__2FA_APPEARANCE__ = data.active;
-			},
-		});
+		if (data.revision < Math.max(state.revision, state.remoteRevision)) {
+			state.conflict = true;
+			throw new Error(tr('appearanceConflict'));
+		}
+		const running = window.__2FA_APPEARANCE__;
+		state.revision = data.revision;
+		state.remoteRevision = Math.max(state.remoteRevision, data.revision);
+		state.draft = clone(data.active);
+		state.applied = clone(data.active);
+		state.dirty = false;
+		state.conflict = false;
+		state.migration = [];
+		state.profiles.clear();
+		rememberProfile(data.active);
+		state.reloadRequired ||= Boolean((isApp(running) || isApp(data.active)) && running?.packageId !== data.active?.packageId);
+		window.__2FA_APPEARANCE__ = data.active;
 		if (!window.__2FA_SAFE_MODE__ && !state.reloadRequired) {
 			window.applyAppearance?.(data.active);
 		}
@@ -1771,37 +783,40 @@ function appearanceEditorClient(createAppearanceDraft) {
 		if (!frame?.parentElement) {
 			return;
 		}
-		frame.style.width = state.width + 'px';
 		const viewport = document.querySelector('.appearance-preview-viewport');
 		const available = viewport?.clientWidth || state.width;
+		const height = viewport?.clientHeight || 600;
 		const scale = Math.min(1, available / state.width);
+		frame.style.width = state.width + 'px';
 		frame.style.transformOrigin = 'top left';
 		frame.style.transform = 'scale(' + scale + ')';
-		frame.style.height = Math.ceil(600 / scale) + 'px';
-		frame.style.border = '0';
-		frame.style.maxWidth = 'none';
+		frame.style.height = Math.ceil(height / scale) + 'px';
+		frame.style.marginLeft = scale < 1 ? '0' : Math.max(0, (available - state.width) / 2) + 'px';
 	}
 	function appPreviewStatus(status) {
-		if (!state.open || state.applying || !isApp(state.draft)) {
+		if (!state.open || !isApp(state.draft)) {
 			return;
 		}
+		const element = document.getElementById('appearanceAppPreviewStatus');
 		const key =
 			status.status === 'ready'
-				? 'appearancePreviewReady'
+				? ''
 				: status.reason === 'offline-preview-unavailable'
 					? 'appearancePreviewOffline'
 					: status.reason === 'preview-expired'
 						? 'appearancePreviewExpired'
-						: status.reason === 'preview-resources-changed'
-							? 'appearancePreviewChanged'
-							: status.status === 'blocked'
-								? 'appearancePreviewBlocked'
-								: 'appearanceLoading';
-		document.getElementById('appearanceAppPreviewStatus').textContent = tr(key);
+						: status.status === 'blocked'
+							? 'appearancePreviewBlocked'
+							: 'appearanceLoading';
+		element.hidden = !key;
+		element.replaceChildren(key ? tr(key) : '');
+		if (key && status.status === 'blocked') {
+			element.append(button('appearanceRefreshPreview', 'refresh-preview', 'btn btn-secondary btn-sm'));
+		}
 		sizePreview(document.querySelector('#appearanceAppPreview iframe'));
 	}
 	function previewError(error) {
-		if (!state.open || state.applying) {
+		if (!state.open) {
 			return;
 		}
 		const status = document.getElementById('appearanceAppPreviewStatus');
@@ -1815,7 +830,6 @@ function appearanceEditorClient(createAppearanceDraft) {
 		state.previewTask = null;
 		state.appPreview?.close();
 		state.appPreviewPackage = null;
-		state.previewReferences = [];
 	}
 	async function previewApp(force) {
 		if (state.previewTask) {
@@ -1868,46 +882,15 @@ function appearanceEditorClient(createAppearanceDraft) {
 				}
 			},
 		});
-		if (state.previewSessionInvalid || generation !== state.previewGeneration) {
-			return;
-		}
 		const fresh = force || state.appPreviewPackage !== draft.packageId;
 		if (fresh) {
-			// Claim this package synchronously so typing while staging never opens a second capability.
+			// Claim this package synchronously so typing never opens a second capability.
 			state.appPreviewPackage = draft.packageId;
 			appPreviewStatus({ status: 'preparing' });
-			try {
-				const references = await uploadLocalResources(
-					{ settings: draft.settings, branding: draft.branding },
-					{ current: () => state.open && generation === state.previewGeneration && !state.applying },
-				);
-				if (!state.open || generation !== state.previewGeneration || draft.packageId !== state.draft?.packageId) {
-					return;
-				}
-				state.previewReferences = references;
-			} catch (error) {
-				if (state.open && generation === state.previewGeneration) {
-					appPreviewStatus({ status: 'blocked' });
-					previewError(error);
-				}
-				return;
-			}
-		}
-		if (!state.open || generation !== state.previewGeneration) {
-			return;
-		}
-		const appearance = replaceReferences({ settings: draft.settings, branding: draft.branding }, state.previewReferences);
-		const assetValues = [
-			...draft.manifest.settings.filter((field) => field.type === 'asset').map((field) => appearance.settings[field.key]),
-			...['logo', 'icon192', 'icon512', 'appleTouchIcon', 'background'].map((key) => appearance.branding[key]),
-		];
-		if (assetValues.some((value) => typeof value === 'string' && value.startsWith('local:'))) {
-			appPreviewStatus({ status: 'blocked', reason: 'preview-resources-changed' });
-			return;
 		}
 		const payload = {
 			packageId: draft.packageId,
-			appearance,
+			appearance: { settings: draft.settings },
 			mode: state.mode,
 			language: document.documentElement.lang,
 			scene: state.scene,
@@ -1924,11 +907,31 @@ function appearanceEditorClient(createAppearanceDraft) {
 			sizePreview(document.querySelector('#appearanceAppPreview iframe'));
 		}
 	}
-	async function preview(force = false) {
-		if (state.applying) {
-			state.previewResume = true;
-			return;
+	async function resourceBytes(resource) {
+		let bytes = resourceCache.get(resource.hash);
+		if (bytes) {
+			return bytes;
 		}
+		let response;
+		if (navigator.onLine) {
+			try {
+				response = await api('/api/appearance/assets/' + resource.hash);
+			} catch {
+				/* Try the immutable offline copy. */
+			}
+		}
+		if (!response && window.caches) {
+			const canonical = '/theme-assets/' + resource.hash + '/' + encodeURIComponent(resource.name);
+			response = await window.caches.match(new URL(canonical, window.location.origin).href);
+		}
+		if (!response?.ok) {
+			throw new Error(tr('appearanceErrorMissing'));
+		}
+		bytes = await response.arrayBuffer();
+		resourceCache.set(resource.hash, bytes);
+		return bytes;
+	}
+	async function preview(force = false) {
 		if (!state.open || !state.draft) {
 			return;
 		}
@@ -1936,11 +939,10 @@ function appearanceEditorClient(createAppearanceDraft) {
 		const app = isApp(state.draft);
 		frame.style.display = app ? 'none' : 'block';
 		document.getElementById('appearanceAppPreview').hidden = !app;
-		document.getElementById('appearanceRefreshPreview').hidden = !app;
-		document.getElementById('appearanceAppPreviewStatus').hidden = !app;
 		if (app) {
 			return previewApp(force);
 		}
+		document.getElementById('appearanceAppPreviewStatus').hidden = true;
 		if (state.appPreviewPackage) {
 			stopAppPreview();
 		}
@@ -1952,22 +954,15 @@ function appearanceEditorClient(createAppearanceDraft) {
 			return;
 		}
 		const resources = [];
-		for (const [url, entry] of state.blobs) {
-			resources.push({ url, mime: entry.mime, bytes: await entry.blob.arrayBuffer() });
-		}
 		for (const resource of state.draft.resources || []) {
 			const url = resource.url || '/theme-assets/' + resource.hash + '/' + encodeURIComponent(resource.name);
-			if (url.startsWith('local:') && state.blobs.has(url)) {
-				continue;
-			}
 			try {
-				const bytes = await resourceBytes(resource);
-				resources.push({ url, hash: resource.hash, mime: resource.mime, bytes });
+				resources.push({ url, hash: resource.hash, mime: resource.mime, bytes: await resourceBytes(resource) });
 			} catch {
-				/* The preview retains its plain background if a draft resource is unavailable. */
+				/* The preview keeps its plain background if a theme resource is unavailable. */
 			}
 		}
-		if (generation !== state.previewGeneration || !state.open || !frame.isConnected || !frame.parentElement) {
+		if (generation !== state.previewGeneration || !state.open || !frame.isConnected) {
 			return;
 		}
 		sizePreview(frame);
@@ -2021,36 +1016,22 @@ function appearanceEditorClient(createAppearanceDraft) {
 	}
 	function close() {
 		state.open = false;
+		state.dirty = false;
 		state.catalogGeneration += 1;
 		state.loadGeneration += 1;
 		clearTimeout(state.previewTimer);
 		stopAppPreview();
 		window.hideModal('appearanceModal');
 	}
-	window.hasAppearancePendingChanges = () => state.open || state.busy || state.persisted < state.version;
+	window.hasAppearancePendingChanges = () => state.open || state.busy;
 	window.requestAppearanceClose = async () => {
 		if (state.busy) {
 			return;
 		}
-		try {
-			if (state.dirty) {
-				const keep = await window.showConfirmDialog({
-					i18n: {
-						title: 'appearanceTitle',
-						message: 'appearanceCloseDraft',
-						confirmText: 'appearanceKeepDraft',
-						cancelText: 'dialogKeepEditing',
-					},
-				});
-				if (!keep) {
-					return;
-				}
-				await persist();
-			}
-			close();
-		} catch {
-			message(tr('appearanceDraftFailed'), true);
+		if (state.dirty && !(await confirm('appearanceDiscardChanges'))) {
+			return;
 		}
+		close();
 	};
 	window.showAppearanceEditor = async () => {
 		if (state.open || state.busy) {
@@ -2059,39 +1040,28 @@ function appearanceEditorClient(createAppearanceDraft) {
 		ensureEditor();
 		state.open = true;
 		state.catalogStatus = 'idle';
-		setBusy(true);
 		state.ready = false;
 		state.nonce = uid();
+		state.width = window.innerWidth < 760 ? 390 : 1440;
 		state.library = window.__2FA_BUILTIN_THEMES__ || state.library;
-		state.draft = clone(window.__2FA_APPEARANCE__ || state.draft || {});
+		state.draft = clone(window.__2FA_APPEARANCE__ || {});
 		state.applied = clone(window.__2FA_APPEARANCE__ || null);
 		state.revision = state.draft.revision || 0;
 		state.remoteRevision = Math.max(state.remoteRevision, state.revision);
 		state.dirty = false;
 		state.conflict = false;
-		state.pendingApply = null;
-		state.version = 0;
-		state.persisted = 0;
+		state.migration = [];
+		state.profiles.clear();
 		if (!state.draft.packageId && state.library[0]) {
 			state.draft = makeDraft(state.library[0]);
 		}
+		setBusy(true);
 		window.showModal('appearanceModal');
 		message(tr('appearanceLoading'));
+		render();
 		try {
-			await state.queue.catch(() => {});
-			const saved = await draftStore('get');
-			if (saved?.draft) {
-				state.draft = saved.draft;
-				state.revision = saved.revision;
-				state.blobs = new Map(saved.blobs || []);
-				state.dirty = saved.dirty;
-				state.pendingApply = saved.pendingApply;
-				state.localProfiles = new Map(saved.profiles || []);
-				state.migration = saved.migration || [];
-				message(tr('appearanceDraftRestored'));
-			}
-			await load();
-			if (!saved?.draft && navigator.onLine && state.capabilities.write && !state.conflict) {
+			await load({ replaceDraft: true });
+			if (navigator.onLine && state.capabilities.write) {
 				message('');
 			}
 		} catch (error) {
@@ -2108,6 +1078,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 		};
 		setBusy(false);
 		render();
+		notifyPreview();
 		void loadCatalog();
 	};
 	window.addEventListener('message', (event) => {
@@ -2121,12 +1092,16 @@ function appearanceEditorClient(createAppearanceDraft) {
 		}
 	});
 	window.addEventListener('beforeunload', (event) => {
-		if (state.dirty && state.persisted < state.version) {
+		if (state.open && state.dirty) {
 			event.preventDefault();
 			event.returnValue = '';
 		}
 	});
-	window.addEventListener('resize', notifyPreview);
+	window.addEventListener('resize', () => {
+		if (state.open) {
+			notifyPreview();
+		}
+	});
 	window.addEventListener('appearance-updated-elsewhere', (event) => {
 		if (Number.isSafeInteger(event.detail?.revision)) {
 			state.remoteRevision = Math.max(state.remoteRevision, event.detail.revision);
@@ -2135,27 +1110,21 @@ function appearanceEditorClient(createAppearanceDraft) {
 		message(tr('appearanceUpdatedElsewhere'));
 	});
 	window.addEventListener('online', () => {
-		if (state.open) {
-			void loadCatalog();
+		if (!state.open) {
+			return;
 		}
-		state.capabilities.write = false;
-		setBusy(state.busy);
-		void load({ preserveDraft: true })
+		void loadCatalog();
+		void load()
 			.then(() => {
 				setBusy(state.busy);
 				if (state.open && !state.busy) {
 					render();
 					if (!state.conflict) {
-						message(tr(state.dirty ? 'appearanceUnsaved' : 'appearanceSaved'));
+						message('');
 					}
 				}
 			})
-			.catch((error) => {
-				if (state.open) {
-					errorMessage(error);
-				}
-				setBusy(state.busy);
-			});
+			.catch(errorMessage);
 	});
 	window.addEventListener('offline', () => {
 		state.catalogGeneration += 1;

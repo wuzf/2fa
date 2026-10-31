@@ -55,10 +55,11 @@ describe('appearance runtime', () => {
 		search.value = 'retained';
 		const properties = ['fontFamily', 'color', 'backgroundColor', 'borderRadius', 'padding', 'margin', 'maxWidth'];
 		const selectors = ['body', '.container', '.content', '.search-section', '.secret-card', '.otp-code', '.otp-next-code', '.page-footer'];
-		const capture = () => selectors.map((selector) => {
-			const style = window.getComputedStyle(document.querySelector(selector));
-			return Object.fromEntries(properties.map((property) => [property, style[property]]));
-		});
+		const capture = () =>
+			selectors.map((selector) => {
+				const style = window.getComputedStyle(document.querySelector(selector));
+				return Object.fromEntries(properties.map((property) => [property, style[property]]));
+			});
 		const baselines = {};
 		for (const mode of ['light', 'dark']) {
 			document.documentElement.dataset.theme = mode;
@@ -87,30 +88,23 @@ describe('appearance runtime', () => {
 		expect(copied).toHaveBeenCalledTimes(3);
 	});
 
-	it('keeps Fluent customization and restores its native layout without duplicating branding', () => {
+	it('keeps Fluent customization and restores its native layout without a custom brand row', () => {
 		const window = page();
 		const document = window.document;
 		const controller = createAppearanceController(document);
 		const original = createDefaultAppearance();
-		const customized = {
-			...original,
-			settings: { ...original.settings, accent: '#fedcba' },
-			branding: { name: 'My vault', footer: 'Custom footer' },
-			customCss: '.search-input { letter-spacing: 1px; }',
-		};
+		const customized = { ...original, settings: { ...original.settings, accent: '#fedcba' } };
 		for (let i = 0; i < 2; i++) {
 			controller.apply(customized);
 			expect(document.querySelector('.search-action-row .sort-controls')).not.toBeNull();
 			expect(document.getElementById('appearance-config-css').textContent).toContain('--2fa-accent:#fedcba');
-			expect(document.getElementById('appearance-custom-css').textContent).toBe(customized.customCss);
-			expect(document.querySelector('[data-part="brand"]').textContent).toBe('My vault');
-			expect(document.querySelectorAll('[data-part="footer"] [data-part="custom-footer"]')).toHaveLength(1);
+			expect(document.getElementById('appearance-custom-css')).toBeNull();
+			expect(document.querySelector('[data-part="brand"]')).toBeNull();
+			expect(document.querySelector('[data-part="custom-footer"]')).toBeNull();
 		}
 		controller.apply(original);
 		expect(document.querySelector('[data-part="brand"]')).toBeNull();
-		expect(document.querySelector('[data-part="custom-footer"]')).toBeNull();
 		expect(document.getElementById('appearance-config-css').textContent).toBe('');
-		expect(document.getElementById('appearance-custom-css').textContent).toBe('');
 	});
 	it('routes app configuration through its host without applying v1 layout or replacing the mounted app DOM', async () => {
 		const window = page();
@@ -225,8 +219,8 @@ describe('appearance runtime', () => {
 			const floatingActionLayer = layer(document.querySelector('.action-menu-float'));
 			for (const mode of ['light', 'dark']) {
 				document.documentElement.dataset.theme = mode;
-				for (const blur of [0, 8]) {
-					controller.apply({ ...getBuiltinTheme(theme), settings: { backgroundBlur: blur } });
+				for (const density of ['comfortable', 'compact']) {
+					controller.apply({ ...getBuiltinTheme(theme), settings: { density } });
 					const closedLayer = style(cards[0]).zIndex;
 					const closedDisplay = style(cards[0]).display;
 					triggers[0].click();
@@ -239,7 +233,6 @@ describe('appearance runtime', () => {
 					expect(layer(cards[0])).toBeLessThan(layer(document.querySelector('.sort-menu')));
 					expect(layer(cards[0])).toBeLessThan(layer(document.getElementById('secretModal')));
 					expect(style(cards[0]).display).toBe(closedDisplay);
-					expect(style(cards[0]).getPropertyValue('backdrop-filter')).toBe('blur(' + blur + 'px)');
 					document.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 					expect(document.activeElement).toBe(menus[0].querySelectorAll('.menu-item')[1]);
 					document.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -262,7 +255,7 @@ describe('appearance runtime', () => {
 			official.dispose();
 		},
 	);
-	it.each([320, 390, 768, 1440])('marks the real account grid and preserves theme column choices at %ipx', async (width) => {
+	it.each([320, 390, 768, 1440])('marks the real account grid and keeps each theme column layout at %ipx', async (width) => {
 		const window = new Window({ settings: { disableJavaScriptEvaluation: true } });
 		windows.push(window);
 		window.happyDOM.setWindowSize({ width, height: 900 });
@@ -274,12 +267,7 @@ describe('appearance runtime', () => {
 		const controller = createAppearanceController(document);
 		for (const mode of ['light', 'dark']) {
 			document.documentElement.dataset.theme = mode;
-			for (const snapshot of [
-				getBuiltinTheme('compact'),
-				{ ...getBuiltinTheme('document'), settings: { columns: '2' } },
-				{ ...getBuiltinTheme('document'), settings: { columns: '3' } },
-				getBuiltinTheme('compact'),
-			]) {
+			for (const snapshot of [getBuiltinTheme('compact'), getBuiltinTheme('document'), getBuiltinTheme('compact')]) {
 				controller.apply(snapshot);
 				list.innerHTML = createAccountRenderer().card({ id: 'account', name: 'GitHub', code: '123456' });
 				expect(document.getElementById('secretsList')).toBe(list);
@@ -289,8 +277,8 @@ describe('appearance runtime', () => {
 				expect(computed.display).toBe('grid');
 				if (snapshot.manifest.id === 'compact') {
 					expect(computed.gridTemplateColumns).toBe('1fr');
-				} else if (width >= (snapshot.settings.columns === '3' ? 1200 : 768)) {
-					expect(computed.gridTemplateColumns).toContain('repeat(' + snapshot.settings.columns + ',');
+				} else if (width >= 768) {
+					expect(computed.gridTemplateColumns).toContain('repeat(auto-fill,');
 				}
 			}
 		}
@@ -307,11 +295,7 @@ describe('appearance runtime', () => {
 		vm.runInContext(document.querySelector('script').textContent, context);
 		const list = document.getElementById('secretsList');
 		for (const mode of ['light', 'dark']) {
-			for (const snapshot of [
-				getBuiltinTheme('compact'),
-				{ ...getBuiltinTheme('document'), settings: { columns: '2' } },
-				getBuiltinTheme('compact'),
-			]) {
+			for (const snapshot of [getBuiltinTheme('compact'), getBuiltinTheme('document'), getBuiltinTheme('compact')]) {
 				window.dispatchEvent(
 					new window.MessageEvent('message', {
 						source: parent,
@@ -325,7 +309,7 @@ describe('appearance runtime', () => {
 				if (snapshot.manifest.id === 'compact') {
 					expect(columns).toBe('1fr');
 				} else if (width >= 768) {
-					expect(columns).toContain('repeat(2,');
+					expect(columns).toContain('repeat(auto-fill,');
 				}
 			}
 		}
@@ -696,8 +680,17 @@ describe('appearance runtime', () => {
 						type: 'appearance-preview',
 						nonce,
 						snapshot: {
-							manifest: { layout, content: { note: { text: 'Preview notes' } } },
-							branding: { name: 'My authenticator', logo: 'local:upload-1', background: 'local:upload-1' },
+							manifest: {
+								layout: {
+									...layout,
+									trailing: [
+										{ id: 'note', type: 'text' },
+										{ id: 'picture', type: 'image' },
+									],
+								},
+								content: { note: { text: 'Preview notes' }, picture: { src: 'p.png', alt: '' } },
+							},
+							resources: [{ hash: 'c'.repeat(64), name: 'p.png', url: 'local:upload-1' }],
 						},
 						resources: [{ url: 'local:upload-1', mime: 'image/png', bytes: new ArrayBuffer(4) }],
 					},
@@ -707,10 +700,9 @@ describe('appearance runtime', () => {
 		expect(createObjectURL).not.toHaveBeenCalled();
 		deliver('session_123');
 		expect(createObjectURL).toHaveBeenCalledOnce();
-		expect(window.document.querySelector('[data-part="brand"] img').getAttribute('src')).toBe('blob:https://example.com/preview-image');
-		expect(window.document.getElementById('appearance-config-css').textContent).toContain('blob:https://example.com/preview-image');
+		expect(window.document.querySelector('[data-part="image"] img').getAttribute('src')).toBe('blob:https://example.com/preview-image');
 		expect(window.document.querySelectorAll('[data-part="account"]')).toHaveLength(5);
-		expect(window.document.querySelector('[data-part="brand"] strong').textContent).toBe('My authenticator');
+		expect(window.document.querySelector('[data-part="brand"] strong').textContent).toBe('2FA');
 		const link = window.document.createElement('a');
 		link.href = '/';
 		window.document.body.append(link);

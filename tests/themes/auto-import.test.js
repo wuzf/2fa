@@ -11,15 +11,14 @@ const load = (bytes, options = {}) => normalizeDetectedThemeImport({ bytes, name
 afterEach(() => vi.restoreAllMocks());
 
 describe('automatic theme protocol selection', () => {
-	it('preserves v1 ZIP, standalone CSS, and both JSON manifest forms', async () => {
-		const inputs = [
-			{ bytes: legacyArchive(), name: 'theme.zip' },
+	it('preserves v1 ZIP imports and accepts only ZIP archives', async () => {
+		const input = { bytes: legacyArchive(), name: 'theme.zip' };
+		expect(await normalizeDetectedThemeImport(input)).toEqual(await normalizeThemeImport(input));
+		for (const input of [
 			{ bytes: encode('body{color:red}'), name: 'theme.css' },
 			{ bytes: encode(JSON.stringify({ ...manifest, css: 'body{color:red}' })), name: 'theme.json' },
-			{ bytes: encode(JSON.stringify({ manifest, css: 'body{color:red}' })), name: 'theme.json' },
-		];
-		for (const input of inputs) {
-			expect(await normalizeDetectedThemeImport(input)).toEqual(await normalizeThemeImport(input));
+		]) {
+			await expect(normalizeDetectedThemeImport(input)).rejects.toMatchObject({ code: 'THEME_INVALID_ZIP' });
 		}
 	});
 
@@ -41,50 +40,6 @@ describe('automatic theme protocol selection', () => {
 		expect(pkg.manifest.themeApiVersion).toBe(1);
 		expect(pkg.assets).toHaveLength(1);
 		expect(pkg.assets[0].bytes).toEqual(appPng);
-	});
-
-	it('downloads a v1 source and its dependencies once with relative URLs intact', async () => {
-		const fetcher = vi.fn(async (url) =>
-			url.endsWith('theme.css') ? new Response('body{background:url(image.png)}') : new Response(appPng),
-		);
-		const pkg = await normalizeDetectedThemeImport({ url: 'https://cdn.example.org/styles/theme.css' }, { fetcher });
-		expect(pkg.assets).toHaveLength(1);
-		expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
-			'https://cdn.example.org/styles/theme.css',
-			'https://cdn.example.org/styles/image.png',
-		]);
-	});
-
-	it.each(['https://github.com/owner/theme', 'https://github.com/owner/theme/releases/tag/v1.0.0'])(
-		'resolves %s and downloads the app release exactly once',
-		async (url) => {
-			const fixture = await appThemeFixture();
-			const fetcher = vi.fn(async (location) =>
-				location.startsWith('https://api.github.com/')
-					? Response.json({ assets: [{ name: '2fa-theme.zip', browser_download_url: 'https://cdn.example.org/2fa-theme.zip' }] })
-					: new Response(fixture.archive),
-			);
-			const pkg = await normalizeDetectedThemeImport({ url }, { fetcher });
-			expect(pkg.kind).toBe('app');
-			expect(fetcher.mock.calls.map(([location]) => location)).toEqual([
-				'https://api.github.com/repos/owner/theme/releases/' + (url.endsWith('v1.0.0') ? 'tags/v1.0.0' : 'latest'),
-				'https://cdn.example.org/2fa-theme.zip',
-			]);
-		},
-	);
-
-	it('preserves the shared request budget across discovery, source download, and v1 dependencies', async () => {
-		const css = Array.from({ length: LIMITS.requests }, (_, index) => `@import "https://cdn.example.org/dep-${index}.css";`).join('');
-		const fetcher = vi.fn(async (url) => {
-			if (url.startsWith('https://api.github.com/')) {
-				return Response.json({ assets: [{ name: '2fa-theme.zip', browser_download_url: 'https://cdn.example.org/2fa-theme.zip' }] });
-			}
-			return new Response(url.endsWith('.zip') ? legacyArchive(css) : 'body{color:red}');
-		});
-		await expect(normalizeDetectedThemeImport({ url: 'https://github.com/owner/theme' }, { fetcher })).rejects.toMatchObject({
-			code: 'THEME_REQUEST_LIMIT',
-		});
-		expect(fetcher).toHaveBeenCalledTimes(LIMITS.requests);
 	});
 
 	it('honors explicit app and v1 validators and never retries damaged app hashes as v1', async () => {

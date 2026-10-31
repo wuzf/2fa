@@ -24,7 +24,7 @@ export function createOtpEntryPage(request, appearance = null) {
 <head>${getStandaloneHead(t('otpEntryPageTitle'), getQuickOtpStyles(), appearance)}</head>
 <body>
   <main class="otp-shell" aria-labelledby="otpEntryTitle">
-    ${getStandaloneBrand(appearance, { fallbackIcon: dialogIcon('key') })}
+    ${getStandaloneBrand({ fallbackIcon: dialogIcon('key') })}
     <section class="standalone-card otp-card otp-entry" aria-label="${t('otpEntrySection')}" data-standalone-aria-label="otpEntrySection">
       <div class="standalone-language-row">${getStandaloneLanguageSelect(language)}</div>
       <header class="otp-header">
@@ -104,7 +104,7 @@ export function createQuickOtpPage(otp, options = {}) {
 <head>${getStandaloneHead(t('otpPageTitle'), getQuickOtpStyles(), appearance)}</head>
 <body>
   <main class="otp-shell" aria-labelledby="otpTitle">
-    ${getStandaloneBrand(appearance, { fallbackIcon: dialogIcon('key') })}
+    ${getStandaloneBrand({ fallbackIcon: dialogIcon('key') })}
     <section class="standalone-card otp-card" aria-label="${t('otpSection')}" data-standalone-aria-label="otpSection">
       <div class="standalone-language-row">${getStandaloneLanguageSelect(language)}</div>
       ${isHOTP ? '' : `<div class="progress-container"><div class="progress-bar" id="progress" role="progressbar" aria-label="${t('otpProgress')}" data-standalone-aria-label="otpProgress" aria-valuemin="0" aria-valuemax="100"></div></div>`}

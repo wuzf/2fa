@@ -1,4 +1,4 @@
-import { Unzip, UnzipInflate, zipSync } from 'fflate';
+import { Unzip, UnzipInflate } from 'fflate';
 import { LIMITS, ThemeError, invariant } from './schema.js';
 import { cleanPath, decodeText } from './resources.js';
 
@@ -75,7 +75,7 @@ function inspectDirectory(bytes, { maxEntries = LIMITS.files + 32, manifestBytes
 
 /** Inspect only the manifest to choose a validator, without inflating other files. */
 export function readArchiveManifest(bytes, { maxEntries, manifestBytes }) {
-	invariant(bytes.length <= LIMITS.restoreUpload, 'THEME_UPLOAD_LIMIT');
+	invariant(bytes.length <= LIMITS.upload, 'THEME_UPLOAD_LIMIT');
 	invariant(bytes.length >= 22, 'THEME_INVALID_ZIP');
 	const expected = inspectDirectory(bytes, { maxEntries, manifestBytes });
 	invariant(expected.has('2fa-theme.json'), 'THEME_MISSING_MANIFEST');
@@ -117,8 +117,8 @@ export function readArchiveManifest(bytes, { maxEntries, manifestBytes }) {
 	return manifest;
 }
 
-export function unpackTheme(bytes, budget, { restore = false } = {}) {
-	invariant(bytes.length <= (restore ? LIMITS.restoreUpload : LIMITS.upload), 'THEME_UPLOAD_LIMIT');
+export function unpackTheme(bytes, budget) {
+	invariant(bytes.length <= LIMITS.upload, 'THEME_UPLOAD_LIMIT');
 	invariant(bytes.length >= 22, 'THEME_INVALID_ZIP');
 	const expected = inspectDirectory(bytes);
 	const files = new Map();
@@ -171,19 +171,4 @@ export function unpackTheme(bytes, budget, { restore = false } = {}) {
 	}
 	invariant(!failure && seen.size === expected.size && files.size <= LIMITS.files, 'THEME_INVALID_ZIP');
 	return files;
-}
-
-export function packStoredFiles(files) {
-	let total = 0;
-	const entries = Object.create(null);
-	for (const [name, bytes] of files) {
-		cleanPath(name);
-		assertArchiveFileLimit(name, bytes.length);
-		total += bytes.length;
-		entries[name] = [bytes, { level: 0, mtime: new Date('2020-01-01T00:00:00Z'), os: 0, attrs: 0 }];
-	}
-	invariant(files.size <= LIMITS.files && total <= LIMITS.totalBytes, 'THEME_APPEARANCE_LIMIT');
-	const bytes = zipSync(entries, { level: 0 });
-	invariant(bytes.length <= LIMITS.restoreUpload, 'THEME_UPLOAD_LIMIT');
-	return bytes;
 }

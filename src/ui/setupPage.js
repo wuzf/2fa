@@ -4,7 +4,6 @@ import { SUPPORTED_LANGUAGES, LANGUAGE_OPTIONS } from '../shared/languages.js';
  * 用于用户首次访问时设置管理员密码
  */
 
-import { getStandaloneBrand, getStandaloneBrandMetadata, getStandaloneBrandTitle } from './standalone.js';
 import { getSetupStyles } from './styles/setup.js';
 import { dialogIcon } from './dialogIcons.js';
 import { LOCALES } from './locales/index.js';
@@ -55,8 +54,7 @@ export async function createSetupPage(request, appearance = null) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>${getStandaloneBrandTitle(LOCALES[initialLanguage].setupPageTitle, appearance).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</title>
-  ${getStandaloneBrandMetadata(appearance)}
+  <title>${LOCALES[initialLanguage].setupPageTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</title>
 
   <script>
     (function() {
@@ -85,7 +83,6 @@ export async function createSetupPage(request, appearance = null) {
 <body>
   <main class="setup-container">
     <div class="setup-header">
-      ${appearance?.branding?.name || appearance?.branding?.logo ? getStandaloneBrand(appearance, { className: 'setup-brand' }) : ''}
       <div class="setup-header-top">
         <div class="setup-icon" aria-hidden="true">${dialogIcon('lock')}</div>
         <div class="setup-lang-selector">
@@ -209,9 +206,7 @@ export async function createSetupPage(request, appearance = null) {
         if (select.setAttribute) select.setAttribute('aria-label', t('setupLanguage'));
       }
 
-      const customBrand = ${JSON.stringify(appearance?.branding?.name || '').replace(/</g, '\\u003c')};
-      const translatedTitle = t('setupPageTitle');
-      document.title = customBrand ? (translatedTitle.includes('2FA') ? translatedTitle.replace(/2FA/g, () => customBrand) : translatedTitle + ' · ' + customBrand) : translatedTitle;
+      document.title = t('setupPageTitle');
       const title = document.getElementById('setupTitle');
       if (title) title.textContent = t('setupHeaderTitle');
       const desc = document.getElementById('setupDescription');

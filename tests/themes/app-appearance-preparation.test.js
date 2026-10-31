@@ -1,31 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeAppAppearance, normalizeAppPackageWithAppearance, normalizeAppThemeImport } from '../../src/themes/appPackage.js';
-import { normalizeAsset } from '../../src/themes/resources.js';
-import { appPng, appThemeFixture, encodeAppText } from '../helpers/app-theme.js';
+import { appThemeFixture, encodeAppText } from '../helpers/app-theme.js';
 
 describe('combined app package and appearance preparation', () => {
-	it('returns the verified package and the same normalized settings, branding and personal assets', async () => {
+	it('returns the verified package and the same normalized settings', async () => {
 		const fixture = await appThemeFixture(
-			{ 'entry.js': 'export const mount=()=>{};', 'assets/default.png': appPng },
-			{ settings: [{ key: 'picture', type: 'asset', label: 'Picture', default: 'assets/default.png' }] },
+			{ 'entry.js': 'export const mount=()=>{};' },
+			{ settings: [{ key: 'title', type: 'text', label: 'Title', default: 'Vault' }] },
 		);
 		const pkg = await normalizeAppThemeImport({ bytes: fixture.archive });
-		const asset = await normalizeAsset(appPng, 'personal.png');
-		const input = {
-			packageId: pkg.packageId,
-			settings: { picture: 'assets/default.png' },
-			branding: { name: 'Custom vault', logo: '/theme-assets/' + asset.hash + '/' + asset.name },
-		};
-		const expected = await normalizeAppAppearance(pkg, input, { assets: [asset] });
-		const prepared = await normalizeAppPackageWithAppearance(pkg, input, { assets: [asset] });
+		const input = { packageId: pkg.packageId, settings: { title: 'Custom vault' } };
+		const expected = await normalizeAppAppearance(pkg, input);
+		const prepared = await normalizeAppPackageWithAppearance(pkg, input);
 		expect(prepared.pkg.packageId).toBe(pkg.packageId);
 		expect(prepared.pkg.files).toEqual(pkg.files);
 		const { pkg: verified, ...appearance } = prepared;
 		expect(appearance).toEqual(expected);
+		expect(appearance.appearance.settings.title).toBe('Custom vault');
 		// Validation creates its own file bytes; mutating caller data afterwards
 		// cannot modify the prepared package's source files.
 		pkg.files[0].bytes.fill(0);
 		expect(verified.files[0].bytes).toEqual(fixture.files.get(verified.files[0].path));
+	});
+
+	it('rejects removed appearance fields', async () => {
+		const pkg = await normalizeAppThemeImport({ bytes: (await appThemeFixture()).archive });
+		await expect(normalizeAppAppearance(pkg, { branding: { name: 'Vault' } })).rejects.toMatchObject({ code: 'THEME_UNKNOWN_FIELD' });
 	});
 
 	it('rejects changed source bytes and forged package identity instead of trusting a caller-supplied package', async () => {

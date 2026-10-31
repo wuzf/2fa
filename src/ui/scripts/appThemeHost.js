@@ -85,7 +85,6 @@ export function createAppThemeHost(ports) {
 				package: { id: manifest.id, name: manifest.name, version: manifest.version },
 				revision: input.revision,
 				settings: clone(input.settings || {}),
-				branding: clone(input.branding || {}),
 				baseUrl,
 				files,
 			}),

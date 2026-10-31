@@ -1,6 +1,7 @@
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { build } from 'esbuild';
 import { Miniflare } from 'miniflare';
+import { zipSync } from 'fflate';
 import { appThemeFixture, appPng } from '../helpers/app-theme.js';
 
 let runtime;
@@ -15,7 +16,15 @@ export class SecretsStore extends Base {
   async fetch(request) {
     const path = new URL(request.url).pathname;
     if (path === '/test/write-rate') {
-      return Response.json((await this.state.storage.get('theme:rate:import') || []).length);
+      return Response.json((await this.state.storage.get('theme:rate:write') || []).length);
+    }
+    if (path === '/test/install') {
+      // Installs a test-built ZIP through the same store path as the catalog installer.
+      await super.fetch(new Request('https://internal/api/appearance',{headers:{'X-2FA-Theme-Operation':'api'}}));
+      const bytes = new Uint8Array(await request.arrayBuffer());
+      try {
+        return Response.json(await this.themeStore.enqueue(() => this.themeStore.install({bytes,name:'theme.zip'})),{status:201});
+      } catch(error) {return Response.json({error:error.code||error.message},{status:error.status||500});}
     }
     if (path === '/test/app-revision') return Response.json((await this.state.storage.get('test:app-revision'))||0);
     if (path === '/test/app-publish') {
@@ -93,66 +102,65 @@ const request = (path, body, method = body === undefined ? 'GET' : 'POST') =>
 		body: body === undefined ? undefined : JSON.stringify(body),
 	});
 
+const png = new Uint8Array(
+	Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S0AAAAASUVORK5CYII=', 'base64'),
+);
+const encode = (text) => new TextEncoder().encode(text);
+const legacyArchive = (id) =>
+	zipSync({
+		'2fa-theme.json': encode(JSON.stringify({ themeApiVersion: 1, id, name: 'Theme ' + id, version: '1.0.0', styles: 'theme.css' })),
+		'theme.css': encode('body{background:url(logo.png)}'),
+		'logo.png': png,
+	});
+async function install(archive) {
+	const installed = await runtime.dispatchFetch('https://local.example.com/test/install', { method: 'POST', body: archive });
+	expect(installed.status).toBe(201);
+	return (await installed.json()).theme;
+}
+function streamingApply(prefix) {
+	let producer;
+	const body = new ReadableStream({
+		start(controller) {
+			producer = controller;
+			controller.enqueue(prefix);
+		},
+	});
+	const response = runtime.dispatchFetch('https://local.example.com/api/appearance', {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body,
+		duplex: 'half',
+	});
+	return { response, producer };
+}
+
 describe('theme storage on real workerd', () => {
-	it('commits real app snapshots, portable branding, receipts and rollback through the ordinary HTTP API', async () => {
+	it('commits real app snapshots and receipts through the ordinary HTTP API', async () => {
 		const fixture = await appThemeFixture({ 'entry.js': 'export const app=true;', 'assets/logo.png': appPng }, { version: '3.0.0' });
-		const installed = await runtime.dispatchFetch('https://local.example.com/api/themes/import?format=app', {
-			method: 'POST',
-			body: fixture.archive,
-		});
-		const { theme } = await installed.json();
+		const theme = await install(fixture.archive);
 		const current = await (await request('/api/appearance')).json();
-		const body = {
-			packageId: theme.packageId,
-			expectedRevision: current.revision,
-			operationId: crypto.randomUUID(),
-			branding: { name: 'SQLite pixel', description: 'full branding', loginText: 'hello', footer: 'bye', logo: 'assets/logo.png' },
-		};
+		const body = { packageId: theme.packageId, expectedRevision: current.revision, operationId: crypto.randomUUID() };
 		const committed = await request('/api/appearance', body, 'PUT');
 		expect(committed.status).toBe(200);
 		const saved = await committed.json();
-		expect(await (await request('/test/public')).json()).toMatchObject({
-			kind: 'app',
-			revision: current.revision + 1,
-			branding: { description: 'full branding', loginText: 'hello', footer: 'bye' },
-		});
+		expect(await (await request('/test/public')).json()).toMatchObject({ kind: 'app', revision: current.revision + 1 });
 		expect((await request(saved.active.files[0].url)).status).toBe(200);
-		expect(new Uint8Array(await (await request(saved.active.branding.logo)).arrayBuffer())).toEqual(appPng);
 		const replayed = await request('/api/appearance', body, 'PUT');
 		expect(replayed.status).toBe(200);
 		expect(await replayed.json()).toMatchObject({ replayed: true, revision: current.revision + 1, active: saved.active });
-		const reused = await request('/api/appearance', { ...body, branding: { name: 'different' } }, 'PUT');
+		const reused = await request('/api/appearance', { ...body, packageId: 'builtin:compact' }, 'PUT');
 		expect(reused.status).toBe(409);
 		expect(await reused.json()).toMatchObject({ error: 'THEME_OPERATION_REUSED' });
 		const stale = await request('/api/appearance', { ...body, operationId: crypto.randomUUID() }, 'PUT');
 		expect(stale.status).toBe(409);
 		expect(await stale.json()).toMatchObject({ error: 'THEME_REVISION_CONFLICT' });
-		const official = {
-			packageId: 'builtin:document',
-			expectedRevision: saved.revision,
-			operationId: crypto.randomUUID(),
-			branding: saved.active.branding,
-		};
+		const official = { packageId: 'builtin:document', expectedRevision: saved.revision, operationId: crypto.randomUUID() };
 		expect((await request('/api/appearance', official, 'PUT')).status).toBe(200);
-		const rollback = { expectedRevision: saved.revision + 1, operationId: crypto.randomUUID() };
-		const rolled = await request('/api/appearance/rollback', rollback);
-		expect(rolled.status).toBe(200);
-		const restored = await rolled.json();
-		expect(restored.revision).toBe(saved.revision + 2);
-		expect(restored.active.branding).toEqual(saved.active.branding);
-		expect(restored.active.files).toEqual(saved.active.files);
-		const replayedRollback = await request('/api/appearance/rollback', rollback);
-		expect(replayedRollback.status).toBe(200);
-		expect(await replayedRollback.json()).toMatchObject({ replayed: true, revision: restored.revision, active: restored.active });
 	});
 
 	it('registers authenticated opaque capabilities, serves only anonymous scoped bytes, and revokes the owner on logout', async () => {
 		const fixture = await appThemeFixture({ 'entry.js': 'export const preview=true;' }, { version: '4.0.0' });
-		const installed = await runtime.dispatchFetch('https://local.example.com/api/themes/import?format=app', {
-			method: 'POST',
-			body: fixture.archive,
-		});
-		const { theme } = await installed.json();
+		const theme = await install(fixture.archive);
 		const first = await request('/api/themes/preview-capabilities', { packageId: theme.packageId });
 		expect(first.status).toBe(201);
 		const cap = await first.json();
@@ -181,12 +189,7 @@ describe('theme storage on real workerd', () => {
 		]);
 		const packages = [];
 		for (const fixture of fixtures) {
-			const installed = await runtime.dispatchFetch('https://local.example.com/api/themes/import?format=app', {
-				method: 'POST',
-				body: fixture.archive,
-			});
-			expect(installed.status).toBe(201);
-			packages.push((await installed.json()).theme);
+			packages.push(await install(fixture.archive));
 		}
 		const path = (pkg) => '/theme-packages/' + pkg.packageId + '/entry.js';
 		const first = packages[0];
@@ -195,13 +198,6 @@ describe('theme storage on real workerd', () => {
 		expect(await (await request('/api/themes/' + first.packageId + '/files/licenses/MIT.txt')).text()).toBe(
 			'License fixture\n'.repeat(12000),
 		);
-		const exported = await request('/api/themes/' + first.packageId + '/export');
-		expect(exported.status).toBe(200);
-		const restored = await runtime.dispatchFetch('https://local.example.com/api/appearance/restore-inspect?format=app', {
-			method: 'POST',
-			body: await exported.arrayBuffer(),
-		});
-		expect((await restored.json()).theme.packageId).toBe(first.packageId);
 		const expectedRevision = await (await request('/test/app-revision')).json();
 		expect((await request('/test/app-publish', { id: first.packageId, expectedRevision, fail: true })).status).toBe(409);
 		expect((await request(path(first))).status).toBe(404);
@@ -227,28 +223,15 @@ describe('theme storage on real workerd', () => {
 		expect(await published.json()).toMatchObject({ revision: current.revision + 1, active: { packageId: first.packageId, kind: 'app' } });
 	});
 
-	it('keeps published app reads available during a real DO suspended upload stream', async () => {
+	it('keeps published app reads available during a real DO suspended request stream', async () => {
 		const source = await appThemeFixture(undefined, { version: '2.0.0' });
-		const installed = await runtime.dispatchFetch('https://local.example.com/api/themes/import?format=app', {
-			method: 'POST',
-			body: source.archive,
-		});
-		const pkg = (await installed.json()).theme;
+		const pkg = await install(source.archive);
 		const expectedRevision = await (await request('/test/app-revision')).json();
 		expect((await request('/test/app-publish', { id: pkg.packageId, expectedRevision })).status).toBe(200);
-		let producer;
-		const body = new ReadableStream({
-			start(controller) {
-				producer = controller;
-				controller.enqueue(source.archive.subarray(0, 10));
-			},
-		});
+		const current = await (await request('/api/appearance')).json();
+		const text = JSON.stringify({ packageId: 'builtin:fluent', expectedRevision: current.revision, operationId: crypto.randomUUID() });
 		const before = await (await request('/test/write-rate')).json();
-		const installing = runtime.dispatchFetch('https://local.example.com/api/themes/import?format=app', {
-			method: 'POST',
-			body,
-			duplex: 'half',
-		});
+		const { response, producer } = streamingApply(encode(text.slice(0, 10)));
 		try {
 			await expect.poll(async () => (await (await request('/test/write-rate')).json()) > before).toBe(true);
 			const responses = await Promise.race([
@@ -259,62 +242,39 @@ describe('theme storage on real workerd', () => {
 				]),
 				new Promise((_, reject) => setTimeout(() => reject(new Error('app read blocked')), 1000)),
 			]);
-			expect(responses.map((response) => response.status)).toEqual([200, 200, 200]);
+			expect(responses.map((item) => item.status)).toEqual([200, 200, 200]);
 		} finally {
-			producer.enqueue(source.archive.subarray(10));
+			producer.enqueue(encode(text.slice(10)));
 			producer.close();
 		}
-		expect((await installing).status).toBe(201);
+		expect((await response).status).toBe(200);
 	});
 
 	it('keeps published reads available while a real DO request body remains open', async () => {
-		const png = new Uint8Array(
-			Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S0AAAAASUVORK5CYII=', 'base64'),
-		);
-		const upload = await runtime.dispatchFetch('https://local.example.com/api/appearance/assets', {
-			method: 'POST',
-			headers: { 'Content-Type': 'image/png', 'X-File-Name': 'logo.png' },
-			body: png,
-		});
-		const { asset } = await upload.json();
-		const logo = '/theme-assets/' + asset.hash + '/' + asset.name;
+		const theme = await install(legacyArchive('workerd-stream'));
+		const logo = '/theme-assets/' + theme.assets[0].hash + '/' + theme.assets[0].name;
 		const current = await (await request('/api/appearance')).json();
 		const published = await (
 			await request(
 				'/api/appearance',
-				{
-					operationId: 'workerd_stream_publish',
-					expectedRevision: current.revision,
-					packageId: 'builtin:fluent',
-					branding: { name: 'Streaming proof', logo },
-				},
+				{ operationId: 'workerd_stream_publish', expectedRevision: current.revision, packageId: theme.packageId },
 				'PUT',
 			)
 		).json();
+		const text = JSON.stringify({ packageId: 'builtin:fluent', expectedRevision: published.revision, operationId: crypto.randomUUID() });
 		const before = await (await request('/test/write-rate')).json();
-		let controller;
-		const body = new ReadableStream({
-			start(value) {
-				controller = value;
-				value.enqueue(new TextEncoder().encode('body{color:red}'));
-			},
-		});
-		const installing = runtime.dispatchFetch('https://local.example.com/api/themes/import', {
-			method: 'POST',
-			headers: { 'Content-Type': 'text/css', 'X-File-Name': 'theme.css' },
-			body,
-			duplex: 'half',
-		});
+		const { response, producer } = streamingApply(encode(text.slice(0, 10)));
 		try {
 			await expect.poll(async () => (await (await request('/test/write-rate')).json()) > before).toBe(true);
 			const publicResponse = await runtime.dispatchFetch('https://local.example.com/test/public', { signal: AbortSignal.timeout(2000) });
-			expect(await publicResponse.json()).toMatchObject({ revision: published.revision, branding: { name: 'Streaming proof', logo } });
+			expect(await publicResponse.json()).toMatchObject({ revision: published.revision, packageId: theme.packageId });
 			const image = await runtime.dispatchFetch('https://local.example.com' + logo, { signal: AbortSignal.timeout(2000) });
 			expect(new Uint8Array(await image.arrayBuffer())).toEqual(png);
 		} finally {
-			controller.close();
+			producer.enqueue(encode(text.slice(10)));
+			producer.close();
 		}
-		expect((await installing).status).toBe(201);
+		expect((await response).status).toBe(200);
 	});
 	it('stores documents larger than the real per-value limit in bounded chunks', async () => {
 		const response = await request('/test/chunks');
@@ -327,8 +287,7 @@ describe('theme storage on real workerd', () => {
 		const body = {
 			operationId: 'workerd_apply_first',
 			expectedRevision: revision,
-			packageId: 'builtin:fluent',
-			branding: { name: 'Workerd' },
+			packageId: 'builtin:compact',
 		};
 		const responses = await Promise.all([
 			request('/api/appearance', body, 'PUT'),
@@ -336,21 +295,13 @@ describe('theme storage on real workerd', () => {
 		]);
 		expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
 		const current = await (await request('/api/appearance')).json();
-		expect(current).toMatchObject({ revision: revision + 1, active: { branding: { name: 'Workerd' } } });
+		expect(current).toMatchObject({ revision: revision + 1, active: { packageId: 'builtin:compact' } });
 		const successful = responses[0].status === 200 ? body : { ...body, operationId: 'workerd_apply_other' };
 		expect((await request('/api/appearance', successful, 'PUT')).status).toBe(200);
 	});
 
 	it('runs the persisted alarm through the existing DO class without a user maintenance request', async () => {
-		const png = new Uint8Array(
-			Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S0AAAAASUVORK5CYII=', 'base64'),
-		);
-		const uploaded = await runtime.dispatchFetch('https://local.example.com/api/appearance/assets', {
-			method: 'POST',
-			headers: { 'Content-Type': 'image/png', 'X-File-Name': 'logo.png' },
-			body: png,
-		});
-		expect(uploaded.status).toBe(201);
+		await install(legacyArchive('workerd-alarm'));
 		await request('/test/alarm', {});
 		await expect
 			.poll(

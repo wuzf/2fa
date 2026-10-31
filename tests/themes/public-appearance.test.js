@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeAppThemeImport, normalizeAppAppearance, exportAppTheme } from '../../src/themes/appPackage.js';
+import { normalizeAppThemeImport, normalizeAppAppearance } from '../../src/themes/appPackage.js';
 import { normalizePublicUnicodeRange, resolvePublicAppearance } from '../../src/themes/publicAppearance.js';
 import { appThemeFixture } from '../helpers/app-theme.js';
 import { publicThemeFixture, publicTestDescription, publicTestFont } from '../helpers/public-appearance.js';
@@ -32,31 +32,27 @@ describe('verified public appearance package description', () => {
 		expect(() => resolvePublicAppearance(pkg, {}, { baseUrl: 'https://evil.test/' })).toThrow();
 	});
 
-	it('keeps missing-description old packages compatible and derives restored settings from original bytes', async () => {
+	it('keeps missing-description old packages compatible and derives settings from the verified package bytes', async () => {
 		const old = await normalizeAppThemeImport({ bytes: (await appThemeFixture()).archive });
 		expect(old).not.toHaveProperty('publicAppearanceDescriptor');
 		expect((await normalizeAppAppearance(old)).appearance).not.toHaveProperty('publicAppearance');
 		const pkg = await load();
-		const bytes = await exportAppTheme(pkg, { appearance: { settings: { accent: 'blue', handwriting: false } } });
-		const restored = await normalizeAppThemeImport({ bytes });
-		expect(restored.packageId).toBe(pkg.packageId);
-		expect(restored.appearance.publicAppearance.light.accent).toBe('#123456');
-		expect(restored.appearance.publicAppearance.fonts).toEqual([]);
-		const reexported = await normalizeAppThemeImport({ bytes: await exportAppTheme(restored) });
-		expect(reexported.packageId).toBe(pkg.packageId);
-		expect(reexported.appearance.publicAppearance).toEqual(restored.appearance.publicAppearance);
+		const first = (await normalizeAppAppearance(pkg, { settings: { accent: 'blue', handwriting: false } })).appearance;
+		expect(first.packageId).toBe(pkg.packageId);
+		expect(first.publicAppearance.light.accent).toBe('#123456');
+		expect(first.publicAppearance.fonts).toEqual([]);
+		const again = (await normalizeAppAppearance(pkg, { settings: first.settings })).appearance;
+		expect(again.publicAppearance).toEqual(first.publicAppearance);
 		await expect(normalizeAppAppearance(pkg, { publicAppearance: { light: { accent: '#ff0000' } } })).rejects.toMatchObject({
 			code: 'THEME_UNKNOWN_FIELD',
 		});
-		await expect(exportAppTheme(pkg, { appearance: [] })).rejects.toThrow();
+		await expect(normalizeAppAppearance(pkg, [])).rejects.toThrow();
 		let reads = 0;
 		await expect(
-			exportAppTheme(pkg, {
-				appearance: {
-					get publicAppearance() {
-						reads++;
-						return {};
-					},
+			normalizeAppAppearance(pkg, {
+				get publicAppearance() {
+					reads++;
+					return {};
 				},
 			}),
 		).rejects.toThrow();

@@ -13,7 +13,7 @@ const packageId = 'b'.repeat(64),
 	hash = 'c'.repeat(64);
 const input = (title = 'Demo') => ({
 	packageId,
-	appearance: { settings: { title, picture: '' }, branding: { name: 'Vault' } },
+	appearance: { settings: { title, picture: '' } },
 	mode: 'light',
 	language: 'en',
 	scene: 'workspace',
@@ -31,7 +31,6 @@ function capability() {
 			packageId,
 			package: { id: 'demo', name: 'Demo', version: '1.0.0' },
 			settings: {},
-			branding: {},
 			manifest: {
 				themeApiVersion: 2,
 				kind: 'app',
@@ -41,7 +40,7 @@ function capability() {
 				version: '1.0.0',
 				settings: [
 					{ key: 'title', type: 'text', default: 'Demo' },
-					{ key: 'picture', type: 'asset', default: '' },
+					{ key: 'picture', type: 'text', default: '' },
 				],
 			},
 			files: [
@@ -143,7 +142,6 @@ describe('opaque app preview client', () => {
 		expect(JSON.parse(h.request.mock.calls[0][1].body)).toEqual({
 			packageId,
 			settings: { title: 'Demo', picture: '' },
-			branding: { name: 'Vault' },
 		});
 		expect(h.configs[0].appearance.package.name).toBe('Demo');
 		expect(JSON.stringify(h.configs[0])).not.toContain('secret');
@@ -223,15 +221,16 @@ describe('opaque app preview client', () => {
 		expect(h.container.querySelector('iframe')).toBeNull();
 		expect(h.request).toHaveBeenLastCalledWith('/api/themes/preview-capabilities/' + id, { method: 'DELETE' });
 	});
-	it('rejects new resources without consuming another capability and allows a corrected update', async () => {
+	it('rejects an undeclared setting without consuming another capability and allows a corrected update', async () => {
 		const h = setup();
 		await h.preview.open(input());
 		h.ready();
-		expect(
-			await h.preview.update({ ...input(), appearance: { settings: { title: 'Demo', picture: 'images/new.png' }, branding: {} } }),
-		).toMatchObject({ reason: 'preview-resources-changed' });
-		await h.preview.update({ ...input(), appearance: { settings: { title: 'Demo', picture: 'images/p.png' }, branding: {} } });
-		expect(h.messages.at(-1).value.appearance.settings.picture).toBe('https://vault.test/theme-preview/' + id + '/images/p.png');
+		expect(await h.preview.update({ ...input(), appearance: { settings: { title: 'Demo', unknown: 'x' } } })).toMatchObject({
+			reason: 'preview-invalid-config',
+		});
+		await h.preview.update({ ...input(), appearance: { settings: { title: 'Fixed', picture: 'images/p.png' } } });
+		expect(h.messages.at(-1).value.appearance.settings).toEqual({ title: 'Fixed', picture: 'images/p.png' });
+		expect(h.messages.at(-1).value.appearance).not.toHaveProperty('branding');
 		expect(h.request.mock.calls.filter(([, init]) => init.method === 'POST')).toHaveLength(1);
 	});
 	it('blocks new offline previews, expires fixed capabilities and closes on session invalidation', async () => {

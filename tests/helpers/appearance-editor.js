@@ -13,89 +13,46 @@ export const flush = async () => {
 		await new Promise(setImmediate);
 	}
 };
+/** Waits past the editor's 120 ms preview debounce. */
+export const tickPreview = () => new Promise((resolve) => setTimeout(resolve, 160));
+export const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+
+export function control(h, name, value) {
+	const selector = '[data-appearance-action="' + name + '"]' + (value === undefined ? '' : '[data-value="' + value + '"]');
+	return h.document.querySelector(selector);
+}
+export async function act(h, name, value) {
+	control(h, name, value).click();
+	await flush();
+}
+export function themeCard(h, packageId) {
+	return h.document.querySelector('#appearancePanel [data-appearance-action="select"][data-package="' + packageId + '"]');
+}
+export async function chooseTheme(h, packageId) {
+	themeCard(h, packageId).click();
+	await flush();
+}
+export function editSetting(h, key, value) {
+	const input = h.document.querySelector('[data-theme-setting="' + key + '"]');
+	input.value = value;
+	input.dispatchEvent(new h.window.Event(input.tagName === 'SELECT' ? 'change' : 'input'));
+}
+export const status = (h) => h.document.getElementById('appearanceStatus');
+export const methods = (h) => h.window.authenticatedFetch.mock.calls.map(([, options]) => options?.method || 'GET');
+export const putBodies = (h) =>
+	h.window.authenticatedFetch.mock.calls.filter(([, options]) => options?.method === 'PUT').map(([, options]) => JSON.parse(options.body));
 
 export function harness({
 	theme = getBuiltinTheme('document'),
 	online = true,
 	write = true,
 	error,
-	savedDraft,
 	code = getAppearanceEditorCode(),
 } = {}) {
 	const window = new Window({ url: 'https://example.com', settings: { disableJavaScriptEvaluation: true } });
 	windows.push(window);
 	window.document.documentElement.lang = 'zh-CN';
 	const initial = { ...createAppearanceDraft(theme).draft, revision: 1 };
-	let saved = savedDraft;
-	const storage = { holdNextPut: false, holdNextDelete: false, failNextPut: false, failNextDelete: false, release: null, log: [] };
-	const operations = [];
-	let processing = false;
-	function processStorage() {
-		if (processing || !operations.length) {
-			return;
-		}
-		processing = true;
-		const operation = operations[0];
-		const finish = () =>
-			globalThis.queueMicrotask(() => {
-				const failKey = operation.mode === 'put' ? 'failNextPut' : operation.mode === 'delete' ? 'failNextDelete' : null;
-				const failed = failKey && storage[failKey];
-				if (failed) {
-					storage[failKey] = false;
-					operation.transaction.error = new Error('IDB write failed');
-					operation.transaction.onabort?.();
-				} else {
-					operation.request.result = operation.perform();
-					operation.transaction.oncomplete?.();
-				}
-				storage.log.push(operation.mode);
-				operations.shift();
-				processing = false;
-				processStorage();
-			});
-		const holdKey = operation.mode === 'put' ? 'holdNextPut' : operation.mode === 'delete' ? 'holdNextDelete' : null;
-		if (holdKey && storage[holdKey]) {
-			storage[holdKey] = false;
-			storage.release = () => {
-				storage.release = null;
-				finish();
-			};
-		} else {
-			finish();
-		}
-	}
-	const database = {
-		createObjectStore() {},
-		transaction() {
-			const transaction = {};
-			const request = (mode, perform) => {
-				const item = {};
-				operations.push({ mode, perform, request: item, transaction });
-				processStorage();
-				return item;
-			};
-			transaction.objectStore = () => ({
-				get: () => request('get', () => saved),
-				put: (value) =>
-					request('put', () => {
-						saved = value;
-						return 'current';
-					}),
-				delete: () =>
-					request('delete', () => {
-						saved = undefined;
-					}),
-			});
-			return transaction;
-		},
-	};
-	const indexedDB = {
-		open: () => {
-			const request = { result: database };
-			globalThis.queueMicrotask(() => request.onsuccess());
-			return request;
-		},
-	};
 	window.t = (key, params = {}) =>
 		Object.entries(params).reduce((text, [name, value]) => text.replaceAll('{' + name + '}', value), LOCALES['zh-CN'][key] || key);
 	window.__2FA_BUILD_ID__ = 'a'.repeat(64);
@@ -110,25 +67,26 @@ export function harness({
 	window.showConfirmDialog = vi.fn(async () => true);
 	window.authenticatedFetch = vi.fn(async (url, options = {}) => {
 		if (options.method === 'DELETE' && error) {
-			return new Response(JSON.stringify(error), { status: 409 });
+			return json(error, 409);
 		}
 		if (url === '/api/themes?format=app') {
-			return new Response(JSON.stringify({ themes: [] }));
+			return json({ themes: theme.kind === 'app' ? [theme] : [] });
 		}
 		if (url === '/api/themes') {
-			return new Response(JSON.stringify({ themes: [theme] }));
+			return json({ themes: theme.kind === 'app' ? [] : [theme] });
 		}
-		return new Response(JSON.stringify({ revision: 1, active: initial, capabilities: { write } }));
+		if (url === '/api/themes/catalog') {
+			return json({ themes: [] });
+		}
+		return json({ revision: 1, active: initial, capabilities: { write } });
 	});
 	const network = { onLine: online };
 	const context = vm.createContext({
 		window,
 		document: window.document,
 		navigator: network,
-		indexedDB,
 		URL,
 		Blob,
-		FormData,
 		CustomEvent: window.CustomEvent,
 		setTimeout: (fn, ms) => {
 			const timer = setTimeout(fn, ms);
@@ -138,7 +96,7 @@ export function harness({
 		clearTimeout,
 	});
 	vm.runInContext(code, context);
-	return { window, document: window.document, saved: () => saved, initial, network, storage };
+	return { window, document: window.document, initial, network };
 }
 
 afterEach(async () => {

@@ -7,25 +7,17 @@ import { getStandaloneHead, getStandaloneI18nScript } from '../../src/ui/standal
 import { createOAuthPopupResponse } from '../../src/utils/oauth.js';
 import { handleGenerateOTP } from '../../src/api/secrets/otp.js';
 
-const hash = 'a'.repeat(64);
 const appearance = {
-	branding: {
-		name: 'Personal <2FA>',
-		description: 'My authenticator',
-		logo: `/theme-assets/${hash}/logo.png`,
-		icon192: `/theme-assets/${hash}/icon.png`,
-	},
 	manifest: {
 		tokens: { light: { '--2fa-accent': '#654321' }, dark: { '--2fa-accent': '#abcdef' } },
 		settings: [{ key: 'size', type: 'number', default: 15, binding: { type: 'variable', name: '--2fa-font-size', unit: 'px' } }],
 	},
 	settings: { size: 17 },
 	css: '.public-theme { color: rebeccapurple; }',
-	customCss: 'body { letter-spacing: .02em; }',
 };
 
 describe('appearance on standalone pages', () => {
-	it('shares public colors, fonts and safe brand assets with OTP entry and code pages', async () => {
+	it('shares public colors and fonts with OTP entry and code pages under the fixed product name', async () => {
 		for (const response of [
 			createOtpEntryPage(new Request('https://example.com/otp?lang=en'), appearance),
 			createQuickOtpPage('123456', { appearance }),
@@ -34,14 +26,13 @@ describe('appearance on standalone pages', () => {
 			expect(html).toContain('--2fa-accent:#654321');
 			expect(html).toContain('--2fa-font-size:17px');
 			expect(html).toContain('.public-theme');
-			expect(html).toContain('letter-spacing: .02em');
-			expect(html).toContain(`/theme-assets/${hash}/logo.png`);
-			expect(html).toContain('Personal &lt;2FA&gt;');
+			expect(html).toContain('<span>2FA</span>');
+			expect(html).not.toContain('/theme-assets/');
 			expect(html).not.toContain('appearance-layout');
 		}
 	});
 
-	it('preserves the brand title across language changes without interpreting markup', async () => {
+	it('keeps the translated title across language changes', async () => {
 		const window = new Window({ url: 'https://example.com/otp?lang=en' });
 		window.document.write(await createOtpEntryPage(undefined, appearance).text());
 		const context = vm.createContext({
@@ -53,24 +44,23 @@ describe('appearance on standalone pages', () => {
 			URL,
 		});
 		vm.runInContext(getStandaloneI18nScript({ titleKey: 'otpEntryPageTitle' }), context);
-		expect(window.document.title).toBe('OTP Generator - Personal <2FA>');
+		expect(window.document.title).toBe('OTP Generator - 2FA');
 		context.changeStandaloneLanguage('zh-CN');
-		expect(window.document.title).toContain('Personal <2FA>');
-		expect(window.document.querySelector('.otp-brand span').textContent).toBe('Personal <2FA>');
+		expect(window.document.title).toContain('2FA');
+		expect(window.document.querySelector('.otp-brand span').textContent).toBe('2FA');
 		await window.happyDOM.close();
 	});
 
-	it('uses only safe brand fields in setup and OAuth result pages', async () => {
+	it('keeps theme CSS out of setup and OAuth result pages', async () => {
 		const request = new Request('https://example.com/?lang=en');
 		for (const response of [
 			await createSetupPage(request, appearance),
 			createOAuthPopupResponse(request, { success: true, provider: 'onedrive' }, appearance),
 		]) {
 			const html = await response.text();
-			expect(html).toContain('Personal &lt;2FA&gt;');
-			expect(html).toContain(`/theme-assets/${hash}/icon.png`);
 			expect(html).not.toContain('.public-theme');
-			expect(html).not.toContain('letter-spacing: .02em');
+			expect(html).not.toContain('/theme-assets/');
+			expect(html).not.toContain('application-name');
 		}
 	});
 

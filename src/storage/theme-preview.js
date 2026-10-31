@@ -44,19 +44,9 @@ export class ThemePreviewCapabilities {
 		});
 		try {
 			const baseUrl = `/theme-preview/${id}/`;
-			const { snapshot, assets } = await this.store.prepareAppAppearance(input, { baseUrl });
-			const files = [
-				...snapshot.files,
-				...assets.map((asset) => ({
-					path: 'appearance-assets/' + asset.name,
-					hash: asset.hash,
-					mime: asset.mime,
-					size: asset.bytes.length,
-					url: baseUrl + 'appearance-assets/' + asset.name,
-					role: 'asset',
-				})),
-			];
-			const appearance = { ...snapshot, revision: null, files };
+			const { snapshot } = await this.store.prepareAppAppearance(input, { baseUrl });
+			const files = snapshot.files;
+			const appearance = { ...snapshot, revision: null };
 			const document = await this.store.saveDocument(appearance);
 			await this.storage.transaction(async (tx) => {
 				const current = await tx.get(key);

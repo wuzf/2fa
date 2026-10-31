@@ -8,13 +8,7 @@ import { encryptData } from './encryption.js';
 import { createHtmlResponse } from './response.js';
 import { dialogIcon } from '../ui/dialogIcons.js';
 import { isAppearanceSafeMode } from '../ui/publicAppearance.js';
-import {
-	getStandaloneHead,
-	getStandaloneBrand,
-	getStandaloneI18nScript,
-	getStandaloneLanguageSelect,
-	getStandaloneText,
-} from '../ui/standalone.js';
+import { getStandaloneHead, getStandaloneI18nScript, getStandaloneLanguageSelect, getStandaloneText } from '../ui/standalone.js';
 import { getRequestLanguage, translateServerMessage } from './i18n.js';
 
 const OAUTH_STATE_PREFIX = 'oauth_state_';
@@ -291,7 +285,6 @@ export function createOAuthPopupResponse(request, payload, themeAppearance = nul
 </head>
 <body>
   <main class="standalone-card oauth-result" aria-labelledby="oauth-title">
-    ${themeAppearance?.branding?.name || themeAppearance?.branding?.logo ? getStandaloneBrand(themeAppearance, { className: 'oauth-brand' }) : ''}
     <div class="standalone-language-row">${getStandaloneLanguageSelect(language)}</div>
     <div class="page-icon">${dialogIcon(appearance.icon)}</div>
     <h1 class="page-title" id="oauth-title" data-standalone-i18n="oauthResultTitle">${escapeHtml(title)}</h1>

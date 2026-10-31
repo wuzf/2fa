@@ -25,7 +25,7 @@ export const APP_MIME = Object.freeze({
 const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
-const TYPES = ['boolean', 'color', 'number', 'select', 'text', 'textarea', 'asset'];
+const TYPES = ['boolean', 'color', 'number', 'select', 'text', 'textarea'];
 
 export function assertAppData(input) {
 	let nodes = 0;
@@ -140,9 +140,6 @@ function settingsSchema(fields) {
 			invariant(field.options === undefined, 'THEME_INVALID_SETTINGS');
 		}
 		invariant(validateSettingValue(out, out.default), 'THEME_INVALID_DEFAULT', { key: out.key });
-		if (out.type === 'asset' && out.default) {
-			appPath(out.default);
-		}
 		return out;
 	});
 }

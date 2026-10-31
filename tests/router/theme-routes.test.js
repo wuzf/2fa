@@ -1,5 +1,6 @@
 /* global structuredClone */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { zipSync } from 'fflate';
 import { handleRequest } from '../../src/router/handler.js';
 import { verifyAuthWithDetails, checkIfSetupRequired, requiresAuth } from '../../src/utils/auth.js';
 import { readSettingsSnapshot } from '../../src/storage/secrets-store.js';
@@ -504,14 +505,23 @@ describe('theme routes recovery and resource boundary', () => {
 		const png = new Uint8Array(
 			Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S0AAAAASUVORK5CYII=', 'base64'),
 		);
-		const { asset } = await h.store.uploadAsset({ bytes: png, name: 'logo.png' });
+		const encode = (text) => new TextEncoder().encode(text);
+		const archive = zipSync({
+			'2fa-theme.json': encode(
+				JSON.stringify({ themeApiVersion: 1, id: 'route-theme', name: 'Route', version: '1.0.0', styles: 'theme.css' }),
+			),
+			'theme.css': encode('body{background:url(logo.png)}'),
+			'logo.png': png,
+		});
+		const { theme } = await h.store.enqueue(() => h.store.install({ bytes: archive, name: 'theme.zip' }));
+		const asset = theme.assets[0];
 		const path = '/theme-assets/' + asset.hash + '/' + asset.name;
 		verifyAuthWithDetails.mockResolvedValue({ valid: false });
 		expect((await handleRequest(request(path), h.env)).status).toBe(404);
 		expect(checkIfSetupRequired).not.toHaveBeenCalled();
 		expect(verifyAuthWithDetails).not.toHaveBeenCalled();
 		verifyAuthWithDetails.mockResolvedValue({ valid: true });
-		expect((await handleRequest(request('/api/appearance', { ...apply(), branding: { logo: asset.url } }, 'PUT'), h.env)).status).toBe(200);
+		expect((await handleRequest(request('/api/appearance', { ...apply(), packageId: theme.packageId }, 'PUT'), h.env)).status).toBe(200);
 		verifyAuthWithDetails.mockResolvedValue({ valid: false });
 		const published = await handleRequest(request(path), h.env);
 		expect(published.status).toBe(200);

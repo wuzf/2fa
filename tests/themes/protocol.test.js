@@ -3,7 +3,6 @@ import { zipSync, unzipSync } from 'fflate';
 import {
 	LIMITS,
 	assertPublicUrl,
-	exportTheme,
 	getBuiltinTheme,
 	getBuiltinThemes,
 	migrateSettings,
@@ -29,6 +28,7 @@ const manifest = (overrides = {}) => ({
 const archive = (css = 'body{color:red}', extra = {}, meta = {}) =>
 	zipSync({ '2fa-theme.json': encoder.encode(JSON.stringify(manifest(meta))), 'theme.css': encoder.encode(css), ...extra });
 const load = (bytes, options = {}) => normalizeThemeImport({ bytes, name: 'theme.zip' }, options);
+const imageSetting = { key: 'image', type: 'text', label: 'Image', default: 'none', binding: { type: 'variable', name: '--theme-image' } };
 
 // A valid PNG with an unknown ancillary chunk. Random bytes make ZIP compression ineffective.
 function paddedPng(length, random = true) {
@@ -69,18 +69,16 @@ describe('data-only theme protocol', () => {
 		expect(getBuiltinTheme().manifest.name).toBe('Fluent');
 	});
 
-	it('imports local assets and escaped CSS URLs, and exports a stable portable theme', async () => {
+	it('imports local assets and escaped CSS URLs with a stable package identity', async () => {
 		const pkg = await load(
 			archive('a{background:u\\72l("images/p.png");mask-image:image-set("images/p.png" 1x,url(images/p.png) 2x)}', { 'images/p.png': png }),
 		);
 		expect(pkg.assets).toHaveLength(1);
 		expect(pkg.css).toContain('/theme-assets/' + pkg.assets[0].hash);
 		expect(pkg.css).not.toContain('images/p.png');
-		const exported = await exportTheme(pkg);
-		expect(new TextDecoder().decode(unzipSync(exported)['theme.css'])).not.toContain('/theme-assets/');
-		const roundtrip = await load(exported);
-		expect(roundtrip.packageId).toBe(pkg.packageId);
-		expect(roundtrip.assets[0].bytes).toEqual(png);
+		expect(pkg.assets[0].bytes).toEqual(png);
+		const again = await load(zipSync(unzipSync(archive('a{background:url(images/p.png)}', { 'images/p.png': png })), { level: 0 }));
+		expect(again.assets[0].hash).toBe(pkg.assets[0].hash);
 	});
 
 	it('rejects token expansion that would produce an unrestorable portable manifest', async () => {
@@ -92,13 +90,12 @@ describe('data-only theme protocol', () => {
 		});
 	});
 
-	it('round trips repeated asset tokens that remain within portable field limits', async () => {
+	it('accepts repeated asset tokens that remain within portable field limits', async () => {
 		const value = Array(20).fill('url(a.png)').join(',');
 		const pkg = await load(archive('', { 'a.png': png }, { tokens: { light: { '--theme-bg': value } } }));
-		const exported = await exportTheme(pkg);
-		const portable = JSON.parse(new TextDecoder().decode(unzipSync(exported)['2fa-theme.json']));
-		expect(portable.tokens.light['--theme-bg'].length).toBeLessThanOrEqual(2048);
-		expect((await load(exported)).packageId).toBe(pkg.packageId);
+		expect(pkg.assets).toHaveLength(1);
+		expect(pkg.manifest.tokens.light['--theme-bg']).toContain('/theme-assets/' + pkg.assets[0].hash);
+		expect((await load(archive('', { 'a.png': png }, { tokens: { light: { '--theme-bg': value } } }))).packageId).toBe(pkg.packageId);
 	});
 
 	it('rejects total manifest expansion even when every rewritten token fits its field limit', async () => {
@@ -110,34 +107,27 @@ describe('data-only theme protocol', () => {
 		});
 	});
 
-	it('round trips a compressed 6 MiB theme through an ordinary STORE export and import', async () => {
+	it('imports the same 6 MiB theme from compressed and STORE archives', async () => {
 		const image = paddedPng(6 * 1024 * 1024, false);
 		const compressed = archive('body{background:url(a.png)}', { 'a.png': image });
 		expect(compressed.length).toBeLessThan(5 * 1024 * 1024);
 		const pkg = await load(compressed);
-		const exported = await exportTheme(pkg);
-		expect(exported.length).toBeGreaterThan(5 * 1024 * 1024);
-		expect(exported.length).toBeLessThanOrEqual(LIMITS.upload);
-		const restored = await load(exported);
+		const stored = zipSync(unzipSync(compressed), { level: 0 });
+		expect(stored.length).toBeGreaterThan(5 * 1024 * 1024);
+		expect(stored.length).toBeLessThanOrEqual(LIMITS.upload);
+		const restored = await load(stored);
 		expect(restored.packageId).toBe(pkg.packageId);
 		expect(Buffer.compare(restored.assets[0].bytes, image)).toBe(0);
 	});
 
-	it('imports CSS and JSON shortcut formats', async () => {
-		const css = await normalizeThemeImport({ bytes: encoder.encode('a{color:blue}'), name: 'mine.css' });
-		expect(css.manifest.name).toBe('mine');
-		const json = await normalizeThemeImport({
-			bytes: encoder.encode(JSON.stringify({ manifest: manifest(), css: '.x{color:red}' })),
-			name: 'mine.json',
+	it('accepts only ZIP packages, not CSS or JSON shortcut files', async () => {
+		await expect(normalizeThemeImport({ bytes: encoder.encode('a{color:blue}'), name: 'mine.css' })).rejects.toMatchObject({
+			code: 'THEME_INVALID_ZIP',
 		});
-		expect(json.css).toBe('.x{color:red}');
-	});
-
-	it('exports built-in themes as ordinary editable packages without allowing built-in replacement', async () => {
-		const imported = await load(await exportTheme(getBuiltinTheme()));
-		expect(imported.manifest.id).toBe('fluent');
-		expect(imported.packageId).toMatch(/^[a-f0-9]{64}$/);
-		expect(imported.builtin).toBeUndefined();
+		await expect(
+			normalizeThemeImport({ bytes: encoder.encode(JSON.stringify({ manifest: manifest(), css: '.x{color:red}' })), name: 'mine.json' }),
+		).rejects.toMatchObject({ code: 'THEME_INVALID_ZIP' });
+		await expect(load(archive('', { 'appearance.json': encoder.encode('{}') }))).rejects.toMatchObject({ code: 'THEME_INVALID_FIELD' });
 	});
 
 	it('flattens CSS imports and preserves layer, supports and media conditions', async () => {
@@ -224,10 +214,6 @@ describe('data-only theme protocol', () => {
 
 	it('returns typed errors for malformed metadata rather than crashing the coordinator', async () => {
 		for (const json of ['null', '[]', 'true']) {
-			await expect(normalizeThemeImport({ bytes: encoder.encode(json), name: 'theme.json' })).rejects.toHaveProperty(
-				'code',
-				'THEME_INVALID_JSON',
-			);
 			await expect(load(zipSync({ '2fa-theme.json': encoder.encode(json), 'theme.css': encoder.encode('') }))).rejects.toHaveProperty(
 				'code',
 				'THEME_INVALID_JSON',
@@ -275,7 +261,7 @@ describe('all appearance inputs share resource normalization', () => {
 		).rejects.toMatchObject({ code: 'THEME_INVALID_DEFAULT', details: { key: 'backgrounds' } });
 	});
 
-	it('rejects normalized user text that exceeds the next-save limit even when the backup value would fit', async () => {
+	it('rejects normalized user text that exceeds the next-save limit', async () => {
 		const pkg = await load(
 			archive(
 				'',
@@ -300,17 +286,9 @@ describe('all appearance inputs share resource normalization', () => {
 			code: 'THEME_INVALID_SETTING',
 			details: { key: 'backgrounds' },
 		});
-		const asset = await normalizeAsset(png, 'a.png');
-		const oldValue = Array(20)
-			.fill('url(/theme-assets/' + asset.hash + '/' + asset.name + ')')
-			.join(',');
-		await expect(exportTheme(pkg, { appearance: { settings: { backgrounds: oldValue } }, assets: [asset] })).rejects.toMatchObject({
-			code: 'THEME_INVALID_SETTING',
-			details: { key: 'backgrounds' },
-		});
 	});
 
-	it('repeatedly saves and restores legal normalized text defaults and personal values', async () => {
+	it('repeatedly saves legal normalized text defaults and personal values', async () => {
 		const pkg = await load(
 			archive(
 				'',
@@ -332,9 +310,6 @@ describe('all appearance inputs share resource normalization', () => {
 		expect(first.appearance.settings.backgrounds.length).toBeLessThanOrEqual(2048);
 		const second = await normalizeAppearance(pkg, first.appearance);
 		expect(second.appearance).toEqual(first.appearance);
-		const restored = await load(await exportTheme(pkg, { appearance: second.appearance, assets: second.assets }), { restore: true });
-		const reapplied = await normalizeAppearance(restored, restored.appearance);
-		expect(reapplied.appearance).toEqual(second.appearance);
 	});
 
 	it('rejects an expanded user setting before accepting an appearance that cannot be restored', async () => {
@@ -365,7 +340,7 @@ describe('all appearance inputs share resource normalization', () => {
 		});
 	});
 
-	it('rejects applying or exporting a previously stored package with unrestorable expanded tokens', async () => {
+	it('rejects applying a previously stored package with unrestorable expanded tokens', async () => {
 		const pkg = getBuiltinTheme();
 		const asset = await normalizeAsset(png, 'a.png');
 		pkg.assets.push(asset);
@@ -373,43 +348,32 @@ describe('all appearance inputs share resource normalization', () => {
 			.fill('url(/theme-assets/' + asset.hash + '/' + asset.name + ')')
 			.join(',');
 		await expect(normalizeAppearance(pkg, {})).rejects.toMatchObject({ code: 'THEME_INVALID_FIELD', details: { field: '--theme-bg' } });
-		await expect(exportTheme(pkg)).rejects.toMatchObject({ code: 'THEME_INVALID_FIELD', details: { field: '--theme-bg' } });
 	});
-	it('can save every built-in default repeatedly and retains numeric CSS units', async () => {
+	it('can save every built-in default repeatedly', async () => {
 		for (const pkg of getBuiltinThemes()) {
 			const first = await normalizeAppearance(pkg, {});
 			const second = await normalizeAppearance(pkg, first.appearance);
 			expect(second.appearance).toEqual(first.appearance);
-			expect(pkg.manifest.settings.find((field) => field.key === 'fontSize').binding.unit).toBe('px');
 		}
 	});
-	it('normalizes personal CSS, configuration bindings, branding and custom content', async () => {
-		const builtin = getBuiltinTheme();
+	it('normalizes private asset references in variable setting values', async () => {
+		const pkg = await load(archive('', {}, { settings: [imageSetting] }));
 		const held = await normalizeAsset(png, 'logo.png');
-		const privateUrl = '/api/appearance/assets/' + held.hash;
-		const layout = JSON.parse(JSON.stringify(builtin.manifest.layout));
-		layout.trailing.push({ type: 'image', id: 'photo' });
 		const result = await normalizeAppearance(
-			builtin,
-			{
-				settings: { background: privateUrl },
-				branding: { name: 'Mine', logo: privateUrl, background: privateUrl },
-				customCss: 'body{background:url(' + privateUrl + ')}',
-				layout,
-				content: { photo: { src: privateUrl, alt: 'Image' } },
-			},
+			pkg,
+			{ settings: { image: 'url(/api/appearance/assets/' + held.hash + ')' } },
 			{ resolveAsset: async () => held },
 		);
 		expect(result.assets).toHaveLength(1);
-		expect(result.appearance.customCss).toContain('/theme-assets/');
-		expect(result.appearance.branding.logo).toBe(result.appearance.settings.background);
-		expect(result.appearance.content.photo.src).toBe(result.appearance.branding.logo);
+		expect(result.resourceHashes).toEqual([held.hash]);
+		expect(result.appearance.settings.image).toContain('/theme-assets/' + held.hash);
+		// Removed personal fields are dropped rather than stored.
+		const removed = await normalizeAppearance(getBuiltinTheme(), { customCss: 'body{}', branding: { name: 'Mine' } });
+		expect(removed.appearance).not.toHaveProperty('customCss');
+		expect(removed.appearance).not.toHaveProperty('branding');
 	});
 
-	it('applies shared resource rejection to advanced CSS and variable setting values', async () => {
-		await expect(normalizeAppearance(getBuiltinTheme(), { customCss: 'a{background:url(https://localhost/a.png)}' })).rejects.toMatchObject(
-			{ code: 'THEME_PRIVATE_URL' },
-		);
+	it('applies shared resource rejection to variable setting values', async () => {
 		const pkg = await load(
 			archive(
 				'',
@@ -419,70 +383,23 @@ describe('all appearance inputs share resource normalization', () => {
 				},
 			),
 		);
+		await expect(normalizeAppearance(pkg, { settings: { extra: 'url(https://localhost/a.png)' } })).rejects.toMatchObject({
+			code: 'THEME_PRIVATE_URL',
+		});
 		await expect(normalizeAppearance(pkg, { settings: { extra: 'url(data:image/png,evil)' } })).rejects.toHaveProperty('code');
 	});
 
-	it('restores a complete builtin appearance in a fresh instance without the original host', async () => {
-		const pkg = getBuiltinTheme();
-		const logo = await normalizeAsset(png, 'logo.png');
-		const normalized = await normalizeAppearance(
-			pkg,
-			{ branding: { name: 'Personal', logo: '/theme-assets/' + logo.hash + '/logo.png' }, customCss: 'body{color:#aaa}' },
-			{ resolveAsset: async () => logo },
-		);
-		const backup = await exportTheme(pkg, {
-			appearance: { ...normalized.appearance, revision: 99, manifest: pkg.manifest },
-			assets: normalized.assets,
-		});
-		const restored = await load(backup, { restore: true });
-		expect(restored.packageId).not.toMatch(/^builtin:/);
-		expect(restored.appearance.branding.name).toBe('Personal');
-		expect(restored.appearanceAssets).toHaveLength(1);
-		expect(restored.assets).toHaveLength(0);
-		await expect(load(backup)).rejects.toMatchObject({ code: 'THEME_RESTORE_REQUIRED' });
-	});
-
-	it('keeps author theme identity independent of personal backup content', async () => {
-		const pkg = await load(archive());
-		const logo = await normalizeAsset(png, 'logo.png');
-		const normalized = await normalizeAppearance(
-			pkg,
-			{ branding: { logo: '/theme-assets/' + logo.hash } },
-			{ resolveAsset: async () => logo },
-		);
-		const restored = await load(await exportTheme(pkg, { appearance: normalized.appearance, assets: normalized.assets }), {
-			restore: true,
-		});
-		expect(restored.packageId).toBe(pkg.packageId);
-		expect(restored.assets).toEqual([]);
-		expect(restored.appearanceAssets).toHaveLength(1);
-	});
-
-	it('exports and restores a maximum legal 10 MiB appearance with incompressible personal imagery', async () => {
-		const pkg = getBuiltinTheme();
+	it('counts referenced personal imagery against the 10 MiB appearance budget', async () => {
+		const pkg = await load(archive('', {}, { settings: [imageSetting] }));
+		const input = (asset) => [{ settings: { image: 'url(/theme-assets/' + asset.hash + ')' } }, { resolveAsset: async () => asset }];
 		const small = await normalizeAsset(paddedPng(1024), 'background.png');
-		const trial = await normalizeAppearance(
-			pkg,
-			{ branding: { background: '/theme-assets/' + small.hash } },
-			{ resolveAsset: async () => small },
-		);
+		const trial = await normalizeAppearance(pkg, ...input(small));
 		const maximum = await normalizeAsset(paddedPng(1024 + LIMITS.totalBytes - trial.totalBytes), 'background.png');
-		const ready = await normalizeAppearance(
-			pkg,
-			{ branding: { background: '/theme-assets/' + maximum.hash } },
-			{ resolveAsset: async () => maximum },
-		);
+		const ready = await normalizeAppearance(pkg, ...input(maximum));
 		expect(ready.totalBytes).toBe(LIMITS.totalBytes);
-		const backup = await exportTheme(pkg, { appearance: ready.appearance, assets: ready.assets });
-		expect(backup.length).toBeGreaterThan(5 * 1024 * 1024);
-		expect(backup.length).toBeLessThan(LIMITS.restoreUpload);
-		const restored = await load(backup, { restore: true });
-		expect(restored.appearanceAssets[0].hash).toBe(maximum.hash);
-		expect(Buffer.compare(restored.appearanceAssets[0].bytes, maximum.bytes)).toBe(0);
+		expect(ready.resourceHashes).toEqual([maximum.hash]);
 		const tooBig = await normalizeAsset(paddedPng(maximum.bytes.length + 1), 'background.png');
-		await expect(
-			normalizeAppearance(pkg, { branding: { background: '/theme-assets/' + tooBig.hash } }, { resolveAsset: async () => tooBig }),
-		).rejects.toMatchObject({ code: 'THEME_APPEARANCE_LIMIT' });
+		await expect(normalizeAppearance(pkg, ...input(tooBig))).rejects.toMatchObject({ code: 'THEME_APPEARANCE_LIMIT' });
 	}, 10000);
 
 	it('preserves compatible user values and reports update migration changes', () => {
@@ -498,22 +415,12 @@ describe('all appearance inputs share resource normalization', () => {
 });
 
 describe('bounded remote imports', () => {
-	it('imports a GitHub release attachment and localizes its remote dependency', async () => {
-		const fetcher = vi.fn(async (url) => {
-			if (url.includes('api.github.com')) {
-				return Response.json({
-					assets: [{ name: '2fa-theme.zip', browser_download_url: 'https://github.com/a/b/releases/download/v1/2fa-theme.zip' }],
-				});
-			}
-			if (url.endsWith('2fa-theme.zip')) {
-				return new Response(archive('a{background:url(https://cdn.example.org/image.png)}'));
-			}
-			return new Response(png);
-		});
-		const result = await normalizeThemeImport({ url: 'https://github.com/a/b' }, { fetcher });
+	it('localizes a remote dependency referenced by package CSS', async () => {
+		const fetcher = vi.fn(async () => new Response(png));
+		const result = await load(archive('a{background:url(https://cdn.example.org/image.png)}'), { fetcher });
 		expect(result.assets).toHaveLength(1);
 		expect(result.css).not.toContain('https://');
-		expect(fetcher).toHaveBeenCalledTimes(3);
+		expect(fetcher).toHaveBeenCalledTimes(1);
 	});
 
 	it('uses the final stylesheet URL for relative remote assets', async () => {
@@ -523,13 +430,13 @@ describe('bounded remote imports', () => {
 			}
 			return url.endsWith('.css') ? new Response('a{background:url(image.png)}') : new Response(png);
 		});
-		await normalizeThemeImport({ url: 'https://cdn.example.org/start.css' }, { fetcher });
+		await load(archive('@import "https://cdn.example.org/start.css";'), { fetcher });
 		expect(fetcher.mock.calls.map((call) => call[0])).toContain('https://cdn.example.org/nested/image.png');
 	});
 
 	it('revalidates redirects and blocks private and credentialed URL forms', async () => {
 		const fetcher = vi.fn(async () => new Response(null, { status: 302, headers: { location: 'https://127.0.0.1/secret' } }));
-		await expect(normalizeThemeImport({ url: 'https://cdn.example.org/theme.zip' }, { fetcher })).rejects.toMatchObject({
+		await expect(load(archive('a{background:url(https://cdn.example.org/a.png)}'), { fetcher })).rejects.toMatchObject({
 			code: 'THEME_PRIVATE_URL',
 		});
 		expect(fetcher).toHaveBeenCalledTimes(1);
@@ -570,7 +477,7 @@ describe('bounded remote imports', () => {
 	it('ends even an uncooperative remote fetch at the request deadline', async () => {
 		vi.useFakeTimers();
 		try {
-			const pending = normalizeThemeImport({ url: 'https://cdn.example.org/theme.css' }, { fetcher: () => new Promise(() => {}) });
+			const pending = load(archive('a{background:url(https://cdn.example.org/a.png)}'), { fetcher: () => new Promise(() => {}) });
 			const assertion = expect(pending).rejects.toMatchObject({ code: 'THEME_TIMEOUT' });
 			await vi.advanceTimersByTimeAsync(LIMITS.requestMs);
 			await assertion;

@@ -232,14 +232,6 @@ export async function handleRequest(request, env, ctx) {
 		// PWA 图标（使用默认SVG图标）
 		if (pathname === '/icon-192.png' || pathname === '/icon-512.png') {
 			const size = pathname.includes('512') ? 512 : 192;
-			const safeMode = url.searchParams.get('safeMode') === '1' || url.searchParams.get('disableCustomCode') === '1';
-			if (getBuildId() && !safeMode) {
-				const appearance = await getPublicAppearance(env);
-				const icon = appearance.branding?.[size === 512 ? 'icon512' : 'icon192'];
-				if (typeof icon === 'string' && /^\/(?:theme-assets|theme-packages)\/[a-f0-9]{64}\//.test(icon)) {
-					return handleThemeAssetRequest(new Request(new URL(icon, request.url), { method: 'GET' }), env);
-				}
-			}
 			return createDefaultIcon(size);
 		}
 

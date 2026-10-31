@@ -1,4 +1,4 @@
-import { Unzip, UnzipInflate, zipSync } from 'fflate';
+import { Unzip, UnzipInflate } from 'fflate';
 import { invariant, ThemeError } from './schema.js';
 import { decodeText } from './resources.js';
 import { APP_LIMITS, appPath, assertAppFileLimit } from './appSchema.js';
@@ -160,14 +160,4 @@ export function assertAppPortableBudget(files) {
 	}
 	invariant(totalBytes <= APP_LIMITS.totalBytes, 'THEME_APPEARANCE_LIMIT', { totalBytes, fileCount: files.size });
 	return { totalBytes, fileCount: files.size };
-}
-export function packAppFiles(files) {
-	assertAppPortableBudget(files);
-	const entries = Object.create(null);
-	for (const [path, bytes] of Array.from(files).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
-		entries[path] = [bytes, { level: 0, mtime: new Date('2020-01-01T00:00:00Z'), os: 0, attrs: 0 }];
-	}
-	const archive = zipSync(entries, { level: 0 });
-	invariant(archive.length <= APP_LIMITS.upload, 'THEME_UPLOAD_LIMIT');
-	return archive;
 }

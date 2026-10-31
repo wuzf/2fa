@@ -4,7 +4,7 @@ import { zipSync } from 'fflate';
 import { ThemeStore } from '../../src/storage/theme-store.js';
 import { SecretsStore, runSecretsOperation } from '../../src/storage/secrets-store.js';
 import { handleThemeRequest, handleThemeAssetRequest, THEME_OPERATION_HEADER } from '../../src/api/themes.js';
-import { LIMITS, getBuiltinTheme, normalizeAsset } from '../../src/themes/index.js';
+import { LIMITS, getBuiltinTheme } from '../../src/themes/index.js';
 
 const png = new Uint8Array(
 	Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S0AAAAASUVORK5CYII=', 'base64'),
@@ -111,8 +111,6 @@ const applyBody = (revision, extra = {}) => ({
 	expectedRevision: revision,
 	packageId: 'builtin:fluent',
 	settings: {},
-	branding: {},
-	customCss: '',
 	...extra,
 });
 afterEach(() => {
@@ -134,92 +132,109 @@ async function promptly(promise) {
 	}
 }
 
+const encode = (text) => new TextEncoder().encode(text);
+function themeZip(id, image = png) {
+	return zipSync({
+		'2fa-theme.json': encode(JSON.stringify({ themeApiVersion: 1, id, name: 'Theme ' + id, version: '1.0.0', styles: 'theme.css' })),
+		'theme.css': encode('body{background:url(logo.png)}'),
+		'logo.png': image,
+	});
+}
+async function installTheme(h, id = 'custom-theme', image = png) {
+	const { theme } = await h.store.enqueue(() => h.store.install({ bytes: themeZip(id, image), name: 'theme.zip' }));
+	const asset = theme.assets[0];
+	return { theme, asset, url: '/theme-assets/' + asset.hash + '/' + asset.name };
+}
+function streamingPut(h, extra = {}) {
+	let controller;
+	let started = false;
+	const body = new ReadableStream({
+		start(value) {
+			controller = value;
+		},
+		pull() {
+			started = true;
+		},
+		...extra,
+	});
+	const response = h.store.fetch(
+		new Request('https://test.example.com/api/appearance', {
+			method: 'PUT',
+			headers: { [THEME_OPERATION_HEADER]: 'api', 'Content-Type': 'application/json' },
+			body,
+			duplex: 'half',
+		}),
+	);
+	return {
+		response,
+		isStarted: () => started,
+		finish(value) {
+			controller.enqueue(encode(JSON.stringify(value)));
+			controller.close();
+		},
+	};
+}
+
 describe('authoritative appearance state', () => {
-	it('serves only published appearance and assets during an unfinished upload while writes remain serial', async () => {
+	it('serves only published appearance and assets during an unfinished request body while writes remain serial', async () => {
 		const h = harness();
-		const { asset } = await h.store.uploadAsset({ bytes: png, name: 'logo.png' });
-		const url = '/theme-assets/' + asset.hash + '/' + asset.name;
-		await h.request('/api/appearance', applyBody(0, { branding: { logo: url, name: 'Published' } }), 'PUT');
-		const incoming = await normalizeAsset(pngWithMetadata(1024), 'next.png');
-		let controller;
-		let started = false;
-		const body = new ReadableStream({
-			start(value) {
-				controller = value;
-			},
-			pull() {
-				started = true;
-			},
-		});
-		const upload = h.store.fetch(
-			new Request('https://test.example.com/api/appearance/assets', {
-				method: 'POST',
-				headers: { [THEME_OPERATION_HEADER]: 'api', 'X-File-Name': 'next.png' },
-				body,
-				duplex: 'half',
-			}),
-		);
-		await vi.waitFor(() => expect(started).toBe(true));
+		const { theme, url } = await installTheme(h);
+		await h.request('/api/appearance', applyBody(0, { packageId: theme.packageId }), 'PUT');
+		const hidden = await installTheme(h, 'hidden-theme', pngWithMetadata(1024));
+		const upload = streamingPut(h);
+		await vi.waitFor(() => expect(upload.isStarted()).toBe(true));
 		let writeFinished = false;
-		const write = h.request('/api/appearance', applyBody(1, { branding: { name: 'Next' } }), 'PUT').then((response) => {
+		const write = h.request('/api/appearance', applyBody(2), 'PUT').then((response) => {
 			writeFinished = true;
 			return response;
 		});
 		try {
-			const [appearance, image, hidden] = await promptly(
+			const [appearance, image, unpublished] = await promptly(
 				Promise.all([
 					h.request('/api/appearance', undefined, 'GET', 'appearance'),
 					h.request(url, undefined, 'GET', 'public'),
-					h.request('/theme-assets/' + incoming.hash + '/' + incoming.name, undefined, 'GET', 'public'),
+					h.request(hidden.url, undefined, 'GET', 'public'),
 				]),
 			);
-			expect(await appearance.json()).toMatchObject({ revision: 1, branding: { name: 'Published' } });
+			expect(await appearance.json()).toMatchObject({ revision: 1, packageId: theme.packageId });
 			expect(new Uint8Array(await image.arrayBuffer())).toEqual(png);
-			expect(hidden.status).toBe(404);
+			expect(unpublished.status).toBe(404);
 			expect(writeFinished).toBe(false);
 		} finally {
-			controller.enqueue(incoming.bytes);
-			controller.close();
+			upload.finish(applyBody(1, { packageId: 'builtin:compact' }));
 		}
-		expect((await upload).status).toBe(201);
+		expect((await upload.response).status).toBe(200);
 		expect((await write).status).toBe(200);
-		expect((await h.request('/theme-assets/' + incoming.hash + '/' + incoming.name, undefined, 'GET', 'public')).status).toBe(404);
+		expect((await h.request(hidden.url, undefined, 'GET', 'public')).status).toBe(404);
 	});
 
 	it('does not hold published reads behind remote theme downloads', async () => {
 		const h = harness();
-		await h.request('/api/appearance', applyBody(0, { branding: { name: 'Published' } }), 'PUT');
+		await h.request('/api/appearance', applyBody(0), 'PUT');
 		let release;
 		const download = new Promise((resolve) => {
 			release = resolve;
 		});
 		const fetcher = vi.fn(() => download);
 		vi.stubGlobal('fetch', fetcher);
-		const installing = h.request('/api/themes/import', { url: 'https://cdn.example.com/theme.css' });
+		const installing = h.request('/api/themes/catalog/install', { id: 'remote-theme', packageId: 'a'.repeat(64) });
 		await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
 		try {
 			const appearance = await promptly(h.request('/api/appearance', undefined, 'GET', 'appearance'));
-			expect(await appearance.json()).toMatchObject({ revision: 1, branding: { name: 'Published' } });
+			expect(await appearance.json()).toMatchObject({ revision: 1 });
 		} finally {
-			release(new Response('body{color:red}', { headers: { 'Content-Type': 'text/css' } }));
+			release(new Response('not found', { status: 404 }));
 		}
-		expect((await installing).status).toBe(201);
+		expect((await installing).status).toBeGreaterThanOrEqual(400);
 	});
 
 	it('times out an unfinished request body and releases the write queue', async () => {
 		const h = harness();
 		vi.useFakeTimers();
 		const cancel = vi.fn();
-		const upload = h.store.fetch(
-			new Request('https://test.example.com/api/themes/import', {
-				method: 'POST',
-				headers: { [THEME_OPERATION_HEADER]: 'api', 'X-File-Name': 'theme.css' },
-				body: new ReadableStream({ cancel }),
-				duplex: 'half',
-			}),
-		);
+		const upload = streamingPut(h, { cancel });
 		await vi.advanceTimersByTimeAsync(LIMITS.totalMs + 1);
-		expect((await upload).status).toBe(408);
+		expect((await upload.response).status).toBe(408);
 		expect(cancel).toHaveBeenCalledOnce();
 		expect((await h.request('/api/appearance', applyBody(0), 'PUT')).status).toBe(200);
 	});
@@ -228,9 +243,8 @@ describe('authoritative appearance state', () => {
 		'lets an in-flight published %s read finish before GC removes its old snapshot resources',
 		async (source) => {
 			const h = harness();
-			const { asset } = await h.store.uploadAsset({ bytes: png, name: 'logo.png' });
-			const url = '/theme-assets/' + asset.hash + '/' + asset.name;
-			await h.request('/api/appearance', applyBody(0, { branding: { logo: url } }), 'PUT');
+			const { theme, asset, url } = await installTheme(h);
+			await h.request('/api/appearance', applyBody(0, { packageId: theme.packageId }), 'PUT');
 			let reached;
 			const entered = new Promise((resolve) => {
 				reached = resolve;
@@ -259,7 +273,8 @@ describe('authoritative appearance state', () => {
 			const reading = h.request(url, undefined, 'GET', 'public');
 			await entered;
 			await h.request('/api/appearance', applyBody(1), 'PUT');
-			await h.request('/api/appearance', applyBody(2), 'PUT');
+			await h.request('/api/themes/' + theme.packageId, undefined, 'DELETE');
+			await h.request('/api/appearance', applyBody(2, { packageId: 'builtin:compact' }), 'PUT');
 			vi.useFakeTimers({ toFake: ['Date'] });
 			vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
 			let cleaned = false;
@@ -296,15 +311,15 @@ describe('authoritative appearance state', () => {
 
 	it('checks idempotency before revision and rejects a reused operation ID with different content', async () => {
 		const h = harness();
-		const body = applyBody(0, { branding: { name: 'My vault' } });
+		const body = applyBody(0, { settings: { radius: '8px' } });
 		const first = await h.request('/api/appearance', body, 'PUT');
 		expect(first.status).toBe(200);
 		expect((await first.json()).revision).toBe(1);
 		h.evict();
 		const replay = await h.request('/api/appearance', body, 'PUT');
 		expect(replay.status).toBe(200);
-		expect(await replay.json()).toMatchObject({ revision: 1, replayed: true, active: { branding: { name: 'My vault' } } });
-		const changed = await h.request('/api/appearance', { ...body, branding: { name: 'Different' } }, 'PUT');
+		expect(await replay.json()).toMatchObject({ revision: 1, replayed: true, active: { settings: { radius: '8px' } } });
+		const changed = await h.request('/api/appearance', { ...body, settings: { radius: '12px' } }, 'PUT');
 		expect(changed.status).toBe(409);
 		expect((await changed.json()).error).toBe('THEME_OPERATION_REUSED');
 	});
@@ -319,28 +334,12 @@ describe('authoritative appearance state', () => {
 		expect((await (await h.request('/api/appearance')).json()).revision).toBe(2);
 	});
 
-	it('rolls back the complete snapshot with a new revision and preserves per-theme settings', async () => {
+	it('preserves per-theme settings after switching to another theme', async () => {
 		const h = harness();
-		expect(
-			(
-				await h.request(
-					'/api/appearance',
-					applyBody(0, { branding: { name: 'Old' }, customCss: '.card{color:red}', settings: { radius: '8px' } }),
-					'PUT',
-				)
-			).status,
-		).toBe(200);
-		expect(
-			(await h.request('/api/appearance', applyBody(1, { packageId: 'builtin:compact', branding: { name: 'New' } }), 'PUT')).status,
-		).toBe(200);
-		const response = await h.request('/api/appearance/rollback', applyBody(2));
-		expect(response.status).toBe(200);
-		expect(await response.json()).toMatchObject({
-			revision: 3,
-			active: { packageId: 'builtin:fluent', branding: { name: 'Old' }, settings: { radius: '8px' }, customCss: '.card{color:red}' },
-		});
+		expect((await h.request('/api/appearance', applyBody(0, { settings: { radius: '8px' } }), 'PUT')).status).toBe(200);
+		expect((await h.request('/api/appearance', applyBody(1, { packageId: 'builtin:compact' }), 'PUT')).status).toBe(200);
 		const list = await (await h.request('/api/themes')).json();
-		expect(list.themes.find((theme) => theme.packageId === 'builtin:compact').profile.branding.name).toBe('New');
+		expect(list.themes.find((theme) => theme.packageId === 'builtin:fluent').profile.settings.radius).toBe('8px');
 	});
 
 	it('does not publish or lose current state when normalized settings are invalid', async () => {
@@ -349,19 +348,6 @@ describe('authoritative appearance state', () => {
 		const bad = await h.request('/api/appearance', applyBody(1, { settings: { unknown: 'value' } }), 'PUT');
 		expect(bad.status).toBe(400);
 		expect((await (await h.request('/api/appearance')).json()).revision).toBe(1);
-	});
-
-	it('preserves user text components through application and rollback', async () => {
-		const h = harness();
-		const layout = getBuiltinTheme('builtin:fluent').manifest.layout;
-		layout.trailing.push({ id: 'personal-note', type: 'text' });
-		const content = { 'personal-note': { title: 'My 2FA', text: 'Personal workspace' } };
-		const applied = await h.request('/api/appearance', applyBody(0, { layout, content }), 'PUT');
-		expect(applied.status).toBe(200);
-		expect((await applied.json()).active.content).toEqual(content);
-		await h.request('/api/appearance', applyBody(1), 'PUT');
-		const rolledBack = await h.request('/api/appearance/rollback', applyBody(2));
-		expect((await rolledBack.json()).active.content).toEqual(content);
 	});
 
 	it('preserves old appearance on resource storage failure and releases its quota reservation', async () => {
@@ -375,99 +361,24 @@ describe('authoritative appearance state', () => {
 });
 
 describe('theme resources and maintenance', () => {
-	it('reimports large ordinary STORE exports through raw and multipart fetch requests', async () => {
-		const source = harness();
+	it('installs a large compressed package without publishing or applying it', async () => {
+		const h = harness();
 		const large = pngWithMetadata(6 * 1024 * 1024);
-		const encode = (text) => new TextEncoder().encode(text);
-		const compressed = zipSync({
-			'2fa-theme.json': encode(
-				JSON.stringify({ themeApiVersion: 1, id: 'large-theme', name: 'Large theme', version: '1.0.0', styles: 'theme.css' }),
-			),
-			'theme.css': encode('body{background:url(a.png)}'),
-			'a.png': large,
-		});
+		const compressed = themeZip('large-theme', large);
 		expect(compressed.length).toBeLessThan(5 * 1024 * 1024);
-		const imported = await source.store.fetch(
-			new Request('https://test.example.com/api/themes/import', {
-				method: 'POST',
-				headers: { [THEME_OPERATION_HEADER]: 'api', 'Content-Type': 'application/zip', 'X-File-Name': 'theme.zip' },
-				body: compressed,
-			}),
-		);
-		expect(imported.status).toBe(201);
-		const { theme } = await imported.json();
-		const exported = await source.request('/api/themes/' + theme.packageId + '/export');
-		expect(exported.status).toBe(200);
-		const bytes = new Uint8Array(await exported.arrayBuffer());
-		expect(bytes.length).toBeGreaterThan(5 * 1024 * 1024);
-		expect(bytes.length).toBeLessThanOrEqual(LIMITS.upload);
-		for (const multipart of [false, true]) {
-			const target = harness();
-			const headers = { [THEME_OPERATION_HEADER]: 'api' };
-			let body = bytes;
-			if (multipart) {
-				body = new FormData();
-				body.append('file', new Blob([bytes], { type: 'application/zip' }), 'exported-theme.zip');
-			} else {
-				headers['Content-Type'] = 'application/zip';
-				headers['X-File-Name'] = 'exported-theme.zip';
-			}
-			const restored = await target.store.fetch(
-				new Request('https://test.example.com/api/themes/import', { method: 'POST', headers, body }),
-			);
-			expect(restored.status).toBe(201);
-			expect((await restored.json()).theme.packageId).toBe(theme.packageId);
-			expect((await (await target.request('/api/appearance')).json()).revision).toBe(0);
-		}
+		const { theme, url } = await installTheme(h, 'large-theme', large);
+		expect((await (await h.request('/api/themes')).json()).themes.some((item) => item.packageId === theme.packageId)).toBe(true);
+		expect((await h.request(url, undefined, 'GET', 'public')).status).toBe(404);
+		expect((await (await h.request('/api/appearance')).json()).revision).toBe(0);
 	}, 10000);
 
-	it('exports and restores a complete near-limit appearance including personal branding and CSS', async () => {
-		const source = harness();
-		const large = pngWithMetadata(10 * 1024 * 1024 - 48 * 1024);
-		const { asset } = await source.store.uploadAsset({ bytes: large, name: 'large-background.png' });
-		const applied = await source.request(
-			'/api/appearance',
-			applyBody(0, {
-				branding: { name: 'Personal 2FA', background: asset.url, logo: asset.url },
-				settings: { radius: '8px' },
-				customCss: `body{background-image:url("${asset.url}")}`,
-			}),
-			'PUT',
-		);
-		expect(applied.status).toBe(200);
-		const archive = await source.request('/api/appearance/export');
-		expect(archive.status).toBe(200);
-		const bytes = new Uint8Array(await archive.arrayBuffer());
-		expect(bytes.length).toBeGreaterThan(9 * 1024 * 1024);
-		expect(bytes.length).toBeLessThan(12 * 1024 * 1024);
-		const target = harness();
-		const restored = await target.store.install({ bytes, name: 'appearance.zip' }, true);
-		expect(restored.appearance.resources.map((resource) => resource.hash)).toEqual([asset.hash]);
-		expect((await (await target.request('/api/appearance')).json()).revision).toBe(0);
-		const result = await target.request(
-			'/api/appearance',
-			applyBody(0, { ...restored.appearance, packageId: restored.theme.packageId }),
-			'PUT',
-		);
-		expect(result.status).toBe(200);
-		const snapshot = (await result.json()).active;
-		expect(snapshot.branding.name).toBe('Personal 2FA');
-		expect(snapshot.settings.radius).toBe('8px');
-		expect(snapshot.customCss).toContain(asset.hash);
-		expect(snapshot.resources).toHaveLength(1);
-		const fetched = await target.request(snapshot.resources[0].url, undefined, 'GET', 'public');
-		expect(Buffer.from(await fetched.arrayBuffer()).equals(Buffer.from(large))).toBe(true);
-	}, 20000);
-
-	it('does not delete installed versions while active or previous snapshots reference them', async () => {
+	it('does not delete installed versions while the active snapshot references them', async () => {
 		const h = harness();
-		const installed = await h.store.install({ bytes: new TextEncoder().encode('body{color:blue}'), name: 'my-theme.css' });
-		const id = installed.theme.packageId;
+		const { theme } = await installTheme(h);
+		const id = theme.packageId;
 		expect((await h.request('/api/appearance', applyBody(0, { packageId: id }), 'PUT')).status).toBe(200);
 		expect((await h.request('/api/themes/' + id, undefined, 'DELETE')).status).toBe(409);
-		await h.request('/api/appearance', applyBody(1), 'PUT');
-		expect((await h.request('/api/themes/' + id, undefined, 'DELETE')).status).toBe(409);
-		await h.request('/api/appearance', applyBody(2, { packageId: 'builtin:compact' }), 'PUT');
+		await h.request('/api/appearance', applyBody(1, { packageId: 'builtin:compact' }), 'PUT');
 		expect((await h.request('/api/themes/' + id, undefined, 'DELETE')).status).toBe(200);
 		expect((await (await h.request('/api/themes')).json()).themes).toHaveLength(3);
 	});
@@ -478,7 +389,7 @@ describe('theme resources and maintenance', () => {
 		for (let i = 0; i < 20; i++) {
 			await h.storage.put('theme:package:reserved-' + i, { status: 'installing', expiresAt: Date.now() + 100000 });
 		}
-		await expect(h.store.install({ bytes: new TextEncoder().encode('body{color:green}'), name: 'theme.css' })).rejects.toMatchObject({
+		await expect(h.store.install({ bytes: themeZip('over-limit'), name: 'theme.zip' })).rejects.toMatchObject({
 			code: 'THEME_VERSION_CAPACITY',
 		});
 		expect((await (await h.request('/api/appearance')).json()).revision).toBe(1);
@@ -486,54 +397,54 @@ describe('theme resources and maintenance', () => {
 
 	it('requires publication before public reads, even when KV already contains the bytes', async () => {
 		const h = harness();
-		const { asset } = await h.store.uploadAsset({ bytes: png, name: 'logo.png' });
+		const { theme, asset, url } = await installTheme(h);
 		h.values.set('theme-assets:v1:' + asset.hash, png);
-		let response = await h.request(`/theme-assets/${asset.hash}/logo.png`, undefined, 'GET', 'public');
+		h.env.SECRETS_KV.get.mockClear();
+		let response = await h.request(url, undefined, 'GET', 'public');
 		expect(response.status).toBe(404);
 		expect(h.env.SECRETS_KV.get).not.toHaveBeenCalled();
 		response = await h.request(`/api/appearance/assets/${asset.hash}`);
 		expect(response.headers.get('cache-control')).toBe('private, no-store');
 		expect(new Uint8Array(await response.arrayBuffer())).toEqual(png);
-		response = await h.request('/api/appearance', applyBody(0, { branding: { logo: asset.url } }), 'PUT');
+		response = await h.request('/api/appearance', applyBody(0, { packageId: theme.packageId }), 'PUT');
 		expect(response.status).toBe(200);
-		response = await h.request(`/theme-assets/${asset.hash}/logo.png`, undefined, 'GET', 'public');
+		response = await h.request(url, undefined, 'GET', 'public');
 		expect(response.status).toBe(200);
 		expect(response.headers.get('content-type')).toBe('image/png');
 	});
 
 	it('falls back to authoritative chunks when the mirror is missing, stale or unavailable', async () => {
 		const h = harness();
-		const { asset } = await h.store.uploadAsset({ bytes: png, name: 'logo.png' });
-		await h.request('/api/appearance', applyBody(0, { branding: { logo: asset.url } }), 'PUT');
+		const { theme, url } = await installTheme(h);
+		await h.request('/api/appearance', applyBody(0, { packageId: theme.packageId }), 'PUT');
 		for (const value of [null, new Uint8Array(png.length)]) {
 			h.env.SECRETS_KV.get.mockResolvedValueOnce(value);
-			const result = await h.request(`/theme-assets/${asset.hash}/logo.png`, undefined, 'GET', 'public');
+			const result = await h.request(url, undefined, 'GET', 'public');
 			expect(new Uint8Array(await result.arrayBuffer())).toEqual(png);
 		}
 		h.env.SECRETS_KV.get.mockRejectedValueOnce(new Error('KV unavailable'));
-		expect((await h.request(`/theme-assets/${asset.hash}/logo.png`, undefined, 'GET', 'public')).status).toBe(200);
+		expect((await h.request(url, undefined, 'GET', 'public')).status).toBe(200);
 	});
 
-	it('chunks large assets, survives eviction, and renews an expired local draft by re-upload', async () => {
+	it('chunks large assets and keeps installed package assets through eviction and GC', async () => {
 		vi.useFakeTimers();
 		const h = harness();
 		const large = pngWithMetadata(300000);
-		const { asset } = await h.store.uploadAsset({ bytes: large, name: 'large.png' });
+		const { theme, asset } = await installTheme(h, 'large-theme', large);
 		expect((await h.storage.list({ prefix: `theme:chunk:${asset.hash}:` })).size).toBe(3);
 		h.evict();
 		vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
 		await h.store.alarm();
-		expect((await h.request(`/api/appearance/assets/${asset.hash}`)).status).toBe(404);
-		const renewed = await h.store.uploadAsset({ bytes: large, name: 'large.png' });
-		expect(renewed.asset.hash).toBe(asset.hash);
-		expect((await h.request('/api/appearance', applyBody(0, { branding: { logo: renewed.asset.url } }), 'PUT')).status).toBe(200);
+		const read = await h.request(`/api/appearance/assets/${asset.hash}`);
+		expect(new Uint8Array(await read.arrayBuffer())).toEqual(large);
+		expect((await h.request('/api/appearance', applyBody(0, { packageId: theme.packageId }), 'PUT')).status).toBe(200);
 	});
 
 	it('retries mirror tasks after eviction without another user request and retains referenced assets through GC', async () => {
 		vi.useFakeTimers();
 		const h = harness();
-		const { asset } = await h.store.uploadAsset({ bytes: png, name: 'logo.png' });
-		await h.request('/api/appearance', applyBody(0, { branding: { logo: asset.url } }), 'PUT');
+		const { theme, asset } = await installTheme(h);
+		await h.request('/api/appearance', applyBody(0, { packageId: theme.packageId }), 'PUT');
 		h.env.SECRETS_KV.put.mockRejectedValueOnce(new Error('temporary KV failure'));
 		vi.setSystemTime(Date.now() + 60000);
 		await h.store.alarm();
@@ -550,14 +461,14 @@ describe('theme resources and maintenance', () => {
 		expect((await h.request(`/api/appearance/assets/${asset.hash}`)).status).toBe(200);
 	});
 
-	it('reserves shared capacity before parallel uploads can exceed it', async () => {
+	it('reserves shared capacity before installs can exceed it', async () => {
 		const h = harness();
-		await h.storage.put('theme:quota', { bytes: 50 * 1024 * 1024 - png.length });
-		const first = await h.store.uploadAsset({ bytes: png, name: 'logo.png' });
-		expect(first.asset.hash).toBeTruthy();
-		const other = pngWithMetadata(png.length + 32);
-		await expect(h.store.uploadAsset({ bytes: other, name: 'other.png' })).rejects.toMatchObject({ code: 'THEME_CAPACITY' });
-		expect(h.storage.data.get('theme:quota').bytes).toBe(50 * 1024 * 1024);
+		await h.storage.put('theme:quota', { bytes: 50 * 1024 * 1024 - 64 * 1024 });
+		await installTheme(h);
+		const before = h.storage.data.get('theme:quota').bytes;
+		await expect(installTheme(h, 'other-theme', pngWithMetadata(128 * 1024))).rejects.toMatchObject({ code: 'THEME_CAPACITY' });
+		expect(h.storage.data.get('theme:quota').bytes).toBe(before);
+		expect(before).toBeLessThanOrEqual(50 * 1024 * 1024);
 	});
 });
 

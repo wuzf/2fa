@@ -40,14 +40,14 @@ describe('serialized browser closures', () => {
 			keepNames,
 			write: false,
 		});
-			const sources = vm.runInNewContext(bundle.outputFiles[0].text + '\nserialized.sources', { TextEncoder, TextDecoder });
+		const sources = vm.runInNewContext(bundle.outputFiles[0].text + '\nserialized.sources', { TextEncoder, TextDecoder });
 		const window = new Window({ url: 'https://example.com/' });
 		try {
 			const context = vm.createContext({ window, document: window.document });
 			const renderer = vm.runInContext(sources.renderer, context)();
 			expect(renderer.card({ id: '1', name: 'Sample', account: 'work' })).toContain('data-account-action="edit"');
 			const controller = vm.runInContext(sources.controller, context)(window.document);
-			controller.apply({ manifest: { id: 'test' }, branding: { name: 'Example' } });
+			controller.apply({ manifest: { id: 'test' } });
 			expect(window.document.documentElement.dataset.themeId).toBe('test');
 			const validate = vm.runInContext(sources.validate, context);
 			const migrate = vm.runInContext(sources.migrate, context);
@@ -56,12 +56,12 @@ describe('serialized browser closures', () => {
 			const manifest = { id: 'test', settings: [field], layout: {}, content: {} };
 			const next = draft(
 				{ packageId: 'v2', manifest },
-				{ themeId: 'test', packageId: 'v1', manifest, settings: { size: 18 }, branding: { name: 'Personal' } },
+				{ themeId: 'test', packageId: 'v1', manifest, settings: { size: 18 } },
 				{},
 				(before, after, values) => migrate(before, after, values, validate),
 			);
 			expect(next.draft.settings.size).toBe(18);
-			expect(next.draft.branding.name).toBe('Personal');
+			expect(next.draft.packageId).toBe('v2');
 			vm.runInContext(sources.errors, context);
 			expect(window.localizeAppearanceError({ code: 'THEME_INVALID_SETTINGS', details: { field: 'size' } }, 400)).toBe(
 				'appearanceErrorSettings [size]',

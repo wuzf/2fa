@@ -23,8 +23,6 @@ export function createDefaultAppearance() {
 		settings: Object.fromEntries((theme.manifest.settings || []).map((field) => [field.key, field.default])),
 		layout: theme.manifest.layout,
 		content: theme.manifest.content || {},
-		branding: {},
-		customCss: '',
 		resources: [],
 	};
 }
@@ -76,11 +74,7 @@ export async function handleThemeRequest(request, env) {
 			return createJsonResponse({ themes }, 200, request);
 		}
 		if (request.method === 'GET' && pathname === '/api/appearance') {
-			return createJsonResponse(
-				{ revision: 0, active: createDefaultAppearance(), previous: false, capabilities: { write: false } },
-				200,
-				request,
-			);
+			return createJsonResponse({ revision: 0, active: createDefaultAppearance(), capabilities: { write: false } }, 200, request);
 		}
 		return createErrorResponse(
 			'需要配置主题存储',

@@ -553,8 +553,6 @@ export function createAppThemePreview(ports) {
 		generation = 0,
 		disposed = false;
 	let state = Object.freeze({ status: 'closed' });
-	const textFields = ['name', 'description', 'loginText', 'footer'],
-		assetFields = ['logo', 'icon192', 'icon512', 'appleTouchIcon', 'background'];
 	function publish(status, reason, token = current) {
 		state = Object.freeze({ status, ...(reason ? { reason } : {}), ...(token?.cap ? { expiresAt: token.cap.expiresAt } : {}) });
 		try {
@@ -684,24 +682,7 @@ export function createAppThemePreview(ports) {
 	}
 	function configuration(input, cap) {
 		const manifest = cap.appearance.manifest;
-		const values = pure(input.appearance || { settings: input.settings || {}, branding: input.branding || {} });
-		const resolveAsset = (value) => {
-			if (!value) {
-				return '';
-			}
-			const found = cap.files.find(
-				(file) =>
-					file.path === value ||
-					file.url === new URL(value, win.location.origin).href ||
-					value === '/theme-packages/' + input.packageId + '/' + file.path ||
-					(/^\/(?:theme-assets|api\/appearance\/assets)\/([a-f0-9]{64})/.exec(value)?.[1] === file.hash &&
-						file.path.startsWith('appearance-assets/')),
-			);
-			if (!found) {
-				throw new Error('preview-resources-changed');
-			}
-			return found.url;
-		};
+		const values = pure(input.appearance || { settings: input.settings || {} });
 		const settings = {};
 		for (const key of Object.keys(values.settings || {})) {
 			if (!manifest.settings.some((field) => field.key === key)) {
@@ -709,7 +690,7 @@ export function createAppThemePreview(ports) {
 			}
 		}
 		for (const field of manifest.settings) {
-			let value = Object.hasOwn(values.settings || {}, field.key) ? values.settings[field.key] : field.default;
+			const value = Object.hasOwn(values.settings || {}, field.key) ? values.settings[field.key] : field.default;
 			const valid =
 				field.type === 'boolean'
 					? typeof value === 'boolean'
@@ -726,18 +707,7 @@ export function createAppThemePreview(ports) {
 			) {
 				throw new Error('preview-invalid-config');
 			}
-			if (field.type === 'asset') {
-				value = resolveAsset(value);
-			}
 			settings[field.key] = value;
-		}
-		const branding = {};
-		for (const [key, value] of Object.entries(values.branding || {})) {
-			const text = value ?? '';
-			if (![...textFields, ...assetFields].includes(key) || typeof text !== 'string' || text.length > 2048 || text.includes('\0')) {
-				throw new Error('preview-invalid-config');
-			}
-			branding[key] = assetFields.includes(key) ? resolveAsset(text) : text;
 		}
 		return {
 			mode: input.mode === 'dark' ? 'dark' : 'light',
@@ -749,7 +719,6 @@ export function createAppThemePreview(ports) {
 				package: cap.appearance.package || { id: manifest.id, name: manifest.name, version: manifest.version },
 				revision: null,
 				settings,
-				branding,
 				baseUrl: cap.baseUrl,
 				files: cap.files,
 			},
@@ -819,11 +788,11 @@ export function createAppThemePreview(ports) {
 		current = token;
 		publish('preparing');
 		try {
-			const data = pure(input.appearance || { settings: input.settings || {}, branding: input.branding || {} });
+			const data = pure(input.appearance || { settings: input.settings || {} });
 			const response = await request('/api/themes/preview-capabilities', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ packageId: input.packageId, settings: data.settings || {}, branding: data.branding || {} }),
+				body: JSON.stringify({ packageId: input.packageId, settings: data.settings || {} }),
 				signal: token.controller.signal,
 			});
 			if (!response.ok) {

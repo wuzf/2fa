@@ -9,13 +9,8 @@ import {
 	getBuiltinTheme,
 	normalizeDetectedThemeImport,
 	normalizeAppearance,
-	importAsset,
-	exportTheme,
 	normalizeAppPackage,
-	normalizeAsset,
-	assetHashFromUrl,
 	appResourceUrl,
-	exportAppTheme,
 	appResourceHeaders,
 } from '../themes/index.js';
 import { normalizeAppPackageWithAppearance } from '../themes/appPackage.js';
@@ -39,7 +34,6 @@ const TTL = 24 * 60 * 60 * 1000;
 const JSON_LIMIT = 1024 * 1024;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-const BRAND_ASSETS = ['logo', 'icon192', 'icon512', 'appleTouchIcon', 'background'];
 // Keys exist only inside one commitAppearance call and are always released in
 // its finally block. Neither HTTP input nor a previous request can supply proof.
 const preparedPublications = new WeakMap();
@@ -67,7 +61,7 @@ async function digest(bytes) {
 }
 
 function initialState() {
-	return { revision: 0, active: null, previous: null, profiles: {} };
+	return { revision: 0, active: null, profiles: {} };
 }
 
 function assetInfo(asset, published = false) {
@@ -90,11 +84,7 @@ function isApp(pkg) {
 }
 
 function appearanceInput(value) {
-	return Object.fromEntries(
-		['packageId', 'themeId', 'settings', 'layout', 'content', 'branding', 'customCss']
-			.filter((key) => value[key] !== undefined)
-			.map((key) => [key, value[key]]),
-	);
+	return Object.fromEntries(['packageId', 'themeId', 'settings'].filter((key) => value[key] !== undefined).map((key) => [key, value[key]]));
 }
 
 function profileKey(pkg) {
@@ -150,43 +140,8 @@ function assertAppHostCompatible(manifest) {
 	}
 }
 
-function appAppearanceInput(input, pkg) {
-	for (const field of ['layout', 'content', 'customCss']) {
-		if (Object.hasOwn(input, field)) {
-			throw problem('完整前端主题不接受旧版布局或 CSS 设置', 400, 'THEME_UNKNOWN_FIELD', { field });
-		}
-	}
-	const out = Object.fromEntries(
-		['packageId', 'themeId', 'settings', 'branding'].filter((key) => input[key] !== undefined).map((key) => [key, input[key]]),
-	);
-	const local = (value) => {
-		if (typeof value !== 'string') {
-			return value;
-		}
-		const prefix = `/theme-packages/${pkg.packageId}/`;
-		if (value.startsWith(prefix)) {
-			return value.slice(prefix.length);
-		}
-		const hash = assetHashFromUrl(value);
-		const file =
-			hash &&
-			pkg.files.find((candidate) => candidate.hash === hash && (candidate.mime.startsWith('image/') || candidate.mime === 'font/woff2'));
-		return file ? file.path : value;
-	};
-	for (const [group, fields] of [
-		['settings', pkg.manifest.settings.filter((field) => field.type === 'asset').map((field) => field.key)],
-		['branding', BRAND_ASSETS],
-	]) {
-		if (out[group] && typeof out[group] === 'object' && !Array.isArray(out[group])) {
-			out[group] = { ...out[group] };
-			for (const field of fields) {
-				if (Object.hasOwn(out[group], field)) {
-					out[group][field] = local(out[group][field]);
-				}
-			}
-		}
-	}
-	return out;
+function appAppearanceInput(input) {
+	return Object.fromEntries(['packageId', 'themeId', 'settings'].filter((key) => input[key] !== undefined).map((key) => [key, input[key]]));
 }
 
 async function readLimited(request, limit) {
@@ -238,31 +193,6 @@ async function readJSON(request) {
 		}
 		throw problem('请求必须是有效 JSON');
 	}
-}
-
-async function readImport(request, restore = false) {
-	const limit = restore ? LIMITS.restoreUpload : LIMITS.upload;
-	const type = request.headers.get('content-type') || '';
-	if (type.includes('application/json')) {
-		const body = await readJSON(request);
-		if (body.url || body.sourceUrl) {
-			return { url: body.url || body.sourceUrl };
-		}
-		return { bytes: encoder.encode(JSON.stringify(body)), name: 'theme.json' };
-	}
-	const bytes = await readLimited(request, limit + (type.includes('multipart/form-data') ? 65536 : 0));
-	if (type.includes('multipart/form-data')) {
-		const form = await new Request(request.url, { method: 'POST', headers: { 'Content-Type': type }, body: bytes }).formData();
-		const file = form.get('file');
-		if (!file || typeof file.arrayBuffer !== 'function') {
-			throw problem('请选择主题文件');
-		}
-		if (file.size > limit) {
-			throw problem('上传文件超过允许大小', 413, 'THEME_TOO_LARGE');
-		}
-		return { bytes: new Uint8Array(await file.arrayBuffer()), name: file.name || 'theme.zip' };
-	}
-	return { bytes, name: request.headers.get('X-File-Name') || 'theme.zip' };
 }
 
 export class ThemeStore {
@@ -359,7 +289,6 @@ export class ThemeStore {
 		const url = new URL(request.url);
 		const path = url.pathname;
 		const format = url.searchParams.get('format') === 'app' ? 'app' : 'v1';
-		const importFormat = url.searchParams.has('format') ? format : 'auto';
 		const operation = request.headers.get(THEME_OPERATION_HEADER);
 		if (operation === 'public') {
 			if (!['GET', 'HEAD'].includes(request.method)) {
@@ -407,20 +336,8 @@ export class ThemeStore {
 		if (path === '/api/appearance' && request.method === 'PUT') {
 			return json(await this.apply(await readJSON(request)));
 		}
-		if (path === '/api/appearance/rollback' && request.method === 'POST') {
-			return json(await this.apply(await readJSON(request), true));
-		}
-		if (path === '/api/themes/import' && request.method === 'POST') {
-			return json(await this.install(await readImport(request), false, importFormat), 201);
-		}
 		if (path === '/api/themes/catalog/install' && request.method === 'POST') {
-			return json(await this.install(await downloadCatalogTheme(await readJSON(request)), false, 'auto'), 201);
-		}
-		if (path === '/api/appearance/restore-inspect' && request.method === 'POST') {
-			return json(await this.install(await readImport(request, true), true, importFormat), 201);
-		}
-		if (path === '/api/appearance/assets' && request.method === 'POST') {
-			return json(await this.uploadAsset(await readImport(request, true)), 201);
+			return json(await this.install(await downloadCatalogTheme(await readJSON(request))), 201);
 		}
 		const privateAsset = /^\/api\/appearance\/assets\/([a-f0-9]{64})$/.exec(path);
 		if (privateAsset && ['GET', 'HEAD'].includes(request.method)) {
@@ -430,26 +347,16 @@ export class ThemeStore {
 		if (privateFile && ['GET', 'HEAD'].includes(request.method)) {
 			return this.readAppFile(privateFile[1], privateFile[2], request, false);
 		}
-		const theme = /^\/api\/themes\/([^/]+)(\/export)?$/.exec(path);
-		if (theme) {
-			const id = decodeURIComponent(theme[1]);
-			if (theme[2] && request.method === 'GET') {
-				return this.export(id, false);
-			}
-			if (!theme[2] && request.method === 'DELETE') {
-				return json(await this.deletePackage(id));
-			}
-		}
-		if (path === '/api/appearance/export' && request.method === 'GET') {
-			return this.export(null, true);
+		const theme = /^\/api\/themes\/([^/]+)$/.exec(path);
+		if (theme && request.method === 'DELETE') {
+			return json(await this.deletePackage(decodeURIComponent(theme[1])));
 		}
 		return new Response('Not found', { status: 404 });
 	}
 
 	/** Rate limits are authoritative and independent of the secrets operation quota. */
 	async checkRate(path) {
-		const expensive =
-			path.includes('import') || path.includes('restore') || path.endsWith('/assets') || path === '/api/themes/catalog/install';
+		const expensive = path === '/api/themes/catalog/install';
 		const key = `theme:rate:${expensive ? 'import' : 'write'}`;
 		const now = Date.now();
 		const entries = ((await this.storage.get(key)) || []).filter((time) => time > now - 60000);
@@ -470,7 +377,6 @@ export class ThemeStore {
 		return {
 			revision: state.revision,
 			active: { ...active, revision: state.revision },
-			previous: !!state.previous,
 			capabilities: { write: true },
 		};
 	}
@@ -555,7 +461,7 @@ export class ThemeStore {
 	async referencedPackages() {
 		const ids = new Set((await this.previews.pins()).map((preview) => preview.packageId));
 		const state = await this.state();
-		const snapshots = [state.active, state.previous, ...Object.values(state.profiles)];
+		const snapshots = [state.active, ...Object.values(state.profiles)];
 		for (const receipt of (await this.storage.list({ prefix: RECEIPT })).values()) {
 			if (receipt.expiresAt > Date.now()) {
 				snapshots.push(receipt.snapshot);
@@ -833,53 +739,8 @@ export class ThemeStore {
 		}
 		assertAppHostCompatible(installed.manifest);
 		const files = await Promise.all(installed.files.map(async (file) => ({ ...file, bytes: await this.appFileBytes(file) })));
-		const input = appAppearanceInput(body, installed);
-		const hashes = new Set();
-		for (const value of [
-			...installed.manifest.settings.filter((field) => field.type === 'asset').map((field) => input.settings?.[field.key]),
-			...BRAND_ASSETS.map((field) => input.branding?.[field]),
-		]) {
-			const hash = assetHashFromUrl(value);
-			if (hash) {
-				hashes.add(hash);
-			}
-		}
-		const normalized = await normalizeAppPackageWithAppearance({ ...installed, files }, input, {
-			assets: await Promise.all([...hashes].map((hash) => this.resolveAsset(hash))),
-		});
+		const normalized = await normalizeAppPackageWithAppearance({ ...installed, files }, appAppearanceInput(body));
 		const pkg = normalized.pkg;
-		const assets = new Map(normalized.assets.map((asset) => [asset.hash, asset]));
-		const branding = { ...normalized.appearance.branding };
-		for (const key of BRAND_ASSETS) {
-			const file = pkg.files.find((file) => file.path === branding[key]);
-			if (file) {
-				const asset = await normalizeAsset(file.bytes, file.path);
-				assets.set(asset.hash, asset);
-				branding[key] = assetInfo(asset, true).url;
-			}
-		}
-		for (const asset of assets.values()) {
-			await this.saveBlob(asset);
-		}
-		const resolveUrl = (value) => {
-			const file = pkg.files.find((file) => file.path === value);
-			if (file) {
-				return baseUrl ? baseUrl + file.path : appResourceUrl(pkg.packageId, file.path);
-			}
-			const asset = assets.get(assetHashFromUrl(value));
-			return baseUrl && asset ? baseUrl + 'appearance-assets/' + asset.name : value;
-		};
-		const settings = { ...normalized.appearance.settings };
-		for (const field of pkg.manifest.settings) {
-			if (field.type === 'asset') {
-				settings[field.key] = resolveUrl(settings[field.key]);
-			}
-		}
-		for (const key of BRAND_ASSETS) {
-			if (Object.hasOwn(branding, key)) {
-				branding[key] = resolveUrl(branding[key]);
-			}
-		}
 		if (publication) {
 			preparedPublications.set(publication, {
 				store: this,
@@ -890,7 +751,6 @@ export class ThemeStore {
 			});
 		}
 		return {
-			assets: [...assets.values()],
 			snapshot: {
 				...normalized.appearance,
 				...(baseUrl && normalized.appearance.publicAppearance
@@ -900,8 +760,6 @@ export class ThemeStore {
 				manifest: pkg.manifest,
 				package: { id: pkg.manifest.id, name: pkg.manifest.name, version: pkg.manifest.version },
 				baseUrl: baseUrl || `/theme-packages/${pkg.packageId}/`,
-				settings,
-				branding,
 				files: pkg.files.map(({ path, mime, size, hash }) => ({
 					path,
 					mime,
@@ -909,21 +767,18 @@ export class ThemeStore {
 					hash,
 					url: baseUrl ? baseUrl + path : appResourceUrl(pkg.packageId, path),
 				})),
-				resources: [...assets.values()].map((asset) => ({
-					...assetInfo(asset, true),
-					...(baseUrl ? { url: baseUrl + 'appearance-assets/' + asset.name } : {}),
-				})),
+				resources: [],
 			},
 		};
 	}
 
-	async install(input, restore = false, format = 'auto') {
-		const pkg = await normalizeDetectedThemeImport(input, { restore, format });
+	async install(input) {
+		const pkg = await normalizeDetectedThemeImport(input, { format: 'auto' });
 		if (input.expectedPackageId && input.expectedPackageId !== pkg.packageId) {
 			throw problem('主题目录与安装包不一致，请刷新后重试', 409, 'THEME_CATALOG_CHANGED');
 		}
-		if (pkg.appearance && !restore) {
-			throw problem('请使用外观备份恢复入口导入此文件', 400, 'THEME_RESTORE_REQUIRED');
+		if (pkg.appearance) {
+			throw problem('主题文件不能包含外观设置', 400, 'THEME_INVALID');
 		}
 		if (getBuiltinTheme(pkg.packageId)) {
 			throw problem('导入主题不能覆盖内置主题');
@@ -950,7 +805,7 @@ export class ThemeStore {
 			await this.schedule(tx);
 		});
 		try {
-			for (const asset of pkg.appearanceAssets || pkg.assets) {
+			for (const asset of pkg.assets) {
 				await this.saveBlob(asset);
 			}
 			for (const file of pkg.files || []) {
@@ -971,18 +826,6 @@ export class ThemeStore {
 						assets: pkg.assets.map((asset) => assetInfo(asset)),
 					};
 			const document = await this.saveDocument(normalized);
-			let appearance;
-			if (pkg.appearance && isApp(pkg)) {
-				appearance = { ...pkg.appearance, resources: pkg.appearanceAssets.map((asset) => assetInfo(asset, true)) };
-			} else if (pkg.appearance) {
-				const result = await normalizeAppearance(pkg, pkg.appearance, { resolveAsset: (hash) => this.resolveAsset(hash) });
-				for (const asset of result.assets) {
-					await this.saveBlob(asset);
-				}
-				// A restore draft needs its personal assets for isolated preview and
-				// durable local Blob copies; they are not part of the author's package.
-				appearance = { ...result.appearance, resources: result.assets.map((asset) => assetInfo(asset, true)) };
-			}
 			await this.storage.transaction(async (tx) => {
 				const previous = await tx.get(packageKey);
 				await tx.put(packageKey, {
@@ -997,7 +840,7 @@ export class ThemeStore {
 				await this.retirePackages(tx, { identity, key: packageKey });
 				await this.schedule(tx);
 			});
-			return { theme: normalized, ...(appearance ? { appearance } : {}) };
+			return { theme: normalized };
 		} catch (error) {
 			const record = await this.storage.get(packageKey);
 			if (record?.status === 'installing') {
@@ -1007,12 +850,7 @@ export class ThemeStore {
 		}
 	}
 
-	async uploadAsset(input) {
-		const asset = await importAsset(input);
-		return { asset: assetInfo(await this.saveBlob(asset)) };
-	}
-
-	async checkOperation(body, rollback) {
+	async checkOperation(body) {
 		if (
 			!body ||
 			typeof body !== 'object' ||
@@ -1022,7 +860,7 @@ export class ThemeStore {
 		) {
 			throw problem('请提供 operationId 和有效的 expectedRevision');
 		}
-		const hash = await digest(encoder.encode(JSON.stringify(stable({ ...body, rollback }))));
+		const hash = await digest(encoder.encode(JSON.stringify(stable(body))));
 		const receipt = await this.storage.get(RECEIPT + body.operationId);
 		if (receipt && receipt.expiresAt > Date.now()) {
 			if (receipt.digest !== hash) {
@@ -1041,62 +879,52 @@ export class ThemeStore {
 		return {
 			revision: receipt.revision,
 			active: { ...(await this.readDocument(receipt.snapshot)), revision: receipt.revision },
-			previous: receipt.previous,
 			replayed: true,
 		};
 	}
 
-	async apply(body, rollback = false) {
+	async apply(body) {
 		// HTTP writes already hold fetch()'s queue. Commit directly so publication
 		// shares all validation and transactions without recursively enqueueing.
-		return this.commitAppearance(body, rollback);
+		return this.commitAppearance(body);
 	}
 
 	/** Internal host integration entry; deliberately not selectable by request data. */
-	applyInstalledAppearance(body, rollback = false) {
-		return this.enqueue(() => this.commitAppearance(body, rollback));
+	applyInstalledAppearance(body) {
+		return this.enqueue(() => this.commitAppearance(body));
 	}
 
-	async commitAppearance(body, rollback = false) {
-		const checked = await this.checkOperation(body, rollback);
+	async commitAppearance(body) {
+		const checked = await this.checkOperation(body);
 		if (checked.receipt) {
 			return this.receiptResponse(checked.receipt);
 		}
-		const state = checked.state;
 		const publication = {};
 		try {
 			let snapshot;
-			if (rollback) {
-				if (!state.previous) {
-					throw problem('没有可回退的外观', 409, 'THEME_NO_PREVIOUS');
-				}
-				snapshot = await this.readDocument(state.previous);
+			const pkg = await this.getPackage(body.packageId);
+			if (isApp(pkg)) {
+				snapshot = (await this.prepareAppAppearance(body, { publication })).snapshot;
 			} else {
-				const pkg = await this.getPackage(body.packageId);
-				if (isApp(pkg)) {
-					snapshot = (await this.prepareAppAppearance(body, { publication })).snapshot;
-				} else {
-					// Package assets loaded from storage carry metadata; normalization needs bytes.
-					const fullPkg = { ...pkg, assets: await Promise.all(pkg.assets.map((asset) => this.resolveAsset(asset.hash))) };
-					const normalized = await normalizeAppearance(fullPkg, appearanceInput(body), { resolveAsset: (hash) => this.resolveAsset(hash) });
-					for (const asset of normalized.assets) {
-						await this.saveBlob(asset);
-					}
-					snapshot = {
-						...normalized.appearance,
-						packageId: pkg.packageId,
-						themeId: pkg.manifest.id,
-						manifest: pkg.manifest,
-						css: pkg.css,
-						resources: normalized.assets.map((asset) => assetInfo(asset, true)),
-					};
+				// Package assets loaded from storage carry metadata; normalization needs bytes.
+				const fullPkg = { ...pkg, assets: await Promise.all(pkg.assets.map((asset) => this.resolveAsset(asset.hash))) };
+				const normalized = await normalizeAppearance(fullPkg, appearanceInput(body), { resolveAsset: (hash) => this.resolveAsset(hash) });
+				for (const asset of normalized.assets) {
+					await this.saveBlob(asset);
 				}
+				snapshot = {
+					...normalized.appearance,
+					packageId: pkg.packageId,
+					themeId: pkg.manifest.id,
+					manifest: pkg.manifest,
+					css: pkg.css,
+					resources: normalized.assets.map((asset) => assetInfo(asset, true)),
+				};
 			}
 			if (isApp(snapshot)) {
 				assertAppHostCompatible(snapshot.manifest);
 			}
 			const document = await this.saveDocument(snapshot);
-			const prior = state.active || (await this.saveDocument(createDefaultAppearance())).hash;
 			const response = await this.storage.transaction(async (tx) => {
 				const existing = await tx.get(RECEIPT + body.operationId);
 				if (existing && existing.expiresAt > Date.now()) {
@@ -1116,7 +944,7 @@ export class ThemeStore {
 					}
 				}
 				if (isApp(snapshot)) {
-					await this.markAppPackagePublic(tx, snapshot.packageId, rollback ? undefined : publication);
+					await this.markAppPackagePublic(tx, snapshot.packageId, publication);
 				}
 				for (const resource of snapshot.resources) {
 					const meta = await tx.get(META + resource.hash);
@@ -1138,15 +966,14 @@ export class ThemeStore {
 					...current,
 					revision,
 					active: document.hash,
-					previous: prior,
 					profiles,
 				});
-				const receipt = { digest: checked.digest, revision, snapshot: document.hash, previous: true, expiresAt: Date.now() + TTL };
+				const receipt = { digest: checked.digest, revision, snapshot: document.hash, expiresAt: Date.now() + TTL };
 				await tx.put(RECEIPT + body.operationId, receipt);
 				await this.schedule(tx);
 				return receipt;
 			});
-			return { revision: response.revision, active: { ...snapshot, revision: response.revision }, previous: true };
+			return { revision: response.revision, active: { ...snapshot, revision: response.revision } };
 		} finally {
 			preparedPublications.delete(publication);
 		}
@@ -1157,9 +984,9 @@ export class ThemeStore {
 			throw problem('内置主题不能删除', 409, 'THEME_BUILTIN');
 		}
 		const state = await this.state();
-		for (const hash of [state.active, state.previous].filter(Boolean)) {
+		for (const hash of [state.active].filter(Boolean)) {
 			if ((await this.readDocument(hash)).packageId === id) {
-				throw problem('当前或上一外观使用此版本，暂时不能删除', 409, 'THEME_IN_USE');
+				throw problem('当前外观使用此版本，暂时不能删除', 409, 'THEME_IN_USE');
 			}
 		}
 		const record = await this.storage.get(PACKAGE + id);
@@ -1191,27 +1018,6 @@ export class ThemeStore {
 		return { deleted: id };
 	}
 
-	async export(id, full) {
-		let appearance;
-		if (full) {
-			appearance = (await this.readAppearance()).active;
-			id = appearance.packageId;
-		}
-		const pkg = await this.getPackage(id);
-		const assets = await Promise.all((full ? appearance.resources : pkg.assets).map((asset) => this.resolveAsset(asset.hash)));
-		const bytes = isApp(pkg)
-			? await exportAppTheme(await this.hydrateAppPackage(pkg), full ? { appearance: appAppearanceInput(appearance, pkg), assets } : {})
-			: await exportTheme({ ...pkg, assets }, full ? { appearance: appearanceInput(appearance), assets } : {});
-		return new Response(bytes, {
-			headers: {
-				'Content-Type': 'application/zip',
-				'Content-Disposition': `attachment; filename="${full ? '2fa-appearance' : '2fa-theme'}.zip"`,
-				'Cache-Control': 'private, no-store',
-				'X-Content-Type-Options': 'nosniff',
-			},
-		});
-	}
-
 	async referencedBlobs() {
 		const protectedHashes = new Set();
 		for (const preview of await this.previews.pins()) {
@@ -1228,7 +1034,7 @@ export class ThemeStore {
 			}
 		}
 		const state = await this.state();
-		const snapshots = [state.active, state.previous, ...Object.values(state.profiles)];
+		const snapshots = [state.active, ...Object.values(state.profiles)];
 		for (const receipt of (await this.storage.list({ prefix: RECEIPT })).values()) {
 			if (receipt.expiresAt > Date.now()) {
 				snapshots.push(receipt.snapshot);
