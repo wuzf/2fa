@@ -1771,8 +1771,6 @@
 	"Theme installed. Preview it before applying.": "Tema instalado. Revísalo en la vista previa antes de aplicarlo.",
 	"Export theme": "Exportar tema",
 	"Export full appearance": "Exportar toda la apariencia",
-	"Delete version": "Eliminar versión",
-	"Delete this installed theme version?": "¿Eliminar esta versión instalada del tema?",
 	"Restore previous appearance": "Restaurar la apariencia anterior",
 	"Restore the previous theme, settings and brand?": "¿Restaurar el tema, la configuración y la identidad visual anteriores?",
 	"Reset theme settings": "Restablecer configuración del tema",
@@ -1925,5 +1923,16 @@
 	"Most recently installed": "Instalada más recientemente",
 	"Installed {date}": "Instalada el {date}",
 	"Build {id}": "Compilación {id}",
-	"Install time unavailable": "Fecha de instalación no disponible"
+	"Install time unavailable": "Fecha de instalación no disponible",
+	"Community themes": "Temas de la comunidad",
+	"My themes": "Mis temas",
+	"Loading community themes…": "Cargando temas de la comunidad…",
+	"Community themes are unavailable. You can still use your installed themes or import your own.": "Los temas de la comunidad no están disponibles. Puedes seguir usando tus temas instalados o importar los tuyos.",
+	"No community themes are listed yet.": "Aún no hay temas de la comunidad disponibles.",
+	"Choose theme": "Elegir tema",
+	"Update theme": "Actualizar tema",
+	"Submit a theme": "Enviar un tema",
+	"Choose a community theme, or import your own below. Updates replace the existing theme.": "Elige un tema de la comunidad o importa el tuyo a continuación. Las actualizaciones reemplazan el tema existente.",
+	"Delete theme": "Eliminar tema",
+	"Delete this installed theme?": "¿Eliminar este tema instalado?"
 }

@@ -1771,8 +1771,6 @@
 	"Theme installed. Preview it before applying.": "Tema terpasang. Pratinjau sebelum menerapkannya.",
 	"Export theme": "Ekspor tema",
 	"Export full appearance": "Ekspor seluruh tampilan",
-	"Delete version": "Hapus versi",
-	"Delete this installed theme version?": "Hapus versi tema yang terpasang ini?",
 	"Restore previous appearance": "Pulihkan tampilan sebelumnya",
 	"Restore the previous theme, settings and brand?": "Pulihkan tema, pengaturan, dan identitas merek sebelumnya?",
 	"Reset theme settings": "Atur ulang pengaturan tema",
@@ -1925,5 +1923,16 @@
 	"Most recently installed": "Terakhir diinstal",
 	"Installed {date}": "Diinstal pada {date}",
 	"Build {id}": "Versi build {id}",
-	"Install time unavailable": "Waktu instalasi tidak tersedia"
+	"Install time unavailable": "Waktu instalasi tidak tersedia",
+	"Community themes": "Tema komunitas",
+	"My themes": "Tema saya",
+	"Loading community themes…": "Memuat tema komunitas…",
+	"Community themes are unavailable. You can still use your installed themes or import your own.": "Tema komunitas tidak tersedia. Anda tetap dapat menggunakan tema yang terpasang atau mengimpor tema sendiri.",
+	"No community themes are listed yet.": "Belum ada tema komunitas yang tersedia.",
+	"Choose theme": "Pilih tema",
+	"Update theme": "Perbarui tema",
+	"Submit a theme": "Kirim tema",
+	"Choose a community theme, or import your own below. Updates replace the existing theme.": "Pilih tema komunitas atau impor tema Anda sendiri di bawah. Pembaruan menggantikan tema yang sudah ada.",
+	"Delete theme": "Hapus tema",
+	"Delete this installed theme?": "Hapus tema terpasang ini?"
 }

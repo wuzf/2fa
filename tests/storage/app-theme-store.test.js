@@ -515,6 +515,188 @@ describe('app appearance publication', () => {
 	});
 });
 
+describe('one installed build per theme', () => {
+	it('replaces the listed build while preserving active, rollback and receipt resources', async () => {
+		const h = harness();
+		const first = await h.install(await appThemeFixture({ 'entry.js': 'export const generation=1;' }));
+		const original = await h.store.applyInstalledAppearance({ ...apply(first.packageId), branding: { name: 'Keep me' } });
+		const second = await h.install(await appThemeFixture({ 'entry.js': 'export const generation=2;' }, { version: '2.0.0' }));
+		const list = await h.store.listThemes('app');
+		expect(list.themes.map((theme) => theme.packageId)).toEqual([second.packageId]);
+		expect(list.themes[0].profile.branding.name).toBe('Keep me');
+		expect((await h.store.readAppearance()).active).toEqual(original.active);
+		await expireBlobs(h.storage);
+		await h.store.alarm();
+		expect((await h.request(publicFile(first), { operation: 'public' })).status).toBe(200);
+		await h.store.applyInstalledAppearance(apply(second.packageId, 1));
+		const restored = await h.store.applyInstalledAppearance({ expectedRevision: 2, operationId: crypto.randomUUID() }, true);
+		expect(restored.active.packageId).toBe(first.packageId);
+		expect((await h.store.listThemes('app')).themes.map((theme) => theme.packageId)).toEqual([second.packageId]);
+	});
+
+	it('allows replacement at the theme limit but rejects a new identity', async () => {
+		const h = harness();
+		for (let index = 0; index < 20; index++) {
+			await h.install(await appThemeFixture(undefined, { id: 'theme-' + index }));
+		}
+		const replacement = await h.install(await appThemeFixture({ 'entry.js': 'export const updated=true;' }, { id: 'theme-0' }));
+		expect((await h.store.listThemes('app')).themes).toHaveLength(20);
+		expect((await h.store.listThemes('app')).themes.find((theme) => theme.manifest.id === 'theme-0').packageId).toBe(replacement.packageId);
+		const extra = await appThemeFixture(undefined, { id: 'theme-20' });
+		const rejected = await h.request('/api/themes/import', { body: extra.archive });
+		expect(rejected.status).toBe(413);
+		expect(await rejected.json()).toMatchObject({ error: 'THEME_VERSION_CAPACITY' });
+	});
+
+	it('does not bypass the theme limit when reinstalling a hidden package retained by the running appearance', async () => {
+		const h = harness();
+		const original = await appThemeFixture({ 'entry.js': 'export const old=true;' }, { id: 'retained-theme' });
+		const first = await h.install(original);
+		await h.store.applyInstalledAppearance(apply(first.packageId));
+		const latest = await h.install(await appThemeFixture({ 'entry.js': 'export const updated=true;' }, { id: 'retained-theme' }));
+		await h.store.deletePackage(latest.packageId);
+		for (let index = 0; index < 20; index++) {
+			await h.install(await appThemeFixture(undefined, { id: 'other-' + index }));
+		}
+		expect(await h.storage.get('theme:package:' + first.packageId)).toMatchObject({ superseded: true });
+		const response = await h.request('/api/themes/import', { body: original.archive });
+		expect(response.status).toBe(413);
+		expect(await response.json()).toMatchObject({ error: 'THEME_VERSION_CAPACITY' });
+		expect((await h.store.listThemes('app')).themes).toHaveLength(20);
+		expect((await h.store.readAppearance()).active.packageId).toBe(first.packageId);
+		expect((await h.request(publicFile(first), { operation: 'public' })).status).toBe(200);
+	});
+
+	it('keeps the old selectable build when replacement validation or the final transaction fails', async () => {
+		const h = harness();
+		const first = await h.install(await appThemeFixture());
+		const replacement = await appThemeFixture({ 'entry.js': 'export const changed=true;' });
+		await expect(
+			h.store.install({ bytes: replacement.archive, name: 'theme.zip', expectedPackageId: '0'.repeat(64) }),
+		).rejects.toMatchObject({ code: 'THEME_CATALOG_CHANGED' });
+		const originalPut = h.storage.put.bind(h.storage);
+		vi.spyOn(h.storage, 'put').mockImplementation(async (key, value) => {
+			if (key.startsWith('theme:package:') && value.status === 'ready') {
+				throw new Error('transaction failed');
+			}
+			return originalPut(key, value);
+		});
+		await expect(h.store.install({ bytes: replacement.archive, name: 'theme.zip' })).rejects.toThrow('transaction failed');
+		expect((await h.store.listThemes('app')).themes.map((theme) => theme.packageId)).toEqual([first.packageId]);
+		expect(await h.storage.get('theme:package:' + first.packageId)).not.toHaveProperty('superseded', true);
+	});
+
+	it('migrates legacy duplicate builds and reclaims their unreferenced bytes without deleting shared files', async () => {
+		const h = harness();
+		const first = await h.install(await appThemeFixture({ 'entry.js': 'export const generation=1;', 'shared.json': '{}' }));
+		const second = await h.install(await appThemeFixture({ 'entry.js': 'export const generation=2;', 'shared.json': '{}' }));
+		for (const [index, pkg] of [first, second].entries()) {
+			const key = 'theme:package:' + pkg.packageId;
+			const record = await h.storage.get(key);
+			delete record.identity;
+			delete record.superseded;
+			delete record.retireAfter;
+			await h.storage.put(key, { ...record, installedAt: index + 1 });
+		}
+		expect((await h.store.listThemes('app')).themes.map((theme) => theme.packageId)).toEqual([second.packageId]);
+		await h.store.alarm();
+		expect(await h.storage.get('theme:package:' + first.packageId)).toBeUndefined();
+		expect(await h.storage.get('theme:blob:' + first.files.find((file) => file.path === 'entry.js').hash)).toBeUndefined();
+		expect((await h.request(privateFile(second, 'shared.json'))).status).toBe(200);
+	});
+
+	it.each([false, true])('does not resurrect legacy history after deleting the latest build (older build active: %s)', async (active) => {
+		const h = harness();
+		const first = await h.install(await appThemeFixture({ 'entry.js': 'export const generation=1;' }));
+		if (active) {
+			await h.store.applyInstalledAppearance(apply(first.packageId));
+		}
+		const second = await h.install(await appThemeFixture({ 'entry.js': 'export const generation=2;' }));
+		for (const [index, pkg] of [first, second].entries()) {
+			const key = 'theme:package:' + pkg.packageId;
+			const record = await h.storage.get(key);
+			delete record.identity;
+			delete record.superseded;
+			delete record.retireAfter;
+			await h.storage.put(key, { ...record, installedAt: index + 1 });
+		}
+		expect((await h.store.listThemes('app')).themes.map((theme) => theme.packageId)).toEqual([second.packageId]);
+		const response = await h.request('/api/themes/' + second.packageId, { method: 'DELETE' });
+		expect(response.status).toBe(200);
+		expect((await h.store.listThemes('app')).themes).toEqual([]);
+		await h.store.alarm();
+		expect((await h.store.listThemes('app')).themes).toEqual([]);
+		if (active) {
+			expect((await h.store.readAppearance()).active.packageId).toBe(first.packageId);
+			expect((await h.request(publicFile(first), { operation: 'public' })).status).toBe(200);
+		} else {
+			expect(await h.storage.get('theme:package:' + first.packageId)).toBeUndefined();
+		}
+	});
+
+	it('pins an older preview until it is closed and prevents repeated replacement from retaining every package', async () => {
+		const h = harness();
+		const first = await h.install(await appThemeFixture({ 'entry.js': 'export const generation=0;' }));
+		const cap = await (await preview(h, { packageId: first.packageId })).json();
+		for (let index = 1; index < 5; index++) {
+			await h.install(await appThemeFixture({ 'entry.js': `export const generation=${index};` }));
+		}
+		await h.store.alarm();
+		expect((await h.storage.list({ prefix: 'theme:package:' })).size).toBe(2);
+		expect(await (await previewFile(h, cap)).text()).toBe('export const generation=0;');
+		await revoke(h, cap.capabilityId);
+		await h.store.alarm();
+		expect((await h.storage.list({ prefix: 'theme:package:' })).size).toBe(1);
+		expect(await h.storage.get('theme:blob:' + first.files[0].hash)).toBeUndefined();
+	});
+
+	it('keeps v1 and app identities separate when both formats use the same id', async () => {
+		const h = harness();
+		const app = await h.install(await appThemeFixture(undefined, { id: 'cross-format' }));
+		const v1 = (css) => ({
+			name: 'theme.json',
+			bytes: encodeAppText(JSON.stringify({ manifest: { ...getBuiltinTheme('builtin:fluent').manifest, id: 'cross-format' }, css })),
+		});
+		await h.store.install(v1('body{color:red}'));
+		const replaced = await h.store.install(v1('body{color:blue}'));
+		expect((await h.store.listThemes('app')).themes.map((theme) => theme.packageId)).toEqual([app.packageId]);
+		expect((await h.store.listThemes()).themes.filter((theme) => !theme.builtIn).map((theme) => theme.packageId)).toEqual([
+			replaced.theme.packageId,
+		]);
+	});
+
+	it('releases an obsolete saved profile when the latest theme is deleted', async () => {
+		const h = harness();
+		const first = await h.install(await appThemeFixture());
+		await h.store.applyInstalledAppearance(apply(first.packageId));
+		await h.store.applyInstalledAppearance(apply('builtin:fluent', 1));
+		await h.store.applyInstalledAppearance(apply('builtin:document', 2));
+		const second = await h.install(await appThemeFixture({ 'entry.js': 'export const updated=true;' }));
+		expect((await h.storage.get('theme:state')).profiles).toHaveProperty('app:storage-test');
+		await h.store.deletePackage(second.packageId);
+		expect((await h.storage.get('theme:state')).profiles).not.toHaveProperty('app:storage-test');
+	});
+
+	it('reclaims retired published bytes after the grace period and receipt expiry', async () => {
+		let now = Date.now();
+		vi.spyOn(Date, 'now').mockImplementation(() => now);
+		const h = harness();
+		const first = await h.install(await appThemeFixture({ 'entry.js': 'export const old=true;' }));
+		await h.store.applyInstalledAppearance(apply(first.packageId));
+		const second = await h.install(await appThemeFixture({ 'entry.js': 'export const current=true;' }));
+		await h.store.applyInstalledAppearance(apply(second.packageId, 1));
+		await h.store.applyInstalledAppearance(apply('builtin:fluent', 2));
+		await h.store.applyInstalledAppearance(apply('builtin:document', 3));
+		await h.store.alarm();
+		expect((await h.request(publicFile(first), { operation: 'public' })).status).toBe(200);
+		now += 24 * 60 * 60 * 1000 + 1;
+		await h.store.alarm();
+		expect(await h.storage.get('theme:package:' + first.packageId)).toBeUndefined();
+		expect(await h.storage.get('theme:blob:' + first.files[0].hash)).toBeUndefined();
+		expect((await h.request(publicFile(second), { operation: 'public' })).status).toBe(200);
+	});
+});
+
 describe('opaque preview capability resources', () => {
 	it('returns a fixed package/resource scope and grants anonymous null-origin bytes without publishing it', async () => {
 		const h = harness(),
@@ -844,13 +1026,13 @@ describe('app theme storage and publication boundary', () => {
 	it.each(['', '?format=app'])('shares quota and retains deduplicated blobs with automatic/explicit app imports (%s)', async (query) => {
 		const h = harness();
 		const a = await h.install(await appThemeFixture()),
-			b = await h.install(await appThemeFixture(undefined, { version: '1.0.1' }));
+			b = await h.install(await appThemeFixture(undefined, { id: 'second-shared', version: '1.0.1' }));
 		const shared = a.files[0].hash;
 		for (let index = 0; index < 18; index++) {
 			await h.store.install({ name: 'v1.css', bytes: encodeAppText(`body { color: #${index.toString(16).padStart(6, '0')} }`) });
 		}
 		const tooMany = await h.request('/api/themes/import' + query, {
-			body: (await appThemeFixture(undefined, { version: '1.0.2' })).archive,
+			body: (await appThemeFixture(undefined, { id: 'third-shared', version: '1.0.2' })).archive,
 		});
 		expect(await tooMany.json()).toMatchObject({ error: 'THEME_VERSION_CAPACITY' });
 		expect((await h.request(`/api/themes/${a.packageId}`, { method: 'DELETE' })).status).toBe(200);

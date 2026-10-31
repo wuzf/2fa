@@ -89,7 +89,9 @@ function appearanceEditorClient(createAppearanceDraft) {
 		persisted: 0,
 		library: [],
 		applied: null,
-		versionHistory: new Set(),
+		catalog: [],
+		catalogStatus: 'idle',
+		catalogGeneration: 0,
 		draft: null,
 		capabilities: { write: false },
 		blobs: new Map(),
@@ -576,14 +578,6 @@ function appearanceEditorClient(createAppearanceDraft) {
 		if (!panel || !state.draft) {
 			return;
 		}
-		for (const history of panel.querySelectorAll('.appearance-version-history')) {
-			const key = history.closest('.appearance-theme-group').dataset.themeGroup;
-			if (history.open) {
-				state.versionHistory.add(key);
-			} else {
-				state.versionHistory.delete(key);
-			}
-		}
 		panel.replaceChildren();
 		if (!['library', 'brand', 'design'].includes(state.panel)) {
 			state.panel = 'design';
@@ -658,6 +652,9 @@ function appearanceEditorClient(createAppearanceDraft) {
 			if (isApp(theme)) {
 				card.append(node('small', '', tr('appearanceAppTheme')));
 			}
+			if (theme.packageId === state.applied?.packageId) {
+				card.append(node('small', 'appearance-theme-state', tr('appearanceCurrent')));
+			}
 			cards.append(card);
 		}
 		return cards;
@@ -673,27 +670,21 @@ function appearanceEditorClient(createAppearanceDraft) {
 	}
 	function installedThemeGroups(themes) {
 		const groups = new Map();
-		const installedAt = (theme) => {
-			const time = theme.installedAt;
-			return typeof time === 'number' && time > 0 && Number.isFinite(new Date(time).getTime()) ? time : 0;
-		};
+		const installedAt = (theme) => (Number.isFinite(theme.installedAt) && theme.installedAt > 0 ? theme.installedAt : 0);
 		for (const theme of themes) {
-			const key = profileKey(theme);
-			if (!groups.has(key)) {
-				groups.set(key, { key, versions: [] });
+			if (theme.superseded) {
+				continue;
 			}
-			groups.get(key).versions.push(theme);
-		}
-		for (const group of groups.values()) {
-			group.versions.sort((a, b) => installedAt(b) - installedAt(a) || a.packageId.localeCompare(b.packageId));
-			const local = state.localProfiles.get(group.key);
-			const saved = group.versions.find((theme) => theme.profile && profileKey(theme.profile) === group.key)?.profile;
-			const preferred = [state.draft, state.applied, local, saved]
-				.filter((snapshot) => snapshot && profileKey(snapshot) === group.key)
-				.map((snapshot) => group.versions.find((theme) => theme.packageId === snapshot.packageId))
-				.find(Boolean);
-			group.representative = preferred || group.versions[0];
-			group.saved = saved;
+			const key = profileKey(theme);
+			const existing = groups.get(key);
+			if (
+				!existing ||
+				installedAt(theme) > installedAt(existing.representative) ||
+				(installedAt(theme) === installedAt(existing.representative) &&
+					theme.packageId.localeCompare(existing.representative.packageId) > 0)
+			) {
+				groups.set(key, { key, representative: theme });
+			}
 		}
 		return [...groups.values()].sort(
 			(a, b) =>
@@ -706,59 +697,87 @@ function appearanceEditorClient(createAppearanceDraft) {
 			const section = node('section', 'appearance-theme-group');
 			section.dataset.themeGroup = group.key;
 			section.append(themeCards([group.representative]));
-			if (group.versions.length > 1) {
-				const history = node('details', 'appearance-disclosure appearance-version-history');
-				history.open = state.versionHistory.has(group.key);
-				history.append(node('summary', '', tr('appearanceVersionHistory', { count: group.versions.length })));
-				history.addEventListener('toggle', () => {
-					if (!history.isConnected) {
-						return;
-					}
-					if (history.open) {
-						state.versionHistory.add(group.key);
-					} else {
-						state.versionHistory.delete(group.key);
-					}
-				});
-				const versions = node('div', 'appearance-version-list');
-				for (const theme of group.versions) {
-					const row = button('appearancePreview', 'select', 'appearance-theme-version');
-					row.dataset.package = theme.packageId;
-					row.replaceChildren(node('strong', '', theme.manifest.version));
-					row.setAttribute('aria-pressed', String(theme.packageId === state.draft.packageId));
-					const time = typeof theme.installedAt === 'number' ? new Date(theme.installedAt) : null;
-					const date =
-						time && theme.installedAt > 0 && Number.isFinite(time.getTime())
-							? time.toLocaleString(document.documentElement.lang || 'en')
-							: null;
-					row.append(
-						node('small', '', date ? tr('appearanceVersionInstalled', { date }) : tr('appearanceVersionInstalledUnknown')),
-						node('small', '', tr('appearanceVersionBuild', { id: theme.packageId.slice(0, 12) })),
-					);
-					const labels = [];
-					if (theme.packageId === state.draft.packageId) {
-						labels.push(tr('appearanceVersionSelected'));
-					}
-					if (theme.packageId === state.applied?.packageId) {
-						labels.push(tr('appearanceCurrent'));
-					}
-					if (theme.packageId === group.saved?.packageId) {
-						labels.push(tr('appearanceVersionSaved'));
-					}
-					if (theme === group.versions[0]) {
-						labels.push(tr('appearanceVersionRecent'));
-					}
-					if (labels.length) {
-						row.append(node('small', 'appearance-version-state', labels.join(' · ')));
-					}
-					versions.append(row);
-				}
-				history.append(versions);
-				section.append(history);
-			}
 			list.append(section);
 		}
 		return list;
+	}
+	function renderCatalog() {
+		const section = node('section', 'appearance-catalog');
+		section.id = 'appearanceCatalog';
+		section.setAttribute('aria-labelledby', 'appearanceCatalogTitle');
+		const title = node('h3', 'settings-section-title', tr('appearanceCommunityThemes'));
+		title.id = 'appearanceCatalogTitle';
+		section.append(title, node('p', 'settings-desc', tr('appearanceCatalogHelp')));
+		if (state.catalogStatus === 'loading' || state.catalogStatus === 'idle') {
+			section.append(node('p', 'settings-desc', tr('appearanceCatalogLoading')));
+		} else if (state.catalogStatus === 'error') {
+			const status = node('p', 'settings-desc', tr('appearanceCatalogUnavailable'));
+			status.setAttribute('role', 'status');
+			section.append(status, button('appearanceCatalogRetry', 'catalog-retry'));
+		} else if (!state.catalog.length) {
+			section.append(node('p', 'settings-desc', tr('appearanceCatalogEmpty')));
+		}
+		const cards = node('div', 'appearance-catalog-list');
+		for (const theme of state.catalog) {
+			const local = state.library.find((item) => item.packageId === theme.packageId);
+			const family = state.library.some((item) => item.manifest.id === theme.id && isApp(item) === (theme.kind === 'app'));
+			const card = button('appearanceCatalogSelect', 'catalog-select', 'appearance-catalog-card');
+			card.dataset.catalogId = theme.id;
+			card.dataset.package = theme.packageId;
+			if (!local) {
+				card.dataset.write = '';
+			}
+			card.setAttribute('aria-pressed', String(state.draft?.packageId === theme.packageId));
+			card.replaceChildren(node('strong', '', localName(theme.name)));
+			card.append(node('small', '', [theme.version, theme.author].filter(Boolean).join(' · ')));
+			if (theme.description) {
+				card.append(node('small', 'appearance-catalog-description', localName(theme.description)));
+			}
+			card.append(node('span', 'appearance-catalog-action', tr(!local && family ? 'appearanceCatalogUpdate' : 'appearanceCatalogSelect')));
+			cards.append(card);
+		}
+		section.append(cards);
+		const submit = node('a', 'appearance-catalog-submit', tr('appearanceCatalogSubmit'));
+		submit.href = 'https://github.com/wuzf/2fa-theme-mytheme/blob/main/CONTRIBUTING.md';
+		submit.target = '_blank';
+		submit.rel = 'noopener noreferrer';
+		section.append(submit);
+		return section;
+	}
+	function refreshCatalogSection() {
+		const current = document.getElementById('appearanceCatalog');
+		if (!state.open || !current) {
+			return;
+		}
+		const retryFocused = current.contains(document.activeElement) && document.activeElement.dataset.appearanceAction === 'catalog-retry';
+		current.replaceWith(renderCatalog());
+		setBusy(state.busy);
+		if (retryFocused) {
+			document.querySelector('#appearanceCatalog button')?.focus({ preventScroll: true });
+		}
+	}
+	async function loadCatalog() {
+		const generation = ++state.catalogGeneration;
+		const nonce = state.nonce;
+		state.catalogStatus = navigator.onLine ? 'loading' : 'error';
+		refreshCatalogSection();
+		if (!navigator.onLine) {
+			return;
+		}
+		try {
+			const data = await (await api('/api/themes/catalog')).json();
+			if (!state.open || generation !== state.catalogGeneration || nonce !== state.nonce) {
+				return;
+			}
+			state.catalog = Array.isArray(data.themes) ? data.themes : [];
+			state.catalogStatus = 'ready';
+		} catch {
+			if (!state.open || generation !== state.catalogGeneration || nonce !== state.nonce) {
+				return;
+			}
+			state.catalogStatus = 'error';
+		}
+		refreshCatalogSection();
 	}
 	function renderLibrary(panel) {
 		const official = state.library.filter((theme) => theme.packageId === 'builtin:fluent');
@@ -774,7 +793,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 		);
 		panel.append(themeCards(official));
 		if (installed.length) {
-			panel.append(node('h3', 'settings-section-title', tr('appearanceInstalledThemes')), renderInstalledThemes(installed));
+			panel.append(node('h3', 'settings-section-title', tr('appearanceMyThemes')), renderInstalledThemes(installed));
 		}
 		if (legacy.length) {
 			const compatibility = disclosure('appearanceLegacyThemes', 'legacyExpanded', 'appearance-legacy-themes');
@@ -785,6 +804,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 		if (isApp(state.draft)) {
 			panel.append(node('p', 'settings-desc', tr('appearanceAppTrust')));
 		}
+		panel.append(renderCatalog());
 		const imports = node('div', 'appearance-import-actions');
 		imports.append(fileButton('appearanceImport', false), fileButton('appearanceRestore', true));
 		panel.append(imports);
@@ -1179,6 +1199,35 @@ function appearanceEditorClient(createAppearanceDraft) {
 			danger: true,
 		});
 	}
+	function preserveSelectionFocus(target) {
+		const hadFocus = document.activeElement === target;
+		let focusMoved = false;
+		const trackFocus = (event) => {
+			if (![target, document.body, document.documentElement].includes(event.target)) {
+				focusMoved = true;
+			}
+		};
+		document.addEventListener('focusin', trackFocus);
+		return () => {
+			document.removeEventListener('focusin', trackFocus);
+			const modal = document.getElementById('appearanceModal');
+			if (
+				!hadFocus ||
+				focusMoved ||
+				!state.open ||
+				!modal ||
+				window.getComputedStyle(modal).display === 'none' ||
+				(window.getTopModal?.() && window.getTopModal() !== modal) ||
+				![document.body, document.documentElement, target].includes(document.activeElement)
+			) {
+				return;
+			}
+			const selector = target.classList.contains('appearance-catalog-card') ? '.appearance-catalog-card' : '.appearance-theme-card';
+			[...document.querySelectorAll('#appearancePanel ' + selector)]
+				.find((item) => item.dataset.package === target.dataset.package)
+				?.focus({ preventScroll: true });
+		};
+	}
 	async function action(name, target) {
 		if (name === 'noop') {
 			return;
@@ -1198,21 +1247,17 @@ function appearanceEditorClient(createAppearanceDraft) {
 			notifyPreview();
 			return;
 		}
+		if (name === 'catalog-retry') {
+			await loadCatalog();
+			return;
+		}
+		if (name === 'catalog-select' && state.library.some((theme) => theme.packageId === target.dataset.package)) {
+			return action('select', target);
+		}
 		if (name === 'select') {
 			const theme = state.library.find((item) => item.packageId === target.dataset.package);
 			if (theme) {
-				const history = target.closest('.appearance-version-history');
-				if (history?.open) {
-					state.versionHistory.add(profileKey(theme));
-				}
-				const hadFocus = document.activeElement === target;
-				let focusMoved = false;
-				const trackFocus = (event) => {
-					if (![target, document.body, document.documentElement].includes(event.target)) {
-						focusMoved = true;
-					}
-				};
-				document.addEventListener('focusin', trackFocus);
+				const restoreFocus = preserveSelectionFocus(target);
 				setBusy(true);
 				try {
 					const previous =
@@ -1226,25 +1271,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 					render();
 				} finally {
 					setBusy(false);
-					document.removeEventListener('focusin', trackFocus);
-					const modal = document.getElementById('appearanceModal');
-					if (
-						hadFocus &&
-						!focusMoved &&
-						state.open &&
-						modal &&
-						window.getComputedStyle(modal).display !== 'none' &&
-						(!window.getTopModal || !window.getTopModal() || window.getTopModal() === modal) &&
-						[document.body, document.documentElement, target].includes(document.activeElement)
-					) {
-						const selector = history ? '.appearance-theme-version' : '.appearance-theme-card';
-						const replacement = [...document.querySelectorAll('#appearancePanel ' + selector)].find(
-							(button) => button.dataset.package === theme.packageId,
-						);
-						if (replacement && (!history || replacement.closest('details')?.open)) {
-							replacement.focus({ preventScroll: true });
-						}
-					}
+					restoreFocus();
 				}
 			}
 			return;
@@ -1324,6 +1351,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 			message(tr(navigator.onLine ? 'appearanceNoBinding' : 'appearanceOffline'), true);
 			return;
 		}
+		const restoreFocus = name === 'catalog-select' ? preserveSelectionFocus(target) : () => {};
 		setBusy(true);
 		const publishing = name === 'apply' || name === 'rollback';
 		if (publishing) {
@@ -1333,6 +1361,33 @@ function appearanceEditorClient(createAppearanceDraft) {
 			if (name === 'apply') {
 				if ((await apply()) === false) {
 					message(tr(state.dirty ? 'appearanceUnsaved' : 'appearanceSaved'));
+				}
+			} else if (name === 'catalog-select') {
+				const theme = state.catalog.find((item) => item.id === target.dataset.catalogId && item.packageId === target.dataset.package);
+				if (!theme) {
+					return;
+				}
+				const nonce = state.nonce;
+				const current = () => state.open && state.nonce === nonce && document.getElementById('appearanceModal')?.style.display !== 'none';
+				message(tr('appearanceInstalling'));
+				try {
+					const response = await api('/api/themes/catalog/install', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ id: theme.id, packageId: theme.packageId }),
+					});
+					const data = await response.json();
+					if (current()) {
+						await installed(data, current);
+					}
+				} catch (error) {
+					if (!current()) {
+						return;
+					}
+					if (error.code === 'THEME_CATALOG_CHANGED') {
+						void loadCatalog();
+					}
+					throw error;
 				}
 			} else if (name === 'install') {
 				const url = document.getElementById('appearanceSource').value;
@@ -1370,6 +1425,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 				endPublication();
 			}
 			setBusy(false);
+			restoreFocus();
 		}
 	}
 	async function download(url, name) {
@@ -1399,11 +1455,17 @@ function appearanceEditorClient(createAppearanceDraft) {
 			setBusy(false);
 		}
 	}
-	async function installed(data) {
+	async function installed(data, current = () => true) {
 		await load({ preserveDraft: true });
+		if (!current()) {
+			return;
+		}
 		const theme = data.theme || state.library.find((item) => item.packageId === data.packageId);
 		if (theme) {
 			const previous = await portableBranding(state.draft || {}, theme.packageId);
+			if (!current()) {
+				return;
+			}
 			if (state.draft?.themeId) {
 				state.localProfiles.set(profileKey(state.draft), clone(state.draft));
 			}
@@ -1959,6 +2021,8 @@ function appearanceEditorClient(createAppearanceDraft) {
 	}
 	function close() {
 		state.open = false;
+		state.catalogGeneration += 1;
+		state.loadGeneration += 1;
 		clearTimeout(state.previewTimer);
 		stopAppPreview();
 		window.hideModal('appearanceModal');
@@ -1994,7 +2058,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 		}
 		ensureEditor();
 		state.open = true;
-		state.versionHistory.clear();
+		state.catalogStatus = 'idle';
 		setBusy(true);
 		state.ready = false;
 		state.nonce = uid();
@@ -2044,6 +2108,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 		};
 		setBusy(false);
 		render();
+		void loadCatalog();
 	};
 	window.addEventListener('message', (event) => {
 		const frame = document.getElementById('appearancePreview');
@@ -2070,6 +2135,9 @@ function appearanceEditorClient(createAppearanceDraft) {
 		message(tr('appearanceUpdatedElsewhere'));
 	});
 	window.addEventListener('online', () => {
+		if (state.open) {
+			void loadCatalog();
+		}
 		state.capabilities.write = false;
 		setBusy(state.busy);
 		void load({ preserveDraft: true })
@@ -2090,6 +2158,9 @@ function appearanceEditorClient(createAppearanceDraft) {
 			});
 	});
 	window.addEventListener('offline', () => {
+		state.catalogGeneration += 1;
+		state.catalogStatus = 'error';
+		refreshCatalogSection();
 		stopAppPreview();
 		state.capabilities.write = false;
 		state.loadGeneration += 1;

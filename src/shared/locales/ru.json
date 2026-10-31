@@ -1771,8 +1771,6 @@
 	"Theme installed. Preview it before applying.": "Тема установлена. Проверьте предпросмотр перед применением.",
 	"Export theme": "Экспортировать тему",
 	"Export full appearance": "Экспортировать всё оформление",
-	"Delete version": "Удалить версию",
-	"Delete this installed theme version?": "Удалить эту установленную версию темы?",
 	"Restore previous appearance": "Восстановить предыдущее оформление",
 	"Restore the previous theme, settings and brand?": "Восстановить предыдущую тему, настройки и фирменный стиль?",
 	"Reset theme settings": "Сбросить настройки темы",
@@ -1925,5 +1923,16 @@
 	"Most recently installed": "Установлена последней",
 	"Installed {date}": "Установлена {date}",
 	"Build {id}": "Сборка {id}",
-	"Install time unavailable": "Время установки недоступно"
+	"Install time unavailable": "Время установки недоступно",
+	"Community themes": "Темы сообщества",
+	"My themes": "Мои темы",
+	"Loading community themes…": "Загрузка тем сообщества…",
+	"Community themes are unavailable. You can still use your installed themes or import your own.": "Темы сообщества недоступны. Вы можете продолжать использовать установленные темы или импортировать собственные.",
+	"No community themes are listed yet.": "Тем сообщества пока нет.",
+	"Choose theme": "Выбрать тему",
+	"Update theme": "Обновить тему",
+	"Submit a theme": "Предложить тему",
+	"Choose a community theme, or import your own below. Updates replace the existing theme.": "Выберите тему сообщества или импортируйте собственную ниже. Обновление заменяет существующую тему.",
+	"Delete theme": "Удалить тему",
+	"Delete this installed theme?": "Удалить эту установленную тему?"
 }

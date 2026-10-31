@@ -48,6 +48,9 @@ export function appearanceErrorKey(data, status) {
 			'THEME_PUBLIC_FONT_LIMIT',
 		],
 		appearanceErrorDownload: [
+			'THEME_CATALOG_INVALID',
+			'THEME_CATALOG_UNAVAILABLE',
+			'THEME_CATALOG_CHANGED',
 			'THEME_INVALID_URL',
 			'THEME_PRIVATE_URL',
 			'THEME_TIMEOUT',

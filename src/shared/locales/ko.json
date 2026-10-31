@@ -1771,8 +1771,6 @@
 	"Theme installed. Preview it before applying.": "테마가 설치되었습니다. 적용 전에 미리 확인하세요.",
 	"Export theme": "테마 내보내기",
 	"Export full appearance": "전체 모양 내보내기",
-	"Delete version": "버전 삭제",
-	"Delete this installed theme version?": "설치된 이 테마 버전을 삭제할까요?",
 	"Restore previous appearance": "이전 모양 복원",
 	"Restore the previous theme, settings and brand?": "이전 테마, 설정 및 브랜드를 복원할까요?",
 	"Reset theme settings": "테마 설정 초기화",
@@ -1925,5 +1923,16 @@
 	"Most recently installed": "가장 최근에 설치됨",
 	"Installed {date}": "설치일: {date}",
 	"Build {id}": "빌드 {id}",
-	"Install time unavailable": "설치 시간 정보 없음"
+	"Install time unavailable": "설치 시간 정보 없음",
+	"Community themes": "커뮤니티 테마",
+	"My themes": "내 테마",
+	"Loading community themes…": "커뮤니티 테마 불러오는 중…",
+	"Community themes are unavailable. You can still use your installed themes or import your own.": "커뮤니티 테마를 불러올 수 없습니다. 설치된 테마를 계속 사용하거나 직접 만든 테마를 가져올 수 있습니다.",
+	"No community themes are listed yet.": "아직 등록된 커뮤니티 테마가 없습니다.",
+	"Choose theme": "테마 선택",
+	"Update theme": "테마 업데이트",
+	"Submit a theme": "테마 제출",
+	"Choose a community theme, or import your own below. Updates replace the existing theme.": "커뮤니티 테마를 선택하거나 아래에서 직접 만든 테마를 가져오세요. 업데이트하면 기존 테마가 교체됩니다.",
+	"Delete theme": "테마 삭제",
+	"Delete this installed theme?": "설치된 이 테마를 삭제하시겠습니까?"
 }

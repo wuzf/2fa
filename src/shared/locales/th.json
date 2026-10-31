@@ -1771,8 +1771,6 @@
 	"Theme installed. Preview it before applying.": "ติดตั้งธีมแล้ว โปรดดูตัวอย่างก่อนนำไปใช้",
 	"Export theme": "ส่งออกธีม",
 	"Export full appearance": "ส่งออกรูปลักษณ์ทั้งหมด",
-	"Delete version": "ลบเวอร์ชัน",
-	"Delete this installed theme version?": "ลบธีมเวอร์ชันที่ติดตั้งนี้หรือไม่?",
 	"Restore previous appearance": "กู้คืนรูปลักษณ์ก่อนหน้า",
 	"Restore the previous theme, settings and brand?": "กู้คืนธีม การตั้งค่า และเอกลักษณ์เว็บไซต์ก่อนหน้าหรือไม่?",
 	"Reset theme settings": "รีเซ็ตการตั้งค่าธีม",
@@ -1925,5 +1923,16 @@
 	"Most recently installed": "ติดตั้งล่าสุด",
 	"Installed {date}": "ติดตั้งเมื่อ {date}",
 	"Build {id}": "บิลด์ {id}",
-	"Install time unavailable": "ไม่มีข้อมูลเวลาติดตั้ง"
+	"Install time unavailable": "ไม่มีข้อมูลเวลาติดตั้ง",
+	"Community themes": "ธีมจากชุมชน",
+	"My themes": "ธีมของฉัน",
+	"Loading community themes…": "กำลังโหลดธีมจากชุมชน…",
+	"Community themes are unavailable. You can still use your installed themes or import your own.": "ไม่สามารถโหลดธีมจากชุมชนได้ คุณยังใช้ธีมที่ติดตั้งไว้หรือนำเข้าธีมของคุณเองได้",
+	"No community themes are listed yet.": "ยังไม่มีธีมจากชุมชนที่เผยแพร่",
+	"Choose theme": "เลือกธีม",
+	"Update theme": "อัปเดตธีม",
+	"Submit a theme": "ส่งธีม",
+	"Choose a community theme, or import your own below. Updates replace the existing theme.": "เลือกธีมจากชุมชนหรือนำเข้าธีมของคุณเองด้านล่าง การอัปเดตจะแทนที่ธีมเดิม",
+	"Delete theme": "ลบธีม",
+	"Delete this installed theme?": "ลบธีมที่ติดตั้งนี้หรือไม่?"
 }

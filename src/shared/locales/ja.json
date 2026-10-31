@@ -1771,8 +1771,6 @@
 	"Theme installed. Preview it before applying.": "テーマをインストールしました。適用前にプレビューしてください。",
 	"Export theme": "テーマをエクスポート",
 	"Export full appearance": "外観全体をエクスポート",
-	"Delete version": "バージョンを削除",
-	"Delete this installed theme version?": "インストール済みのこのテーマバージョンを削除しますか？",
 	"Restore previous appearance": "以前の外観を復元",
 	"Restore the previous theme, settings and brand?": "以前のテーマ、設定、ブランドを復元しますか？",
 	"Reset theme settings": "テーマ設定をリセット",
@@ -1925,5 +1923,16 @@
 	"Most recently installed": "最後にインストール",
 	"Installed {date}": "{date} にインストール",
 	"Build {id}": "ビルド {id}",
-	"Install time unavailable": "インストール日時不明"
+	"Install time unavailable": "インストール日時不明",
+	"Community themes": "コミュニティテーマ",
+	"My themes": "マイテーマ",
+	"Loading community themes…": "コミュニティテーマを読み込み中…",
+	"Community themes are unavailable. You can still use your installed themes or import your own.": "コミュニティテーマを読み込めません。インストール済みのテーマの使用や独自テーマのインポートは引き続き可能です。",
+	"No community themes are listed yet.": "公開されているコミュニティテーマはまだありません。",
+	"Choose theme": "テーマを選択",
+	"Update theme": "テーマを更新",
+	"Submit a theme": "テーマを投稿",
+	"Choose a community theme, or import your own below. Updates replace the existing theme.": "コミュニティテーマを選択するか、下から独自のテーマをインポートしてください。更新すると既存のテーマが置き換わります。",
+	"Delete theme": "テーマを削除",
+	"Delete this installed theme?": "このインストール済みテーマを削除しますか？"
 }

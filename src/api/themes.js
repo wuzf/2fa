@@ -2,6 +2,7 @@
 import { getBuiltinThemes } from '../themes/index.js';
 import { createJsonResponse, createErrorResponse } from '../utils/response.js';
 import { getLogger } from '../utils/logger.js';
+import { readThemeCatalog } from '../themes/catalog.js';
 
 export const THEME_OPERATION_HEADER = 'X-2FA-Theme-Operation';
 export const THEME_PREVIEW_OWNER_HEADER = 'X-2FA-Preview-Owner';
@@ -60,6 +61,13 @@ async function previewOwner(request, env) {
 
 /** The router must authenticate this handler; no write falls back to Workers KV. */
 export async function handleThemeRequest(request, env) {
+	if (request.method === 'GET' && new URL(request.url).pathname === '/api/themes/catalog') {
+		try {
+			return createJsonResponse(await readThemeCatalog(), 200, request, { 'Cache-Control': 'no-store' });
+		} catch (error) {
+			return createJsonResponse({ error: error.code || 'THEME_CATALOG_UNAVAILABLE' }, 503, request, { 'Cache-Control': 'no-store' });
+		}
+	}
 	if (!env.SECRETS_STORE) {
 		const pathname = new URL(request.url).pathname;
 		if (request.method === 'GET' && pathname === '/api/themes') {

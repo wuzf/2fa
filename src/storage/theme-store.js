@@ -20,6 +20,7 @@ import {
 } from '../themes/index.js';
 import { normalizeAppPackageWithAppearance } from '../themes/appPackage.js';
 import { resolvePublicAppearance } from '../themes/publicAppearance.js';
+import { downloadCatalogTheme } from '../themes/catalog.js';
 import { createDefaultAppearance, THEME_OPERATION_HEADER, THEME_PREVIEW_OWNER_HEADER } from '../api/themes.js';
 import { createJsonResponse } from '../utils/response.js';
 import { ThemePreviewCapabilities } from './theme-preview.js';
@@ -412,6 +413,9 @@ export class ThemeStore {
 		if (path === '/api/themes/import' && request.method === 'POST') {
 			return json(await this.install(await readImport(request), false, importFormat), 201);
 		}
+		if (path === '/api/themes/catalog/install' && request.method === 'POST') {
+			return json(await this.install(await downloadCatalogTheme(await readJSON(request)), false, 'auto'), 201);
+		}
 		if (path === '/api/appearance/restore-inspect' && request.method === 'POST') {
 			return json(await this.install(await readImport(request, true), true, importFormat), 201);
 		}
@@ -444,7 +448,8 @@ export class ThemeStore {
 
 	/** Rate limits are authoritative and independent of the secrets operation quota. */
 	async checkRate(path) {
-		const expensive = path.includes('import') || path.includes('restore') || path.endsWith('/assets');
+		const expensive =
+			path.includes('import') || path.includes('restore') || path.endsWith('/assets') || path === '/api/themes/catalog/install';
 		const key = `theme:rate:${expensive ? 'import' : 'write'}`;
 		const now = Date.now();
 		const entries = ((await this.storage.get(key)) || []).filter((time) => time > now - 60000);
@@ -485,12 +490,9 @@ export class ThemeStore {
 	async listThemes(format = 'v1') {
 		const state = await this.state();
 		const themes = format === 'app' ? [] : getBuiltinThemes().map((pkg) => ({ ...pkg, builtIn: true }));
-		for (const record of (await this.storage.list({ prefix: PACKAGE })).values()) {
-			if (record.status === 'ready') {
-				const pkg = await this.readDocument(record.document);
-				if (isApp(pkg) === (format === 'app')) {
-					themes.push({ ...pkg, builtIn: false, installedAt: record.installedAt, source: record.source });
-				}
+		for (const { record, pkg } of (await this.latestPackages()).values()) {
+			if (isApp(pkg) === (format === 'app')) {
+				themes.push({ ...pkg, builtIn: false, installedAt: record.installedAt, source: record.source });
 			}
 		}
 		for (const theme of themes) {
@@ -504,6 +506,98 @@ export class ThemeStore {
 			}
 		}
 		return { themes };
+	}
+
+	/** Old stores may contain many builds. Only the last installed build is selectable. */
+	async latestPackages(storage = this.storage) {
+		const latest = new Map();
+		for (const [key, record] of await storage.list({ prefix: PACKAGE })) {
+			if (record.status !== 'ready' || record.superseded) {
+				continue;
+			}
+			const pkg = await this.readDocument(record.document, storage);
+			const identity = profileKey(pkg);
+			const previous = latest.get(identity);
+			if (
+				!previous ||
+				(record.installedAt || 0) > (previous.record.installedAt || 0) ||
+				((record.installedAt || 0) === (previous.record.installedAt || 0) && key > previous.key)
+			) {
+				latest.set(identity, { key, record, pkg });
+			}
+		}
+		return latest;
+	}
+
+	/** Retired bytes remain immutable while a live appearance or preview still needs them. */
+	async retirePackages(storage = this.storage, selected = null) {
+		const latest = await this.latestPackages(storage);
+		if (selected) {
+			latest.set(selected.identity, { key: selected.key });
+		}
+		for (const [key, record] of await storage.list({ prefix: PACKAGE })) {
+			if (record.status !== 'ready' || record.superseded) {
+				continue;
+			}
+			const identity = record.identity || profileKey(await this.readDocument(record.document, storage));
+			if (latest.get(identity)?.key !== key) {
+				await storage.put(key, {
+					...record,
+					identity,
+					superseded: true,
+					// Published app files may still be read by a page on the old build.
+					retireAfter: Date.now() + (record.public ? TTL : 0),
+				});
+			}
+		}
+	}
+
+	async referencedPackages() {
+		const ids = new Set((await this.previews.pins()).map((preview) => preview.packageId));
+		const state = await this.state();
+		const snapshots = [state.active, state.previous, ...Object.values(state.profiles)];
+		for (const receipt of (await this.storage.list({ prefix: RECEIPT })).values()) {
+			if (receipt.expiresAt > Date.now()) {
+				snapshots.push(receipt.snapshot);
+			}
+		}
+		for (const hash of new Set(snapshots.filter(Boolean))) {
+			ids.add((await this.readDocument(hash)).packageId);
+		}
+		return ids;
+	}
+
+	async collectSuperseded() {
+		await this.storage.transaction((tx) => this.retirePackages(tx));
+		const protectedIds = await this.referencedPackages();
+		const obsolete = new Set();
+		for (const [key, record] of await this.storage.list({ prefix: PACKAGE })) {
+			if (!record.superseded || protectedIds.has(key.slice(PACKAGE.length)) || record.retireAfter > Date.now()) {
+				continue;
+			}
+			await this.storage.delete(key);
+			obsolete.add(record.document);
+			for (const hash of record.resources || []) {
+				obsolete.add(hash);
+			}
+		}
+		if (obsolete.size) {
+			const references = await this.referencedBlobs();
+			for (const hash of obsolete) {
+				if (!references.has(hash)) {
+					const record = await this.storage.get(META + hash);
+					if (record) {
+						await this.storage.put(META + hash, { ...record, expiresAt: 0, nextAttemptAt: 0 });
+						try {
+							await this.removeBlob(record);
+						} catch {
+							// A mirror outage must not turn successful replacement into failed installation.
+							await this.schedule();
+						}
+					}
+				}
+			}
+		}
 	}
 
 	async schedule(storage = this.storage, when = Date.now() + 60000) {
@@ -825,22 +919,34 @@ export class ThemeStore {
 
 	async install(input, restore = false, format = 'auto') {
 		const pkg = await normalizeDetectedThemeImport(input, { restore, format });
+		if (input.expectedPackageId && input.expectedPackageId !== pkg.packageId) {
+			throw problem('主题目录与安装包不一致，请刷新后重试', 409, 'THEME_CATALOG_CHANGED');
+		}
 		if (pkg.appearance && !restore) {
 			throw problem('请使用外观备份恢复入口导入此文件', 400, 'THEME_RESTORE_REQUIRED');
 		}
 		if (getBuiltinTheme(pkg.packageId)) {
 			throw problem('导入主题不能覆盖内置主题');
 		}
+		await this.collectSuperseded();
 		const packageKey = PACKAGE + pkg.packageId;
+		const identity = profileKey(pkg);
 		await this.storage.transaction(async (tx) => {
+			const identities = new Set((await this.latestPackages(tx)).keys());
+			for (const [key, record] of await tx.list({ prefix: PACKAGE })) {
+				if (record.status === 'installing') {
+					identities.add(record.identity || key);
+				}
+			}
+			if (!identities.has(identity) && identities.size >= 20) {
+				throw problem('最多安装 20 个主题，请删除不再使用的主题', 413, 'THEME_VERSION_CAPACITY');
+			}
+			// Retained runtime bytes do not reserve an installed-theme slot. Restoring
+			// an old package must pass the same identity quota as a fresh upload.
 			if (await tx.get(packageKey)) {
 				return;
 			}
-			const versions = await tx.list({ prefix: PACKAGE });
-			if (versions.size >= 20) {
-				throw problem('最多安装 20 个主题版本，请删除不再使用的版本', 413, 'THEME_VERSION_CAPACITY');
-			}
-			await tx.put(packageKey, { status: 'installing', installedAt: Date.now(), expiresAt: Date.now() + TTL });
+			await tx.put(packageKey, { status: 'installing', identity, installedAt: Date.now(), expiresAt: Date.now() + TTL });
 			await this.schedule(tx);
 		});
 		try {
@@ -865,15 +971,6 @@ export class ThemeStore {
 						assets: pkg.assets.map((asset) => assetInfo(asset)),
 					};
 			const document = await this.saveDocument(normalized);
-			const previous = await this.storage.get(packageKey);
-			await this.storage.put(packageKey, {
-				status: 'ready',
-				document: document.hash,
-				resources: [...new Set([...pkg.assets, ...(pkg.files || [])].map((asset) => asset.hash))],
-				...(isApp(pkg) ? { kind: 'app', public: previous?.public === true } : {}),
-				source: input.url || null,
-				installedAt: Date.now(),
-			});
 			let appearance;
 			if (pkg.appearance && isApp(pkg)) {
 				appearance = { ...pkg.appearance, resources: pkg.appearanceAssets.map((asset) => assetInfo(asset, true)) };
@@ -886,6 +983,20 @@ export class ThemeStore {
 				// durable local Blob copies; they are not part of the author's package.
 				appearance = { ...result.appearance, resources: result.assets.map((asset) => assetInfo(asset, true)) };
 			}
+			await this.storage.transaction(async (tx) => {
+				const previous = await tx.get(packageKey);
+				await tx.put(packageKey, {
+					status: 'ready',
+					identity,
+					document: document.hash,
+					resources: [...new Set([...pkg.assets, ...(pkg.files || [])].map((asset) => asset.hash))],
+					...(isApp(pkg) ? { kind: 'app', public: previous?.public === true } : {}),
+					source: input.sourceUrl || input.url || null,
+					installedAt: Date.now(),
+				});
+				await this.retirePackages(tx, { identity, key: packageKey });
+				await this.schedule(tx);
+			});
 			return { theme: normalized, ...(appearance ? { appearance } : {}) };
 		} catch (error) {
 			const record = await this.storage.get(packageKey);
@@ -1056,16 +1167,23 @@ export class ThemeStore {
 			throw problem('主题不存在', 404, 'THEME_NOT_FOUND');
 		}
 		const pkg = await this.readDocument(record.document);
+		const deletingLatest = (await this.latestPackages()).get(profileKey(pkg))?.key === PACKAGE + id;
 		for (const key of [profileKey(pkg), pkg.manifest.id]) {
 			const profileHash = state.profiles[key];
-			if (profileHash && (await this.readDocument(profileHash)).packageId === id) {
-				delete state.profiles[key];
+			if (profileHash) {
+				const profile = await this.readDocument(profileHash);
+				if (profile.packageId === id || (deletingLatest && profileKey(profile) === profileKey(pkg))) {
+					delete state.profiles[key];
+				}
 			}
 		}
 		await this.storage.transaction(async (tx) => {
 			if ((await this.previews.pins(tx)).some((record) => record.packageId === id)) {
 				throw problem('请先关闭使用此主题的预览，再删除主题', 409, 'THEME_IN_USE');
 			}
+			// Migrate legacy duplicates before deleting their latest representative;
+			// otherwise the next list would expose an older build as a new latest.
+			await this.retirePackages(tx);
 			await tx.delete(PACKAGE + id);
 			await tx.put(STATE_KEY, state);
 			await this.schedule(tx);
@@ -1153,6 +1271,7 @@ export class ThemeStore {
 		return this.enqueue(async () => {
 			const now = Date.now();
 			const previewExpiry = await this.previews.collect(now);
+			await this.collectSuperseded();
 			const references = await this.referencedBlobs();
 			const records = await this.storage.list({ prefix: META });
 			let processed = 0;
@@ -1199,6 +1318,8 @@ export class ThemeStore {
 			for (const [key, record] of await this.storage.list({ prefix: PACKAGE })) {
 				if (record.status === 'installing' && record.expiresAt <= now) {
 					await this.storage.delete(key);
+				} else if (record.superseded && record.retireAfter > now) {
+					next = Math.min(next, record.retireAfter);
 				}
 			}
 			await this.storage.setAlarm(next);

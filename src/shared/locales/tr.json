@@ -1771,8 +1771,6 @@
 	"Theme installed. Preview it before applying.": "Tema yüklendi. Uygulamadan önce önizleyin.",
 	"Export theme": "Temayı dışa aktar",
 	"Export full appearance": "Tüm görünümü dışa aktar",
-	"Delete version": "Sürümü sil",
-	"Delete this installed theme version?": "Yüklü temanın bu sürümü silinsin mi?",
 	"Restore previous appearance": "Önceki görünümü geri yükle",
 	"Restore the previous theme, settings and brand?": "Önceki tema, ayarlar ve marka kimliği geri yüklensin mi?",
 	"Reset theme settings": "Tema ayarlarını sıfırla",
@@ -1925,5 +1923,16 @@
 	"Most recently installed": "En son yüklenen",
 	"Installed {date}": "{date} tarihinde yüklendi",
 	"Build {id}": "Derleme {id}",
-	"Install time unavailable": "Kurulum zamanı mevcut değil"
+	"Install time unavailable": "Kurulum zamanı mevcut değil",
+	"Community themes": "Topluluk temaları",
+	"My themes": "Temalarım",
+	"Loading community themes…": "Topluluk temaları yükleniyor…",
+	"Community themes are unavailable. You can still use your installed themes or import your own.": "Topluluk temaları kullanılamıyor. Yüklü temalarınızı kullanmaya veya kendi temalarınızı içe aktarmaya devam edebilirsiniz.",
+	"No community themes are listed yet.": "Henüz topluluk teması yayınlanmadı.",
+	"Choose theme": "Tema seç",
+	"Update theme": "Temayı güncelle",
+	"Submit a theme": "Tema gönder",
+	"Choose a community theme, or import your own below. Updates replace the existing theme.": "Bir topluluk teması seçin veya aşağıdan kendi temanızı içe aktarın. Güncellemeler mevcut temanın yerini alır.",
+	"Delete theme": "Temayı sil",
+	"Delete this installed theme?": "Yüklü olan bu tema silinsin mi?"
 }

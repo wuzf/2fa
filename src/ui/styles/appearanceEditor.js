@@ -25,12 +25,14 @@ export function getAppearanceEditorStyles() {
     #appearanceModal .appearance-installed-themes {display:grid;gap:14px;margin-bottom:20px;min-width:0;}
     #appearanceModal .appearance-theme-group {min-width:0;}
     #appearanceModal .appearance-theme-group > .appearance-theme-list {margin-bottom:0;}
-    #appearanceModal .appearance-theme-group > .appearance-version-history {margin:4px 0 0;}
-    #appearanceModal .appearance-version-list {display:grid;gap:8px;padding-bottom:12px;min-width:0;}
-    #appearanceModal .appearance-theme-version {display:grid;gap:4px;text-align:left;width:100%;min-width:0;min-height:44px;box-sizing:border-box;padding:10px;border:1px solid var(--dialog-line,var(--border-primary));border-radius:4px;background:var(--dialog-surface,var(--bg-primary));color:var(--dialog-text,var(--text-primary));font:inherit;cursor:pointer;overflow-wrap:anywhere;}
-    #appearanceModal .appearance-theme-version small {color:var(--dialog-muted,var(--text-secondary));}
-    #appearanceModal .appearance-theme-version[aria-pressed=true] {border-color:var(--dialog-brand,var(--primary));box-shadow:inset 0 0 0 1px var(--dialog-brand,var(--primary));}
-    #appearanceModal .appearance-theme-version:focus-visible {outline:2px solid var(--dialog-brand,var(--primary));outline-offset:2px;}
+    #appearanceModal .appearance-catalog {margin:20px 0;padding-top:16px;border-top:1px solid var(--dialog-line,var(--border-primary));}
+    #appearanceModal .appearance-catalog-list {display:grid;gap:10px;margin:12px 0;}
+    #appearanceModal .appearance-catalog-card {display:grid;gap:5px;width:100%;min-width:0;text-align:left;padding:12px;border:1px solid var(--dialog-line,var(--border-primary));border-radius:7px;background:var(--dialog-surface,var(--bg-primary));color:var(--dialog-text,var(--text-primary));font:inherit;cursor:pointer;overflow-wrap:anywhere;}
+    #appearanceModal .appearance-catalog-card small {color:var(--dialog-muted,var(--text-secondary));}
+    #appearanceModal .appearance-catalog-card[aria-pressed=true] {border-color:var(--dialog-brand,var(--primary));box-shadow:inset 0 0 0 1px var(--dialog-brand,var(--primary));}
+    #appearanceModal .appearance-catalog-card:focus-visible {outline:2px solid var(--dialog-brand,var(--primary));outline-offset:2px;}
+    #appearanceModal .appearance-catalog-action,.appearance-catalog-submit {color:var(--dialog-brand,var(--primary));font-size:13px;font-weight:600;}
+    #appearanceModal .appearance-catalog-card:disabled {cursor:default;opacity:.6;}
     #appearanceModal .appearance-disclosure {margin:14px 0;padding:0 12px;border:1px solid var(--dialog-line,var(--border-primary));border-radius:6px;}
     #appearanceModal .appearance-disclosure > summary {min-height:44px;align-content:center;padding:10px 0;box-sizing:border-box;color:var(--dialog-text,var(--text-primary));font-weight:600;cursor:pointer;}
     #appearanceModal .appearance-disclosure > summary:focus-visible {outline:2px solid var(--dialog-brand,var(--primary));outline-offset:2px;}

@@ -1771,8 +1771,6 @@
 	"Theme installed. Preview it before applying.": "Đã cài chủ đề. Hãy xem trước khi áp dụng.",
 	"Export theme": "Xuất chủ đề",
 	"Export full appearance": "Xuất toàn bộ giao diện",
-	"Delete version": "Xóa phiên bản",
-	"Delete this installed theme version?": "Xóa phiên bản chủ đề đã cài đặt này?",
 	"Restore previous appearance": "Khôi phục giao diện trước",
 	"Restore the previous theme, settings and brand?": "Khôi phục chủ đề, cài đặt và nhận diện trước đó?",
 	"Reset theme settings": "Đặt lại cài đặt chủ đề",
@@ -1925,5 +1923,16 @@
 	"Most recently installed": "Được cài đặt gần đây nhất",
 	"Installed {date}": "Đã cài đặt vào {date}",
 	"Build {id}": "Bản dựng {id}",
-	"Install time unavailable": "Không có thông tin thời gian cài đặt"
+	"Install time unavailable": "Không có thông tin thời gian cài đặt",
+	"Community themes": "Chủ đề cộng đồng",
+	"My themes": "Chủ đề của tôi",
+	"Loading community themes…": "Đang tải chủ đề cộng đồng…",
+	"Community themes are unavailable. You can still use your installed themes or import your own.": "Không thể tải chủ đề cộng đồng. Bạn vẫn có thể dùng chủ đề đã cài đặt hoặc nhập chủ đề của riêng mình.",
+	"No community themes are listed yet.": "Chưa có chủ đề cộng đồng nào được đăng.",
+	"Choose theme": "Chọn chủ đề",
+	"Update theme": "Cập nhật chủ đề",
+	"Submit a theme": "Gửi chủ đề",
+	"Choose a community theme, or import your own below. Updates replace the existing theme.": "Chọn chủ đề cộng đồng hoặc nhập chủ đề của riêng bạn bên dưới. Bản cập nhật sẽ thay thế chủ đề hiện có.",
+	"Delete theme": "Xóa chủ đề",
+	"Delete this installed theme?": "Xóa chủ đề đã cài đặt này?"
 }

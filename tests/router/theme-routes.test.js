@@ -9,6 +9,8 @@ import { ThemeStore } from '../../src/storage/theme-store.js';
 import { appThemeFixture } from '../helpers/app-theme.js';
 import { createRuntimeManifest } from '../../src/ui/runtimeManifest.js';
 import { createDefaultAppearance } from '../../src/api/themes.js';
+import { normalizeDetectedThemeImport } from '../../src/themes/import.js';
+import { hashBytes } from '../../src/themes/schema.js';
 
 vi.mock('../../src/utils/auth.js', async (original) => ({
 	...(await original()),
@@ -97,6 +99,75 @@ const apply = (revision = 0) => ({
 	branding: { name: 'Private Vault' },
 });
 
+async function communityFixture(packageIdOverride) {
+	const { archive } = await appThemeFixture();
+	const pkg = await normalizeDetectedThemeImport({ bytes: archive });
+	const revision = 'c'.repeat(40);
+	const entry = {
+		id: pkg.manifest.id,
+		kind: 'app',
+		name: pkg.manifest.name,
+		version: pkg.manifest.version,
+		description: '',
+		author: '',
+		packageId: packageIdOverride || pkg.packageId,
+		path: `themes/${pkg.manifest.id}/2fa-theme.zip`,
+		sha256: await hashBytes(archive),
+		size: archive.length,
+	};
+	const fetcher = vi.fn(async (url) => {
+		if (url === 'https://api.github.com/repos/wuzf/2fa-theme-mytheme/git/ref/heads/main') {
+			return Response.json({ object: { type: 'commit', sha: revision } });
+		}
+		const base = `https://raw.githubusercontent.com/wuzf/2fa-theme-mytheme/${revision}/`;
+		if (url === base + 'catalog.json') {
+			return Response.json({ schemaVersion: 1, themes: [entry] });
+		}
+		if (url === base + entry.path) {
+			return new Response(archive);
+		}
+		throw new Error('Unexpected external request');
+	});
+	vi.stubGlobal('fetch', fetcher);
+	return { entry, pkg, fetcher };
+}
+
+describe('community catalog integration', () => {
+	it('browses the catalog and installs its verified package without publishing it', async () => {
+		const h = environment();
+		const { entry, pkg } = await communityFixture();
+		const catalog = await handleRequest(request('/api/themes/catalog'), h.env);
+		expect(catalog.status).toBe(200);
+		expect((await catalog.json()).themes).toEqual([entry]);
+		const response = await handleRequest(request('/api/themes/catalog/install', { id: entry.id, packageId: entry.packageId }), h.env);
+		expect(response.status).toBe(201);
+		expect((await response.json()).theme.packageId).toBe(pkg.packageId);
+		expect((await h.store.listThemes('app')).themes).toHaveLength(1);
+		expect((await h.store.readAppearance()).revision).toBe(0);
+	});
+
+	it('rejects catalog/package identity disagreement before installing anything', async () => {
+		const h = environment();
+		const { entry } = await communityFixture('e'.repeat(64));
+		const response = await handleRequest(request('/api/themes/catalog/install', { id: entry.id, packageId: entry.packageId }), h.env);
+		expect(response.status).toBe(409);
+		expect((await response.json()).error).toBe('THEME_CATALOG_CHANGED');
+		expect((await h.store.listThemes('app')).themes).toHaveLength(0);
+		expect((await h.store.readAppearance()).revision).toBe(0);
+	});
+
+	it('reports catalog unavailability without changing the local appearance or installed themes', async () => {
+		const h = environment();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response('Unavailable', { status: 503 })),
+		);
+		expect((await handleRequest(request('/api/themes/catalog'), h.env)).status).toBe(503);
+		expect((await handleRequest(request('/api/appearance'), h.env)).status).toBe(200);
+		expect((await handleRequest(request('/api/themes'), h.env)).status).toBe(200);
+	});
+});
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	vi.stubGlobal('__2FA_BUILD_ID__', 'fixture-build-2026');
@@ -108,6 +179,8 @@ afterEach(() => vi.unstubAllGlobals());
 describe('theme routes authentication and capabilities', () => {
 	it.each([
 		'/api/themes',
+		'/api/themes/catalog',
+		'/api/themes/catalog/install',
 		'/api/appearance',
 		'/api/appearance/assets/' + 'a'.repeat(64),
 		'/api/appearance/export',

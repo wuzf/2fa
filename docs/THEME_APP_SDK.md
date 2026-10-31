@@ -220,11 +220,32 @@ await writeFile('release/2fa-theme.zip', zipSync(entries));
 | manifest `files`                               | 1–255 项，给清单留出名额；备份另需配置/个人素材名额 |
 | 单份 JS / CSS                                  | 4 MiB / 1 MiB                                       |
 | 清单或 appearance.json                         | 128 KiB                                             |
-| 非内置版本 / 全实例去重素材                    | 与 v1 共用 20 个版本 / 50 MiB                       |
+| 非内置主题 / 全实例去重素材                    | 与 v1 共用 20 个主题 / 50 MiB；同主题更新不另占名额 |
 
 `id` 使用 1–64 位字母、数字、下划线或短横线，不能使用 `builtin-` 前缀。`version` 为 SemVer；同系列沿用 id，内容变化得到新不可变 packageId。可选 `minHostVersion` 是最低主机 SemVer，主机在预览、应用、回滚时检查；仅设置 `sdkApiVersion:1` 不会跳过主机版本或完整资源检查。
 
-发布 ZIP 供用户上传，或在公开 GitHub 的非草稿、非预发布 Release 中附上唯一的 **`2fa-theme.zip`**；用户可以导入仓库地址或具体 Release/tag 地址。2FA 不在服务器执行 npm install/build。ZIP、发布页和仓库源码分别核对，不手工替换已经发布的某个 chunk。
+### PR 上架到社区目录
+
+社区仓库当前暂为私有，公开投稿与应用内目录读取尚未开放。作者可以先独立开发，并通过下节的个人导入方式使用主题；仓库公开后按以下流程上架。
+
+主题公共仓库为 **[wuzf/2fa-theme-mytheme](https://github.com/wuzf/2fa-theme-mytheme)**。作者在自己的仓库开发和构建，向公共仓库提交 PR，收录完整产物：
+
+```text
+themes/<manifest.id>/
+├── 2fa-theme.zip   完整构建包，内含全部运行资源和必要许可
+├── theme.json     贡献指南要求的来源与许可信息
+└── LICENSE        分发许可
+```
+
+遵循公共仓库的 CONTRIBUTING 文档生成并提交 `catalog.json`。索引中的主题身份、名称、版本、包身份、大小和 SHA-256 来自实际 ZIP；校验通过并经维护者合并后，用户可在 2FA 的 **外观与主题 → 社区主题** 直接选择安装。CI 只静态验证投稿产物，不执行主题 JavaScript 或作者的构建脚本。
+
+公共仓库必须实际保存 ZIP 与全部资源，不能只登记作者的 Release 下载地址、子模块或外链。作者仓库仅用于开发和来源说明，删除、改名或转为私有不会影响已合并的主题。主题文件不能依赖作者站点的字体、图片、JS 或 CSS。
+
+同一主题只有一个当前条目。更新时沿用 id、更新 SemVer、重新构建并通过 PR 覆盖 `themes/<id>/2fa-theme.zip`，同步元数据与索引，不建立多个版本目录。应用安装同格式同 id 的新包会替换已安装条目；内部内容哈希、当前运行资源与应急恢复引用仍保持一致，不能原地修改某个已经运行的 chunk。
+
+### 使用未上架的主题
+
+上架不是使用主题的前提。用户仍可上传个人 ZIP、粘贴公开 HTTPS 下载地址，或导入作者 GitHub 仓库／具体 Release 地址。直接导入 GitHub 时，正式 Release 必须非草稿、非预发布，且含唯一名为 **`2fa-theme.zip`** 的附件。2FA 不在服务器执行 npm install/build。个人导入同样遵循单主题覆盖规则，安装后需预览并应用。
 
 ## 主题设置与品牌
 
