@@ -1,6 +1,12 @@
 /** Theme picker with a live preview; follows the Fluent dialog tokens. */
 export function getAppearanceEditorStyles() {
 	return `
+    /* Covers the page from the moment a theme switch is confirmed until the reload replaces it. */
+    #appearanceApplying {position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px 16px;background:var(--bg-primary,#fff);color:var(--text-tertiary,var(--text-secondary,#666));font-size:13px;letter-spacing:.02em;text-align:center;}
+    #appearanceApplying[hidden] {display:none;}
+    #appearanceApplying::before {content:'';box-sizing:border-box;width:32px;height:32px;border:3px solid var(--border-primary,#ddd);border-top-color:var(--primary,currentColor);border-radius:50%;animation:appearance-applying-spin 800ms linear infinite;}
+    @keyframes appearance-applying-spin {to {transform:rotate(360deg);}}
+    @media (prefers-reduced-motion: reduce) {#appearanceApplying::before {animation:none;}}
     #appearanceModal .appearance-modal-content {width:min(1240px,96vw);max-width:1240px;height:min(820px,94dvh);max-height:94dvh;padding:0;display:flex;flex-direction:column;overflow:hidden;background:var(--dialog-surface,var(--bg-primary));}
     #appearanceModal .modal-header {padding:18px 24px;margin:0;flex-shrink:0;border-bottom:1px solid var(--dialog-line,var(--border-primary));}
     #appearanceModal .appearance-workspace {display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);min-height:0;flex:1;}

@@ -1007,7 +1007,6 @@ export function getResponsiveStyles() {
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
       backdrop-filter: blur(10px);
       border: 1px solid var(--toast-border);
-      min-width: 200px;
       max-width: min(90vw, 560px);
       text-align: center;
       font-size: 16px;
@@ -1032,7 +1031,6 @@ export function getResponsiveStyles() {
       .toast-content {
         padding: 14px 20px;
         font-size: 15px;
-        min-width: 180px;
         border-radius: 10px;
       }
 
@@ -1045,7 +1043,6 @@ export function getResponsiveStyles() {
       .toast-content {
         padding: 12px 16px;
         font-size: 14px;
-        min-width: 160px;
         border-radius: 8px;
       }
 
@@ -1121,7 +1118,6 @@ export function getResponsiveStyles() {
       .toast-content {
         padding: 18px 28px;
         font-size: 17px;
-        min-width: 220px;
         border-radius: 14px;
       }
 
@@ -1134,7 +1130,6 @@ export function getResponsiveStyles() {
       .toast-content {
         padding: 20px 32px;
         font-size: 18px;
-        min-width: 240px;
         border-radius: 16px;
       }
 

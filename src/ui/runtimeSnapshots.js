@@ -16,6 +16,8 @@ export function createRuntimeSnapshotManager({
 	const setTimer = timers.setTimeout || ((callback, delay) => globalThis.setTimeout(callback, delay));
 	const clearTimer = timers.clearTimeout || ((id) => globalThis.clearTimeout(id));
 	const pending = new Map();
+	// The shell a navigation just downloaded; preparing its snapshot reuses it instead of fetching it twice.
+	const recentShells = new Map();
 	const prefix = '2fa-app-snapshot-v2-';
 	const marker = absolute('/__runtime_snapshot_v2__');
 	const errorResult = (reason, extra = {}) => ({
@@ -245,6 +247,22 @@ export function createRuntimeSnapshotManager({
 		}
 		return sources;
 	}
+	async function reuseShell(cache, resource, tuple) {
+		const recent = ['shell', 'recovery'].includes(resource.role) && recentShells.get(absolute(resource.url));
+		if (!recent) {
+			return false;
+		}
+		try {
+			const response = recent.clone();
+			if (!(await verifyResource(response, resource, tuple))) {
+				return false;
+			}
+			await cache.put(absolute(resource.url), response);
+			return true;
+		} catch {
+			return false;
+		}
+	}
 	async function reuseResource(cache, resource, tuple, sources) {
 		const source = sources.get(resource.sha256);
 		if (!source) {
@@ -296,7 +314,7 @@ export function createRuntimeSnapshotManager({
 				Array.from({ length: Math.min(8, descriptor.resources.length) }, async () => {
 					while (position < descriptor.resources.length) {
 						const resource = descriptor.resources[position++];
-						if (await reuseResource(cache, resource, tuple, reusable)) {
+						if ((await reuseShell(cache, resource, tuple)) || (await reuseResource(cache, resource, tuple, reusable))) {
 							continue;
 						}
 						const response = await readResponse(resource.url, { signal: controller.signal, maximum: resource.size });
@@ -450,6 +468,15 @@ export function createRuntimeSnapshotManager({
 		}
 	}
 	async function pinNavigation(request, clientId, response, { isCurrent = () => true } = {}) {
+		if (response.status === 200) {
+			const url = new URL(request.url);
+			url.hash = '';
+			recentShells.delete(url.href);
+			recentShells.set(url.href, response.clone());
+			for (const key of [...recentShells.keys()].slice(0, -2)) {
+				recentShells.delete(key);
+			}
+		}
 		if (!clientId || response.status !== 200) {
 			return;
 		}

@@ -506,4 +506,27 @@ describe('complete app runtimes on Cache API and IndexedDB transactions', () => 
 		const cache = await h.caches.open((await h.index.read()).active);
 		expect(await (await cache.match(vendor)).text()).toBe('jsqr');
 	});
+	it('reuses the shell a navigation just downloaded instead of fetching it again', async () => {
+		const h = await fixture();
+		await h.prepare();
+		h.setCurrent(await inventory({ revision: 2 }));
+		await h.manager.pinNavigation(new Request(shell), 'tab', h.current.responses.get(shell).clone());
+		h.requests.length = 0;
+		expect((await h.prepare()).status).toBe('ready');
+		expect(h.requests.map((address) => new URL(address, origin).pathname)).not.toContain('/');
+		const cache = await h.caches.open((await h.index.read()).active);
+		expect(await (await cache.match(shell)).text()).toBe('NORMAL 2');
+	});
+	it('downloads the shell when the page a navigation received is not the published one', async () => {
+		const h = await fixture();
+		await h.prepare();
+		h.setCurrent(await inventory({ revision: 2 }));
+		const published = h.current.responses.get(shell);
+		await h.manager.pinNavigation(new Request(shell), 'tab', new Response('NORMAL 1', { headers: published.headers }));
+		h.requests.length = 0;
+		expect((await h.prepare()).status).toBe('ready');
+		expect(h.requests.map((address) => new URL(address, origin).href)).toContain(shell);
+		const cache = await h.caches.open((await h.index.read()).active);
+		expect(await (await cache.match(shell)).text()).toBe('NORMAL 2');
+	});
 });

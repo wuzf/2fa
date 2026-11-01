@@ -783,12 +783,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 			return;
 		}
 		if (name === 'refresh-runtime') {
-			close();
-			const result = await window.requestAppearanceRuntimeReload?.('theme-change');
-			if (result?.status !== 'completed') {
-				await window.showAppearanceEditor();
-				message(tr('moduleRefreshBlocked'), true);
-			}
+			await refreshRuntime({ patience: APPLY_REFRESH_PATIENCE });
 			return;
 		}
 		if (name === 'reload') {
@@ -827,7 +822,16 @@ function appearanceEditorClient(createAppearanceDraft) {
 		try {
 			if (name === 'apply') {
 				message(tr('appearanceSaving'));
-				await apply();
+				// Switching packages ends in a reload; show that from the click instead of after the save.
+				if (switchesPackage()) {
+					showApplying();
+				}
+				try {
+					await apply();
+				} catch (error) {
+					hideApplying();
+					throw error;
+				}
 			} else if (name === 'catalog-add') {
 				const repository = state.catalogInput.trim();
 				if (!repository) {
@@ -880,6 +884,69 @@ function appearanceEditorClient(createAppearanceDraft) {
 		} finally {
 			setBusy(false);
 		}
+		// Applying a different theme package needs a new page; do it right away instead of asking.
+		if (
+			name === 'apply' &&
+			state.reloadRequired &&
+			!window.__2FA_SAFE_MODE__ &&
+			typeof window.requestAppearanceRuntimeReload === 'function'
+		) {
+			await refreshRuntime({ patience: APPLY_REFRESH_PATIENCE });
+		} else if (name === 'apply') {
+			hideApplying();
+		}
+	}
+	function switchesPackage() {
+		const running = window.__2FA_APPEARANCE__;
+		return (
+			!window.__2FA_SAFE_MODE__ &&
+			typeof window.requestAppearanceRuntimeReload === 'function' &&
+			(isApp(running) || isApp(state.draft)) &&
+			running?.packageId !== state.draft?.packageId
+		);
+	}
+	function showApplying() {
+		let cover = document.getElementById('appearanceApplying');
+		if (!cover) {
+			cover = document.createElement('div');
+			cover.id = 'appearanceApplying';
+			cover.setAttribute('role', 'status');
+			cover.setAttribute('aria-live', 'polite');
+			document.body.append(cover);
+		}
+		cover.textContent = tr('appearanceApplying');
+		cover.hidden = false;
+	}
+	function hideApplying() {
+		const cover = document.getElementById('appearanceApplying');
+		if (cover) {
+			cover.hidden = true;
+		}
+	}
+	// A save or account write that is still finishing only delays the refresh after applying.
+	const APPLY_REFRESH_PATIENCE = 8000;
+	const REFRESH_RETRY_DELAY = 250;
+	async function refreshRuntime({ patience = 0 } = {}) {
+		close();
+		let retries = Math.ceil(patience / REFRESH_RETRY_DELAY);
+		while (true) {
+			// A waiting app update is taken in the same reload, so the next page is current too.
+			const waiting = Boolean((await navigator.serviceWorker?.getRegistration?.().catch(() => null))?.waiting);
+			let result = await window.requestAppearanceRuntimeReload?.(waiting ? 'update' : 'theme-change');
+			if (waiting && result?.status !== 'completed' && result?.reason !== 'unsaved-or-pending') {
+				result = await window.requestAppearanceRuntimeReload?.('theme-change');
+			}
+			if (['completed', 'cancelled'].includes(result?.status)) {
+				return;
+			}
+			if (result?.reason !== 'unsaved-or-pending' || retries-- <= 0) {
+				break;
+			}
+			await new Promise((resolve) => setTimeout(resolve, REFRESH_RETRY_DELAY));
+		}
+		hideApplying();
+		await window.showAppearanceEditor();
+		message(tr('moduleRefreshBlocked'), true);
 	}
 	async function apply() {
 		const draft = state.draft;

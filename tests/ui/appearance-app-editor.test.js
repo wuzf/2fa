@@ -158,7 +158,7 @@ describe('app theme configuration', () => {
 		]);
 	});
 
-	it('publishes another app package without mounting it and offers a guarded reload', async () => {
+	it('publishes another app package without mounting it and refreshes the page right away', async () => {
 		const app = await appTheme();
 		const h = harness();
 		network(h, [getBuiltinTheme('document'), app]);
@@ -172,11 +172,126 @@ describe('app theme configuration', () => {
 		expect(h.window.applyAppearance).not.toHaveBeenCalled();
 		expect(applied).toHaveBeenCalledOnce();
 		expect(h.window.__2FA_APPEARANCE__.packageId).toBe(app.packageId);
-		expect(status(h).textContent).toContain(zh.appearancePublishedReload);
-		await act(h, 'refresh-runtime');
+		// The refresh starts without another click; a blocked one keeps the manual way out.
+		expect(h.window.requestAppearanceRuntimeReload).toHaveBeenCalledOnce();
 		expect(h.window.requestAppearanceRuntimeReload).toHaveBeenCalledWith('theme-change');
 		expect(h.document.getElementById('appearanceModal').style.display).toBe('block');
 		expect(status(h).textContent).toContain(zh.moduleRefreshBlocked);
+		expect(control(h, 'refresh-runtime')).not.toBeNull();
+		await act(h, 'refresh-runtime');
+		expect(h.window.requestAppearanceRuntimeReload).toHaveBeenCalledTimes(2);
+	});
+
+	it('waits for a save that is still finishing and then refreshes without a click', async () => {
+		const app = await appTheme();
+		const h = harness();
+		network(h, [getBuiltinTheme('document'), app]);
+		h.window.applyAppearance = vi.fn();
+		h.window.requestAppearanceRuntimeReload = vi
+			.fn()
+			.mockResolvedValueOnce({ status: 'rejected', reason: 'unsaved-or-pending' })
+			.mockResolvedValueOnce({ status: 'completed', reason: 'reload-requested' });
+		await h.window.showAppearanceEditor();
+		await chooseTheme(h, app.packageId);
+		await act(h, 'apply');
+		await vi.waitFor(() => expect(h.window.requestAppearanceRuntimeReload).toHaveBeenCalledTimes(2));
+		expect(h.window.requestAppearanceRuntimeReload.mock.calls.map(([reason]) => reason)).toEqual(['theme-change', 'theme-change']);
+		expect(h.document.getElementById('appearanceModal').style.display).not.toBe('block');
+	});
+
+	it('stops waiting after a few seconds and keeps the manual refresh', async () => {
+		const app = await appTheme();
+		const h = harness();
+		network(h, [getBuiltinTheme('document'), app]);
+		h.window.applyAppearance = vi.fn();
+		h.window.requestAppearanceRuntimeReload = vi.fn(async () => ({ status: 'rejected', reason: 'unsaved-or-pending' }));
+		await h.window.showAppearanceEditor();
+		await chooseTheme(h, app.packageId);
+		vi.useFakeTimers({ toFake: ['setTimeout'] });
+		try {
+			await act(h, 'apply');
+			await vi.waitFor(() => expect(h.window.requestAppearanceRuntimeReload).toHaveBeenCalled());
+			for (let i = 0; i < 40; i++) {
+				await vi.advanceTimersByTimeAsync(250);
+			}
+		} finally {
+			vi.useRealTimers();
+		}
+		await vi.waitFor(() => expect(status(h).textContent).toContain(zh.moduleRefreshBlocked));
+		// One attempt, then one every 250 ms for 8 seconds.
+		expect(h.window.requestAppearanceRuntimeReload).toHaveBeenCalledTimes(33);
+		expect(h.document.getElementById('appearanceModal').style.display).toBe('block');
+		expect(control(h, 'refresh-runtime')).not.toBeNull();
+		expect(h.document.getElementById('appearanceApplying').hidden).toBe(true);
+	});
+
+	it('takes a waiting app update in the refresh after applying', async () => {
+		const app = await appTheme();
+		const h = harness();
+		network(h, [getBuiltinTheme('document'), app]);
+		h.network.serviceWorker = { getRegistration: async () => ({ waiting: {} }) };
+		h.window.applyAppearance = vi.fn();
+		h.window.requestAppearanceRuntimeReload = vi.fn(async () => ({ status: 'completed' }));
+		await h.window.showAppearanceEditor();
+		await chooseTheme(h, app.packageId);
+		await act(h, 'apply');
+		expect(h.window.requestAppearanceRuntimeReload.mock.calls.map(([reason]) => reason)).toEqual(['update']);
+	});
+
+	it('falls back to a plain refresh when the waiting update cannot be taken', async () => {
+		const app = await appTheme();
+		const h = harness();
+		network(h, [getBuiltinTheme('document'), app]);
+		h.network.serviceWorker = { getRegistration: async () => ({ waiting: {} }) };
+		h.window.applyAppearance = vi.fn();
+		h.window.requestAppearanceRuntimeReload = vi.fn(async (reason) =>
+			reason === 'update' ? { status: 'rejected', reason: 'runtime-update-blocked' } : { status: 'completed' },
+		);
+		await h.window.showAppearanceEditor();
+		await chooseTheme(h, app.packageId);
+		await act(h, 'apply');
+		expect(h.window.requestAppearanceRuntimeReload.mock.calls.map(([reason]) => reason)).toEqual(['update', 'theme-change']);
+		expect(h.document.getElementById('appearanceModal').style.display).not.toBe('block');
+	});
+
+	it('closes the editor when the refresh after applying another package goes ahead', async () => {
+		const app = await appTheme();
+		const h = harness();
+		network(h, [getBuiltinTheme('document'), app]);
+		h.window.applyAppearance = vi.fn();
+		h.window.requestAppearanceRuntimeReload = vi.fn(async () => ({ status: 'completed' }));
+		await h.window.showAppearanceEditor();
+		await chooseTheme(h, app.packageId);
+		await act(h, 'apply');
+		expect(h.window.requestAppearanceRuntimeReload).toHaveBeenCalledWith('theme-change');
+		expect(h.document.getElementById('appearanceModal').style.display).not.toBe('block');
+		// The page is about to be replaced; the cover stays until it is.
+		expect(h.document.getElementById('appearanceApplying').hidden).toBe(false);
+		expect(h.document.getElementById('appearanceApplying').textContent).toBe(zh.appearanceApplying);
+	});
+
+	it('covers the page from the click and removes the cover when saving fails', async () => {
+		const app = await appTheme();
+		const h = harness();
+		let release;
+		network(h, [getBuiltinTheme('document'), app], {
+			extra: (url, options) =>
+				url === '/api/appearance' && options.method === 'PUT'
+					? new Promise((resolve) => {
+							release = () => resolve(json({ error: 'failed' }, 500));
+						})
+					: null,
+		});
+		h.window.requestAppearanceRuntimeReload = vi.fn(async () => ({ status: 'completed' }));
+		h.window.localizeAppearanceError = () => 'failed';
+		await h.window.showAppearanceEditor();
+		await chooseTheme(h, app.packageId);
+		await act(h, 'apply');
+		await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+		expect(h.document.getElementById('appearanceApplying').hidden).toBe(false);
+		release();
+		await vi.waitFor(() => expect(h.document.getElementById('appearanceApplying').hidden).toBe(true));
+		expect(h.window.requestAppearanceRuntimeReload).not.toHaveBeenCalled();
 	});
 
 	it('updates the running app configuration in place when the package does not change', async () => {

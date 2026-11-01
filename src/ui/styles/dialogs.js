@@ -447,7 +447,7 @@ export function getDialogStyles() {
     .modal #generatedQRCode { max-width: 100% !important; height: auto; }
     .modal .loading-backup, .modal .no-backups { font-size: var(--dialog-caption-size); font-style: normal; }
     .modal .loading-backup::before { content: ''; width: 18px; height: 18px; border: 2px solid var(--dialog-line); border-top-color: var(--dialog-brand); border-radius: 50%; }
-    .dialog-toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 100020; display: flex; align-items: center; gap: 10px; padding: 12px 16px; max-width: calc(100vw - 32px); border: 1px solid var(--dialog-line); border-radius: 6px; background: var(--dialog-surface); box-shadow: var(--dialog-shadow); }
+    .dialog-toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100020; display: flex; align-items: center; gap: 10px; padding: 12px 16px; max-width: calc(100vw - 32px); border: 1px solid var(--dialog-line); border-radius: 6px; background: var(--dialog-surface); box-shadow: var(--dialog-shadow); }
     .dialog-spinner { width: 16px; height: 16px; flex-shrink: 0; border: 2px solid var(--dialog-line); border-top-color: var(--dialog-brand); border-radius: 50%; animation: spin .8s linear infinite; }
     .center-toast .toast-content { background: var(--dialog-surface); border: 1px solid var(--dialog-line); border-radius: 6px; box-shadow: var(--dialog-shadow); padding: 16px 24px; gap: 12px; backdrop-filter: none; text-align: left; }
     .center-toast .toast-icon { display: flex; color: var(--dialog-brand); margin: 0; }
