@@ -59,7 +59,9 @@ async function previewOwner(request, env) {
 
 /** The router must authenticate this handler; no write falls back to Workers KV. */
 export async function handleThemeRequest(request, env) {
-	if (request.method === 'GET' && new URL(request.url).pathname === '/api/themes/catalog') {
+	// Without the theme store only the official catalog can be listed (installing
+	// still needs the store). With it, the store adds the owner's catalogs.
+	if (!env.SECRETS_STORE && request.method === 'GET' && new URL(request.url).pathname === '/api/themes/catalog') {
 		try {
 			return createJsonResponse(await readThemeCatalog(), 200, request, { 'Cache-Control': 'no-store' });
 		} catch (error) {

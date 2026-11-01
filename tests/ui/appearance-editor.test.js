@@ -159,7 +159,7 @@ describe('appearance editor controls', () => {
 			'[data-panel]',
 			'.appearance-tab',
 			'#appearanceSource',
-			'input[type=file]',
+			'input[type=file]:not(#appearanceImportFile)',
 			'[data-appearance-action=install]',
 			'[data-appearance-action=export]',
 			'[data-appearance-action=import]',

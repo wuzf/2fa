@@ -245,7 +245,12 @@ themes/<manifest.id>/
 
 ### 使用未上架的主题
 
-上架不是使用主题的前提。用户仍可上传个人 ZIP、粘贴公开 HTTPS 下载地址，或导入作者 GitHub 仓库／具体 Release 地址。直接导入 GitHub 时，正式 Release 必须非草稿、非预发布，且含唯一名为 **`2fa-theme.zip`** 的附件。2FA 不在服务器执行 npm install/build。个人导入同样遵循单主题覆盖规则，安装后需预览并应用。
+上架不是使用主题的前提。实例所有者可以：
+
+- 在 **外观与主题 → 导入主题** 上传构建好的 `2fa-theme.zip`（最大 12 MB）；
+- 在 **主题目录** 中添加自己的公开 GitHub 仓库（`所有者/仓库名`，最多 5 个）。仓库结构与官方目录相同：`main` 分支根目录的 `catalog.json` 加 `themes/<id>/2fa-theme.zip`，可复制官方仓库的 `npm run catalog` 生成索引。实例只读取这两类文件并核对 SHA-256、大小和 packageId。
+
+不支持从任意 HTTPS 地址或作者 Release 安装。2FA 不在服务器执行 npm install/build。这两种方式同样遵循单主题覆盖规则，安装后需预览并应用。
 
 ## 主题设置
 

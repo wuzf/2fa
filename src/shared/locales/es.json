@@ -1853,5 +1853,14 @@
 	"Update theme": "Actualizar tema",
 	"Delete theme": "Eliminar tema",
 	"Delete this installed theme?": "¿Eliminar este tema instalado?",
-	"Discard changes that have not been applied?": "¿Descartar los cambios que no se han aplicado?"
+	"Discard changes that have not been applied?": "¿Descartar los cambios que no se han aplicado?",
+	"Import theme": "Importar tema",
+	"Theme catalogs": "Catálogos de temas",
+	"Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.": "Añade repositorios públicos de GitHub con la misma estructura que el catálogo de la comunidad. Instala solo temas de autores en los que confíes.",
+	"GitHub repository (owner/name)": "Repositorio de GitHub (propietario/nombre)",
+	"Add catalog": "Añadir catálogo",
+	"Remove catalog": "Quitar catálogo",
+	"From {repository}": "De {repository}",
+	"{repository} is unavailable. Try again later.": "{repository} no está disponible. Inténtalo de nuevo más tarde.",
+	"Enter a public GitHub repository as owner/name.": "Introduce un repositorio público de GitHub con el formato propietario/nombre."
 }

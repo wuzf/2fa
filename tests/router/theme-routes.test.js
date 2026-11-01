@@ -100,7 +100,7 @@ const apply = (revision = 0) => ({
 	branding: { name: 'Private Vault' },
 });
 
-async function communityFixture(packageIdOverride) {
+async function communityFixture(packageIdOverride, repositories = ['wuzf/2fa-theme-mytheme']) {
 	const { archive } = await appThemeFixture();
 	const pkg = await normalizeDetectedThemeImport({ bytes: archive });
 	const revision = 'c'.repeat(40);
@@ -117,17 +117,19 @@ async function communityFixture(packageIdOverride) {
 		size: archive.length,
 	};
 	const fetcher = vi.fn(async (url) => {
-		if (url === 'https://api.github.com/repos/wuzf/2fa-theme-mytheme/git/ref/heads/main') {
-			return Response.json({ object: { type: 'commit', sha: revision } });
+		for (const repository of repositories) {
+			if (url === `https://api.github.com/repos/${repository}/git/ref/heads/main`) {
+				return Response.json({ object: { type: 'commit', sha: revision } });
+			}
+			const base = `https://raw.githubusercontent.com/${repository}/${revision}/`;
+			if (url === base + 'catalog.json') {
+				return Response.json({ schemaVersion: 1, themes: [entry] });
+			}
+			if (url === base + entry.path) {
+				return new Response(archive);
+			}
 		}
-		const base = `https://raw.githubusercontent.com/wuzf/2fa-theme-mytheme/${revision}/`;
-		if (url === base + 'catalog.json') {
-			return Response.json({ schemaVersion: 1, themes: [entry] });
-		}
-		if (url === base + entry.path) {
-			return new Response(archive);
-		}
-		throw new Error('Unexpected external request');
+		return new Response('Not found', { status: 404 });
 	});
 	vi.stubGlobal('fetch', fetcher);
 	return { entry, pkg, fetcher };
@@ -139,7 +141,10 @@ describe('community catalog integration', () => {
 		const { entry, pkg } = await communityFixture();
 		const catalog = await handleRequest(request('/api/themes/catalog'), h.env);
 		expect(catalog.status).toBe(200);
-		expect((await catalog.json()).themes).toEqual([entry]);
+		expect(await catalog.json()).toEqual({
+			themes: [{ ...entry, repository: 'wuzf/2fa-theme-mytheme' }],
+			sources: [{ repository: 'wuzf/2fa-theme-mytheme', official: true, status: 'ready' }],
+		});
 		const response = await handleRequest(request('/api/themes/catalog/install', { id: entry.id, packageId: entry.packageId }), h.env);
 		expect(response.status).toBe(201);
 		expect((await response.json()).theme.packageId).toBe(pkg.packageId);
@@ -163,9 +168,144 @@ describe('community catalog integration', () => {
 			'fetch',
 			vi.fn(async () => new Response('Unavailable', { status: 503 })),
 		);
-		expect((await handleRequest(request('/api/themes/catalog'), h.env)).status).toBe(503);
+		const catalog = await handleRequest(request('/api/themes/catalog'), h.env);
+		expect(catalog.status).toBe(200);
+		expect(await catalog.json()).toEqual({
+			themes: [],
+			sources: [{ repository: 'wuzf/2fa-theme-mytheme', official: true, status: 'error', error: 'THEME_DOWNLOAD_FAILED' }],
+		});
 		expect((await handleRequest(request('/api/appearance'), h.env)).status).toBe(200);
 		expect((await handleRequest(request('/api/themes'), h.env)).status).toBe(200);
+	});
+
+	it('lists only the official catalog without a theme store', async () => {
+		const h = environment(false);
+		const { entry } = await communityFixture();
+		const catalog = await handleRequest(request('/api/themes/catalog'), h.env);
+		expect(catalog.status).toBe(200);
+		expect((await catalog.json()).themes).toEqual([entry]);
+	});
+});
+
+describe('owner theme catalogs', () => {
+	const custom = 'octo-cat/my-2fa-themes';
+	const putCatalogs = (repositories) => request('/api/themes/catalogs', { repositories }, 'PUT');
+
+	it('saves normalized public repositories, drops the official one and duplicates', async () => {
+		const h = environment();
+		const response = await handleRequest(
+			putCatalogs([`https://github.com/${custom}.git`, custom.toUpperCase(), 'wuzf/2fa-theme-mytheme', 'someone/other']),
+			h.env,
+		);
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ official: 'wuzf/2fa-theme-mytheme', custom: [custom, 'someone/other'] });
+		expect(await (await handleRequest(request('/api/themes/catalogs'), h.env)).json()).toEqual({
+			official: 'wuzf/2fa-theme-mytheme',
+			custom: [custom, 'someone/other'],
+		});
+	});
+
+	it.each([['not a repository'], ['owner/..'], ['-owner/name'], ['https://example.com/owner/name'], ['owner/name/extra']])(
+		'rejects the repository %s',
+		async (value) => {
+			const h = environment();
+			const response = await handleRequest(putCatalogs([value]), h.env);
+			expect(response.status).toBe(400);
+			expect((await response.json()).error).toBe('THEME_CATALOG_SOURCE_INVALID');
+			expect(await h.storage.get('theme:catalogs')).toBeUndefined();
+		},
+	);
+
+	it('limits the owner to five catalogs', async () => {
+		const h = environment();
+		const response = await handleRequest(putCatalogs(['a/1', 'a/2', 'a/3', 'a/4', 'a/5', 'a/6']), h.env);
+		expect(response.status).toBe(413);
+		expect((await response.json()).error).toBe('THEME_CATALOG_SOURCE_LIMIT');
+	});
+
+	it('lists every catalog with its source, and one unreachable catalog hides nothing else', async () => {
+		const h = environment();
+		await handleRequest(putCatalogs([custom, 'gone/away']), h.env);
+		const { entry } = await communityFixture(undefined, ['wuzf/2fa-theme-mytheme', custom]);
+		const data = await (await handleRequest(request('/api/themes/catalog'), h.env)).json();
+		expect(data.themes).toEqual([
+			{ ...entry, repository: 'wuzf/2fa-theme-mytheme' },
+			{ ...entry, repository: custom },
+		]);
+		expect(data.sources).toEqual([
+			{ repository: 'wuzf/2fa-theme-mytheme', official: true, status: 'ready' },
+			{ repository: custom, official: false, status: 'ready' },
+			{ repository: 'gone/away', official: false, status: 'error', error: 'THEME_DOWNLOAD_FAILED' },
+		]);
+	});
+
+	it('installs from an added catalog and keeps the theme after the catalog is removed', async () => {
+		const h = environment();
+		await handleRequest(putCatalogs([custom]), h.env);
+		const { entry, pkg, fetcher } = await communityFixture(undefined, [custom]);
+		const response = await handleRequest(
+			request('/api/themes/catalog/install', { id: entry.id, packageId: entry.packageId, repository: custom }),
+			h.env,
+		);
+		expect(response.status).toBe(201);
+		expect(fetcher.mock.calls.map(([url]) => url).every((url) => url.includes(custom))).toBe(true);
+		const [installed] = (await h.store.listThemes('app')).themes;
+		expect(installed.packageId).toBe(pkg.packageId);
+		expect(installed.source).toBe(`https://raw.githubusercontent.com/${custom}/${'c'.repeat(40)}/${entry.path}`);
+		await handleRequest(putCatalogs([]), h.env);
+		expect((await h.store.listThemes('app')).themes).toHaveLength(1);
+	});
+
+	it('never downloads from a repository the owner has not added', async () => {
+		const h = environment();
+		const { entry, fetcher } = await communityFixture(undefined, ['attacker/themes']);
+		const response = await handleRequest(
+			request('/api/themes/catalog/install', { id: entry.id, packageId: entry.packageId, repository: 'attacker/themes' }),
+			h.env,
+		);
+		expect(response.status).toBe(404);
+		expect((await response.json()).error).toBe('THEME_CATALOG_SOURCE_UNKNOWN');
+		expect(fetcher).not.toHaveBeenCalled();
+		expect((await h.store.listThemes('app')).themes).toHaveLength(0);
+	});
+});
+
+describe('theme file upload', () => {
+	const upload = (bytes, name = '2fa-theme.zip') =>
+		new Request('https://vault.example.com/api/themes/import', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/zip', 'X-File-Name': name },
+			body: bytes,
+		});
+
+	it('installs an uploaded ZIP without publishing it or recording a source', async () => {
+		const h = environment();
+		const { archive } = await appThemeFixture();
+		const pkg = await normalizeDetectedThemeImport({ bytes: archive });
+		const response = await handleRequest(upload(archive), h.env);
+		expect(response.status).toBe(201);
+		expect((await response.json()).theme.packageId).toBe(pkg.packageId);
+		const [installed] = (await h.store.listThemes('app')).themes;
+		expect(installed.packageId).toBe(pkg.packageId);
+		expect(installed.source).toBeNull();
+		expect((await h.store.readAppearance()).revision).toBe(0);
+	});
+
+	it('rejects an empty body and a damaged file without installing anything', async () => {
+		const h = environment();
+		const empty = await handleRequest(upload(new Uint8Array()), h.env);
+		expect(empty.status).toBe(400);
+		expect((await empty.json()).error).toBe('THEME_EMPTY_FILE');
+		const damaged = await handleRequest(upload(new TextEncoder().encode('not a zip')), h.env);
+		expect(damaged.status).toBe(400);
+		expect((await h.store.listThemes('app')).themes).toHaveLength(0);
+	});
+
+	it('rejects a file over the upload limit', async () => {
+		const h = environment();
+		const response = await handleRequest(upload(new Uint8Array(12 * 1024 * 1024 + 1)), h.env);
+		expect(response.status).toBe(413);
+		expect((await h.store.listThemes('app')).themes).toHaveLength(0);
 	});
 });
 

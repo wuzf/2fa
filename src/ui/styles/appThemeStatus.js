@@ -29,32 +29,69 @@ export function getAppThemeStatusStyles() {
     #appThemeRuntimeStatus [hidden] { display: none !important; }
     #appThemeStartup, #appThemeRuntimeStatus[data-quiet="true"] {
       flex-direction: column;
+      flex-wrap: nowrap;
       justify-content: center;
-      min-height: min(50vh, 360px);
-      margin: 0 auto;
+      gap: 16px;
+      width: 100%;
+      max-width: none;
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0;
       padding: 24px 16px;
       border: 0;
       border-radius: 0;
       background: transparent;
       box-shadow: none;
+      color: var(--text-tertiary, var(--text-secondary));
+      font-size: 13px;
       text-align: center;
     }
+    /* Fast starts never flash the indicator; the runtime status continues it without a fade. */
+    #appThemeStartup { animation: app-theme-loading-in 200ms ease-out 300ms both; }
     #appThemeStartup::before, #appThemeRuntimeStatus[data-quiet="true"]::before {
       content: '';
       flex: 0 0 auto;
-      width: 20px;
-      height: 20px;
-      border: 2px solid currentColor;
-      border-right-color: transparent;
+      box-sizing: border-box;
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border-primary);
+      border-top-color: var(--primary, currentColor);
       border-radius: 50%;
-      animation: app-theme-loading-spin 900ms linear infinite;
+      animation: app-theme-loading-spin 800ms linear infinite;
     }
     @keyframes app-theme-loading-spin { to { transform: rotate(360deg); } }
+    @keyframes app-theme-loading-in { from { opacity: 0; } to { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) {
-      #appThemeStartup::before, #appThemeRuntimeStatus[data-quiet="true"]::before { animation: none; }
+      #appThemeStartup, #appThemeStartup::before, #appThemeRuntimeStatus[data-quiet="true"]::before { animation: none; }
     }
     #appThemeStartup .app-theme-status-message,
-    #appThemeRuntimeStatus[data-quiet="true"] .app-theme-status-message { flex: 0 0 auto; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+    #appThemeRuntimeStatus[data-quiet="true"] .app-theme-status-message { flex: 0 0 auto; margin: 0; min-width: 0; letter-spacing: .02em; overflow-wrap: anywhere; }
+    #appThemeRuntimeStatus[data-quiet="true"] .app-theme-status-actions { justify-content: center; }
+    /* Recovery during a quiet start is a secondary way out, not a call to action. */
+    #appThemeStartupRecovery, #appThemeRuntimeStatus[data-quiet="true"] .btn {
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 16px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      box-shadow: none;
+      color: var(--text-link, var(--primary));
+      font-size: 13px;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    #appThemeStartupRecovery:hover, #appThemeRuntimeStatus[data-quiet="true"] .btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-link-hover, var(--text-link, var(--primary)));
+      transform: none;
+    }
+    #appThemeStartupRecovery:focus-visible, #appThemeRuntimeStatus[data-quiet="true"] .btn:focus-visible {
+      outline: 2px solid var(--border-focus, var(--primary));
+      outline-offset: 2px;
+    }
     :root:not([data-app-theme-startup-slow]) #appThemeStartup .app-theme-status-message,
     #appThemeRuntimeStatus[data-quiet="true"][data-slow="false"] .app-theme-status-message {
       position: absolute;

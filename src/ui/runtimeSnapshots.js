@@ -228,6 +228,39 @@ export function createRuntimeSnapshotManager({
 		});
 		return task;
 	}
+	// Most of a snapshot (modules, vendor scripts, icons) is unchanged by a theme switch.
+	// Copies from completed snapshots pass the same checks as a download.
+	async function reusableResources() {
+		const state = initialize(await index.read());
+		const sources = new Map();
+		for (const snapshot of Object.values(state.snapshots)) {
+			if (state.deleting[snapshot.cacheName] || !(await caches.has(snapshot.cacheName))) {
+				continue;
+			}
+			for (const resource of snapshot.descriptor?.resources || []) {
+				if (!sources.has(resource.sha256)) {
+					sources.set(resource.sha256, { cacheName: snapshot.cacheName, url: resource.url });
+				}
+			}
+		}
+		return sources;
+	}
+	async function reuseResource(cache, resource, tuple, sources) {
+		const source = sources.get(resource.sha256);
+		if (!source) {
+			return false;
+		}
+		try {
+			const response = await (await caches.open(source.cacheName)).match(absolute(source.url));
+			if (!(await verifyResource(response, resource, tuple))) {
+				return false;
+			}
+			await cache.put(absolute(resource.url), response);
+			return true;
+		} catch {
+			return false;
+		}
+	}
 	async function prepareCandidate(tuple, clientId, shellConfigId) {
 		const known = await status(tuple, { shellConfigId });
 		if (known.status === 'ready') {
@@ -257,11 +290,15 @@ export function createRuntimeSnapshotManager({
 		const overall = setTimer(() => controller.abort(), 120000);
 		try {
 			const cache = await caches.open(candidate.cacheName);
+			const reusable = await reusableResources();
 			let position = 0;
 			const downloads = await Promise.allSettled(
-				Array.from({ length: Math.min(4, descriptor.resources.length) }, async () => {
+				Array.from({ length: Math.min(8, descriptor.resources.length) }, async () => {
 					while (position < descriptor.resources.length) {
 						const resource = descriptor.resources[position++];
+						if (await reuseResource(cache, resource, tuple, reusable)) {
+							continue;
+						}
 						const response = await readResponse(resource.url, { signal: controller.signal, maximum: resource.size });
 						if ([401, 403].includes(response.status)) {
 							throw new Error('authentication-required');

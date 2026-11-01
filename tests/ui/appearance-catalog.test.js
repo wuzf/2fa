@@ -210,3 +210,161 @@ describe('community theme catalog', () => {
 		expect(h.window.authenticatedFetch.mock.calls.some(([, options]) => options?.method === 'PUT')).toBe(false);
 	});
 });
+
+describe('owner catalogs and theme files', () => {
+	const official = 'wuzf/2fa-theme-mytheme';
+	function owner(h, { sources = [{ repository: official, official: true, status: 'ready' }], themes = [], installed = [], upload } = {}) {
+		const state = { sources, themes, installed, saved: [] };
+		h.window.authenticatedFetch.mockImplementation(async (url, options = {}) => {
+			if (url === '/api/themes/catalog') {
+				return json({ themes: state.themes, sources: state.sources });
+			}
+			if (url === '/api/themes/catalogs' && options.method === 'PUT') {
+				const { repositories } = JSON.parse(options.body);
+				state.saved.push(repositories);
+				if (repositories.some((value) => !/^[\w-]+\/[\w.-]+$/.test(value))) {
+					return json({ error: 'THEME_CATALOG_SOURCE_INVALID' }, 400);
+				}
+				state.sources = [state.sources[0], ...repositories.map((repository) => ({ repository, official: false, status: 'ready' }))];
+				return json({ official, custom: repositories });
+			}
+			if (url === '/api/themes/catalog/install') {
+				const pkg = state.themes.find((item) => item.packageId === JSON.parse(options.body).packageId).pkg;
+				state.installed = [pkg];
+				return json({ theme: pkg });
+			}
+			if (url === '/api/themes/import') {
+				const result = await upload(options);
+				if (result instanceof Response) {
+					return result;
+				}
+				state.installed = [result];
+				return json({ theme: result }, 201);
+			}
+			if (url === '/api/themes') {
+				return json({ themes: [getBuiltinTheme('fluent')] });
+			}
+			if (url === '/api/themes?format=app') {
+				return json({ themes: state.installed });
+			}
+			return json({ revision: 1, active: h.initial, capabilities: { write: true } });
+		});
+		return state;
+	}
+	const sourceNames = (h) => [...h.document.querySelectorAll('.appearance-catalog-source-name')].map((item) => item.textContent);
+	const addCatalog = async (h, value) => {
+		const input = h.document.getElementById('appearanceCatalogRepository');
+		input.value = value;
+		input.dispatchEvent(new h.window.Event('input'));
+		await act(h, 'catalog-add');
+	};
+
+	it('adds and removes an owner catalog and marks its themes with the repository', async () => {
+		const pkg = await theme('owned');
+		const h = harness({ theme: getBuiltinTheme('fluent') });
+		const state = owner(h);
+		await h.window.showAppearanceEditor();
+		await flush();
+		expect(catalogText(h)).toContain(zh.appearanceCatalogSources);
+		expect(sourceNames(h)).toEqual([]);
+		state.themes = [{ ...entry(pkg), repository: 'octo-cat/themes', pkg }];
+		await addCatalog(h, 'octo-cat/themes');
+		expect(state.saved).toEqual([['octo-cat/themes']]);
+		expect(sourceNames(h)).toEqual(['octo-cat/themes']);
+		expect(h.document.getElementById('appearanceCatalogRepository').value).toBe('');
+		expect(card(h).dataset.repository).toBe('octo-cat/themes');
+		expect(card(h).textContent).toContain('来自 octo-cat/themes');
+		card(h).click();
+		await flush();
+		const install = h.window.authenticatedFetch.mock.calls.find(([url]) => url === '/api/themes/catalog/install');
+		expect(JSON.parse(install[1].body)).toEqual({ id: 'owned', packageId: pkg.packageId, repository: 'octo-cat/themes' });
+		expect(themeCard(h, pkg.packageId).getAttribute('aria-pressed')).toBe('true');
+		state.themes = [];
+		await act(h, 'catalog-remove');
+		expect(state.saved.at(-1)).toEqual([]);
+		expect(sourceNames(h)).toEqual([]);
+		expect(themeCard(h, pkg.packageId)).not.toBeNull();
+	});
+
+	it('keeps official themes and the input after an invalid repository, and reports one failing catalog by name', async () => {
+		const pkg = await theme('official');
+		const h = harness({ theme: getBuiltinTheme('fluent') });
+		owner(h, {
+			sources: [
+				{ repository: official, official: true, status: 'ready' },
+				{ repository: 'gone/away', official: false, status: 'error', error: 'THEME_DOWNLOAD_FAILED' },
+			],
+			themes: [{ ...entry(pkg), repository: official, pkg }],
+		});
+		await h.window.showAppearanceEditor();
+		await flush();
+		expect(catalogText(h)).toContain('gone/away 暂时无法加载，请稍后重试。');
+		expect(card(h).dataset.repository).toBe('');
+		expect(card(h).textContent).not.toContain('来自');
+		await addCatalog(h, 'not a repository');
+		expect(h.document.getElementById('appearanceStatus').textContent).toContain(zh.appearanceErrorCatalogSource);
+		expect(h.document.getElementById('appearanceCatalogRepository').value).toBe('not a repository');
+		expect(card(h).dataset.catalogId).toBe('official');
+	});
+
+	it('uploads a chosen ZIP, selects it without applying and keeps the trust confirmation', async () => {
+		const pkg = await theme('uploaded');
+		const h = harness({ theme: getBuiltinTheme('fluent') });
+		const upload = vi.fn(async () => pkg);
+		owner(h, { upload });
+		await h.window.showAppearanceEditor();
+		await flush();
+		const input = h.document.getElementById('appearanceImportFile');
+		expect(input.accept).toBe('.zip,application/zip');
+		const opened = vi.fn();
+		input.addEventListener('click', opened);
+		await act(h, 'import-file');
+		expect(opened).toHaveBeenCalledTimes(1);
+		const file = new h.window.File([new Uint8Array([80, 75, 3, 4])], '我的主题.zip', { type: 'application/zip' });
+		Object.defineProperty(input, 'files', { value: [file], configurable: true });
+		input.dispatchEvent(new h.window.Event('change'));
+		await flush();
+		const [options] = upload.mock.calls[0];
+		expect(options.method).toBe('POST');
+		expect(options.headers).toEqual({ 'Content-Type': 'application/zip', 'X-File-Name': '____.zip' });
+		expect(options.body).toBe(file);
+		expect(themeCard(h, pkg.packageId).getAttribute('aria-pressed')).toBe('true');
+		expect(h.document.getElementById('appearanceStatus').textContent).toBe(zh.appearanceInstalled);
+		expect(h.window.__2FA_APPEARANCE__).toBe(h.initial);
+		h.window.showConfirmDialog.mockResolvedValue(false);
+		await act(h, 'apply');
+		expect(h.window.showConfirmDialog).toHaveBeenCalledWith(
+			expect.objectContaining({ i18n: expect.objectContaining({ message: 'appearanceAppTrust' }) }),
+		);
+	});
+
+	it('reports a damaged or oversized file without changing the draft', async () => {
+		const h = harness({ theme: getBuiltinTheme('fluent') });
+		const upload = vi.fn(async () => json({ error: 'THEME_INVALID_ZIP' }, 400));
+		owner(h, { upload });
+		await h.window.showAppearanceEditor();
+		await flush();
+		const input = h.document.getElementById('appearanceImportFile');
+		const choose = async (file) => {
+			Object.defineProperty(input, 'files', { value: [file], configurable: true });
+			input.dispatchEvent(new h.window.Event('change'));
+			await flush();
+		};
+		await choose(new h.window.File([new Uint8Array(4)], 'broken.zip'));
+		expect(h.document.getElementById('appearanceStatus').textContent).toContain(zh.appearanceErrorFormat);
+		const large = new h.window.File([new Uint8Array(1)], 'large.zip');
+		Object.defineProperty(large, 'size', { value: 12 * 1024 * 1024 + 1 });
+		await choose(large);
+		expect(upload).toHaveBeenCalledTimes(1);
+		expect(h.document.getElementById('appearanceStatus').textContent).toBe(zh.appearanceErrorLimit);
+		expect(themeCard(h, 'builtin:fluent').getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('offers neither catalog management nor file import without write access', async () => {
+		const h = harness({ theme: getBuiltinTheme('fluent'), write: false });
+		await h.window.showAppearanceEditor();
+		await flush();
+		expect(h.document.getElementById('appearanceImportFile')).toBeNull();
+		expect(h.document.getElementById('appearanceCatalogRepository')).toBeNull();
+	});
+});

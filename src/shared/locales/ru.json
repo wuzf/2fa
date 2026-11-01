@@ -1853,5 +1853,14 @@
 	"Update theme": "Обновить тему",
 	"Delete theme": "Удалить тему",
 	"Delete this installed theme?": "Удалить эту установленную тему?",
-	"Discard changes that have not been applied?": "Отменить неприменённые изменения?"
+	"Discard changes that have not been applied?": "Отменить неприменённые изменения?",
+	"Import theme": "Импортировать тему",
+	"Theme catalogs": "Каталоги тем",
+	"Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.": "Добавьте публичные репозитории GitHub с такой же структурой, как у каталога сообщества. Устанавливайте темы только от авторов, которым доверяете.",
+	"GitHub repository (owner/name)": "Репозиторий GitHub (владелец/имя)",
+	"Add catalog": "Добавить каталог",
+	"Remove catalog": "Удалить каталог",
+	"From {repository}": "Из {repository}",
+	"{repository} is unavailable. Try again later.": "{repository} недоступен. Повторите попытку позже.",
+	"Enter a public GitHub repository as owner/name.": "Введите публичный репозиторий GitHub в формате владелец/имя."
 }

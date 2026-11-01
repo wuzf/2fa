@@ -1853,5 +1853,14 @@
 	"Update theme": "Perbarui tema",
 	"Delete theme": "Hapus tema",
 	"Delete this installed theme?": "Hapus tema terpasang ini?",
-	"Discard changes that have not been applied?": "Buang perubahan yang belum diterapkan?"
+	"Discard changes that have not been applied?": "Buang perubahan yang belum diterapkan?",
+	"Import theme": "Impor tema",
+	"Theme catalogs": "Katalog tema",
+	"Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.": "Tambahkan repositori GitHub publik yang strukturnya sama dengan katalog komunitas. Pasang tema hanya dari pembuat yang Anda percayai.",
+	"GitHub repository (owner/name)": "Repositori GitHub (pemilik/nama)",
+	"Add catalog": "Tambah katalog",
+	"Remove catalog": "Hapus katalog",
+	"From {repository}": "Dari {repository}",
+	"{repository} is unavailable. Try again later.": "{repository} tidak tersedia. Coba lagi nanti.",
+	"Enter a public GitHub repository as owner/name.": "Masukkan repositori GitHub publik dengan format pemilik/nama."
 }

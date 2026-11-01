@@ -4,7 +4,7 @@ import { Window } from 'happy-dom';
 import { createRuntimeTransport } from '../../src/ui/runtime/runtimeTransport.js';
 import { createAppThemeHost } from '../../src/ui/scripts/appThemeHost.js';
 import { createServiceWorker } from '../../src/ui/serviceworker.js';
-import { snapshotHarness, origin, CacheRequest, CacheResponse } from '../helpers/runtime-snapshot.js';
+import { snapshotHarness, inventory, origin, CacheRequest, CacheResponse } from '../helpers/runtime-snapshot.js';
 
 const fixtures = [];
 beforeEach(() => {
@@ -198,5 +198,22 @@ describe('cached attachment with existing SW and real snapshots', () => {
 		expect(ports.onRecoveryRequired).toHaveBeenCalledOnce();
 		expect((await h.index.read()).startupValidated).toBeNull();
 		expect(h.requests.map((request) => request.type)).toEqual(['RUNTIME_ATTACH', 'RUNTIME_STARTED']);
+	});
+	it('drops snapshots of earlier themes once a newer one has started', async () => {
+		const h = await fixture();
+		const names = [];
+		for (const revision of [1, 2, 3]) {
+			const current = await inventory({ revision });
+			h.setCurrent(current);
+			h.window.__2FA_SHELL_CONFIG_ID__ = current.shellConfigId;
+			expect((await h.transport.prepare(current.tuple)).status).toBe('ready');
+			expect((await h.transport.attach(current.tuple)).status).toBe('ready');
+			expect((await h.transport.startup(current.tuple)).status).toBe('ready');
+			await Promise.all(h.tasks);
+			names.push((await h.index.read()).active);
+		}
+		const state = await h.index.read();
+		expect(state.previous).toBe(names[1]);
+		expect((await h.caches.keys()).sort()).toEqual([names[1], names[2]].sort());
 	});
 });

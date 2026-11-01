@@ -10,6 +10,17 @@ export function getAppearanceEditorStyles() {
     #appearanceModal .appearance-section-title {margin:0;font-size:13px;font-weight:600;color:var(--dialog-text,var(--text-primary));}
     #appearanceModal .appearance-note {margin:0;font-size:12px;line-height:1.5;color:var(--dialog-muted,var(--text-secondary));}
     #appearanceModal .appearance-note-row {display:flex;align-items:center;justify-content:space-between;gap:12px;}
+    #appearanceModal .appearance-catalog-sources {display:flex;flex-direction:column;gap:8px;margin-top:4px;padding-top:12px;border-top:1px solid var(--dialog-line,var(--border-primary));}
+    #appearanceModal .appearance-section-subtitle {margin:0;font-size:12px;font-weight:600;color:var(--dialog-text,var(--text-primary));}
+    #appearanceModal .appearance-catalog-source-list {display:flex;flex-direction:column;gap:4px;margin:0;padding:0;list-style:none;}
+    #appearanceModal .appearance-catalog-source {display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:32px;padding:4px 4px 4px 10px;border:1px solid var(--dialog-stroke,var(--border-secondary));border-radius:6px;font-size:12px;color:var(--dialog-text,var(--text-primary));}
+    #appearanceModal .appearance-catalog-source-name {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    #appearanceModal .appearance-catalog-source-remove {flex:0 0 auto;width:26px;height:26px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--dialog-muted,var(--text-secondary));font-size:15px;line-height:1;cursor:pointer;}
+    #appearanceModal .appearance-catalog-source-remove:hover {color:var(--dialog-danger,var(--danger));}
+    #appearanceModal .appearance-catalog-source-remove:focus-visible {outline:2px solid var(--dialog-brand,var(--primary));outline-offset:2px;}
+    #appearanceModal .appearance-catalog-source-add {display:flex;align-items:flex-end;gap:8px;}
+    #appearanceModal .appearance-catalog-source-add .appearance-field {flex:1;}
+    #appearanceModal .appearance-catalog-source-add .btn {flex:0 0 auto;min-height:34px;}
     #appearanceModal .appearance-link {border:0;background:none;padding:2px 0;font:inherit;font-size:12px;color:var(--dialog-brand,var(--primary));cursor:pointer;}
     #appearanceModal .appearance-link:hover {text-decoration:underline;}
     #appearanceModal .appearance-theme-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}

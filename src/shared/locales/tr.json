@@ -1853,5 +1853,14 @@
 	"Update theme": "Temayı güncelle",
 	"Delete theme": "Temayı sil",
 	"Delete this installed theme?": "Yüklü olan bu tema silinsin mi?",
-	"Discard changes that have not been applied?": "Uygulanmamış değişiklikler atılsın mı?"
+	"Discard changes that have not been applied?": "Uygulanmamış değişiklikler atılsın mı?",
+	"Import theme": "Tema içe aktar",
+	"Theme catalogs": "Tema katalogları",
+	"Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.": "Topluluk kataloğuyla aynı yapıdaki herkese açık GitHub depolarını ekleyin. Yalnızca güvendiğiniz yazarların temalarını yükleyin.",
+	"GitHub repository (owner/name)": "GitHub deposu (sahip/ad)",
+	"Add catalog": "Katalog ekle",
+	"Remove catalog": "Kataloğu kaldır",
+	"From {repository}": "Kaynak: {repository}",
+	"{repository} is unavailable. Try again later.": "{repository} kullanılamıyor. Daha sonra tekrar deneyin.",
+	"Enter a public GitHub repository as owner/name.": "Herkese açık bir GitHub deposunu sahip/ad biçiminde girin."
 }

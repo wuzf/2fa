@@ -93,6 +93,7 @@ export async function snapshotHarness(options = {}) {
 	const prefix = 'test-runtime-' + ++sequence + '-';
 	const caches = {
 		open: (name) => realCaches.open(prefix + name),
+		has: (name) => realCaches.has(prefix + name),
 		keys: async () => (await realCaches.keys()).filter((name) => name.startsWith(prefix)).map((name) => name.slice(prefix.length)),
 		delete: (name) => realCaches.delete(prefix + name),
 	};

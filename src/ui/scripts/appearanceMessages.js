@@ -46,6 +46,7 @@ export function appearanceErrorKey(data, status) {
 			'THEME_APP_JS_LIMIT',
 			'THEME_PUBLIC_APPEARANCE_LIMIT',
 			'THEME_PUBLIC_FONT_LIMIT',
+			'THEME_CATALOG_SOURCE_LIMIT',
 		],
 		appearanceErrorDownload: [
 			'THEME_CATALOG_INVALID',
@@ -64,6 +65,7 @@ export function appearanceErrorKey(data, status) {
 			'THEME_NOT_FOUND',
 			'THEME_ASSET_MISSING',
 			'THEME_ASSET_INCOMPLETE',
+			'THEME_CATALOG_SOURCE_UNKNOWN',
 		],
 		appearanceErrorCss: ['THEME_INVALID_CSS', 'THEME_UNRESOLVED_CSS', 'THEME_DEPENDENCY_CYCLE'],
 		appearanceErrorLayout: [
@@ -88,6 +90,7 @@ export function appearanceErrorKey(data, status) {
 			'THEME_PUBLIC_APPEARANCE',
 			'THEME_PUBLIC_VARIANT',
 		],
+		appearanceErrorCatalogSource: ['THEME_CATALOG_SOURCE_INVALID'],
 		appearanceErrorRestore: ['THEME_RESTORE_REQUIRED'],
 		appearanceErrorSdk: ['THEME_UNSUPPORTED_SDK', 'THEME_HOST_VERSION_UNSUPPORTED'],
 		appearanceErrorAppRuntime: ['THEME_APP_RUNTIME_UNAVAILABLE'],

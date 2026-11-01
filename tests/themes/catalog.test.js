@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readThemeCatalog, downloadCatalogTheme, validateThemeCatalog } from '../../src/themes/catalog.js';
+import { readThemeCatalog, downloadCatalogTheme, validateThemeCatalog, normalizeCatalogRepository } from '../../src/themes/catalog.js';
 import { hashBytes } from '../../src/themes/schema.js';
 import { normalizeDetectedThemeImport } from '../../src/themes/import.js';
 import { appThemeFixture } from '../helpers/app-theme.js';
@@ -130,6 +130,56 @@ describe('self-contained community theme catalog', () => {
 		await expect(
 			downloadCatalogTheme({ ...h.selection, url: 'https://attacker.example.org/package.zip' }, { fetcher: h.fetcher }),
 		).rejects.toHaveProperty('code', 'THEME_INVALID');
+		expect(h.fetcher).not.toHaveBeenCalled();
+	});
+});
+
+describe('owner catalog repositories', () => {
+	it.each([
+		['octo-cat/themes', 'octo-cat/themes'],
+		['https://github.com/octo-cat/themes.git', 'octo-cat/themes'],
+		[' octo-cat/my.themes_1/ ', 'octo-cat/my.themes_1'],
+		['-octo/themes', null],
+		['octo--cat/themes', null],
+		['octo/..', null],
+		['octo/themes/extra', null],
+		['https://gitlab.com/octo/themes', null],
+		[42, null],
+	])('normalizes %s', (input, expected) => {
+		expect(normalizeCatalogRepository(input)).toBe(expected);
+	});
+
+	it('reads and downloads only from the selected repository', async () => {
+		const h = await fixture();
+		const ref = 'https://api.github.com/repos/octo-cat/themes/git/ref/heads/main';
+		const root = `https://raw.githubusercontent.com/octo-cat/themes/${revision}/`;
+		const fetcher = vi.fn(async (url) => {
+			const official = await h.fetcher(url.replace(ref, refUrl).replace(root, raw));
+			return official;
+		});
+		const source = await downloadCatalogTheme({ ...h.selection, repository: 'octo-cat/themes' }, { fetcher, cache: false });
+		expect(source.sourceUrl).toBe(root + h.entry.path);
+		expect(fetcher.mock.calls.map(([url]) => url)).toEqual([ref, root + 'catalog.json', root + h.entry.path]);
+	});
+
+	it('refuses a redirect into another repository', async () => {
+		const h = await fixture();
+		const fetcher = vi.fn(async (url) =>
+			url.endsWith('/git/ref/heads/main')
+				? new Response(null, { status: 302, headers: { Location: refUrl } })
+				: new Response('Not found', { status: 404 }),
+		);
+		await expect(readThemeCatalog({ repository: 'octo-cat/themes', fetcher, cache: false })).rejects.toBeTruthy();
+		expect(fetcher.mock.calls.map(([url]) => url)).not.toContain(refUrl);
+		expect(h.fetcher).not.toHaveBeenCalled();
+	});
+
+	it('rejects an invalid repository before fetching', async () => {
+		const h = await fixture();
+		await expect(downloadCatalogTheme({ ...h.selection, repository: 'not valid' }, { fetcher: h.fetcher })).rejects.toHaveProperty(
+			'code',
+			'THEME_CATALOG_SOURCE_INVALID',
+		);
 		expect(h.fetcher).not.toHaveBeenCalled();
 	});
 });

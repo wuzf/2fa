@@ -1853,5 +1853,14 @@
 	"Update theme": "Cập nhật chủ đề",
 	"Delete theme": "Xóa chủ đề",
 	"Delete this installed theme?": "Xóa chủ đề đã cài đặt này?",
-	"Discard changes that have not been applied?": "Bỏ các thay đổi chưa được áp dụng?"
+	"Discard changes that have not been applied?": "Bỏ các thay đổi chưa được áp dụng?",
+	"Import theme": "Nhập chủ đề",
+	"Theme catalogs": "Danh mục chủ đề",
+	"Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.": "Thêm kho GitHub công khai có cấu trúc giống danh mục cộng đồng. Chỉ cài chủ đề từ tác giả bạn tin tưởng.",
+	"GitHub repository (owner/name)": "Kho GitHub (chủ sở hữu/tên)",
+	"Add catalog": "Thêm danh mục",
+	"Remove catalog": "Xóa danh mục",
+	"From {repository}": "Từ {repository}",
+	"{repository} is unavailable. Try again later.": "{repository} hiện không khả dụng. Hãy thử lại sau.",
+	"Enter a public GitHub repository as owner/name.": "Nhập kho GitHub công khai theo định dạng chủ sở hữu/tên."
 }

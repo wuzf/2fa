@@ -15,7 +15,14 @@ import {
 } from '../themes/index.js';
 import { normalizeAppPackageWithAppearance } from '../themes/appPackage.js';
 import { resolvePublicAppearance } from '../themes/publicAppearance.js';
-import { downloadCatalogTheme } from '../themes/catalog.js';
+import {
+	MAX_CUSTOM_CATALOGS,
+	OFFICIAL_CATALOG,
+	downloadCatalogTheme,
+	isOfficialCatalog,
+	normalizeCatalogRepository,
+	readThemeCatalog,
+} from '../themes/catalog.js';
 import { createDefaultAppearance, THEME_OPERATION_HEADER, THEME_PREVIEW_OWNER_HEADER } from '../api/themes.js';
 import { createJsonResponse } from '../utils/response.js';
 import { ThemePreviewCapabilities } from './theme-preview.js';
@@ -27,6 +34,7 @@ const QUOTA_KEY = 'theme:quota';
 const META = 'theme:blob:';
 const PACKAGE = 'theme:package:';
 const RECEIPT = 'theme:receipt:';
+const CATALOGS_KEY = 'theme:catalogs';
 const MIRROR = 'theme-assets:v1:';
 const CHUNK_SIZE = 128 * 1024;
 const MAX_CAPACITY = 50 * 1024 * 1024;
@@ -184,6 +192,16 @@ async function readLimited(request, limit) {
 	return bytes;
 }
 
+/** An uploaded theme is the raw ZIP body; the file name is informational only. */
+async function readUpload(request) {
+	const bytes = await readLimited(request, LIMITS.upload);
+	if (!bytes.length) {
+		throw problem('请选择主题文件', 400, 'THEME_EMPTY_FILE');
+	}
+	const name = (request.headers.get('X-File-Name') || '').slice(0, 128);
+	return { bytes, name: /\.zip$/i.test(name) ? name : 'theme.zip' };
+}
+
 async function readJSON(request) {
 	try {
 		return JSON.parse(decoder.decode(await readLimited(request, JSON_LIMIT)));
@@ -336,8 +354,23 @@ export class ThemeStore {
 		if (path === '/api/appearance' && request.method === 'PUT') {
 			return json(await this.apply(await readJSON(request)));
 		}
+		if (path === '/api/themes/catalog' && request.method === 'GET') {
+			return json(await this.readCatalogs());
+		}
+		if (path === '/api/themes/catalogs' && request.method === 'GET') {
+			return json({ official: OFFICIAL_CATALOG, custom: await this.customCatalogs() });
+		}
+		if (path === '/api/themes/catalogs' && request.method === 'PUT') {
+			return json({ official: OFFICIAL_CATALOG, custom: await this.saveCustomCatalogs(await readJSON(request)) });
+		}
 		if (path === '/api/themes/catalog/install' && request.method === 'POST') {
-			return json(await this.install(await downloadCatalogTheme(await readJSON(request))), 201);
+			const selection = await readJSON(request);
+			// Only the official catalog or one the owner added can be downloaded from.
+			const repository = await this.knownCatalog(selection?.repository);
+			return json(await this.install(await downloadCatalogTheme({ ...selection, repository })), 201);
+		}
+		if (path === '/api/themes/import' && request.method === 'POST') {
+			return json(await this.install(await readUpload(request)), 201);
 		}
 		const privateAsset = /^\/api\/appearance\/assets\/([a-f0-9]{64})$/.exec(path);
 		if (privateAsset && ['GET', 'HEAD'].includes(request.method)) {
@@ -356,7 +389,7 @@ export class ThemeStore {
 
 	/** Rate limits are authoritative and independent of the secrets operation quota. */
 	async checkRate(path) {
-		const expensive = path === '/api/themes/catalog/install';
+		const expensive = path === '/api/themes/catalog/install' || path === '/api/themes/import';
 		const key = `theme:rate:${expensive ? 'import' : 'write'}`;
 		const now = Date.now();
 		const entries = ((await this.storage.get(key)) || []).filter((time) => time > now - 60000);
@@ -365,6 +398,67 @@ export class ThemeStore {
 		}
 		entries.push(now);
 		await this.storage.put(key, entries);
+	}
+
+	async customCatalogs() {
+		const stored = await this.storage.get(CATALOGS_KEY);
+		return Array.isArray(stored) ? stored : [];
+	}
+
+	async saveCustomCatalogs(body) {
+		const input = body?.repositories;
+		if (!Array.isArray(input) || input.length > 32) {
+			throw problem('主题目录地址无效', 400, 'THEME_CATALOG_SOURCE_INVALID');
+		}
+		const repositories = [];
+		for (const value of input) {
+			const repository = normalizeCatalogRepository(value);
+			if (!repository) {
+				throw problem('主题目录地址无效', 400, 'THEME_CATALOG_SOURCE_INVALID', { field: String(value).slice(0, 140) });
+			}
+			if (!isOfficialCatalog(repository) && !repositories.some((item) => item.toLowerCase() === repository.toLowerCase())) {
+				repositories.push(repository);
+			}
+		}
+		if (repositories.length > MAX_CUSTOM_CATALOGS) {
+			throw problem(`最多添加 ${MAX_CUSTOM_CATALOGS} 个主题目录`, 413, 'THEME_CATALOG_SOURCE_LIMIT');
+		}
+		await this.storage.put(CATALOGS_KEY, repositories);
+		return repositories;
+	}
+
+	async knownCatalog(value) {
+		if (value === undefined || value === null || value === '') {
+			return OFFICIAL_CATALOG;
+		}
+		const repository = normalizeCatalogRepository(value);
+		if (!repository) {
+			throw problem('主题目录地址无效', 400, 'THEME_CATALOG_SOURCE_INVALID');
+		}
+		if (isOfficialCatalog(repository)) {
+			return OFFICIAL_CATALOG;
+		}
+		const known = (await this.customCatalogs()).find((item) => item.toLowerCase() === repository.toLowerCase());
+		if (!known) {
+			throw problem('该主题目录尚未添加', 404, 'THEME_CATALOG_SOURCE_UNKNOWN');
+		}
+		return known;
+	}
+
+	/** One unreachable custom catalog never hides the others. */
+	async readCatalogs() {
+		const repositories = [OFFICIAL_CATALOG, ...(await this.customCatalogs())];
+		const results = await Promise.allSettled(repositories.map((repository) => readThemeCatalog({ repository })));
+		const themes = [];
+		const sources = repositories.map((repository, index) => {
+			const result = results[index];
+			if (result.status === 'fulfilled') {
+				themes.push(...result.value.themes.map((theme) => ({ ...theme, repository })));
+				return { repository, official: index === 0, status: 'ready' };
+			}
+			return { repository, official: index === 0, status: 'error', error: result.reason?.code || 'THEME_CATALOG_UNAVAILABLE' };
+		});
+		return { themes, sources };
 	}
 
 	async state() {

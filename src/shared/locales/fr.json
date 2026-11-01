@@ -1853,5 +1853,14 @@
 	"Update theme": "Mettre à jour le thème",
 	"Delete theme": "Supprimer le thème",
 	"Delete this installed theme?": "Supprimer ce thème installé ?",
-	"Discard changes that have not been applied?": "Abandonner les modifications non appliquées ?"
+	"Discard changes that have not been applied?": "Abandonner les modifications non appliquées ?",
+	"Import theme": "Importer un thème",
+	"Theme catalogs": "Catalogues de thèmes",
+	"Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.": "Ajoutez des dépôts GitHub publics organisés comme le catalogue de la communauté. N’installez que des thèmes d’auteurs de confiance.",
+	"GitHub repository (owner/name)": "Dépôt GitHub (propriétaire/nom)",
+	"Add catalog": "Ajouter un catalogue",
+	"Remove catalog": "Retirer le catalogue",
+	"From {repository}": "Depuis {repository}",
+	"{repository} is unavailable. Try again later.": "{repository} est indisponible. Réessayez plus tard.",
+	"Enter a public GitHub repository as owner/name.": "Saisissez un dépôt GitHub public au format propriétaire/nom."
 }

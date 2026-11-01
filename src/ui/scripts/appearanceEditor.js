@@ -44,6 +44,9 @@ function appearanceEditorClient(createAppearanceDraft) {
 		library: [],
 		applied: null,
 		catalog: [],
+		catalogSources: [],
+		customCatalogs: [],
+		catalogInput: '',
 		catalogStatus: 'idle',
 		catalogGeneration: 0,
 		draft: null,
@@ -432,30 +435,58 @@ function appearanceEditorClient(createAppearanceDraft) {
 		const title = node('h3', 'appearance-section-title', tr('appearanceCommunityThemes'));
 		title.id = 'appearanceCatalogTitle';
 		section.append(title);
-		const available = state.catalog.filter((theme) => !state.library.some((item) => item.packageId === theme.packageId));
-		if (state.catalogStatus === 'loading' || state.catalogStatus === 'idle') {
-			section.append(node('p', 'appearance-note', tr('appearanceCatalogLoading')));
-		} else if (state.catalogStatus === 'error') {
+		const available = [];
+		for (const theme of state.catalog) {
+			if (
+				!state.library.some((item) => item.packageId === theme.packageId) &&
+				!available.some((item) => item.packageId === theme.packageId)
+			) {
+				available.push(theme);
+			}
+		}
+		const unavailable = (text) => {
 			const row = node('div', 'appearance-note appearance-note-row');
-			const status = node('span', '', tr('appearanceCatalogUnavailable'));
+			const status = node('span', '', text);
 			status.setAttribute('role', 'status');
 			row.append(status, button('appearanceCatalogRetry', 'catalog-retry', 'btn btn-secondary btn-sm'));
 			section.append(row);
-		} else if (!available.length) {
-			section.append(node('p', 'appearance-note', tr('appearanceCatalogEmpty')));
+		};
+		const failed = state.catalogSources.filter((source) => source.status === 'error');
+		if (state.catalogStatus === 'loading' || state.catalogStatus === 'idle') {
+			section.append(node('p', 'appearance-note', tr('appearanceCatalogLoading')));
+		} else if (state.catalogStatus === 'error') {
+			unavailable(tr('appearanceCatalogUnavailable'));
+		} else {
+			for (const source of failed) {
+				unavailable(
+					source.official
+						? tr('appearanceCatalogUnavailable')
+						: tr('appearanceCatalogSourceUnavailable', { repository: source.repository }),
+				);
+			}
+			if (!available.length && !failed.length) {
+				section.append(node('p', 'appearance-note', tr('appearanceCatalogEmpty')));
+			}
 		}
 		const cards = node('div', 'appearance-theme-grid');
 		for (const theme of available) {
 			const update = state.library.some((item) => item.manifest.id === theme.id && isApp(item) === (theme.kind === 'app'));
+			const official =
+				!theme.repository || state.catalogSources.some((source) => source.official && source.repository === theme.repository);
 			const card = button('appearanceCatalogSelect', 'catalog-install', 'appearance-theme-card');
 			card.dataset.catalogId = theme.id;
 			card.dataset.package = theme.packageId;
+			card.dataset.repository = official ? '' : theme.repository;
 			card.dataset.write = '';
 			card.replaceChildren();
 			card.setAttribute('aria-pressed', 'false');
 			const text = node('span', 'appearance-theme-text');
 			text.append(node('strong', '', localName(theme.name)));
-			text.append(node('small', '', update ? tr('appearanceCatalogUpdate') : [theme.version, theme.author].filter(Boolean).join(' · ')));
+			const meta = update ? [tr('appearanceCatalogUpdate')] : [theme.version, theme.author];
+			if (!official) {
+				meta.push(tr('appearanceCatalogFrom', { repository: theme.repository }));
+			}
+			text.append(node('small', '', meta.filter(Boolean).join(' · ')));
 			if (theme.description) {
 				card.title = localName(theme.description);
 			}
@@ -465,7 +496,106 @@ function appearanceEditorClient(createAppearanceDraft) {
 			cards.append(wrap);
 		}
 		section.append(cards);
+		if (state.capabilities.write) {
+			section.append(renderCatalogSources());
+		}
 		return section;
+	}
+	/** The owner's own public GitHub catalogs, listed after the official one. */
+	function renderCatalogSources() {
+		const block = node('div', 'appearance-catalog-sources');
+		block.append(
+			node('h4', 'appearance-section-subtitle', tr('appearanceCatalogSources')),
+			node('p', 'appearance-note', tr('appearanceCatalogSourcesHelp')),
+		);
+		const list = node('ul', 'appearance-catalog-source-list');
+		for (const repository of state.customCatalogs) {
+			const item = node('li', 'appearance-catalog-source');
+			const remove = button('appearanceCatalogRemove', 'catalog-remove', 'appearance-catalog-source-remove');
+			remove.dataset.repository = repository;
+			remove.dataset.write = '';
+			remove.textContent = '×';
+			remove.title = tr('appearanceCatalogRemove');
+			remove.setAttribute('aria-label', tr('appearanceCatalogRemove') + ': ' + repository);
+			item.append(node('span', 'appearance-catalog-source-name', repository), remove);
+			list.append(item);
+		}
+		if (state.customCatalogs.length) {
+			block.append(list);
+		}
+		const input = node('input');
+		input.id = 'appearanceCatalogRepository';
+		input.type = 'text';
+		input.placeholder = 'owner/name';
+		input.autocomplete = 'off';
+		input.spellcheck = false;
+		input.value = state.catalogInput;
+		input.dataset.write = '';
+		input.addEventListener('input', () => {
+			state.catalogInput = input.value;
+		});
+		input.addEventListener('keydown', (event) => {
+			if (event.key === 'Enter' && !state.busy) {
+				event.preventDefault();
+				void action('catalog-add', input).catch(errorMessage);
+			}
+		});
+		const row = node('div', 'appearance-catalog-source-add');
+		const add = button('appearanceCatalogAdd', 'catalog-add', 'btn btn-secondary btn-sm');
+		add.dataset.write = '';
+		row.append(field(tr('appearanceCatalogRepository'), input), add);
+		block.append(row);
+		return block;
+	}
+	/** After any install, reload the library and select the new theme for preview. */
+	async function installed(response, nonce, packageId) {
+		const data = await response.json();
+		if (!state.open || nonce !== state.nonce) {
+			return;
+		}
+		await load();
+		const theme = data.theme || state.library.find((item) => item.packageId === packageId);
+		if (theme) {
+			select(state.library.find((item) => item.packageId === theme.packageId) || theme);
+		}
+		message(tr('appearanceInstalled'));
+	}
+	/** Uploads a theme ZIP chosen by the owner; nothing is applied until Apply. */
+	async function importFile(file) {
+		if (!canWrite()) {
+			message(tr(navigator.onLine ? 'appearanceNoBinding' : 'appearanceOffline'), true);
+			return;
+		}
+		if (file.size > 12 * 1024 * 1024) {
+			message(tr('appearanceErrorLimit'), true);
+			return;
+		}
+		const nonce = state.nonce;
+		setBusy(true);
+		try {
+			message(tr('appearanceInstalling'));
+			const response = await api('/api/themes/import', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/zip',
+					'X-File-Name': String(file.name || 'theme.zip').replace(/[^\x20-\x7e]/g, '_'),
+				},
+				body: file,
+			});
+			await installed(response, nonce);
+		} finally {
+			setBusy(false);
+		}
+	}
+	async function saveCatalogs(repositories) {
+		const response = await api('/api/themes/catalogs', {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ repositories }),
+		});
+		const data = await response.json();
+		state.customCatalogs = Array.isArray(data.custom) ? data.custom : [];
+		refreshCatalogSection();
 	}
 	function refreshCatalogSection() {
 		const current = document.getElementById('appearanceCatalog');
@@ -488,6 +618,8 @@ function appearanceEditorClient(createAppearanceDraft) {
 				return;
 			}
 			state.catalog = Array.isArray(data.themes) ? data.themes : [];
+			state.catalogSources = Array.isArray(data.sources) ? data.sources : [];
+			state.customCatalogs = state.catalogSources.filter((source) => !source.official).map((source) => source.repository);
 			state.catalogStatus = 'ready';
 		} catch {
 			if (!state.open || generation !== state.catalogGeneration) {
@@ -571,7 +703,26 @@ function appearanceEditorClient(createAppearanceDraft) {
 			return;
 		}
 		const mine = node('section', 'appearance-section');
-		mine.append(node('h3', 'appearance-section-title', tr('appearanceLibrary')));
+		const head = node('div', 'appearance-section-head');
+		head.append(node('h3', 'appearance-section-title', tr('appearanceLibrary')));
+		if (state.capabilities.write) {
+			const file = node('input');
+			file.id = 'appearanceImportFile';
+			file.type = 'file';
+			file.accept = '.zip,application/zip';
+			file.hidden = true;
+			file.addEventListener('change', () => {
+				const selected = file.files?.[0];
+				file.value = '';
+				if (selected && !state.busy) {
+					void importFile(selected).catch(errorMessage);
+				}
+			});
+			const trigger = button('appearanceImport', 'import-file', 'btn btn-secondary btn-sm');
+			trigger.dataset.write = '';
+			head.append(trigger, file);
+		}
+		mine.append(head);
 		const grid = node('div', 'appearance-theme-grid');
 		for (const theme of visibleThemes()) {
 			grid.append(themeCard(theme));
@@ -665,6 +816,10 @@ function appearanceEditorClient(createAppearanceDraft) {
 				state.trustedPackages.add(state.draft.packageId);
 			}
 		}
+		if (name === 'import-file') {
+			document.getElementById('appearanceImportFile')?.click();
+			return;
+		}
 		if (name === 'delete' && !(await confirm('appearanceDeleteConfirm'))) {
 			return;
 		}
@@ -673,8 +828,28 @@ function appearanceEditorClient(createAppearanceDraft) {
 			if (name === 'apply') {
 				message(tr('appearanceSaving'));
 				await apply();
+			} else if (name === 'catalog-add') {
+				const repository = state.catalogInput.trim();
+				if (!repository) {
+					document.getElementById('appearanceCatalogRepository')?.focus();
+					return;
+				}
+				await saveCatalogs([...state.customCatalogs, repository]);
+				state.catalogInput = '';
+				message('');
+				await loadCatalog();
+			} else if (name === 'catalog-remove') {
+				await saveCatalogs(state.customCatalogs.filter((repository) => repository !== target.dataset.repository));
+				message('');
+				await loadCatalog();
 			} else if (name === 'catalog-install') {
-				const theme = state.catalog.find((item) => item.id === target.dataset.catalogId && item.packageId === target.dataset.package);
+				const repository = target.dataset.repository || '';
+				const theme = state.catalog.find(
+					(item) =>
+						item.id === target.dataset.catalogId &&
+						item.packageId === target.dataset.package &&
+						(!repository || item.repository === repository),
+				);
 				if (!theme) {
 					return;
 				}
@@ -684,18 +859,9 @@ function appearanceEditorClient(createAppearanceDraft) {
 					const response = await api('/api/themes/catalog/install', {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ id: theme.id, packageId: theme.packageId }),
+						body: JSON.stringify({ id: theme.id, packageId: theme.packageId, ...(repository ? { repository } : {}) }),
 					});
-					const data = await response.json();
-					if (!state.open || nonce !== state.nonce) {
-						return;
-					}
-					await load();
-					const installed = data.theme || state.library.find((item) => item.packageId === theme.packageId);
-					if (installed) {
-						select(state.library.find((item) => item.packageId === installed.packageId) || installed);
-					}
-					message(tr('appearanceInstalled'));
+					await installed(response, nonce, theme.packageId);
 				} catch (error) {
 					if (error.code === 'THEME_CATALOG_CHANGED') {
 						void loadCatalog();

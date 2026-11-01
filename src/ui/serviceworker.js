@@ -1326,6 +1326,8 @@ async function handleRuntimeRequest(event, type = event.data?.type) {
     }
     else throw new Error('unknown-runtime-request');
     event.ports?.[0]?.postMessage({...echo,...result});
+    // Each theme switch prepares a new complete snapshot; drop the ones no page or fallback still needs.
+    if (type === 'RUNTIME_STARTED' && result.status === 'ready') await runtimeSnapshots.clean().catch(() => {});
   } catch (error) {
     event.ports?.[0]?.postMessage({...echo,status:'blocked',reason:error.message,compatible:false,resourcesReady:false,recoveryReady:false});
   }

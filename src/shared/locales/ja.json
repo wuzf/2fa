@@ -1853,5 +1853,14 @@
 	"Update theme": "テーマを更新",
 	"Delete theme": "テーマを削除",
 	"Delete this installed theme?": "このインストール済みテーマを削除しますか？",
-	"Discard changes that have not been applied?": "適用していない変更を破棄しますか？"
+	"Discard changes that have not been applied?": "適用していない変更を破棄しますか？",
+	"Import theme": "テーマをインポート",
+	"Theme catalogs": "テーマカタログ",
+	"Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.": "コミュニティカタログと同じ構成の公開 GitHub リポジトリを追加できます。信頼できる作者のテーマだけをインストールしてください。",
+	"GitHub repository (owner/name)": "GitHub リポジトリ（所有者/名前）",
+	"Add catalog": "カタログを追加",
+	"Remove catalog": "カタログを削除",
+	"From {repository}": "{repository} から",
+	"{repository} is unavailable. Try again later.": "{repository} を読み込めません。しばらくしてから再試行してください。",
+	"Enter a public GitHub repository as owner/name.": "公開 GitHub リポジトリを 所有者/名前 の形式で入力してください。"
 }

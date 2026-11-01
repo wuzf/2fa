@@ -120,7 +120,11 @@ describe('simplified theme manager', () => {
 		await emptyHost.window.showAppearanceEditor();
 		expect(emptyHost.document.getElementById('appearancePanel').textContent).toContain(zh.appearanceNoThemeSettings);
 		expect(emptyHost.document.querySelector('[data-appearance-action=reset]')).toBeNull();
-		expect(emptyHost.document.querySelector('#appearancePanel input, #appearancePanel textarea, #appearancePanel select')).toBeNull();
+		expect(
+			emptyHost.document.querySelector(
+				'#appearancePanel input:not(#appearanceImportFile, #appearanceCatalogRepository), #appearancePanel textarea, #appearancePanel select',
+			),
+		).toBeNull();
 	});
 });
 

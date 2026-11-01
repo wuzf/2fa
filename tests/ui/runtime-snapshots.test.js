@@ -17,6 +17,7 @@ async function fixture(options) {
 	return h;
 }
 const chunk = origin + '/theme-packages/' + packageId + '/chunks/history.js';
+const shell = origin + '/';
 
 describe('complete app runtimes on Cache API and IndexedDB transactions', () => {
 	it.each(['/vendor/qrcode-generator-1.4.4.js', '/manifest.json?safeMode=1&appearance=0&lang=en', '/icon-192.png?safeMode=1'])(
@@ -77,9 +78,8 @@ describe('complete app runtimes on Cache API and IndexedDB transactions', () => 
 		await h.prepare();
 		const first = (await h.index.read()).active;
 		h.setCurrent(await inventory({ revision: 2 }));
-		h.intercept(async (address) =>
-			address === chunk ? new Response('corrupt', { headers: { 'Content-Type': 'text/javascript' } }) : null,
-		);
+		// The theme chunk is unchanged and reused; the shell changes with the revision.
+		h.intercept(async (address) => (address === shell ? new Response('corrupt', { headers: { 'Content-Type': 'text/html' } }) : null));
 		expect((await h.prepare()).status).toBe('blocked');
 		expect((await h.index.read()).active).toBe(first);
 		expect(await h.caches.keys()).toEqual([first]);
@@ -292,8 +292,8 @@ describe('complete app runtimes on Cache API and IndexedDB transactions', () => 
 		const cancelled = vi.fn();
 		let opened = false;
 		h.intercept(async (address) =>
-			address === chunk
-				? ((opened = true), new Response(new ReadableStream({ cancel: cancelled }), { headers: { 'Content-Type': 'text/javascript' } }))
+			address === shell
+				? ((opened = true), new Response(new ReadableStream({ cancel: cancelled }), { headers: { 'Content-Type': 'text/html' } }))
 				: null,
 		);
 		const timers = [];
@@ -472,5 +472,38 @@ describe('complete app runtimes on Cache API and IndexedDB transactions', () => 
 		release();
 		expect((await pending).status).toBe('blocked');
 		expect((await h.index.read()).pins['same-tab']).toMatchObject({ tuple: h.current.tuple, permitId: next.permitId });
+	});
+	it('copies unchanged resources from the previous snapshot and downloads only what changed', async () => {
+		const h = await fixture();
+		await h.prepare();
+		const first = (await h.index.read()).active;
+		h.setCurrent(await inventory({ revision: 2 }));
+		h.requests.length = 0;
+		expect((await h.prepare()).status).toBe('ready');
+		const fetched = h.requests.map((address) => new URL(address, origin).pathname + new URL(address, origin).search);
+		// Only the shell differs between the two revisions of this fixture.
+		expect(fetched.filter((path) => !path.startsWith('/api/runtime-manifest?'))).toEqual(['/']);
+		const second = (await h.index.read()).active;
+		expect(second).not.toBe(first);
+		const cache = await h.caches.open(second);
+		for (const resource of h.current.descriptor.resources) {
+			expect(await cache.match(new URL(resource.url, origin).href)).toBeTruthy();
+		}
+		expect(await (await cache.match(chunk)).text()).toBe('export const entries=[]');
+	});
+	it('downloads a resource again when the copy in an earlier snapshot no longer matches its hash', async () => {
+		const h = await fixture();
+		await h.prepare();
+		const first = (await h.index.read()).active;
+		const vendor = origin + '/vendor/jsqr-1.4.0.js';
+		const old = await h.caches.open(first);
+		const headers = (await old.match(vendor)).headers;
+		await old.put(vendor, new Response('jsqx', { headers }));
+		h.setCurrent(await inventory({ revision: 2 }));
+		h.requests.length = 0;
+		expect((await h.prepare()).status).toBe('ready');
+		expect(h.requests.map((address) => new URL(address, origin).href)).toContain(vendor);
+		const cache = await h.caches.open((await h.index.read()).active);
+		expect(await (await cache.match(vendor)).text()).toBe('jsqr');
 	});
 });
