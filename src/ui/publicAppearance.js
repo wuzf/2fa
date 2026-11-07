@@ -257,6 +257,29 @@ function renderPublicAppearanceStyles(appearance, surface, safeMode, normalize) 
 	}
 }
 
+/**
+ * The background an app theme shows in light mode, the same color the page
+ * paints while the theme starts. The installed app takes its navigation bar
+ * and splash colors from the manifest, which holds a single color.
+ */
+export function getPublicAppearanceBackdrop(appearance) {
+	const projection = appearance?.publicAppearance;
+	if (
+		appearance?.kind !== 'app' ||
+		projection?.formatVersion !== 1 ||
+		projection.packageId !== appearance.packageId ||
+		!/^[a-f0-9]{64}$/.test(projection.packageId)
+	) {
+		return null;
+	}
+	try {
+		const light = normalizeHostAppearance(projection.light);
+		return light?.subtle || light?.surface || null;
+	} catch {
+		return null;
+	}
+}
+
 export function getPublicAppearanceStyles(appearance, { surface = 'host', safeMode = false } = {}) {
 	return renderPublicAppearanceStyles(appearance, surface, safeMode, normalizeHostAppearance);
 }

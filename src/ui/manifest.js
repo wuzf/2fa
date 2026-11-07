@@ -1,5 +1,6 @@
 import { getRequestLanguage } from '../utils/i18n.js';
 import { getStandaloneText } from './standalone.js';
+import { getPublicAppearanceBackdrop } from './publicAppearance.js';
 
 /**
  * PWA Manifest 生成模块
@@ -18,6 +19,12 @@ export function createManifest(request, appearance = null) {
 	const t = (key) => getStandaloneText(language, key);
 	const safeMode = url.searchParams.get('safeMode') === '1' || url.searchParams.get('disableCustomCode') === '1';
 	const defaultIcon = (size) => `${baseUrl}/icon-${size}.png${safeMode ? '?safeMode=1' : ''}`;
+	// Android colors an installed app's navigation bar with theme_color, one color
+	// for light and dark mode alike, and only when the installed app updates.
+	// Without it Chrome paints the bar black rather than following the phone's
+	// mode. Under an app theme both the bar and the splash screen use the theme's
+	// light background; the page's theme-color still colors the status bar.
+	const backdrop = safeMode ? null : getPublicAppearanceBackdrop(appearance);
 
 	// 简化的 Manifest 配置，确保最佳兼容性
 	const manifest = {
@@ -27,8 +34,8 @@ export function createManifest(request, appearance = null) {
 		description: t('manifestDescription'),
 		start_url: safeMode ? '/?safeMode=1' : '/',
 		display: 'standalone',
-		background_color: '#ffffff',
-		theme_color: '#2196F3',
+		background_color: backdrop || '#ffffff',
+		theme_color: backdrop || '#2196F3',
 		orientation: 'portrait-primary',
 		scope: '/',
 

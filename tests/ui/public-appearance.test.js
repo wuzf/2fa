@@ -384,3 +384,28 @@ describe('finite public appearance rendering', () => {
 		expect(await getShellConfigId({ appearance: a })).not.toBe(await getShellConfigId({ appearance: b }));
 	});
 });
+
+describe('installed app colors', () => {
+	it('colors the navigation bar and splash with the app theme background, and keeps the defaults otherwise', async () => {
+		const { createManifest } = await import('../../src/ui/manifest.js');
+		const colors = async (appearance, url = 'https://vault.example/manifest.json') => {
+			const data = await createManifest(new Request(url), appearance).json();
+			return [data.theme_color, data.background_color];
+		};
+		const snapshot = await publicThemeSnapshot();
+		expect(await colors(snapshot)).toEqual(['#f4f0e6', '#f4f0e6']);
+		const surfaceOnly = structuredClone(snapshot);
+		delete surfaceOnly.publicAppearance.light.subtle;
+		expect(await colors(surfaceOnly)).toEqual(['#fffdf7', '#fffdf7']);
+		expect(await colors(snapshot, 'https://vault.example/manifest.json?safeMode=1')).toEqual(['#2196F3', '#ffffff']);
+		expect(await colors(null)).toEqual(['#2196F3', '#ffffff']);
+		expect(await colors({ ...snapshot, publicAppearance: undefined })).toEqual(['#2196F3', '#ffffff']);
+		expect(await colors({ ...snapshot, publicAppearance: { ...snapshot.publicAppearance, packageId: 'b'.repeat(64) } })).toEqual([
+			'#2196F3',
+			'#ffffff',
+		]);
+		const invalid = structuredClone(snapshot);
+		invalid.publicAppearance.light.subtle = 'red;}';
+		expect(await colors(invalid)).toEqual(['#2196F3', '#ffffff']);
+	});
+});

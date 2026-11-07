@@ -120,8 +120,59 @@ export function createHostAppearanceManager({ document, normalize }) {
 		serial = 0,
 		signature = '',
 		marker = null,
-		previousMarker = null;
+		previousMarker = null,
+		browserColor = null,
+		colorFrame = 0;
+	// Android paints an installed PWA's status and navigation bars with
+	// theme-color, which the page sets for the default interface. While an app
+	// theme owns the presentation, follow the background it actually painted.
+	function paintedBackground() {
+		const view = document.defaultView;
+		const mounts = [...document.querySelectorAll('#appThemeRoot > [data-app-mount]')].filter((node) => node.style.visibility !== 'hidden');
+		let node = mounts.at(-1);
+		for (let depth = 0; node && depth < 4; depth++, node = node.firstElementChild) {
+			const color = view?.getComputedStyle?.(node).backgroundColor;
+			if (color && !/^(?:transparent|rgba\(.*,\s*0\))$/.test(color)) {
+				return color;
+			}
+		}
+		return null;
+	}
+	function syncBrowserColor(tokens) {
+		const meta = document.querySelector('meta[name="theme-color"]');
+		if (!meta) {
+			return;
+		}
+		if (browserColor === null) {
+			browserColor = meta.getAttribute('content') || '';
+		}
+		const view = document.defaultView;
+		view?.cancelAnimationFrame?.(colorFrame);
+		// The theme may update its own DOM after setting the appearance; read the
+		// color once that frame's styles apply.
+		const apply = () => {
+			colorFrame = 0;
+			const color = paintedBackground() || tokens.subtle || tokens.surface;
+			if (color) {
+				meta.setAttribute('content', color);
+			}
+		};
+		if (view?.requestAnimationFrame) {
+			colorFrame = view.requestAnimationFrame(apply);
+		} else {
+			apply();
+		}
+	}
+	function restoreBrowserColor() {
+		document.defaultView?.cancelAnimationFrame?.(colorFrame);
+		colorFrame = 0;
+		if (browserColor !== null) {
+			document.querySelector('meta[name="theme-color"]')?.setAttribute('content', browserColor);
+			browserColor = null;
+		}
+	}
 	function remove() {
+		restoreBrowserColor();
 		style?.remove();
 		style = null;
 		signature = '';
@@ -139,6 +190,7 @@ export function createHostAppearanceManager({ document, normalize }) {
 			remove();
 			return;
 		}
+		syncBrowserColor(tokens);
 		const next = JSON.stringify(tokens);
 		if (next === signature && style?.isConnected) {
 			return;

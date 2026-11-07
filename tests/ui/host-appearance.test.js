@@ -246,3 +246,58 @@ describe('optional host appearance contract', () => {
 		vm.runInNewContext(getAppThemePreviewCode(), { window: {} });
 	});
 });
+
+describe('browser theme color under an app theme', () => {
+	function colorSetup({ painted = '#000000', hidden = false } = {}) {
+		const window = new Window({ url: 'https://vault.test/' });
+		fixtures.push(window);
+		window.document.write(
+			'<!doctype html><html><head><meta name="theme-color" content="#2196F3"></head><body><main id="appThemeRoot">' +
+				`<div data-app-mount="1"${hidden ? ' style="visibility:hidden"' : ''}><div class="theme"${painted ? ` style="background:${painted}"` : ''}></div></div>` +
+				'</main></body></html>',
+		);
+		const manager = createHostAppearanceManager({ document: window.document, normalize: normalizeHostAppearance });
+		const meta = () => window.document.querySelector('meta[name="theme-color"]').getAttribute('content');
+		const frame = () => new Promise((resolve) => window.requestAnimationFrame(resolve));
+		return { window, manager, meta, frame };
+	}
+
+	it('follows the background the theme painted and restores the page color when the theme leaves', async () => {
+		const h = colorSetup();
+		const scope = h.manager.createScope();
+		scope.setAppearance({ surface: '#1b1b1b', subtle: '#111111' });
+		expect(h.meta()).toBe('#2196F3');
+		scope.activate();
+		await h.frame();
+		expect(['rgb(0, 0, 0)', '#000000']).toContain(h.meta());
+		h.window.document.querySelector('.theme').style.background = '#ffffff';
+		scope.setAppearance({ surface: '#ffffff', subtle: '#fbfbfb' });
+		await h.frame();
+		expect(['rgb(255, 255, 255)', '#ffffff']).toContain(h.meta());
+		scope.dispose();
+		expect(h.meta()).toBe('#2196F3');
+	});
+
+	it('uses the theme palette when no visible mount paints a background', async () => {
+		for (const options of [{ painted: '' }, { hidden: true }]) {
+			const h = colorSetup(options);
+			const scope = h.manager.createScope();
+			scope.setAppearance({ surface: '#ffffff', subtle: '#faf9f5' });
+			scope.activate();
+			await h.frame();
+			expect(h.meta()).toBe('#faf9f5');
+			scope.dispose();
+			expect(h.meta()).toBe('#2196F3');
+		}
+	});
+
+	it('leaves the page color alone for a theme that sets no appearance', async () => {
+		const h = colorSetup();
+		const scope = h.manager.createScope();
+		scope.activate();
+		await h.frame();
+		expect(h.meta()).toBe('#2196F3');
+		scope.dispose();
+		expect(h.meta()).toBe('#2196F3');
+	});
+});
