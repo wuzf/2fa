@@ -33,9 +33,12 @@ export function getAppearanceEditorStyles() {
     #appearanceModal .appearance-theme-item {position:relative;min-width:0;}
     #appearanceModal .appearance-theme-card {width:100%;height:100%;display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:8px;text-align:left;border:1px solid var(--dialog-line,var(--border-primary));border-radius:8px;background:var(--dialog-surface,var(--bg-primary));color:var(--dialog-text,var(--text-primary));font:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s;}
     #appearanceModal .appearance-theme-card:hover {border-color:var(--dialog-stroke,var(--border-secondary));box-shadow:0 2px 6px #0000000f;}
-    #appearanceModal .appearance-theme-card[aria-pressed=true] {border-color:var(--dialog-brand,var(--primary));box-shadow:inset 0 0 0 1px var(--dialog-brand,var(--primary));}
+    #appearanceModal .appearance-theme-card {position:relative;}
+    #appearanceModal .appearance-theme-card[aria-pressed=true] {border-color:var(--dialog-brand,var(--primary));background:var(--dialog-selected,var(--bg-hover));outline:3px solid var(--dialog-brand,var(--primary));outline-offset:1px;}
+    #appearanceModal .appearance-theme-card[aria-pressed=true]::after {content:'✓';position:absolute;top:2px;left:2px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--dialog-brand,var(--primary));color:var(--dialog-surface,#fff);font-size:13px;font-weight:700;line-height:1;box-shadow:0 0 0 2px var(--dialog-surface,#fff);}
     #appearanceModal .appearance-theme-card:disabled {cursor:default;opacity:.6;}
-    #appearanceModal .appearance-theme-swatch {display:flex;align-items:center;justify-content:center;gap:5px;height:44px;border-radius:5px;border:1px solid #8882;}
+    #appearanceModal .appearance-theme-swatch {display:flex;align-items:center;justify-content:center;gap:5px;aspect-ratio:16/10;border-radius:5px;border:1px solid #8882;overflow:hidden;}
+    #appearanceModal .appearance-theme-shot img {display:block;width:100%;height:100%;object-fit:cover;object-position:top left;}
     #appearanceModal .appearance-theme-swatch i {width:12px;height:20px;border-radius:3px;border:1px solid #8883;}
     #appearanceModal .appearance-theme-text {display:flex;flex-direction:column;gap:2px;min-width:0;}
     #appearanceModal .appearance-theme-text strong {font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}

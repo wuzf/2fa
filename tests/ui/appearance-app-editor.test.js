@@ -82,6 +82,46 @@ function previewPort(h) {
 }
 const previewStatus = (h) => h.document.getElementById('appearanceAppPreviewStatus');
 
+describe('theme cards', () => {
+	const card = (h, packageId) => h.document.querySelector('.appearance-theme-card[data-package="' + packageId + '"]');
+
+	it('shows the screenshot a theme ships and marks only the chosen card', async () => {
+		const app = await appTheme({ preview: 'brand.png' });
+		const h = harness();
+		network(h, [getBuiltinTheme('document'), app]);
+		await h.window.showAppearanceEditor();
+		const image = card(h, app.packageId).querySelector('.appearance-theme-shot img');
+		expect(image.getAttribute('src')).toBe('/api/themes/' + app.packageId + '/files/brand.png');
+		expect(image.getAttribute('alt')).toBe('');
+		expect(card(h, app.packageId).getAttribute('aria-pressed')).toBe('false');
+		await chooseTheme(h, app.packageId);
+		const pressed = [...h.document.querySelectorAll('.appearance-theme-card[aria-pressed="true"]')].map((node) => node.dataset.package);
+		expect(pressed).toEqual([app.packageId]);
+	});
+
+	it('falls back to the theme colours when the screenshot cannot load', async () => {
+		const app = await appTheme({ preview: 'brand.png' });
+		app.profile = { publicAppearance: { light: { subtle: '#102030', accent: '#405060', surface: '#708090', text: '#a0b0c0' } } };
+		const h = harness();
+		network(h, [getBuiltinTheme('document'), app]);
+		await h.window.showAppearanceEditor();
+		card(h, app.packageId).querySelector('.appearance-theme-shot img').dispatchEvent(new h.window.Event('error'));
+		expect(card(h, app.packageId).querySelector('.appearance-theme-shot')).toBeNull();
+		const palette = card(h, app.packageId).querySelector('.appearance-theme-swatch');
+		expect(palette.style.backgroundColor).toBe('#102030');
+		expect([...palette.querySelectorAll('i')].map((dot) => dot.style.backgroundColor)).toEqual(['#405060', '#708090', '#a0b0c0']);
+	});
+
+	it('keeps the colour swatch for a theme without a screenshot', async () => {
+		const app = await appTheme();
+		const h = harness();
+		network(h, [getBuiltinTheme('document'), app]);
+		await h.window.showAppearanceEditor();
+		expect(card(h, app.packageId).querySelector('img')).toBeNull();
+		expect(card(h, app.packageId).querySelector('.appearance-theme-swatch')).not.toBeNull();
+	});
+});
+
 describe('app theme configuration', () => {
 	it('keeps the app draft branch executable in the minified emitted editor', async () => {
 		const output = await build({

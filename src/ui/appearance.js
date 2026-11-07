@@ -33,6 +33,7 @@ export function getAppearanceHead(
         let generation = 0;
         let timer = null;
         const presentation = {
+          startedAt,
           active: false,
           slow: false,
           resume() {

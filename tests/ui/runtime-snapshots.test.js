@@ -65,12 +65,27 @@ describe('complete app runtimes on Cache API and IndexedDB transactions', () => 
 		expect(await shell.text()).toBe('NORMAL 1');
 		expect((await h.index.read()).pins.navigation).toMatchObject({ fromFallback: true, cacheName: state.active });
 	});
-	it.each([401, 403, 503, 500])('preserves explicit %i semantics for a pinned immutable file', async (status) => {
+	it.each([200, 401, 403, 503])('serves a pinned theme file from the snapshot without asking the network (%i)', async (status) => {
 		const h = await fixture();
 		await h.prepare();
 		await h.attach();
-		h.setFailure(status);
+		if (status !== 200) {
+			h.setFailure(status);
+		}
+		const before = h.requests.length;
 		const response = await h.manager.fetchResource(new Request(chunk), 'tab');
+		expect(response.status).toBe(200);
+		expect(await response.text()).toBe('export const entries=[]');
+		expect(h.requests.length).toBe(before);
+	});
+	it.each([401, 403, 503, 500])('preserves explicit %i semantics for a pinned host module that needs a login', async (status) => {
+		const h = await fixture();
+		await h.prepare();
+		await h.attach();
+		const state = await h.index.read();
+		const module = state.snapshots[state.active].descriptor.resources.find((resource) => resource.role === 'module');
+		h.setFailure(status);
+		const response = await h.manager.fetchResource(new Request(new URL(module.url, origin).href), 'tab');
 		expect(response.status).toBe(status >= 500 ? 200 : status);
 	});
 	it('retains the prior complete snapshot when one body or hash is wrong', async () => {

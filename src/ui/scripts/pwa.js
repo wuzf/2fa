@@ -94,6 +94,27 @@ export function getPWACode() {
     }
     window.addEventListener('appearance-applied', event => publishAppearanceSnapshot(event.detail));
 
+    // A launch opened the stored page while the server already has a newer one (another device
+    // changed the appearance, or a new version was deployed). Registered before the page finishes
+    // parsing, so the worker's message is never dispatched without a listener.
+    async function reloadStaleShell() {
+      if (typeof requestThemeRuntimeReload !== 'function') {
+        window.location.reload();
+        return;
+      }
+      const waiting = Boolean((await navigator.serviceWorker.getRegistration().catch(() => null))?.waiting);
+      let result = await requestThemeRuntimeReload(waiting ? 'update' : 'theme-change');
+      if (waiting && result?.status !== 'completed' && result?.reason !== 'unsaved-or-pending') {
+        result = await requestThemeRuntimeReload('theme-change');
+      }
+      if (result?.status === 'rejected') window.dispatchEvent(new CustomEvent('appearance-navigation-required'));
+    }
+    if (typeof navigator.serviceWorker?.addEventListener === 'function') {
+      navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data?.type === 'SHELL_STALE' && event.source === navigator.serviceWorker.controller) void reloadStaleShell();
+      });
+    }
+
     let offlineQueueWorker = null;
     let offlineQueueOperations = [];
     let offlineQueueAuthRequired = false;

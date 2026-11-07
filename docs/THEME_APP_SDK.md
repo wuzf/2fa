@@ -224,6 +224,8 @@ await writeFile('release/2fa-theme.zip', zipSync(entries));
 
 `id` 使用 1–64 位字母、数字、下划线或短横线，不能使用 `builtin-` 前缀。`version` 为 SemVer；同系列沿用 id，内容变化得到新不可变 packageId。可选 `minHostVersion` 是最低主机 SemVer，主机在预览和应用时检查；仅设置 `sdkApiVersion:1` 不会跳过主机版本或完整资源检查。
 
+可选 `preview` 是包内一张 PNG、JPEG 或 WebP 截图的路径（必须在 `files` 中），显示在外观编辑器的主题卡片上，按 16:10 从左上角裁切，建议 640×400。截图请用示例数据，不要包含真实账户。没有 `preview` 或图片加载失败时，卡片显示主题 `public-appearance.json` 的配色。
+
 ### PR 上架到社区目录
 
 社区仓库当前暂为私有，公开投稿与应用内目录读取尚未开放。作者可以先独立开发，并通过下节的个人导入方式使用主题；仓库公开后按以下流程上架。

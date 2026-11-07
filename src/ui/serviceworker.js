@@ -321,6 +321,68 @@ self.addEventListener('activate', event => {
   event.waitUntil(runtimeSnapshots ? runtimeSnapshots.recordWorker() : Promise.resolve());
 });
 
+// A fresh launch (not a reload) opens the stored page at once and checks the server copy in
+// the background; a newer one makes the page reload, and reloads stay network-first. Build and
+// shell config (appearance and custom code) identify the page completely.
+const SHELL_IDENTITY = ['X-2FA-Build', 'X-2FA-Shell-Config'];
+const shellIdentity = response => SHELL_IDENTITY.map(name => response?.headers?.get(name) || '');
+const sameShell = (a, b) => {
+  const left = shellIdentity(a), right = shellIdentity(b);
+  return left.every(Boolean) && left.every((value, index) => value === right[index]);
+};
+// The newer page a background check found; a launch soon after uses it instead of the stored one.
+let latestShell = null;
+async function launchFromCache(event, request, url, storedLookup) {
+  const clientId = event.resultingClientId || event.clientId;
+  if (request.mode !== 'navigate' || ['no-cache', 'reload', 'no-store'].includes(request.cache) || url.search || !clientId) return null;
+  if (latestShell && latestShell.href === request.url && Date.now() - latestShell.at < 60000) {
+    const response = latestShell.response.clone();
+    if (runtimeSnapshots) await runtimeSnapshots.pinNavigation(request, clientId, response.clone()).catch(() => {});
+    return response;
+  }
+  const lookup = async (id) => (runtimeSnapshots ? await runtimeSnapshots.matchNavigation(request, id).catch(() => null) : null) ||
+    (snapshotManager ? await snapshotManager.match(request, id).catch(() => null) : null);
+  // A slow store must not hold up the network path, which only starts after this.
+  const quick = promise => Promise.race([promise, new Promise(resolve => setTimeout(() => resolve(null), 300))]);
+  // A stored page that cannot prove its identity (an older format) is never served first.
+  const candidate = await quick(storedLookup);
+  if (!candidate || candidate.status !== 200 || !shellIdentity(candidate).every(Boolean)) return null;
+  const served = await quick(lookup(clientId));
+  if (!served || !sameShell(served, candidate)) return null;
+  event.waitUntil(revalidateShell(request, served, clientId));
+  return served;
+}
+async function revalidateShell(request, served, clientId) {
+  let stale = false;
+  try {
+    const response = await fetch(new Request(request.url, {
+      method: 'GET', headers: request.headers, credentials: request.credentials, mode: 'same-origin',
+      redirect: 'follow', cache: 'no-store', referrer: request.referrer, referrerPolicy: request.referrerPolicy
+    }));
+    // Outages keep the stored page, exactly like an offline launch.
+    if (response.status >= 500) return;
+    if (response.status !== 200 || response.redirected) stale = true;
+    else {
+      const complete = new Response(await response.arrayBuffer(), { status: 200, statusText: response.statusText, headers: response.headers });
+      if (!sameShell(served, complete)) {
+        stale = true;
+        latestShell = { href: request.url, response: complete, at: Date.now() };
+      }
+    }
+  } catch {
+    return;
+  }
+  if (!stale) return;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const client = await Promise.resolve().then(() => self.clients.get(clientId)).catch(() => null);
+    if (client) {
+      client.postMessage({ type: 'SHELL_STALE' });
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+}
+
 /**
  * Service Worker Fetch 事件
  * 实现缓存策略和离线队列
@@ -498,10 +560,12 @@ self.addEventListener('fetch', event => {
     let cacheUpdate = Promise.resolve();
     let cacheLookup = Promise.resolve(null);
     const navigation = (async () => {
-      const startedAt = Date.now();
       // Inspect the offline candidate without delaying the online request.
       // This lookup has no clientId and cannot bind a shell to this navigation.
       cacheLookup = (async () => (runtimeSnapshots ? await runtimeSnapshots.matchNavigation(request).catch(() => null) : null) || await (snapshotManager ? snapshotManager.match(request) : caches.match(request)).catch(() => null))();
+      const launched = await launchFromCache(event, request, url, cacheLookup).catch(() => null);
+      if (launched) return launched;
+      const startedAt = Date.now();
       const controller = new AbortController();
       let timer;
       let decided = false;

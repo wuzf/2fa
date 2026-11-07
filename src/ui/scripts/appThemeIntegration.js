@@ -160,6 +160,11 @@ export function getAppThemeIntegrationCode() {
         status.dataset.phase = navigation ? 'reload-required' : currentPhase;
         status.dataset.reason = displayReason || '';
         status.dataset.quiet = String(quiet);
+        // Like the startup screen, a quiet start shows its indicator only a second after the page began.
+        if (quiet && !status.style.getPropertyValue('--app-theme-loading-delay')) {
+          const startedAt = window.__2FA_APP_STARTUP_PRESENTATION__?.startedAt ?? Date.now();
+          status.style.setProperty('--app-theme-loading-delay', Math.max(0, 1000 - (Date.now() - startedAt)) + 'ms');
+        }
         status.dataset.slow = String(slow);
         status.setAttribute('aria-busy',String(!navigation && loading));
         if (status.hidden) {

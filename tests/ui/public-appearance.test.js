@@ -109,6 +109,38 @@ describe('finite public appearance rendering', () => {
 		}
 	});
 
+	it.each(['light', 'dark'])('paints the theme background behind the startup screen until the theme mounts (%s)', async (mode) => {
+		const snapshot = await publicThemeSnapshot();
+		const window = new Window({ settings: { disableJavaScriptEvaluation: true, disableJavaScriptFileLoading: true } });
+		try {
+			const html = await (await createMainPage({ appearance: snapshot })).text();
+			window.document.write(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ''));
+			const document = window.document;
+			document.documentElement.dataset.theme = mode;
+			const rules = [];
+			const collect = (items) => {
+				for (const rule of items) {
+					if (rule.selectorText) {
+						rules.push(rule);
+					}
+					if (rule.cssRules) {
+						collect(rule.cssRules);
+					}
+				}
+			};
+			collect(document.getElementById('public-appearance-baseline').sheet.cssRules);
+			const backgrounds = () => rules.filter((rule) => rule.style.backgroundImage === 'none' && document.body.matches(rule.selectorText));
+			expect(backgrounds()).toHaveLength(0);
+			document.documentElement.setAttribute('data-app-theme-startup', 'pending');
+			expect(backgrounds()).toHaveLength(1);
+			expect(backgrounds()[0].style.backgroundColor).toBe(mode === 'light' ? '#f4f0e6' : '#111111');
+			document.documentElement.setAttribute('data-app-host-appearance', 'running');
+			expect(backgrounds()).toHaveLength(0);
+		} finally {
+			await window.happyDOM.abort();
+		}
+	});
+
 	it.each(['light', 'dark'])('scopes login background concealment to real official DOM and restores it on close (%s)', async (mode) => {
 		const snapshot = await publicThemeSnapshot();
 		const window = new Window({ settings: { disableJavaScriptEvaluation: true, disableJavaScriptFileLoading: true } });

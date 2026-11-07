@@ -212,6 +212,18 @@ describe('app-theme first-frame presentation', () => {
 		expect(status.textContent).not.toMatch(/正在连接主题运行环境|Connecting the theme runtime/);
 		officialHidden(h);
 	});
+	it('holds the quiet indicator back until a second after the page began', async () => {
+		const h = await runtimePage({ authenticated: false, controlled: true });
+		h.presentationClock.advance(400);
+		h.start();
+		const status = h.document.getElementById('appThemeRuntimeStatus');
+		expect(status.dataset.quiet).toBe('true');
+		expect(status.style.getPropertyValue('--app-theme-loading-delay')).toBe('600ms');
+		h.presentationClock.advance(2000);
+		h.replaceSecretRecords([record], { source: 'local', accessVerified: true });
+		await vi.waitFor(() => expect(h.transport.prepare).toHaveBeenCalledOnce());
+		expect(status.style.getPropertyValue('--app-theme-loading-delay')).toBe('600ms');
+	});
 	it('reveals recovery after the threshold even when body parsing happens later and core never executes', async () => {
 		const h = await htmlPage({ controlled: true, runHead: false });
 		const body = h.document.body.innerHTML;

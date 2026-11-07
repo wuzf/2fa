@@ -48,6 +48,7 @@ function fullAppFixture() {
 		controller: { postMessage: vi.fn() },
 		ready: Promise.resolve(registration),
 		register: vi.fn(async () => registration),
+		getRegistration: vi.fn(async () => registration),
 		addEventListener: on(workerListeners),
 	};
 	const navigator = { serviceWorker, onLine: true };
@@ -99,12 +100,44 @@ function fullAppFixture() {
 		navigator,
 		transport,
 		api,
+		message: async (data, source = serviceWorker.controller) => {
+			await Promise.all((workerListeners.get('message') || []).map((listener) => listener({ data, source })));
+			for (let i = 0; i < 6; i++) {
+				await Promise.resolve();
+			}
+		},
 		emit: async (type) => {
 			const target = type === 'controllerchange' ? workerListeners : listeners;
 			await Promise.all((target.get(type) || []).map((listener) => listener(new CustomEvent(type, { detail: window.__2FA_APPEARANCE__ }))));
 		},
 	};
 }
+
+describe('stored page that the server has replaced', () => {
+	it('reloads when its worker reports a newer server page', async () => {
+		const h = fullAppFixture();
+		await h.message({ type: 'SHELL_STALE' });
+		expect(h.window.location.reload).toHaveBeenCalledOnce();
+	});
+	it('ignores the report from a worker that does not control the page', async () => {
+		const h = fullAppFixture();
+		await h.message({ type: 'SHELL_STALE' }, { postMessage() {} });
+		expect(h.window.location.reload).not.toHaveBeenCalled();
+	});
+	it('reloads through the theme runtime and shows the refresh prompt when that is blocked', async () => {
+		const reload = vi.fn(async () => ({ status: 'rejected', reason: 'unsaved-or-pending' }));
+		vi.stubGlobal('requestThemeRuntimeReload', reload);
+		try {
+			const h = fullAppFixture();
+			await h.message({ type: 'SHELL_STALE' });
+			expect(reload).toHaveBeenCalledWith('theme-change');
+			expect(h.window.location.reload).not.toHaveBeenCalled();
+			expect(h.window.dispatchEvent.mock.calls.map(([event]) => event.type)).toContain('appearance-navigation-required');
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
 
 describe('emitted PWA runtime startup', () => {
 	it('publishes worker preparation progress without treating it as an execution permit', () => {

@@ -239,6 +239,8 @@ function renderPublicAppearanceStyles(appearance, surface, safeMode, normalize) 
 				const backdrop = tokens.subtle || tokens.surface;
 				if (backdrop) {
 					css.push(login + '{background-color:' + backdrop + ';background-image:none}');
+					// Until the app theme mounts, the page already shows the theme's own background.
+					css.push(prefix + '[data-app-theme-startup] body{background-color:' + backdrop + ';background-image:none}');
 				}
 			} else {
 				field('subtle', ['body'], 'background-color');

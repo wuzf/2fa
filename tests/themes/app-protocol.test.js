@@ -82,6 +82,17 @@ describe('app theme package protocol v2', () => {
 		expect(LIMITS.files).toBe(64);
 		expect(LIMITS.cssBytes).toBe(256 * 1024);
 	});
+	it('keeps a packaged preview image and rejects one that is missing or not an image', async () => {
+		const source = await fixture({ 'entry.js': 'export function mount(){}', 'preview.png': png }, { preview: 'preview.png' });
+		const pkg = await load(source.archive);
+		expect(pkg.manifest.preview).toBe('preview.png');
+		expect(() => validateAppManifest({ ...source.manifest, preview: 'missing.png' })).toThrowError('THEME_MISSING_FILE');
+		expect(() => validateAppManifest({ ...source.manifest, preview: 'entry.js' })).toThrowError('THEME_FILE_TYPE');
+		expect(() => validateAppManifest({ ...source.manifest, preview: '../preview.png' })).toThrow();
+		const without = await fixture({ 'entry.js': 'export function mount(){}' });
+		expect(validateAppManifest(without.manifest)).not.toHaveProperty('preview');
+	});
+
 	it('uses the entire canonical normalized manifest and inventory as identity, not insertion order', async () => {
 		const source = await fixture(
 			{ 'entry.js': 'export{}', 'assets/p.png': png },

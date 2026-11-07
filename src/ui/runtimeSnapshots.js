@@ -625,6 +625,12 @@ export function createRuntimeSnapshotManager({
 		if (!cached) {
 			return null;
 		} // Legacy handling or a fresh network read remains with the SW.
+		// Public files named by their content (theme packages, assets, vendor scripts) never change
+		// and need no login, so the copy verified when the snapshot was prepared is served without
+		// a network round trip; each import wave would otherwise wait for one.
+		if (cached.resource.access === 'public' && ['package', 'asset', 'vendor'].includes(cached.resource.role)) {
+			return cached.response;
+		}
 		const path = new URL(request.url).pathname;
 		const boundMutable = cached.pin?.fromFallback && (path === '/manifest.json' || /^\/(icon-|apple-touch-icon)/.test(path));
 		try {

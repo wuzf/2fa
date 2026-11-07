@@ -143,6 +143,7 @@ function settingsSchema(fields) {
 		return out;
 	});
 }
+const PREVIEW_MIME = ['image/png', 'image/jpeg', 'image/webp'];
 export function validateAppManifest(input) {
 	assertAppData(input);
 	appRecord(input, [
@@ -159,6 +160,7 @@ export function validateAppManifest(input) {
 		'settings',
 		'minHostVersion',
 		'capabilities',
+		'preview',
 		'files',
 	]);
 	invariant(input.themeApiVersion === 2 && input.kind === 'app', 'THEME_UNSUPPORTED_VERSION');
@@ -227,6 +229,16 @@ export function validateAppManifest(input) {
 		files,
 	};
 	invariant(manifest.name.length > 0, 'THEME_INVALID_FIELD');
+	if (input.preview !== undefined) {
+		// A screenshot shown on the theme's card in the appearance editor.
+		const preview = appPath(input.preview);
+		invariant(PREVIEW_MIME.includes(appMime(preview)), 'THEME_FILE_TYPE');
+		invariant(
+			files.some((file) => file.path === preview),
+			'THEME_MISSING_FILE',
+		);
+		manifest.preview = preview;
+	}
 	if (input.minHostVersion !== undefined) {
 		invariant(SEMVER.test(input.minHostVersion), 'THEME_INVALID_VERSION');
 		manifest.minHostVersion = input.minHostVersion;

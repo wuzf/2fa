@@ -147,8 +147,13 @@ describe('emitted SW runtime admission and fetch paths', () => {
 		expect((await h.index.read()).pins.forged).toBeUndefined();
 		h.setFailure(503);
 		expect(await (await h.request('/theme-packages/' + packageId + '/chunks/history.js')).text()).toBe('export const entries=[]');
+		// A pinned theme file is named by its content and needs no login: it comes from the snapshot.
 		h.setFailure(403);
-		expect((await h.request('/theme-packages/' + packageId + '/chunks/history.js')).status).toBe(403);
+		const before = h.requests.length;
+		const kept = await h.request('/theme-packages/' + packageId + '/chunks/history.js');
+		expect(kept.status).toBe(200);
+		expect(await kept.text()).toBe('export const entries=[]');
+		expect(h.requests.length).toBe(before);
 	});
 	it('rejects unknown clients before preparing or issuing a permit', async () => {
 		const h = await fixture();

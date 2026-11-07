@@ -46,8 +46,10 @@ export function getAppThemeStatusStyles() {
       font-size: 13px;
       text-align: center;
     }
-    /* Fast starts never flash the indicator; the runtime status continues it without a fade. */
-    #appThemeStartup { animation: app-theme-loading-in 200ms ease-out 300ms both; }
+    /* An ordinary start shows only the theme background (public appearance) until the theme mounts;
+       the indicator appears only when it takes longer. The runtime status continues it without a fade. */
+    #appThemeStartup { animation: app-theme-loading-in 200ms ease-out 1s both; }
+    #appThemeRuntimeStatus[data-quiet="true"] { animation: app-theme-loading-in 200ms ease-out var(--app-theme-loading-delay, 0s) both; }
     #appThemeStartup::before, #appThemeRuntimeStatus[data-quiet="true"]::before {
       content: '';
       flex: 0 0 auto;
@@ -62,7 +64,7 @@ export function getAppThemeStatusStyles() {
     @keyframes app-theme-loading-spin { to { transform: rotate(360deg); } }
     @keyframes app-theme-loading-in { from { opacity: 0; } to { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) {
-      #appThemeStartup, #appThemeStartup::before, #appThemeRuntimeStatus[data-quiet="true"]::before { animation: none; }
+      #appThemeStartup, #appThemeStartup::before, #appThemeRuntimeStatus[data-quiet="true"], #appThemeRuntimeStatus[data-quiet="true"]::before { animation: none; }
     }
     #appThemeStartup .app-theme-status-message,
     #appThemeRuntimeStatus[data-quiet="true"] .app-theme-status-message { flex: 0 0 auto; margin: 0; min-width: 0; letter-spacing: .02em; overflow-wrap: anywhere; }

@@ -364,16 +364,37 @@ function appearanceEditorClient(createAppearanceDraft) {
 		}
 		return localName(theme.manifest.name);
 	}
-	function swatch(manifest) {
+	function swatch(theme) {
 		const palette = node('span', 'appearance-theme-swatch');
-		const tokens = manifest?.tokens?.light || {};
-		palette.style.backgroundColor = tokens['--2fa-background'] || '#f5f5f5';
-		for (const color of [tokens['--2fa-accent'] || '#0f6cbd', tokens['--2fa-surface'] || '#fff', tokens['--2fa-text'] || '#242424']) {
+		const tokens = theme.manifest?.tokens?.light || {};
+		// App themes publish their colours instead of v1 tokens.
+		const colors = theme.profile?.publicAppearance?.light || {};
+		palette.style.backgroundColor = tokens['--2fa-background'] || colors.subtle || '#f5f5f5';
+		for (const color of [
+			tokens['--2fa-accent'] || colors.accent || '#0f6cbd',
+			tokens['--2fa-surface'] || colors.surface || '#fff',
+			tokens['--2fa-text'] || colors.text || '#242424',
+		]) {
 			const dot = node('i');
 			dot.style.backgroundColor = color;
 			palette.append(dot);
 		}
 		return palette;
+	}
+	// The screenshot an installed theme ships; its colours when it has none or the image fails.
+	function thumbnail(theme) {
+		const preview = isApp(theme) && theme.packageId && theme.manifest?.preview;
+		if (!preview) {
+			return swatch(theme);
+		}
+		const frame = node('span', 'appearance-theme-swatch appearance-theme-shot');
+		const image = node('img');
+		image.alt = '';
+		image.decoding = 'async';
+		image.addEventListener('error', () => frame.replaceWith(swatch(theme)), { once: true });
+		image.src = '/api/themes/' + encodeURIComponent(theme.packageId) + '/files/' + preview.split('/').map(encodeURIComponent).join('/');
+		frame.append(image);
+		return frame;
 	}
 	function themeCard(theme) {
 		const wrap = node('div', 'appearance-theme-item');
@@ -388,7 +409,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 			meta.push(tr('appearanceCurrent'));
 		}
 		text.append(node('small', '', meta.filter(Boolean).join(' · ')));
-		card.append(swatch(theme.manifest), text);
+		card.append(thumbnail(theme), text);
 		wrap.append(card);
 		if (!theme.packageId.startsWith('builtin:')) {
 			const remove = button('appearanceDelete', 'delete', 'appearance-theme-delete');
@@ -490,7 +511,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 			if (theme.description) {
 				card.title = localName(theme.description);
 			}
-			card.append(swatch(theme.manifest), text);
+			card.append(swatch(theme), text);
 			const wrap = node('div', 'appearance-theme-item');
 			wrap.append(card);
 			cards.append(wrap);

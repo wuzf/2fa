@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createServiceWorker } from '../../src/ui/serviceworker.js';
 
 const origin = 'https://vault.test';
+// These cases cover the network-first path a reload takes; fresh launches are covered separately.
 function navigation(path = '/', options = {}) {
-	const request = new Request(origin + path, options);
+	const request = new Request(origin + path, { cache: 'no-cache', ...options });
 	// Node forbids constructing browser-created navigation Requests. Preserve
 	// its native URL/headers/policy and expose only the browser event metadata.
 	Object.defineProperties(request, { mode: { value: 'navigate' }, destination: { value: 'document' } });
@@ -12,7 +13,12 @@ function navigation(path = '/', options = {}) {
 async function harness({ fetch = vi.fn(async () => new Response('complete app')), cached = null, legacy = false, pin } = {}) {
 	vi.stubGlobal('__2FA_BUILD_ID__', 'a'.repeat(64));
 	const listeners = new Map();
-	const self = { location: { origin }, addEventListener: (type, listener) => listeners.set(type, listener) };
+	const posted = [];
+	const self = {
+		location: { origin },
+		addEventListener: (type, listener) => listeners.set(type, listener),
+		clients: { get: vi.fn(async (id) => ({ id, postMessage: (message) => posted.push([id, message]) })) },
+	};
 	const pinBodies = [];
 	const runtime = {
 		matchNavigation: vi.fn(async () => cached),
@@ -53,7 +59,7 @@ async function harness({ fetch = vi.fn(async () => new Response('complete app'))
 		});
 		return { response, lifetime };
 	}
-	return { start, fetch, runtime, snapshots, caches, put, pinBodies };
+	return { start, fetch, runtime, snapshots, caches, put, pinBodies, posted };
 }
 afterEach(() => {
 	vi.useRealTimers();
@@ -357,5 +363,90 @@ describe('emitted homepage navigation Request boundary', () => {
 		release();
 		await vi.advanceTimersByTimeAsync(1);
 		expect(pinState).toBe('fallback');
+	});
+});
+
+describe('fresh launch from the stored page', () => {
+	const build = 'a'.repeat(64);
+	const shell = (body, config = 'config-1', hostBuild = build) =>
+		new Response(body, { headers: { 'X-2FA-Build': hostBuild, 'X-2FA-Shell-Config': config } });
+	const launch = () => navigation('/', { cache: 'default' });
+
+	it('opens the stored page without waiting for the server and stays quiet when it is current', async () => {
+		let answer;
+		const fetch = vi.fn(
+			() =>
+				new Promise((resolve) => {
+					answer = resolve;
+				}),
+		);
+		const h = await harness({ fetch, cached: shell('stored') });
+		const operation = h.start(launch());
+		const response = await operation.response;
+		expect(await response.text()).toBe('stored');
+		expect(h.runtime.matchNavigation).toHaveBeenCalledWith(expect.anything(), 'new-client');
+		expect(h.fetch).toHaveBeenCalledOnce();
+		expect(h.fetch.mock.calls[0][0].cache).toBe('no-store');
+		answer(shell('server'));
+		await Promise.all(operation.lifetime);
+		expect(h.posted).toEqual([]);
+		expect(h.runtime.pinNavigation).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['appearance or custom code', () => shell('newer', 'config-2')],
+		['version', () => shell('newer', 'config-1', 'b'.repeat(64))],
+		['login', () => new Response('denied', { status: 401 })],
+		['setup', () => new Response('not found', { status: 404 })],
+	])('asks the page to reload when the server has a different page (%s)', async (_, server) => {
+		const h = await harness({ fetch: vi.fn(async () => server()), cached: shell('stored') });
+		const operation = h.start(launch());
+		expect(await (await operation.response).text()).toBe('stored');
+		await Promise.all(operation.lifetime);
+		expect(h.posted).toEqual([['new-client', { type: 'SHELL_STALE' }]]);
+	});
+
+	it('serves the newer page it found to a launch right after, without another check', async () => {
+		const h = await harness({ fetch: vi.fn(async () => shell('newer', 'config-2')), cached: shell('stored') });
+		const first = h.start(launch());
+		await first.response;
+		await Promise.all(first.lifetime);
+		const second = h.start(launch());
+		expect(await (await second.response).text()).toBe('newer');
+		expect(h.runtime.pinNavigation).toHaveBeenCalledOnce();
+		expect(await h.pinBodies[0].text()).toBe('newer');
+		expect(h.fetch).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		['an outage', () => Promise.resolve(new Response('down', { status: 503 }))],
+		['no network', () => Promise.reject(new TypeError('offline'))],
+	])('keeps the stored page quietly during %s', async (_, server) => {
+		const h = await harness({ fetch: vi.fn(server), cached: shell('stored') });
+		const operation = h.start(launch());
+		expect(await (await operation.response).text()).toBe('stored');
+		await Promise.all(operation.lifetime);
+		expect(h.posted).toEqual([]);
+	});
+
+	it('goes to the network first for a stored page without its identity', async () => {
+		const h = await harness({ cached: new Response('legacy stored') });
+		const operation = h.start(launch());
+		expect(await (await operation.response).text()).toBe('complete app');
+		await Promise.all(operation.lifetime);
+		expect(h.posted).toEqual([]);
+	});
+
+	it.each(['no-cache', 'reload'])('goes to the network first for a reload (%s)', async (cache) => {
+		const h = await harness({ cached: shell('stored') });
+		const operation = h.start(navigation('/', { cache }));
+		expect(await (await operation.response).text()).toBe('complete app');
+		expect(h.runtime.pinNavigation).toHaveBeenCalledOnce();
+	});
+
+	it('goes to the network first for a page with a query', async () => {
+		const h = await harness({ cached: shell('stored') });
+		const operation = h.start(navigation('/?safeMode=1', { cache: 'default' }));
+		expect(await (await operation.response).text()).toBe('complete app');
 	});
 });
