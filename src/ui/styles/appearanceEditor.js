@@ -64,8 +64,10 @@ export function getAppearanceEditorStyles() {
     #appearanceModal .appearance-segment {border:0;background:transparent;padding:5px 12px;border-radius:5px;font:inherit;font-size:12px;color:var(--dialog-muted,var(--text-secondary));cursor:pointer;}
     #appearanceModal .appearance-segment[aria-pressed=true] {background:var(--dialog-selected,var(--bg-hover));color:var(--dialog-text,var(--text-primary));font-weight:600;}
     #appearanceModal .appearance-scene {margin-left:auto;min-height:30px;padding:4px 8px;border:1px solid var(--dialog-line,var(--border-primary));border-radius:6px;background:var(--dialog-surface,var(--bg-primary));color:var(--dialog-text,var(--text-primary));font:inherit;font-size:12px;}
-    #appearanceModal .appearance-preview-viewport {flex:1;min-height:180px;overflow:hidden;background:var(--dialog-surface,var(--bg-primary));border:1px solid var(--dialog-line,var(--border-primary));border-radius:8px;}
-    #appearancePreview {display:block;border:0;transform-origin:top left;background:white;max-width:none;}
+    #appearanceModal .appearance-preview-viewport {position:relative;flex:1;min-height:180px;overflow:hidden;background:var(--dialog-surface,var(--bg-primary));border:1px solid var(--dialog-line,var(--border-primary));border-radius:8px;}
+    /* Out of flow: the scaled frame keeps its unscaled layout height, which would stretch the viewport it is sized from. */
+    #appearancePreview {position:absolute;top:0;left:0;display:block;border:0;transform-origin:top left;background:white;max-width:none;}
+    #appearanceAppPreview {position:absolute;inset:0;overflow:hidden;}
     #appearanceAppPreview,#appearanceAppPreview iframe {border:0;max-width:none;}
     #appearanceModal .appearance-preview-status {display:flex;align-items:center;gap:8px;margin:0;font-size:12px;color:var(--dialog-muted,var(--text-secondary));}
     #appearanceModal .appearance-footer {display:flex;align-items:center;gap:12px;padding:12px 24px;border-top:1px solid var(--dialog-line,var(--border-primary));flex-shrink:0;}
@@ -74,6 +76,6 @@ export function getAppearanceEditorStyles() {
     #appearanceModal .appearance-footer-actions {display:flex;gap:8px;margin-left:auto;}
     .appearance-safe-banner {position:relative;padding:12px 20px;text-align:center;background:#fff4ce;color:#5c4100;font:14px/1.5 system-ui;z-index:100;}
     .appearance-safe-banner button {margin-left:12px;padding:5px 12px;cursor:pointer;}
-    @media(max-width:760px){#appearanceModal .appearance-modal-content{width:100vw;height:100dvh;max-height:100dvh;border-radius:0;}#appearanceModal .modal-header{padding:14px 16px;}#appearanceModal .appearance-workspace{display:flex;flex-direction:column;overflow:auto;}#appearanceModal .appearance-panel{border-right:0;overflow:visible;padding:16px;flex-shrink:0;}#appearanceModal .appearance-preview-section{min-height:420px;flex-shrink:0;}#appearanceModal .appearance-footer{padding:10px 12px;flex-wrap:wrap;}#appearanceModal .appearance-footer-actions{width:100%;}#appearanceModal .appearance-footer-actions .btn{flex:1;min-height:40px;}#appearanceModal .appearance-field :is(input,select){font-size:16px;}#appearanceModal .appearance-theme-delete{opacity:1;}}
+    @media(max-width:760px){#appearanceModal .appearance-modal-content{width:100vw;height:100dvh;max-height:100dvh;border-radius:0;}#appearanceModal .modal-header{padding:14px 16px;}#appearanceModal .appearance-workspace{display:flex;flex-direction:column;overflow:auto;}#appearanceModal .appearance-panel{border-right:0;overflow:visible;padding:16px;flex-shrink:0;}#appearanceModal .appearance-preview-section{min-height:420px;flex-shrink:0;}#appearanceModal .appearance-preview-viewport{flex:none;height:min(70dvh,640px);}#appearanceModal .appearance-footer{padding:10px 12px;flex-wrap:wrap;}#appearanceModal .appearance-footer-actions{width:100%;}#appearanceModal .appearance-footer-actions .btn{flex:1;min-height:40px;}#appearanceModal .appearance-field :is(input,select){font-size:16px;}#appearanceModal .appearance-theme-delete{opacity:1;}}
   `;
 }

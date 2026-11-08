@@ -18,6 +18,8 @@ export function getHostPartStyles() {
     .modal .dialog-migration-qr {width:250px;height:250px;border-radius:var(--host-control-radius,8px);}
     .modal .decode-scanner-error {text-align:center;margin:10px 0;padding:10px;background:var(--danger-light);border:1px solid var(--border-error);border-radius:var(--host-control-radius,6px);color:var(--danger-dark);}
     :root[data-app-host-appearance] .modal .modal-content {padding:20px;}
+    /* Full-bleed action rows reach the edges with negative margins; they must match the 20px padding or the dialog scrolls. */
+    :root[data-app-host-appearance] .modal :is(.form-actions,.modal-actions,.login-modal-actions,.confirm-dialog-actions) {margin:20px -20px -20px;padding-left:20px;padding-right:20px;}
     :root[data-app-host-appearance] .modal .modal-header {margin-bottom:16px;gap:12px;}
     :root[data-app-host-appearance] .modal .close-btn {min-width:44px;width:44px;min-height:44px;}
     :root[data-app-host-appearance] .modal :is(.form-group,.tool-form-group) {margin-bottom:16px;}

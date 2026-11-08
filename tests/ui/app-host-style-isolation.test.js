@@ -210,6 +210,35 @@ describe('application theme host CSS boundary', () => {
 		expect(window.getComputedStyle(status).position).toBe('relative');
 		expect(window.getComputedStyle(status).transform).toBe('none');
 	});
+	it.each([390, 1440])('keeps dialog action rows inside the app-theme dialog padding at %ipx', (width) => {
+		// App themes give dialogs 20px of padding; action rows that still reached
+		// out by 24px made every dialog with buttons scroll by 4px.
+		const window = documentWithStyles(css(), width);
+		window.document.documentElement.setAttribute('data-app-host-appearance', '');
+		window.document.body.innerHTML =
+			'<div class="modal confirm-dialog-modal show"><div class="modal-content confirm-dialog-content"><div class="confirm-dialog-actions"></div></div><div class="modal-content"><div class="form-actions"></div></div></div>';
+		for (const actions of window.document.querySelectorAll('.confirm-dialog-actions, .form-actions')) {
+			const padding = window.getComputedStyle(actions.parentElement).paddingRight;
+			const style = window.getComputedStyle(actions);
+			expect(padding).toBe('20px');
+			expect(style.marginRight).toBe('-20px');
+			expect(style.marginLeft).toBe('-20px');
+			expect(style.marginBottom).toBe('-20px');
+		}
+	});
+	it.each([390, 1440])('keeps the scaled preview frames out of the viewport flow at %ipx', (width) => {
+		// The frames are sized from the viewport height; in flow, their unscaled
+		// height stretched the viewport and every resize made the preview taller.
+		const window = documentWithStyles(css(), width);
+		window.document.body.innerHTML =
+			'<div id="appearanceModal"><section class="appearance-preview-section"><div class="appearance-preview-viewport"><iframe id="appearancePreview"></iframe><div id="appearanceAppPreview"><iframe></iframe></div></div></section></div>';
+		const style = (selector) => window.getComputedStyle(window.document.querySelector(selector));
+		expect(style('.appearance-preview-viewport').position).toBe('relative');
+		expect(style('#appearancePreview').position).toBe('absolute');
+		expect(style('#appearanceAppPreview').position).toBe('absolute');
+		expect(style('#appearanceAppPreview').overflow).toBe('hidden');
+		expect(style('.appearance-preview-viewport').flexGrow).toBe(width < 760 ? '0' : '1');
+	});
 	it.each([320, 390, 768, 1440])('keeps startup actions content-sized and neutral at %ipx', async (width) => {
 		const window = documentWithStyles(css(), width);
 		const document = window.document;
