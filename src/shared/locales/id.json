@@ -1747,6 +1747,8 @@
 	"Appearance": "Tampilan",
 	"Apply appearance": "Terapkan tampilan",
 	"Applying…": "Menerapkan…",
+	"Downloading the theme…": "Mengunduh tema…",
+	"The theme could not be fully downloaded, so it was not applied. Check the connection and try again.": "Tema tidak dapat diunduh sepenuhnya, jadi tidak diterapkan. Periksa koneksi lalu coba lagi.",
 	"Appearance applied": "Tampilan diterapkan",
 	"Theme installed. Preview it before applying.": "Tema terpasang. Pratinjau sebelum menerapkannya.",
 	"Reset theme settings": "Atur ulang pengaturan tema",

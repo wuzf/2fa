@@ -25,6 +25,7 @@ function harness() {
 		document: window.document,
 		navigator: { onLine: true },
 		CustomEvent: window.CustomEvent,
+		sessionStorage: window.sessionStorage,
 	});
 	vm.runInContext(getAppearanceClientCode(), context);
 	return {
@@ -97,5 +98,43 @@ describe('core appearance synchronization', () => {
 		window.__2FA_BUILD_ID__ = '';
 		window.dispatchEvent(new window.Event('focus'));
 		expect(window.authenticatedFetch).not.toHaveBeenCalled();
+	});
+});
+
+describe('catching up after a page opened with the previous theme', () => {
+	function stale() {
+		const h = harness();
+		// Another package was saved: the page cannot switch in place.
+		h.window.applyAppearance = vi.fn(() => ({ status: 'reload-required' }));
+		h.window.reloadForSavedAppearance = vi.fn(async () => ({ status: 'completed' }));
+		return h;
+	}
+	it('reloads once on load when the server already has another theme', async () => {
+		const { window, resolve } = stale();
+		window.dispatchEvent(new window.Event('load'));
+		await resolve(0, 2);
+		expect(window.reloadForSavedAppearance).toHaveBeenCalledOnce();
+		expect(window.reloadForSavedAppearance).toHaveBeenCalledWith();
+	});
+	it('does not reload again for the same saved revision', async () => {
+		const { window, resolve } = stale();
+		window.sessionStorage.setItem('2fa-appearance-catch-up:2', '1');
+		window.dispatchEvent(new window.Event('load'));
+		await resolve(0, 2);
+		expect(window.applyAppearance).toHaveBeenCalledOnce();
+		expect(window.reloadForSavedAppearance).not.toHaveBeenCalled();
+	});
+	it('leaves focus checks to the reload notice', async () => {
+		const { window, resolve } = stale();
+		window.dispatchEvent(new window.Event('focus'));
+		await resolve(0, 2);
+		expect(window.reloadForSavedAppearance).not.toHaveBeenCalled();
+	});
+	it('does nothing when the page is current', async () => {
+		const { window, resolve } = stale();
+		window.dispatchEvent(new window.Event('load'));
+		await resolve(0, 1);
+		expect(window.applyAppearance).not.toHaveBeenCalled();
+		expect(window.reloadForSavedAppearance).not.toHaveBeenCalled();
 	});
 });

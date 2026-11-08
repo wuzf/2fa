@@ -1747,6 +1747,8 @@
 	"Appearance": "Görünüm",
 	"Apply appearance": "Görünümü uygula",
 	"Applying…": "Uygulanıyor…",
+	"Downloading the theme…": "Tema indiriliyor…",
+	"The theme could not be fully downloaded, so it was not applied. Check the connection and try again.": "Tema tamamen indirilemediği için uygulanmadı. Bağlantıyı kontrol edip yeniden deneyin.",
 	"Appearance applied": "Görünüm uygulandı",
 	"Theme installed. Preview it before applying.": "Tema yüklendi. Uygulamadan önce önizleyin.",
 	"Reset theme settings": "Tema ayarlarını sıfırla",

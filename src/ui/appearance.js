@@ -101,7 +101,7 @@ export function getAppearanceClientCode() {
     // Sync is part of the core shell: opening the lazy editor is never required.
     let appearanceSyncGeneration = 0;
     window.addEventListener('appearance-applied', () => { appearanceSyncGeneration++; });
-    async function checkAppearanceRevision() {
+    async function checkAppearanceRevision(event) {
       if (window.__2FA_SAFE_MODE__ || !window.__2FA_BUILD_ID__ || navigator.onLine === false) return;
       const generation = ++appearanceSyncGeneration;
       const read = window.authenticatedFetch || (typeof authenticatedFetch === 'function' ? authenticatedFetch : null);
@@ -117,11 +117,20 @@ export function getAppearanceClientCode() {
           window.dispatchEvent(new CustomEvent('appearance-updated-elsewhere', { detail: { revision: data.revision } }));
           return;
         }
-        window.applyAppearance?.(data.active);
+        const result = window.applyAppearance?.(data.active);
+        // A page opened right after a theme change can still be the stored one with the previous
+        // theme (a slow network); it reloads once for each saved revision instead of asking.
+        if (event?.type === 'load' && result?.status === 'reload-required' && typeof window.reloadForSavedAppearance === 'function') {
+          const key = '2fa-appearance-catch-up:' + data.revision;
+          if (sessionStorage.getItem(key)) return;
+          sessionStorage.setItem(key, '1');
+          await window.reloadForSavedAppearance();
+        }
       } catch {
         // An offline or expired session keeps its last complete appearance.
       }
     }
+    window.addEventListener('load', checkAppearanceRevision);
     window.addEventListener('focus', checkAppearanceRevision);
     window.addEventListener('online', checkAppearanceRevision);
     document.addEventListener('DOMContentLoaded', () => updateAppearanceBranding());

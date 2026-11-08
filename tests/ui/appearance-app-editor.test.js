@@ -278,6 +278,45 @@ describe('app theme configuration', () => {
 		expect(h.window.requestAppearanceRuntimeReload.mock.calls.map(([reason]) => reason)).toEqual(['update']);
 	});
 
+	it('closes the settings dialog it was opened from so the refresh is not blocked', async () => {
+		const app = await appTheme();
+		const h = harness();
+		network(h, [getBuiltinTheme('document'), app]);
+		const settings = h.document.createElement('div');
+		settings.id = 'settingsModal';
+		h.document.body.append(settings);
+		h.window.showModal('settingsModal');
+		h.window.applyAppearance = vi.fn();
+		// Like the host guard: any open dialog blocks the reload.
+		h.window.requestAppearanceRuntimeReload = vi.fn(async () =>
+			settings.style.display === 'block'
+				? { status: 'rejected', reason: 'unsaved-or-pending' }
+				: { status: 'completed', reason: 'reload-requested' },
+		);
+		await h.window.showAppearanceEditor();
+		await chooseTheme(h, app.packageId);
+		await act(h, 'apply');
+		expect(h.window.requestAppearanceRuntimeReload).toHaveBeenCalledOnce();
+		expect(settings.style.display).toBe('none');
+	});
+
+	it('keeps a settings dialog with unsaved changes open', async () => {
+		const app = await appTheme();
+		const h = harness();
+		network(h, [getBuiltinTheme('document'), app]);
+		const settings = h.document.createElement('div');
+		settings.id = 'settingsModal';
+		h.document.body.append(settings);
+		h.window.showModal('settingsModal');
+		h.window.hasUnsavedSettingsChanges = () => true;
+		h.window.applyAppearance = vi.fn();
+		h.window.requestAppearanceRuntimeReload = vi.fn(async () => ({ status: 'completed' }));
+		await h.window.showAppearanceEditor();
+		await chooseTheme(h, app.packageId);
+		await act(h, 'apply');
+		expect(settings.style.display).toBe('block');
+	});
+
 	it('falls back to a plain refresh when the waiting update cannot be taken', async () => {
 		const app = await appTheme();
 		const h = harness();
@@ -628,4 +667,102 @@ it('runs the editor through the real capability client and server, revoking a la
 	invalidateSession();
 	expect(h.document.querySelector('#appearanceAppPreview iframe')).toBeNull();
 	expect(control(h, 'apply').disabled).toBe(true);
+});
+
+describe('switching only to a theme that is ready', () => {
+	async function switching(prepare, { failRestore = false } = {}) {
+		const app = await appTheme();
+		const h = harness();
+		network(h, [getBuiltinTheme('document'), app], {
+			extra: async (url, options) => {
+				if (failRestore && url === '/api/appearance' && options.method === 'PUT' && JSON.parse(options.body).packageId !== app.packageId) {
+					return json({ error: 'Unavailable' }, 503);
+				}
+				return null;
+			},
+		});
+		h.window.applyAppearance = vi.fn();
+		h.window.prepareAppearanceRuntime = vi.fn(prepare);
+		h.window.requestAppearanceRuntimeReload = vi.fn(async () => ({ status: 'completed' }));
+		await h.window.showAppearanceEditor();
+		await chooseTheme(h, app.packageId);
+		return { h, app };
+	}
+	const cover = (h) => h.document.getElementById('appearanceApplying');
+
+	it('reloads once the saved theme is downloaded and checked', async () => {
+		const { h, app } = await switching(async () => ({ status: 'ready' }));
+		await act(h, 'apply');
+		expect(h.window.prepareAppearanceRuntime).toHaveBeenCalledOnce();
+		expect(h.window.prepareAppearanceRuntime.mock.calls[0][0].packageId).toBe(app.packageId);
+		expect(putBodies(h)).toHaveLength(1);
+		expect(h.window.requestAppearanceRuntimeReload).toHaveBeenCalledWith('theme-change');
+	});
+
+	it('shows the download while the theme is prepared', async () => {
+		let finish;
+		const { h } = await switching(() => new Promise((resolve) => (finish = resolve)));
+		const applying = act(h, 'apply');
+		await vi.waitFor(() => expect(h.window.prepareAppearanceRuntime).toHaveBeenCalled());
+		expect(cover(h).hidden).toBe(false);
+		expect(cover(h).textContent).toBe(zh.appearanceDownloading);
+		expect(h.window.requestAppearanceRuntimeReload).not.toHaveBeenCalled();
+		finish({ status: 'ready' });
+		await applying;
+		await vi.waitFor(() => expect(h.window.requestAppearanceRuntimeReload).toHaveBeenCalled());
+	});
+
+	it('saves the running theme back and stays when the theme cannot be prepared', async () => {
+		const { h, app } = await switching(async () => ({ status: 'blocked', reason: 'resource-integrity' }));
+		const running = h.window.__2FA_APPEARANCE__;
+		await act(h, 'apply');
+		await vi.waitFor(() => expect(status(h).textContent).toContain(zh.appearanceNotReady));
+		const [, restore] = putBodies(h);
+		expect(restore.packageId).toBe(running.packageId);
+		expect(restore.settings).toEqual(running.settings);
+		expect(restore.expectedRevision).toBe(2);
+		expect(h.window.__2FA_APPEARANCE__.packageId).toBe(running.packageId);
+		expect(h.window.requestAppearanceRuntimeReload).not.toHaveBeenCalled();
+		expect(cover(h).hidden).toBe(true);
+		expect(control(h, 'refresh-runtime')).toBeNull();
+		// The chosen theme stays selected for another try.
+		const pressed = [...h.document.querySelectorAll('.appearance-theme-card[aria-pressed="true"]')].map((node) => node.dataset.package);
+		expect(pressed).toEqual([app.packageId]);
+	});
+
+	it('gives up after a minute and saves the running theme back', async () => {
+		const { h } = await switching(() => new Promise(() => {}));
+		const running = h.window.__2FA_APPEARANCE__;
+		vi.useFakeTimers({ toFake: ['setTimeout'] });
+		try {
+			await act(h, 'apply');
+			// vi.waitFor would advance the fake clock itself.
+			await vi.advanceTimersByTimeAsync(0);
+			expect(h.window.prepareAppearanceRuntime).toHaveBeenCalled();
+			await vi.advanceTimersByTimeAsync(59999);
+			expect(putBodies(h)).toHaveLength(1);
+			await vi.advanceTimersByTimeAsync(1);
+		} finally {
+			vi.useRealTimers();
+		}
+		await vi.waitFor(() => expect(status(h).textContent).toContain(zh.appearanceNotReady));
+		expect(putBodies(h)[1].packageId).toBe(running.packageId);
+		expect(h.window.requestAppearanceRuntimeReload).not.toHaveBeenCalled();
+	});
+
+	it('keeps the manual refresh when the running theme cannot be saved back', async () => {
+		const { h } = await switching(async () => ({ status: 'blocked' }), { failRestore: true });
+		await act(h, 'apply');
+		await vi.waitFor(() => expect(control(h, 'refresh-runtime')).not.toBeNull());
+		expect(status(h).dataset.error).toBe('true');
+		expect(h.window.requestAppearanceRuntimeReload).not.toHaveBeenCalled();
+		expect(cover(h).hidden).toBe(true);
+	});
+
+	it('switches as before where nothing can be prepared', async () => {
+		const { h } = await switching(async () => null);
+		await act(h, 'apply');
+		expect(putBodies(h)).toHaveLength(1);
+		expect(h.window.requestAppearanceRuntimeReload).toHaveBeenCalledWith('theme-change');
+	});
 });

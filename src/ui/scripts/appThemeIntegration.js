@@ -57,8 +57,26 @@ export function getAppThemeIntegrationCode() {
       const bytes = new TextEncoder().encode(JSON.stringify(canonical({appearance,adminCodeId:window.__2FA_ADMIN_CODE_ID__,safeMode:false})));
       return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(value=>value.toString(16).padStart(2,'0')).join('');
     };
+    // Each app theme keeps its pages under its own #/theme/<name>/ route, which no other
+    // theme reads. A theme change reloads the page with the previous theme's route still in
+    // the address bar, so this tab remembers which theme the route belongs to and drops it
+    // once another theme (or the default view) loads. Safe mode leaves both untouched.
+    function forgetPreviousThemeRoute() {
+      if (window.__2FA_SAFE_MODE__) return;
+      const appearance = window.__2FA_APPEARANCE__;
+      const owner = isAppThemeSnapshot(appearance) ? 'app:' + String(appearance.manifest?.id || '') : 'official';
+      let previous = null;
+      try {
+        previous = sessionStorage.getItem('2fa-theme-route-owner');
+        sessionStorage.setItem('2fa-theme-route-owner', owner);
+      } catch { return; }
+      if (previous && previous !== owner && location.hash.startsWith('#/theme/')) {
+        history.replaceState(history.state, '', location.pathname + location.search);
+      }
+    }
     function initializeAppThemeIntegration() {
       if (activeAppThemeHost) return;
+      forgetPreviousThemeRoute();
       const presentation = document.documentElement;
       let runtime;
       const renderOfficialPresentation = () => {
@@ -191,7 +209,7 @@ export function getAppThemeIntegrationCode() {
           actions.append(button);return button;
         };
         if(navigation) action('reload','restoreRefresh',async()=>{
-          const result=await runtime.sdk.lifecycle.requestReload('theme-change');if(result.status==='rejected')showCenterToast('⚠️',t('moduleRefreshBlocked'));
+          const result=await reloadForSavedAppearance();if(result?.status==='rejected')showCenterToast('⚠️',t('moduleRefreshBlocked'));
         });
         else if(currentPhase==='login-required') action('login','loginSubmitBtn',()=>runtime.sdk.host.open({kind:'login'}));
         else if(failed){const retry=action('retry','retry',async event=>{
@@ -322,7 +340,7 @@ export function getAppThemeIntegrationCode() {
       status.replaceChildren();
       const message=document.createElement('span');message.textContent=t('appearancePublishedReload');
       const reload=document.createElement('button');reload.type='button';reload.className='btn btn-secondary';reload.textContent=t('restoreRefresh');
-      reload.onclick=async()=>{const result=await getThemeRuntime().sdk.lifecycle.requestReload('theme-change');if(result.status==='rejected')showCenterToast('⚠️',t('moduleRefreshBlocked'));};
+      reload.onclick=async()=>{const result=await reloadForSavedAppearance();if(result?.status==='rejected')showCenterToast('⚠️',t('moduleRefreshBlocked'));};
       status.append(message,reload);
     });
   `;

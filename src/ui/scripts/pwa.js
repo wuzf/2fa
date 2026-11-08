@@ -17,13 +17,21 @@ export function getPWACode() {
         (typeof secretDialogSubmission !== 'undefined' && secretDialogSubmission) || window.__2FA_REFRESH_BLOCKED__?.() ||
         (typeof customCodeReloadBlocked === 'function' && customCodeReloadBlocked()))
     });
-    function getCurrentRuntimeTuple(mode = null) {
-      const appearance = window.__2FA_APPEARANCE__;
+    function getCurrentRuntimeTuple(mode = null, appearance = window.__2FA_APPEARANCE__) {
       const safe = new URLSearchParams(window.location.search).get('safeMode') === '1' || new URLSearchParams(window.location.search).get('disableCustomCode') === '1';
       const selectedMode = mode || (safe ? 'safe' : appearance?.kind === 'app' || appearance?.manifest?.themeApiVersion === 2 ? 'app' : 'official');
       return {hostBuild:window.__2FA_BUILD_ID__ || '',sdkApiVersion:1,packageId:selectedMode==='app'?appearance.packageId:null,
         appearanceRevision:selectedMode==='safe'?0:appearance?.revision || 0,mode:selectedMode};
     }
+    // Downloads and checks everything a just-saved appearance needs before the page reloads into it.
+    // A complete preparation becomes the stored page, so even a reload on a slow network opens it.
+    // Null without a worker: nothing can be prepared, and the switch goes ahead as before.
+    window.prepareAppearanceRuntime = async appearance => {
+      if (!navigator.serviceWorker?.controller || typeof window.computeAppShellConfigId !== 'function' ||
+          !/^[a-f0-9]{64}$/.test(window.__2FA_BUILD_ID__ || '')) return null;
+      const expectedShellConfigId = await window.computeAppShellConfigId(appearance);
+      return window.twofaRuntimeTransport.prepare(getCurrentRuntimeTuple(null, appearance), {expectedShellConfigId});
+    };
     async function requestRuntimeUpdate() {
       return window.twofaRuntimeTransport.requestUpdate();
     }
@@ -98,15 +106,11 @@ export function getPWACode() {
     // changed the appearance, or a new version was deployed). Registered before the page finishes
     // parsing, so the worker's message is never dispatched without a listener.
     async function reloadStaleShell() {
-      if (typeof requestThemeRuntimeReload !== 'function') {
+      if (typeof reloadForSavedAppearance !== 'function') {
         window.location.reload();
         return;
       }
-      const waiting = Boolean((await navigator.serviceWorker.getRegistration().catch(() => null))?.waiting);
-      let result = await requestThemeRuntimeReload(waiting ? 'update' : 'theme-change');
-      if (waiting && result?.status !== 'completed' && result?.reason !== 'unsaved-or-pending') {
-        result = await requestThemeRuntimeReload('theme-change');
-      }
+      const result = await reloadForSavedAppearance();
       if (result?.status === 'rejected') window.dispatchEvent(new CustomEvent('appearance-navigation-required'));
     }
     if (typeof navigator.serviceWorker?.addEventListener === 'function') {

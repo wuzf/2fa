@@ -1747,6 +1747,8 @@
 	"Appearance": "모양",
 	"Apply appearance": "모양 적용",
 	"Applying…": "적용 중…",
+	"Downloading the theme…": "테마를 다운로드하는 중…",
+	"The theme could not be fully downloaded, so it was not applied. Check the connection and try again.": "테마를 모두 다운로드하지 못해 적용하지 않았습니다. 연결을 확인한 후 다시 시도하세요.",
 	"Appearance applied": "모양이 적용되었습니다",
 	"Theme installed. Preview it before applying.": "테마가 설치되었습니다. 적용 전에 미리 확인하세요.",
 	"Reset theme settings": "테마 설정 초기화",

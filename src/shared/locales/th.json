@@ -1747,6 +1747,8 @@
 	"Appearance": "รูปลักษณ์",
 	"Apply appearance": "ใช้รูปลักษณ์นี้",
 	"Applying…": "กำลังนำไปใช้…",
+	"Downloading the theme…": "กำลังดาวน์โหลดธีม…",
+	"The theme could not be fully downloaded, so it was not applied. Check the connection and try again.": "ดาวน์โหลดธีมได้ไม่ครบ จึงยังไม่ได้ใช้ธีมนี้ ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง",
 	"Appearance applied": "นำรูปลักษณ์ไปใช้แล้ว",
 	"Theme installed. Preview it before applying.": "ติดตั้งธีมแล้ว โปรดดูตัวอย่างก่อนนำไปใช้",
 	"Reset theme settings": "รีเซ็ตการตั้งค่าธีม",

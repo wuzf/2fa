@@ -126,11 +126,11 @@ describe('stored page that the server has replaced', () => {
 	});
 	it('reloads through the theme runtime and shows the refresh prompt when that is blocked', async () => {
 		const reload = vi.fn(async () => ({ status: 'rejected', reason: 'unsaved-or-pending' }));
-		vi.stubGlobal('requestThemeRuntimeReload', reload);
+		vi.stubGlobal('reloadForSavedAppearance', reload);
 		try {
 			const h = fullAppFixture();
 			await h.message({ type: 'SHELL_STALE' });
-			expect(reload).toHaveBeenCalledWith('theme-change');
+			expect(reload).toHaveBeenCalledOnce();
 			expect(h.window.location.reload).not.toHaveBeenCalled();
 			expect(h.window.dispatchEvent.mock.calls.map(([event]) => event.type)).toContain('appearance-navigation-required');
 		} finally {
@@ -269,5 +269,32 @@ describe('emitted PWA runtime startup', () => {
 		}
 		h.tasks.forEach((run) => run());
 		expect(h.window.location.reload).not.toHaveBeenCalled();
+	});
+});
+
+describe('preparing a saved appearance before the reload', () => {
+	it('prepares the saved appearance, not the running one, with its own shell identity', async () => {
+		const h = fixture('app');
+		h.window.computeAppShellConfigId = vi.fn(async () => 'e'.repeat(64));
+		const saved = { kind: 'app', revision: 7, packageId: 'f'.repeat(64) };
+		await h.window.prepareAppearanceRuntime(saved);
+		expect(h.window.computeAppShellConfigId).toHaveBeenCalledWith(saved);
+		expect(h.transport.prepare).toHaveBeenCalledWith(
+			{ hostBuild: 'a'.repeat(64), sdkApiVersion: 1, packageId: 'f'.repeat(64), appearanceRevision: 7, mode: 'app' },
+			{ expectedShellConfigId: 'e'.repeat(64) },
+		);
+	});
+	it('prepares the official interface without a package', async () => {
+		const h = fixture('app');
+		h.window.computeAppShellConfigId = vi.fn(async () => 'e'.repeat(64));
+		await h.window.prepareAppearanceRuntime({ kind: 'declarative', revision: 8, packageId: 'g' });
+		expect(h.transport.prepare.mock.calls[0][0]).toMatchObject({ packageId: null, appearanceRevision: 8, mode: 'official' });
+	});
+	it('reports nothing to prepare without a controlling worker', async () => {
+		const h = fixture('app');
+		h.window.computeAppShellConfigId = vi.fn(async () => 'e'.repeat(64));
+		h.navigator.serviceWorker.controller = null;
+		expect(await h.window.prepareAppearanceRuntime({ kind: 'app', revision: 7, packageId: 'f'.repeat(64) })).toBeNull();
+		expect(h.transport.prepare).not.toHaveBeenCalled();
 	});
 });

@@ -1747,6 +1747,8 @@
 	"Appearance": "Оформление",
 	"Apply appearance": "Применить оформление",
 	"Applying…": "Применение…",
+	"Downloading the theme…": "Загрузка темы…",
+	"The theme could not be fully downloaded, so it was not applied. Check the connection and try again.": "Тему не удалось загрузить полностью, поэтому она не применена. Проверьте подключение и повторите попытку.",
 	"Appearance applied": "Оформление применено",
 	"Theme installed. Preview it before applying.": "Тема установлена. Проверьте предпросмотр перед применением.",
 	"Reset theme settings": "Сбросить настройки темы",

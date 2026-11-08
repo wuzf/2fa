@@ -59,7 +59,13 @@ async function harness({ fetch = vi.fn(async () => new Response('complete app'))
 		});
 		return { response, lifetime };
 	}
-	return { start, fetch, runtime, snapshots, caches, put, pinBodies, posted };
+	// A page message, from this app's window unless another source is given.
+	function message(data, source = { type: 'window', id: 'old-client', url: origin + '/' }) {
+		const replies = [];
+		listeners.get('message')({ data, source, ports: [{ postMessage: (reply) => replies.push(reply) }], waitUntil() {} });
+		return replies;
+	}
+	return { start, message, fetch, runtime, snapshots, caches, put, pinBodies, posted };
 }
 afterEach(() => {
 	vi.useRealTimers();
@@ -448,5 +454,66 @@ describe('fresh launch from the stored page', () => {
 		const h = await harness({ cached: shell('stored') });
 		const operation = h.start(navigation('/?safeMode=1', { cache: 'default' }));
 		expect(await (await operation.response).text()).toBe('complete app');
+	});
+});
+
+describe('reload for another saved appearance', () => {
+	const build = 'a'.repeat(64);
+	const shell = (body) => new Response(body, { headers: { 'X-2FA-Build': build, 'X-2FA-Shell-Config': 'config-1' } });
+	const slowServer = (afterMs) => vi.fn(() => new Promise((resolve) => setTimeout(() => resolve(new Response('new theme')), afterMs)));
+
+	it('waits for the server instead of serving the stored page after the short deadline', async () => {
+		vi.useFakeTimers();
+		const h = await harness({ fetch: slowServer(4000), cached: shell('old theme') });
+		expect(h.message({ type: 'EXPECT_FRESH_SHELL' })).toEqual([{ ok: true }]);
+		const operation = h.start(navigation());
+		await vi.advanceTimersByTimeAsync(4000);
+		expect(await (await operation.response).text()).toBe('new theme');
+	});
+
+	it('does not open the stored page first for a launch-style navigation', async () => {
+		vi.useFakeTimers();
+		const h = await harness({ fetch: slowServer(2000), cached: shell('old theme') });
+		h.message({ type: 'EXPECT_FRESH_SHELL' });
+		const operation = h.start(navigation('/', { cache: 'default' }));
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(await (await operation.response).text()).toBe('new theme');
+	});
+
+	it('still falls back when the server never answers', async () => {
+		vi.useFakeTimers();
+		const h = await harness({ fetch: vi.fn(() => new Promise(() => {})), cached: shell('old theme') });
+		h.message({ type: 'EXPECT_FRESH_SHELL' });
+		const operation = h.start(navigation());
+		await vi.advanceTimersByTimeAsync(8000);
+		expect(await (await operation.response).text()).toBe('old theme');
+	});
+
+	it('applies to one navigation only and expires', async () => {
+		vi.useFakeTimers();
+		const h = await harness({ fetch: slowServer(4000), cached: shell('old theme') });
+		h.runtime.matchNavigation.mockImplementation(async () => shell('old theme'));
+		h.message({ type: 'EXPECT_FRESH_SHELL' });
+		await vi.advanceTimersByTimeAsync(0);
+		const first = h.start(navigation());
+		await vi.advanceTimersByTimeAsync(4000);
+		expect(await (await first.response).text()).toBe('new theme');
+		const second = h.start(navigation());
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(await (await second.response).text()).toBe('old theme');
+		h.message({ type: 'EXPECT_FRESH_SHELL' });
+		await vi.advanceTimersByTimeAsync(30000);
+		const late = h.start(navigation());
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(await (await late.response).text()).toBe('old theme');
+	});
+
+	it('ignores the request from anything but an app window', async () => {
+		vi.useFakeTimers();
+		const h = await harness({ fetch: slowServer(4000), cached: shell('old theme') });
+		h.message({ type: 'EXPECT_FRESH_SHELL' }, { type: 'worker', id: 'w', url: origin + '/' });
+		const operation = h.start(navigation());
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(await (await operation.response).text()).toBe('old theme');
 	});
 });

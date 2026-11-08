@@ -1747,6 +1747,8 @@
 	"Appearance": "Giao diện",
 	"Apply appearance": "Áp dụng giao diện",
 	"Applying…": "Đang áp dụng…",
+	"Downloading the theme…": "Đang tải chủ đề xuống…",
+	"The theme could not be fully downloaded, so it was not applied. Check the connection and try again.": "Không thể tải đầy đủ chủ đề nên chủ đề chưa được áp dụng. Hãy kiểm tra kết nối rồi thử lại.",
 	"Appearance applied": "Đã áp dụng giao diện",
 	"Theme installed. Preview it before applying.": "Đã cài chủ đề. Hãy xem trước khi áp dụng.",
 	"Reset theme settings": "Đặt lại cài đặt chủ đề",

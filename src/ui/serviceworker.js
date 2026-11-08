@@ -332,6 +332,9 @@ const sameShell = (a, b) => {
 };
 // The newer page a background check found; a launch soon after uses it instead of the stored one.
 let latestShell = null;
+// Set by a page about to reload for another saved appearance: the stored page shows the old one,
+// so that navigation waits for the server instead of falling back after the short deadline.
+let freshShellUntil = 0;
 async function launchFromCache(event, request, url, storedLookup) {
   const clientId = event.resultingClientId || event.clientId;
   if (request.mode !== 'navigate' || ['no-cache', 'reload', 'no-store'].includes(request.cache) || url.search || !clientId) return null;
@@ -559,11 +562,16 @@ self.addEventListener('fetch', event => {
   if (url.origin === self.location.origin && request.method === 'GET' && url.pathname === '/') {
     let cacheUpdate = Promise.resolve();
     let cacheLookup = Promise.resolve(null);
+    const expectFresh = request.mode === 'navigate' && Date.now() < freshShellUntil;
+    if (expectFresh) {
+      freshShellUntil = 0;
+      latestShell = null;
+    }
     const navigation = (async () => {
       // Inspect the offline candidate without delaying the online request.
       // This lookup has no clientId and cannot bind a shell to this navigation.
       cacheLookup = (async () => (runtimeSnapshots ? await runtimeSnapshots.matchNavigation(request).catch(() => null) : null) || await (snapshotManager ? snapshotManager.match(request) : caches.match(request)).catch(() => null))();
-      const launched = await launchFromCache(event, request, url, cacheLookup).catch(() => null);
+      const launched = expectFresh ? null : await launchFromCache(event, request, url, cacheLookup).catch(() => null);
       if (launched) return launched;
       const startedAt = Date.now();
       const controller = new AbortController();
@@ -574,7 +582,7 @@ self.addEventListener('fetch', event => {
           const expire = () => { controller.abort(); reject(new Error('首页加载超时')); };
           timer = setTimeout(expire, 8000);
           void cacheLookup.then(cached => {
-            if (!cached || decided) return;
+            if (!cached || decided || expectFresh) return;
             clearTimeout(timer);
             timer = setTimeout(expire, Math.max(0, 1500 - (Date.now() - startedAt)));
           });
@@ -1398,6 +1406,11 @@ async function handleRuntimeRequest(event, type = event.data?.type) {
 }
 
 self.addEventListener('message', event => {
+  if (event.data?.type === 'EXPECT_FRESH_SHELL') {
+    if (isQueueClient(event)) freshShellUntil = Date.now() + 30000;
+    event.ports?.[0]?.postMessage({ ok: true });
+    return;
+  }
   if (event.data?.type === 'RUNTIME_PROTOCOL_INFO') {
     event.ports?.[0]?.postMessage({protocol:'2fa-runtime-v1',nonce:event.data.nonce,workerBuild:BUILD_ID});
     return;

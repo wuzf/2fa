@@ -892,11 +892,15 @@ function appearanceEditorClient(createAppearanceDraft) {
 			if (name === 'apply') {
 				message(tr('appearanceSaving'));
 				// Switching packages ends in a reload; show that from the click instead of after the save.
-				if (switchesPackage()) {
+				const running = switchesPackage() ? window.__2FA_APPEARANCE__ : null;
+				if (running) {
 					showApplying();
 				}
 				try {
 					await apply();
+					if (running && state.reloadRequired) {
+						await prepareOrRestore(running);
+					}
 				} catch (error) {
 					hideApplying();
 					throw error;
@@ -986,7 +990,48 @@ function appearanceEditorClient(createAppearanceDraft) {
 			running?.packageId !== state.draft?.packageId
 		);
 	}
-	function showApplying() {
+	// The page reloads into the saved theme only once every file it needs is downloaded and checked.
+	// Otherwise the running theme is saved back, so this device never switches into a half-loaded one.
+	const PREPARE_PATIENCE = 60000;
+	async function prepareOrRestore(running) {
+		if (typeof window.prepareAppearanceRuntime !== 'function') {
+			return;
+		}
+		showApplying('appearanceDownloading');
+		let timer;
+		const result = await Promise.race([
+			Promise.resolve()
+				.then(() => window.prepareAppearanceRuntime(window.__2FA_APPEARANCE__))
+				.catch(() => ({ status: 'blocked', reason: 'prepare-failed' })),
+			new Promise((resolve) => {
+				timer = setTimeout(() => resolve({ status: 'blocked', reason: 'prepare-timeout' }), PREPARE_PATIENCE);
+			}),
+		]);
+		clearTimeout(timer);
+		// No worker means nothing can be prepared; the switch goes ahead as before.
+		if (!result || result.status === 'ready') {
+			return;
+		}
+		const target = clone(state.draft);
+		const response = await api('/api/appearance', {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				expectedRevision: state.revision,
+				operationId: uid(),
+				packageId: running.packageId,
+				settings: running.settings,
+			}),
+		});
+		await acceptCurrent(response);
+		state.reloadRequired = false;
+		// The chosen theme stays selected, so trying again is one click.
+		state.draft = target;
+		state.dirty = true;
+		render();
+		throw new Error(tr('appearanceNotReady'));
+	}
+	function showApplying(key = 'appearanceApplying') {
 		let cover = document.getElementById('appearanceApplying');
 		if (!cover) {
 			cover = document.createElement('div');
@@ -995,7 +1040,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 			cover.setAttribute('aria-live', 'polite');
 			document.body.append(cover);
 		}
-		cover.textContent = tr('appearanceApplying');
+		cover.textContent = tr(key);
 		cover.hidden = false;
 	}
 	function hideApplying() {
@@ -1009,6 +1054,11 @@ function appearanceEditorClient(createAppearanceDraft) {
 	const REFRESH_RETRY_DELAY = 250;
 	async function refreshRuntime({ patience = 0 } = {}) {
 		close();
+		// Opened from the settings dialog, that dialog is still open and would block the refresh;
+		// only unsaved settings should.
+		if (document.getElementById('settingsModal') && !window.hasUnsavedSettingsChanges?.()) {
+			window.hideModal('settingsModal');
+		}
 		let retries = Math.ceil(patience / REFRESH_RETRY_DELAY);
 		while (true) {
 			// A waiting app update is taken in the same reload, so the next page is current too.

@@ -589,12 +589,12 @@ describe('official shell and full-theme integration', () => {
 		const reload = vi.spyOn(h.window.location, 'reload').mockImplementation(() => {});
 		const write = h.beginWrite({ type: 'edit' });
 		button(h, 0).click();
-		await Promise.resolve();
+		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(reload).not.toHaveBeenCalled();
 		h.endWrite(write);
 		button(h, 0).click();
-		await Promise.resolve();
-		expect(reload).toHaveBeenCalledOnce();
+		// The refresh first checks for a waiting app update to take along.
+		await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
 	});
 	it('keeps the newest shell identity if an older hash completes late', async () => {
 		const h = await fixture();
@@ -747,5 +747,49 @@ describe('official shell and full-theme integration', () => {
 		expect(h.host.start).toHaveBeenCalledTimes(2);
 		h.ports().onFallback({ reason: 'late disposed callback' });
 		expect(h.document.documentElement.hasAttribute('data-app-theme-startup')).toBe(false);
+	});
+});
+
+describe('theme route after a theme change', () => {
+	const KEY = '2fa-theme-route-owner';
+	async function load({ hash, owner, ...options }) {
+		const h = await fixture({
+			...options,
+			setupWindow: (window) => {
+				window.history.replaceState(null, '', '/?lang=en' + hash);
+				if (owner) {
+					window.sessionStorage.setItem(KEY, owner);
+				}
+			},
+		});
+		h.start();
+		return h;
+	}
+	it('drops the previous theme route when another app theme loads', async () => {
+		const h = await load({ hash: '#/theme/cyberpunk/more', owner: 'app:cyberpunk-for-2fa' });
+		expect(h.window.location.hash).toBe('');
+		expect(h.window.location.search).toBe('?lang=en');
+		expect(h.window.sessionStorage.getItem(KEY)).toBe('app:integration');
+	});
+	it('keeps the route when the same theme reloads', async () => {
+		const h = await load({ hash: '#/theme/integration/more', owner: 'app:integration' });
+		expect(h.window.location.hash).toBe('#/theme/integration/more');
+	});
+	it('keeps the route of a tab that has not recorded an owner yet', async () => {
+		const h = await load({ hash: '#/theme/integration/more' });
+		expect(h.window.location.hash).toBe('#/theme/integration/more');
+		expect(h.window.sessionStorage.getItem(KEY)).toBe('app:integration');
+	});
+	it('drops a theme route when the default view loads', async () => {
+		const h = await load({ hash: '#/theme/journal/more', owner: 'app:journal-for-2fa', snapshot: null });
+		expect(h.window.location.hash).toBe('');
+		expect(h.window.sessionStorage.getItem(KEY)).toBe('official');
+	});
+	it('leaves other hashes and safe mode alone', async () => {
+		const other = await load({ hash: '#section', owner: 'app:cyberpunk-for-2fa' });
+		expect(other.window.location.hash).toBe('#section');
+		const safe = await load({ hash: '#/theme/cyberpunk/more', owner: 'app:cyberpunk-for-2fa', safe: true });
+		expect(safe.window.location.hash).toBe('#/theme/cyberpunk/more');
+		expect(safe.window.sessionStorage.getItem(KEY)).toBe('app:cyberpunk-for-2fa');
 	});
 });

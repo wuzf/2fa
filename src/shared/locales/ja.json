@@ -1747,6 +1747,8 @@
 	"Appearance": "外観",
 	"Apply appearance": "外観を適用",
 	"Applying…": "適用中…",
+	"Downloading the theme…": "テーマをダウンロード中…",
+	"The theme could not be fully downloaded, so it was not applied. Check the connection and try again.": "テーマを完全にダウンロードできなかったため、適用しませんでした。接続を確認して、もう一度お試しください。",
 	"Appearance applied": "外観を適用しました",
 	"Theme installed. Preview it before applying.": "テーマをインストールしました。適用前にプレビューしてください。",
 	"Reset theme settings": "テーマ設定をリセット",

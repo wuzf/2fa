@@ -48,10 +48,18 @@ export function getThemeRuntimeCode() {
             return { status: 'rejected', reason: 'unsaved-or-pending' };
           }
           if (result?.status === 'ready' || result?.reason === 'no-waiting-worker') {
-            window.location.reload();
-            return { status: 'completed', reason: result?.status === 'ready' ? 'update-requested' : 'reload-requested' };
+            return expectFreshShell().then(() => {
+              window.location.reload();
+              return { status: 'completed', reason: result?.status === 'ready' ? 'update-requested' : 'reload-requested' };
+            });
           }
           return { status: 'rejected', reason: result?.reason || 'runtime-update-blocked' };
+        });
+      }
+      if (reason === 'theme-change') {
+        return expectFreshShell().then(() => {
+          window.location.reload();
+          return { status: 'completed', reason: 'reload-requested' };
         });
       }
       if (reason === 'recovery') {
@@ -60,6 +68,29 @@ export function getThemeRuntimeCode() {
         window.location.assign(url.href);
       } else window.location.reload();
       return { status: 'completed', reason: 'reload-requested' };
+    }
+    // Reloads for an appearance saved elsewhere. A waiting app update is taken in the same reload:
+    // only the updated worker waits for the server page instead of serving the stored one.
+    async function reloadForSavedAppearance() {
+      const waiting = Boolean((await navigator.serviceWorker?.getRegistration?.().catch(() => null))?.waiting);
+      let result = await requestThemeRuntimeReload(waiting ? 'update' : 'theme-change');
+      if (waiting && result?.status !== 'completed' && result?.reason !== 'unsaved-or-pending') {
+        result = await requestThemeRuntimeReload('theme-change');
+      }
+      return result;
+    }
+    window.reloadForSavedAppearance = reloadForSavedAppearance;
+    // The stored page still shows the previous appearance; on a slow network the worker would
+    // otherwise serve it after its short deadline, so the reload looks like nothing changed.
+    function expectFreshShell() {
+      const worker = navigator.serviceWorker?.controller;
+      if (!worker || typeof MessageChannel !== 'function') return Promise.resolve();
+      return new Promise(resolve => {
+        const channel = new MessageChannel();
+        const timer = setTimeout(resolve, 1000);
+        channel.port1.onmessage = () => { clearTimeout(timer); resolve(); };
+        try { worker.postMessage({ type: 'EXPECT_FRESH_SHELL' }, [channel.port2]); } catch { clearTimeout(timer); resolve(); }
+      });
     }
     function createThemeSdkScope(options = {}) {
       const accounts = accountStore;

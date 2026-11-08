@@ -1747,6 +1747,8 @@
 	"Appearance": "Aspetto",
 	"Apply appearance": "Applica aspetto",
 	"Applying…": "Applicazione in corso…",
+	"Downloading the theme…": "Download del tema…",
+	"The theme could not be fully downloaded, so it was not applied. Check the connection and try again.": "Non è stato possibile scaricare completamente il tema, quindi non è stato applicato. Controlla la connessione e riprova.",
 	"Appearance applied": "Aspetto applicato",
 	"Theme installed. Preview it before applying.": "Tema installato. Controlla l’anteprima prima di applicarlo.",
 	"Reset theme settings": "Reimposta il tema",
