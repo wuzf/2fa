@@ -373,6 +373,30 @@ describe('official shell and full-theme integration', () => {
 		button(h, 0).click();
 		expect(h.host.retry).toHaveBeenCalledOnce();
 	});
+	it('reloads once by itself when a hard reload left the page outside the active worker', async () => {
+		const h = await fixture();
+		h.worker.getRegistration = async () => ({ active: { state: 'activated' } });
+		const reload = vi.spyOn(h.window.location, 'reload').mockImplementation(() => {});
+		h.start();
+		h.ports().onFallback({ generation: 1, reason: 'no-controller' });
+		await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+		expect(status(h).dataset.phase).not.toBe('official-fallback');
+		expect(h.host.retry).not.toHaveBeenCalled();
+		// The worker still did not take over after that reload: show the usual fallback.
+		h.ports().onFallback({ generation: 2, reason: 'no-controller' });
+		await vi.waitFor(() => expect(status(h).dataset.phase).toBe('official-fallback'));
+		expect(reload).toHaveBeenCalledOnce();
+		expect(statusAction(h, 'retry')).not.toBeNull();
+	});
+	it('shows the fallback for an uncontrolled page while no worker is active yet', async () => {
+		const h = await fixture();
+		h.worker.getRegistration = async () => ({ installing: {} });
+		const reload = vi.spyOn(h.window.location, 'reload').mockImplementation(() => {});
+		h.start();
+		h.ports().onFallback({ generation: 1, reason: 'no-controller' });
+		await vi.waitFor(() => expect(status(h).dataset.phase).toBe('official-fallback'));
+		expect(reload).not.toHaveBeenCalled();
+	});
 	it('uses a guarded user-requested navigation when the first worker is active but the page is uncontrolled', async () => {
 		const h = await fixture();
 		h.host.getState = () => ({ status: 'official-fallback', reason: 'no-controller' });
@@ -651,7 +675,7 @@ describe('official shell and full-theme integration', () => {
 	it('cannot replace a newer running presentation with a late retry rejection', async () => {
 		const h = await fixture();
 		h.start();
-		h.ports().onFallback({ generation: 1, reason: 'no-controller' });
+		h.ports().onFallback({ generation: 1, reason: 'resources-unavailable' });
 		let reject;
 		h.host.retry.mockReturnValue(
 			new Promise((_, no) => {

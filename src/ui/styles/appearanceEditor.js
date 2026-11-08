@@ -16,6 +16,9 @@ export function getAppearanceEditorStyles() {
     #appearanceModal .appearance-section-title {margin:0;font-size:13px;font-weight:600;color:var(--dialog-text,var(--text-primary));}
     #appearanceModal .appearance-note {margin:0;font-size:12px;line-height:1.5;color:var(--dialog-muted,var(--text-secondary));}
     #appearanceModal .appearance-note-row {display:flex;align-items:center;justify-content:space-between;gap:12px;}
+    #appearanceModal .appearance-auto-update {display:flex;flex-direction:column;gap:6px;margin-top:4px;padding-top:12px;border-top:1px solid var(--dialog-line,var(--border-primary));}
+    #appearanceModal .appearance-auto-update-toggle {display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--dialog-text,var(--text-primary));cursor:pointer;}
+    #appearanceModal .appearance-auto-update-toggle input {width:16px;height:16px;margin:0;accent-color:var(--dialog-brand);}
     #appearanceModal .appearance-catalog-sources {display:flex;flex-direction:column;gap:8px;margin-top:4px;padding-top:12px;border-top:1px solid var(--dialog-line,var(--border-primary));}
     #appearanceModal .appearance-section-subtitle {margin:0;font-size:12px;font-weight:600;color:var(--dialog-text,var(--text-primary));}
     #appearanceModal .appearance-catalog-source-list {display:flex;flex-direction:column;gap:4px;margin:0;padding:0;list-style:none;}

@@ -9,6 +9,7 @@ export function getAppThemeStatusStyles() {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
+      justify-content: center;
       gap: 12px;
       box-sizing: border-box;
       max-width: 960px;
@@ -21,7 +22,7 @@ export function getAppThemeStatusStyles() {
       color: var(--text-secondary);
       font-size: 14px;
       line-height: 1.5;
-      text-align: left;
+      text-align: center;
     }
     #appThemeStartup { display:none; }
     :root[data-app-theme-startup="pending"] #appThemeStartup { display:flex; }
@@ -105,8 +106,9 @@ export function getAppThemeStatusStyles() {
     }
     #appThemeStartupRecovery { display: none; }
     :root[data-app-theme-startup-slow] #appThemeStartupRecovery { display: inline-flex; }
+    /* The message takes its own line and everything is centred, on phones and wide screens alike. */
     #appThemeRuntimeStatus .app-theme-status-message {
-      flex: 1 1 240px;
+      flex: 1 1 100%;
       min-width: 0;
       overflow-wrap: anywhere;
     }
@@ -115,6 +117,7 @@ export function getAppThemeStatusStyles() {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
+      justify-content: center;
       gap: 8px;
       min-width: 0;
     }

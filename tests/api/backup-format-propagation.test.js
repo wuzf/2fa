@@ -248,8 +248,8 @@ describe('Backup format propagation', () => {
 		const backupKeys = getBackupKeys(env);
 		expect(backupKeys).toHaveLength(1);
 		expect(backupKeys[0].endsWith('.html')).toBe(true);
-		// HOTP counter record cleanup + WebDAV, S3, OneDrive and Google Drive pushes
-		expect(ctx.waitUntil).toHaveBeenCalledTimes(5);
+		// HOTP counter record cleanup, theme auto-update + WebDAV, S3, OneDrive and Google Drive pushes
+		expect(ctx.waitUntil).toHaveBeenCalledTimes(6);
 
 		const metadata = env.SECRETS_KV.metadata.get(backupKeys[0]);
 		expect(metadata.format).toBe('html');
@@ -424,8 +424,8 @@ describe('Backup settings fallback', () => {
 		const backupKeys = getBackupKeys(env);
 		expect(backupKeys).toHaveLength(1);
 		expect(backupKeys[0].endsWith('.json')).toBe(true);
-		// HOTP counter record cleanup + WebDAV, S3, OneDrive and Google Drive pushes
-		expect(ctx.waitUntil).toHaveBeenCalledTimes(5);
+		// HOTP counter record cleanup, theme auto-update + WebDAV, S3, OneDrive and Google Drive pushes
+		expect(ctx.waitUntil).toHaveBeenCalledTimes(6);
 	});
 });
 

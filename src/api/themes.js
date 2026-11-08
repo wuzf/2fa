@@ -137,6 +137,18 @@ export async function handleThemeAssetRequest(request, env) {
 	}
 }
 
+/** Scheduled job: updates themes from the official catalog when the owner turned it on. */
+export async function runThemeAutoUpdate(env) {
+	if (!env.SECRETS_STORE) {
+		return null;
+	}
+	const response = await forward(new Request('https://appearance.internal/api/themes/auto-update', { method: 'POST' }), env, 'auto-update');
+	if (!response.ok) {
+		throw new Error(`HTTP ${response.status}`);
+	}
+	return response.json();
+}
+
 /** Only a published snapshot is returned to login pages, manifests and the HTML shell. */
 export async function getPublicAppearance(env) {
 	if (!env.SECRETS_STORE) {

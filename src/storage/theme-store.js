@@ -20,9 +20,11 @@ import {
 	OFFICIAL_CATALOG,
 	downloadCatalogTheme,
 	isOfficialCatalog,
+	isOfficialCatalogSource,
 	normalizeCatalogRepository,
 	readThemeCatalog,
 } from '../themes/catalog.js';
+import { migrateSettings } from '../themes/schema.js';
 import { createDefaultAppearance, THEME_OPERATION_HEADER, THEME_PREVIEW_OWNER_HEADER } from '../api/themes.js';
 import { createJsonResponse } from '../utils/response.js';
 import { ThemePreviewCapabilities } from './theme-preview.js';
@@ -35,6 +37,8 @@ const META = 'theme:blob:';
 const PACKAGE = 'theme:package:';
 const RECEIPT = 'theme:receipt:';
 const CATALOGS_KEY = 'theme:catalogs';
+const AUTO_UPDATE_KEY = 'theme:auto-update';
+const AUTO_UPDATE_HISTORY = 20;
 const MIRROR = 'theme-assets:v1:';
 const CHUNK_SIZE = 128 * 1024;
 const MAX_CAPACITY = 50 * 1024 * 1024;
@@ -331,6 +335,10 @@ export class ThemeStore {
 		if (operation === 'appearance') {
 			return Response.json((await this.readAppearance()).active);
 		}
+		if (operation === 'auto-update') {
+			// Only the scheduled job sends this; POST runs it on the write queue.
+			return request.method === 'POST' ? Response.json(await this.runAutoUpdate()) : new Response('Not found', { status: 404 });
+		}
 		if (operation !== 'api') {
 			return new Response('Not found', { status: 404 });
 		}
@@ -362,6 +370,12 @@ export class ThemeStore {
 		}
 		if (path === '/api/themes/catalogs' && request.method === 'PUT') {
 			return json({ official: OFFICIAL_CATALOG, custom: await this.saveCustomCatalogs(await readJSON(request)) });
+		}
+		if (path === '/api/themes/auto-update' && request.method === 'GET') {
+			return json(await this.autoUpdateState());
+		}
+		if (path === '/api/themes/auto-update' && request.method === 'PUT') {
+			return json(await this.saveAutoUpdate(await readJSON(request)));
 		}
 		if (path === '/api/themes/catalog/install' && request.method === 'POST') {
 			const selection = await readJSON(request);
@@ -459,6 +473,117 @@ export class ThemeStore {
 			return { repository, official: index === 0, status: 'error', error: result.reason?.code || 'THEME_CATALOG_UNAVAILABLE' };
 		});
 		return { themes, sources };
+	}
+
+	async autoUpdateState() {
+		const stored = await this.storage.get(AUTO_UPDATE_KEY);
+		return { enabled: stored?.enabled === true, history: Array.isArray(stored?.history) ? stored.history : [] };
+	}
+
+	async saveAutoUpdate(body) {
+		if (!body || typeof body !== 'object' || typeof body.enabled !== 'boolean' || Object.keys(body).length !== 1) {
+			throw problem('请提供 enabled', 400, 'THEME_INVALID');
+		}
+		const next = { ...(await this.autoUpdateState()), enabled: body.enabled };
+		await this.storage.put(AUTO_UPDATE_KEY, next);
+		return next;
+	}
+
+	/**
+	 * Daily update of themes installed from the official catalog. Every version
+	 * there was reviewed before it was merged; uploads and the owner's catalogs
+	 * are not, so they stay manual. An update that needs a newer 2FA, asks for
+	 * more capabilities, or would change the active theme's settings is left to
+	 * the owner as well.
+	 */
+	async runAutoUpdate() {
+		const { enabled } = await this.autoUpdateState();
+		if (!enabled) {
+			return { enabled, results: [] };
+		}
+		const catalog = await readThemeCatalog({ repository: OFFICIAL_CATALOG, cache: false });
+		const results = [];
+		const current = [];
+		for (const { record, pkg } of (await this.latestPackages()).values()) {
+			const entry = catalog.themes.find((theme) => theme.id === pkg.manifest.id && (theme.kind === 'app') === isApp(pkg));
+			if (entry?.packageId === pkg.packageId) {
+				current.push(entry.id);
+			}
+			if (!isOfficialCatalogSource(record.source) || !entry || entry.packageId === pkg.packageId) {
+				continue;
+			}
+			const base = { id: entry.id, name: entry.name, from: pkg.manifest.version, to: entry.version, at: Date.now() };
+			try {
+				results.push({ ...base, ...(await this.autoUpdateTheme(pkg, entry)) });
+			} catch (error) {
+				results.push({ ...base, status: 'failed', reason: error.code || 'THEME_ERROR' });
+			}
+		}
+		await this.recordAutoUpdate(results, current);
+		return { enabled, results };
+	}
+
+	async autoUpdateTheme(installed, entry) {
+		const download = await downloadCatalogTheme({ id: entry.id, packageId: entry.packageId }, { cache: false });
+		const next = await normalizeDetectedThemeImport(download, { format: 'auto' });
+		if (isApp(next)) {
+			try {
+				assertAppHostCompatible(next.manifest);
+			} catch {
+				return { status: 'skipped', reason: 'host-version' };
+			}
+			const granted = new Set(installed.manifest.capabilities || []);
+			if ((next.manifest.capabilities || []).some((capability) => !granted.has(capability))) {
+				return { status: 'skipped', reason: 'capabilities' };
+			}
+		}
+		const state = await this.state();
+		const active = state.active ? await this.readDocument(state.active) : null;
+		let settings = null;
+		if (active?.packageId === installed.packageId) {
+			const migration = migrateSettings(
+				{ settings: active.manifest?.settings || [] },
+				{ settings: next.manifest.settings || [] },
+				active.settings || {},
+			);
+			if (migration.changes.some((change) => change.reason !== 'added')) {
+				return { status: 'skipped', reason: 'settings' };
+			}
+			settings = migration.settings;
+		}
+		await this.install(download);
+		if (!settings) {
+			return { status: 'installed' };
+		}
+		await this.commitAppearance({
+			expectedRevision: (await this.state()).revision,
+			operationId: 'auto-update-' + crypto.randomUUID(),
+			packageId: next.packageId,
+			settings,
+		});
+		return { status: 'applied' };
+	}
+
+	/**
+	 * Newest first; a skip repeated every day is recorded once, and a skip or
+	 * failure disappears once the theme is up to date (for example by hand).
+	 */
+	async recordAutoUpdate(results, upToDate = []) {
+		const current = await this.autoUpdateState();
+		const history = current.history.filter(
+			(item) => item.status === 'applied' || item.status === 'installed' || !upToDate.includes(item.id),
+		);
+		if (!results.length && history.length === current.history.length) {
+			return;
+		}
+		for (const result of results) {
+			const last = history.find((item) => item.id === result.id);
+			if (last && last.to === result.to && last.status === result.status && last.reason === result.reason) {
+				continue;
+			}
+			history.unshift(result);
+		}
+		await this.storage.put(AUTO_UPDATE_KEY, { ...current, history: history.slice(0, AUTO_UPDATE_HISTORY) });
 	}
 
 	async state() {

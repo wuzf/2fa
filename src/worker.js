@@ -15,6 +15,7 @@
 
 import { handleRequest, handleCORS } from './router/handler.js';
 import { cleanupHOTPCounterStates, readSecretsSnapshot } from './storage/secrets-store.js';
+import { runThemeAutoUpdate } from './api/themes.js';
 import { getLogger, createRequestLogger, PerformanceTimer } from './utils/logger.js';
 import { getMonitoring, ErrorSeverity } from './utils/monitoring.js';
 import { pushToAllWebDAV } from './utils/webdav.js';
@@ -347,6 +348,15 @@ export default {
 					}
 				})
 				.catch((error) => logger.warn('清理HOTP计数器记录失败', { errorMessage: error.message }, error)),
+		);
+		ctx.waitUntil(
+			runThemeAutoUpdate(env)
+				.then((result) => {
+					if (result?.results?.length) {
+						logger.info('主题自动更新完成', { results: result.results.map(({ id, to, status, reason }) => ({ id, to, status, reason })) });
+					}
+				})
+				.catch((error) => logger.warn('主题自动更新失败', { errorMessage: error.message }, error)),
 		);
 
 		try {

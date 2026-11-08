@@ -43,6 +43,11 @@ export function isOfficialCatalog(repository) {
 	return sameRepository(repository, OFFICIAL_CATALOG);
 }
 
+/** True for a package downloaded from the official catalog; uploads and owner catalogs are not. */
+export function isOfficialCatalogSource(url) {
+	return typeof url === 'string' && url.toLowerCase().startsWith(rawRoot(OFFICIAL_CATALOG).toLowerCase());
+}
+
 function refUrl(repository) {
 	return `https://api.github.com/repos/${repository}/git/ref/heads/main`;
 }

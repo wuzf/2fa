@@ -229,6 +229,16 @@ export function getAppThemeIntegrationCode() {
       renderAppThemeStatus = renderStatus;
       window.addEventListener('app-theme-startup-slow',renderStatus);
       const showStatus = (nextPhase,nextReason=null) => {phase=nextPhase;reason=nextReason;renderStatus();};
+      // At most once per 30 seconds, so a worker that never takes control ends in the usual fallback.
+      const reloadUncontrolledPage = async () => {
+        const key='2fa-app-theme-uncontrolled-reload';
+        try {
+          if(navigator.serviceWorker?.controller || Date.now()-(Number(sessionStorage.getItem(key))||0)<30000)return false;
+          if(!(await navigator.serviceWorker?.getRegistration?.())?.active || !integrationActive)return false;
+          sessionStorage.setItem(key,String(Date.now()));
+          return (await runtime.sdk.lifecycle.requestReload('theme-change')).status==='completed';
+        } catch {return false;}
+      };
       const removeOfficial = () => {
         if (removedOfficial) return;
         removedOfficial = true;
@@ -264,7 +274,16 @@ export function getAppThemeIntegrationCode() {
           void window.computeAppShellConfigId(current || desired).then(id=>{if(running===runningGeneration)window.__2FA_SHELL_CONFIG_ID__=id;});
           notifyThemeRuntimeEnvironment('app-running');
         },
-        onFallback: state => {if(!acceptState(state))return;if(!removedOfficial){root.hidden=true;root.style.cssText='';}showStatus('official-fallback',state?.reason);},
+        onFallback: state => {
+          if(!acceptState(state))return;if(!removedOfficial){root.hidden=true;root.style.cssText='';}
+          if(state?.reason!=='no-controller'){showStatus('official-fallback',state?.reason);return;}
+          // A hard reload (Ctrl+F5) bypasses the active worker, and a theme runs only in a page it
+          // controls. Reload normally once, keeping the loading view, instead of asking for Retry.
+          const generation=hostGeneration;
+          void reloadUncontrolledPage().then(reloading=>{
+            if(!reloading&&integrationActive&&hostGeneration===generation)showStatus('official-fallback',state.reason);
+          });
+        },
         onRecoveryRequired: state => {if(acceptState({...state,status:'recovery-required'}))showStatus('recovery-required',state?.reason);},
         onError: error => console.error('App theme failed',error)
       }); } catch(error) {showStatus('official-fallback','runtime-unavailable');console.error('App theme unavailable',error);return;}

@@ -49,6 +49,7 @@ function appearanceEditorClient(createAppearanceDraft) {
 		catalogInput: '',
 		catalogStatus: 'idle',
 		catalogGeneration: 0,
+		autoUpdate: null,
 		draft: null,
 		capabilities: { write: false },
 		profiles: new Map(),
@@ -517,10 +518,48 @@ function appearanceEditorClient(createAppearanceDraft) {
 			cards.append(wrap);
 		}
 		section.append(cards);
+		if (state.capabilities.write && state.autoUpdate) {
+			section.append(renderAutoUpdate());
+		}
 		if (state.capabilities.write) {
 			section.append(renderCatalogSources());
 		}
 		return section;
+	}
+	/** Off by default; the store updates official-catalog themes once a day. */
+	function renderAutoUpdate() {
+		const block = node('div', 'appearance-auto-update');
+		const input = node('input');
+		input.type = 'checkbox';
+		input.id = 'appearanceAutoUpdate';
+		input.checked = state.autoUpdate.enabled === true;
+		input.dataset.appearanceAction = 'auto-update';
+		input.dataset.editorControl = '';
+		input.dataset.write = '';
+		const label = node('label', 'appearance-auto-update-toggle');
+		label.append(input, node('span', '', tr('appearanceAutoUpdate')));
+		block.append(label, node('p', 'appearance-note', tr('appearanceAutoUpdateHelp')));
+		const reasons = {
+			'host-version': 'appearanceAutoUpdateHostVersion',
+			capabilities: 'appearanceAutoUpdateCapabilities',
+			settings: 'appearanceAutoUpdateSettings',
+		};
+		for (const item of (state.autoUpdate.history || []).slice(0, 3)) {
+			const params = { name: localName(item.name) || item.id, version: item.to };
+			let text;
+			if (item.status === 'applied' || item.status === 'installed') {
+				text = tr('appearanceAutoUpdated', {
+					...params,
+					date: new Date(item.at).toLocaleDateString(document.documentElement.lang || undefined),
+				});
+			} else if (item.status === 'skipped' && reasons[item.reason]) {
+				text = tr('appearanceAutoUpdateSkipped', { ...params, reason: tr(reasons[item.reason]) });
+			} else {
+				text = tr('appearanceAutoUpdateFailed', params);
+			}
+			block.append(node('p', 'appearance-note appearance-auto-update-entry', text));
+		}
+		return block;
 	}
 	/** The owner's own public GitHub catalogs, listed after the official one. */
 	function renderCatalogSources() {
@@ -634,10 +673,19 @@ function appearanceEditorClient(createAppearanceDraft) {
 			return;
 		}
 		try {
-			const data = await (await api('/api/themes/catalog')).json();
+			// The switch is optional: a store without it (or an error) just hides it.
+			const [data, autoUpdate] = await Promise.all([
+				api('/api/themes/catalog').then((response) => response.json()),
+				state.capabilities.write
+					? api('/api/themes/auto-update')
+							.then((response) => response.json())
+							.catch(() => null)
+					: null,
+			]);
 			if (!state.open || generation !== state.catalogGeneration) {
 				return;
 			}
+			state.autoUpdate = autoUpdate && typeof autoUpdate.enabled === 'boolean' ? autoUpdate : null;
 			state.catalog = Array.isArray(data.themes) ? data.themes : [];
 			state.catalogSources = Array.isArray(data.sources) ? data.sources : [];
 			state.customCatalogs = state.catalogSources.filter((source) => !source.official).map((source) => source.repository);
@@ -863,6 +911,18 @@ function appearanceEditorClient(createAppearanceDraft) {
 				state.catalogInput = '';
 				message('');
 				await loadCatalog();
+			} else if (name === 'auto-update') {
+				try {
+					const response = await api('/api/themes/auto-update', {
+						method: 'PUT',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ enabled: target.checked }),
+					});
+					state.autoUpdate = await response.json();
+				} finally {
+					// A failed save puts the switch back to the stored value.
+					refreshCatalogSection();
+				}
 			} else if (name === 'catalog-remove') {
 				await saveCatalogs(state.customCatalogs.filter((repository) => repository !== target.dataset.repository));
 				message('');
