@@ -477,7 +477,8 @@ export class ThemeStore {
 
 	async autoUpdateState() {
 		const stored = await this.storage.get(AUTO_UPDATE_KEY);
-		return { enabled: stored?.enabled === true, history: Array.isArray(stored?.history) ? stored.history : [] };
+		// On unless the owner turned it off: only reviewed catalog versions are installed.
+		return { enabled: stored?.enabled !== false, history: Array.isArray(stored?.history) ? stored.history : [] };
 	}
 
 	async saveAutoUpdate(body) {

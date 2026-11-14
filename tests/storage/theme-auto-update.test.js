@@ -117,10 +117,11 @@ function harness() {
 			}),
 		);
 	const enable = () => request('/api/themes/auto-update', { method: 'PUT', body: { enabled: true } });
-	const run = async () => (await request('/api/themes/auto-update', { method: 'POST', operation: 'auto-update' })).json();
+	const disable = () => request('/api/themes/auto-update', { method: 'PUT', body: { enabled: false } });
+const run = async () => (await request('/api/themes/auto-update', { method: 'POST', operation: 'auto-update' })).json();
 	const installed = async () => (await store.listThemes('app')).themes.map((theme) => theme.packageId);
 	const active = async () => (await store.readAppearance()).active;
-	return { storage, store, request, install, activate, enable, run, installed, active };
+	return { storage, store, request, install, activate, enable, disable, run, installed, active };
 }
 
 afterEach(() => {
@@ -129,13 +130,24 @@ afterEach(() => {
 });
 
 describe('theme auto-update setting', () => {
-	it('is off by default and stores only a boolean switch', async () => {
+	it('is on by default, stays off once turned off, and stores only a boolean switch', async () => {
 		const h = harness();
-		expect(await (await h.request('/api/themes/auto-update')).json()).toEqual({ enabled: false, history: [] });
+		expect(await (await h.request('/api/themes/auto-update')).json()).toEqual({ enabled: true, history: [] });
 		expect((await h.request('/api/themes/auto-update', { method: 'PUT', body: { enabled: 'yes' } })).status).toBe(400);
 		expect((await h.request('/api/themes/auto-update', { method: 'PUT', body: { enabled: true, history: [] } })).status).toBe(400);
+		expect(await (await h.disable()).json()).toEqual({ enabled: false, history: [] });
+		expect(await (await h.request('/api/themes/auto-update')).json()).toEqual({ enabled: false, history: [] });
 		expect(await (await h.enable()).json()).toEqual({ enabled: true, history: [] });
 		expect(await (await h.request('/api/themes/auto-update')).json()).toEqual({ enabled: true, history: [] });
+	});
+
+	it('runs on an instance that never touched the switch', async () => {
+		const h = harness();
+		const old = await version('1.0.0');
+		await h.install(old);
+		const fetcher = await serveCatalog(await version('1.1.0'));
+		expect((await h.run()).enabled).toBe(true);
+		expect(fetcher).toHaveBeenCalled();
 	});
 
 	it('cannot be started through the authenticated API', async () => {
@@ -146,6 +158,7 @@ describe('theme auto-update setting', () => {
 
 	it('does nothing while it is off', async () => {
 		const h = harness();
+		await h.disable();
 		const old = await version('1.0.0');
 		await h.install(old);
 		const fetcher = await serveCatalog(await version('1.1.0'));
