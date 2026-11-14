@@ -2242,6 +2242,27 @@ export function getModalStyles() {
       line-height: 1.5;
     }
 
+    .settings-about-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .settings-about-credit a {
+      color: var(--text-link, var(--primary));
+    }
+
+    .settings-panel[data-panel="about"] a.btn {
+      display: inline-flex;
+      width: auto;
+      text-decoration: none;
+    }
+
+    #settingsAboutUpdate[hidden] {
+      display: none;
+    }
+
     .settings-divider {
       height: 1px;
       background: var(--border-primary);

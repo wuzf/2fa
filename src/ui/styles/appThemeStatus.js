@@ -122,6 +122,49 @@ export function getAppThemeStatusStyles() {
       min-width: 0;
     }
     #appThemeRuntimeStatus .app-theme-status-recovery { flex-basis: 100%; margin: 0; }
+    /* New-version notice while an app theme runs (it removes the official footer and its badge).
+       It floats over the theme's own layout and stays below dialogs. */
+    #appReleaseNotice {
+      position: fixed;
+      top: calc(8px + env(safe-area-inset-top, 0px));
+      left: 50%;
+      z-index: 9000;
+      display: flex;
+      align-items: center;
+      gap: 4px 12px;
+      box-sizing: border-box;
+      width: max-content;
+      max-width: calc(100% - 24px);
+      padding: 4px 4px 4px 16px;
+      border: 1px solid var(--border-primary);
+      border-radius: 999px;
+      background: var(--bg-secondary);
+      box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
+      color: var(--text-secondary);
+      font-size: 14px;
+      line-height: 1.4;
+      transform: translateX(-50%);
+    }
+    #appReleaseNotice[hidden] { display: none !important; }
+    #appReleaseNotice .app-release-notice-message { min-width: 0; overflow-wrap: anywhere; }
+    #appReleaseNotice .app-release-notice-link { flex: 0 0 auto; color: var(--text-link, var(--primary)); font-weight: 500; text-decoration: none; }
+    #appReleaseNotice .app-release-notice-close {
+      flex: 0 0 auto;
+      width: 36px;
+      height: 36px;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      color: inherit;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    @media (hover: hover) {
+      #appReleaseNotice .app-release-notice-link:hover { text-decoration: underline; }
+      #appReleaseNotice .app-release-notice-close:hover { background: var(--bg-hover); }
+    }
+    #appReleaseNotice :focus-visible { outline: 2px solid var(--border-focus, var(--primary)); outline-offset: 2px; }
     #appThemeStartup .btn, #appThemeRuntimeStatus .btn {
       flex: 0 1 auto;
       width: auto;

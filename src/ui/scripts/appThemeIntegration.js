@@ -267,6 +267,8 @@ export function getAppThemeIntegrationCode() {
         for (const id of ['offlineQueue','hiddenSecrets']) {const panel=document.getElementById(id);if(panel?.closest('#officialThemeRoot'))panels.append(panel);}
         for (const id of ['officialThemeRoot','officialThemeActions','officialThemeFooter']) document.getElementById(id)?.remove();
         document.body.classList.add('app-theme-running');
+        // The official footer carried the new-version badge; the host notice takes over.
+        if (typeof renderReleaseNotice === 'function') renderReleaseNotice();
       };
       try { activeAppThemeHost = window.createAppThemeHost({
         root, appearance:desired, transport:window.twofaRuntimeTransport,

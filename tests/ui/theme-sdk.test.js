@@ -6,7 +6,7 @@ import { createHostFlows } from '../../src/ui/runtime/hostFlows.js';
 import { createBrowserClipboardPort } from '../../src/ui/scripts/browserClipboard.js';
 import { LOCALES } from '../../src/ui/locales/index.js';
 
-function fixture() {
+function fixture(options = {}) {
 	let clockNow = 59000;
 	let records = [{ id: 'a', name: 'Google', account: 'a@example.test', secret: 'PRIVATE-SEED', digits: 6 }];
 	let session = 1;
@@ -60,6 +60,7 @@ function fixture() {
 		getSnapshot: () => ({
 			queue: { operations: [{ id: 'x', type: 'ADD', name: 'Account', body: { secret: 'QUEUE-SEED' } }] },
 			preferences: { language: 'en', authToken: 'TOKEN' },
+			host: options.host,
 		}),
 	};
 	const runtime = createThemeSdk({ identity: { hostBuild: 'test' }, accounts, otp, commands, view, environment });
@@ -175,6 +176,45 @@ describe('theme SDK safe data and command contract', () => {
 	});
 });
 
+describe('host about data', () => {
+	it('passes the version, release and https project links to themes', () => {
+		const runtime = fixture({
+			host: {
+				about: {
+					version: '1.13.0',
+					latestVersion: '1.14.0',
+					upToDate: false,
+					author: 'wuzf',
+					license: 'MIT',
+					links: { documentation: 'https://example.test/docs', source: 'javascript:alert(1)', secret: 'https://example.test/x' },
+				},
+			},
+		});
+		const { about } = runtime.sdk.getSnapshot().host;
+		expect(about).toEqual({
+			version: '1.13.0',
+			latestVersion: '1.14.0',
+			upToDate: false,
+			author: 'wuzf',
+			license: 'MIT',
+			links: { documentation: 'https://example.test/docs' },
+		});
+		expect(Object.isFrozen(about.links)).toBe(true);
+	});
+
+	it('is null when the host has no about data', () => {
+		expect(fixture().sdk.getSnapshot().host.about).toBeNull();
+		expect(fixture({ host: { about: { latestVersion: '2.0.0' } } }).sdk.getSnapshot().host.about).toBeNull();
+	});
+
+	it('opens the about section of the settings', async () => {
+		const settings = vi.fn(() => ({ status: 'completed' }));
+		const host = createHostFlows({ handlers: { settings } });
+		expect(await host.open({ kind: 'settings', section: 'about' }).closed).toEqual({ status: 'completed' });
+		expect(settings.mock.calls[0][0]).toEqual({ kind: 'settings', section: 'about' });
+	});
+});
+
 describe('typed host flows', () => {
 	it('uses a translated label for every declared action in every supported language', () => {
 		for (const action of createHostFlows().listActions()) {
@@ -209,9 +249,9 @@ describe('typed host flows', () => {
 		expect(await late.closed).toMatchObject({ reason: 'session-invalidated' });
 	});
 
-	it('maps all 46 features and dispatches each declared action to its actual port', async () => {
+	it('maps all 47 features and dispatches each declared action to its actual port', async () => {
 		const pending = createHostFlows();
-		expect(Object.keys(pending.featureContracts)).toHaveLength(46);
+		expect(Object.keys(pending.featureContracts)).toHaveLength(47);
 		const handlers = Object.fromEntries(
 			pending.listActions().map((action) => [action.request.kind, vi.fn(() => ({ status: 'completed' }))]),
 		);

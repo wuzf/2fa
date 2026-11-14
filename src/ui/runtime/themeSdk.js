@@ -32,6 +32,27 @@ export function createThemeSdk(ports) {
 		}
 		return result;
 	}
+	// Version, release and project links for the theme's footer; null on a host without them.
+	function about(input) {
+		if (!input || typeof input !== 'object' || typeof input.version !== 'string') {
+			return null;
+		}
+		const links = {};
+		for (const key of ['documentation', 'feedback', 'source', 'releases', 'author']) {
+			const value = input.links?.[key];
+			if (typeof value === 'string' && /^https:\/\//.test(value)) {
+				links[key] = value;
+			}
+		}
+		return {
+			version: input.version,
+			latestVersion: typeof input.latestVersion === 'string' ? input.latestVersion : null,
+			upToDate: input.upToDate === true,
+			author: typeof input.author === 'string' ? input.author : null,
+			license: typeof input.license === 'string' ? input.license : null,
+			links,
+		};
+	}
 	function operation(input) {
 		if (!input) {
 			return null;
@@ -179,6 +200,7 @@ export function createThemeSdk(ports) {
 					'appearancePublished',
 					'offlineReady',
 				]),
+				about: about(context.host?.about),
 				busy: operations.busy === true,
 				pendingWrites: operations.pendingWrites || 0,
 				operations: (operations.operations || []).map(operation),

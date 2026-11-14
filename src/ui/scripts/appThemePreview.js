@@ -122,7 +122,29 @@ export function createAppPreviewMockSdk({ config, call, report, now = Date.now, 
 				authRequired: false,
 			},
 			preferences,
-			host: { dialogOpen: false, dirty: false, saving: false, busy: false, pendingWrites: 0, operations: [] },
+			host: {
+				dialogOpen: false,
+				dirty: false,
+				saving: false,
+				busy: false,
+				pendingWrites: 0,
+				operations: [],
+				// Sample data: the preview shows where the theme puts the version and links.
+				about: {
+					version: '1.0.0',
+					latestVersion: null,
+					upToDate: true,
+					author: 'wuzf',
+					license: 'MIT',
+					links: {
+						documentation: 'https://github.com/wuzf/2fa/blob/main/README.md',
+						feedback: 'https://github.com/wuzf/2fa/issues',
+						source: 'https://github.com/wuzf/2fa',
+						releases: 'https://github.com/wuzf/2fa/releases/latest',
+						author: 'https://github.com/wuzf',
+					},
+				},
+			},
 		});
 	}
 	let current = snapshot();

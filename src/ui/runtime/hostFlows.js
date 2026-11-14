@@ -4,7 +4,7 @@ export function createHostFlows(ports = {}) {
 	const active = new Set();
 	const tools = ['qr-decode', 'qr-generate', 'base32', 'timestamp', 'key-check', 'key-generate'];
 	const providers = ['webdav', 's3', 'onedrive', 'gdrive'];
-	const sections = ['security', 'preferences', 'sync', 'custom-code'];
+	const sections = ['security', 'preferences', 'sync', 'custom-code', 'about'];
 	const definitions = [
 		['login', 'loginSubmitBtn'],
 		['logout', 'logoutBtn'],
@@ -67,6 +67,7 @@ export function createHostFlows(ports = {}) {
 		S03: 'host:settings:preferences',
 		S04: 'host:settings:custom-code',
 		S05: 'host:appearance/host:recovery',
+		S06: 'host:settings:about',
 		C01: 'host:sync-provider:webdav',
 		C02: 'host:sync-provider:s3',
 		C03: 'host:sync-provider:onedrive',
@@ -154,6 +155,7 @@ export function createHostFlows(ports = {}) {
 			preferences: 'settingsTabPreferences',
 			sync: 'settingsTabSync',
 			'custom-code': 'settingsTabCustomCode',
+			about: 'settingsTabAbout',
 		};
 		return Object.freeze(
 			definitions.flatMap(([kind, labelKey, parameter]) => {

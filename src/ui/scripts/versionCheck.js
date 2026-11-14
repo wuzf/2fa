@@ -9,6 +9,15 @@ const GITHUB_REPO = 'wuzf/2fa';
 // 检查结果缓存 24 小时，避免频繁请求 GitHub API（匿名限额 60 次/小时/IP）
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
+/** 官方底部、设置「关于」页和主题共用的链接 */
+export const APP_LINKS = Object.freeze({
+	documentation: `https://github.com/${GITHUB_REPO}/blob/main/README.md`,
+	feedback: `https://github.com/${GITHUB_REPO}/issues`,
+	source: `https://github.com/${GITHUB_REPO}`,
+	releases: `https://github.com/${GITHUB_REPO}/releases/latest`,
+	author: 'https://github.com/wuzf',
+});
+
 /**
  * 获取版本检测代码
  * @returns {string} 版本检测 JavaScript 代码
@@ -18,6 +27,21 @@ export function getVersionCheckCode() {
 
     window.APP_VERSION = '${APP_VERSION}';
     let availableVersion = null;
+    let latestVersionKnown = false;
+    const APP_LINKS = ${JSON.stringify(APP_LINKS)};
+    const RELEASE_NOTICE_KEY = '2fa-release-notice-dismissed';
+
+    // 主题通过 SDK 的 host.about 读取；版本号不带 v 前缀
+    function getAppAboutState() {
+      return {
+        version: window.APP_VERSION,
+        latestVersion: availableVersion ? availableVersion.replace(/^v/i, '') : null,
+        upToDate: latestVersionKnown && !availableVersion,
+        author: 'wuzf',
+        license: 'MIT',
+        links: { ...APP_LINKS }
+      };
+    }
 
     function refreshVersionLanguage() {
       const badge = document.getElementById('footerUpdateBadge');
@@ -25,6 +49,58 @@ export function getVersionCheckCode() {
         badge.textContent = t('versionUpdateAvailable', { version: availableVersion });
         badge.style.display = '';
       }
+      renderAboutPanel();
+      renderReleaseNotice();
+    }
+
+    // 版本号和许可文字随 data-i18n 翻译；这里只处理检测结果
+    function renderAboutPanel() {
+      const status = document.getElementById('settingsAboutStatus');
+      if (status) {
+        status.textContent = availableVersion ? t('versionUpdateAvailable', { version: availableVersion }) : latestVersionKnown ? t('aboutUpToDate') : '';
+        status.hidden = !status.textContent;
+      }
+      const update = document.getElementById('settingsAboutUpdate');
+      if (update) update.hidden = !availableVersion;
+    }
+
+    // 应用主题会移除官方底部；这时由主程序自己提示新版本，每个版本关闭一次后不再出现
+    function renderReleaseNotice() {
+      const notice = document.getElementById('appReleaseNotice');
+      if (!notice) return;
+      let dismissed = null;
+      try { dismissed = localStorage.getItem(RELEASE_NOTICE_KEY); } catch (e) { /* 读不到就照常提示 */ }
+      if (!availableVersion || document.getElementById('footerUpdateBadge') || dismissed === availableVersion) {
+        notice.hidden = true;
+        notice.replaceChildren();
+        return;
+      }
+      const message = document.createElement('span');
+      message.className = 'app-release-notice-message';
+      message.textContent = t('versionUpdateAvailable', { version: availableVersion });
+      const view = document.createElement('a');
+      view.className = 'app-release-notice-link';
+      view.href = APP_LINKS.releases;
+      view.target = '_blank';
+      view.rel = 'noopener noreferrer';
+      view.textContent = t('aboutViewUpdate');
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'app-release-notice-close';
+      close.setAttribute('aria-label', t('close'));
+      close.textContent = '×';
+      close.onclick = () => {
+        try { localStorage.setItem(RELEASE_NOTICE_KEY, availableVersion); } catch (e) { /* 只在本次隐藏 */ }
+        notice.hidden = true;
+        notice.replaceChildren();
+      };
+      notice.replaceChildren(message, view, close);
+      notice.hidden = false;
+    }
+
+    function publishAppAbout() {
+      refreshVersionLanguage();
+      if (typeof notifyThemeRuntimeEnvironment === 'function') notifyThemeRuntimeEnvironment('host');
     }
 
     // 与 src/utils/version.js 的 compareVersions 逻辑一致。
@@ -95,10 +171,11 @@ export function getVersionCheckCode() {
         }
       }
 
+      latestVersionKnown = true;
       if (compareVersions(latest, window.APP_VERSION) > 0) {
         availableVersion = latest.startsWith('v') ? latest : 'v' + latest;
-        refreshVersionLanguage();
       }
+      publishAppAbout();
     }
 
     // 延迟执行，避免与首屏加载竞争

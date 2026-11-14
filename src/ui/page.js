@@ -8,6 +8,7 @@ import { getStyles } from './styles/index.js';
 import { getScripts, getCoreScripts } from './scripts/index.js';
 import { dialogIcon } from './dialogIcons.js';
 import { APP_VERSION } from '../utils/version.js';
+import { APP_LINKS } from './scripts/versionCheck.js';
 import { getPageSecurityHeaders } from '../utils/security.js';
 import { getEnabledCustomCode, sanitizeCustomCode } from '../utils/settings.js';
 import { LANGUAGE_OPTIONS, normalizeLanguage } from '../shared/languages.js';
@@ -190,6 +191,7 @@ function getHTMLBody(appearance = null) {
 			: ''
 	}
   <div id="appThemeRuntimeStatus" class="app-theme-status" role="status" aria-live="polite" aria-atomic="true" tabindex="-1" hidden></div>
+  <div id="appReleaseNotice" class="app-release-notice" role="status" hidden></div>
   <main id="appThemeRoot" hidden></main>
   <div id="hostThemePanels" hidden></div>
   <div id="officialThemeRoot">
@@ -1182,6 +1184,10 @@ function getHTMLBody(appearance = null) {
             <span class="settings-tab-icon">${dialogIcon('sliders')}</span>
             <span class="settings-tab-text" data-i18n="appearanceTitle">外观与主题</span>
           </button>
+          <button type="button" class="settings-tab" data-tab="about" onclick="switchSettingsTab('about')">
+            <span class="settings-tab-icon">${dialogIcon('info')}</span>
+            <span class="settings-tab-text" data-i18n="settingsTabAbout">关于</span>
+          </button>
         </div>
         <div class="settings-content">
           <div class="settings-panel" data-panel="custom-code">
@@ -1380,6 +1386,24 @@ function getHTMLBody(appearance = null) {
               <h3 class="settings-section-title" data-i18n="pwaInstallBtn">安装到桌面</h3>
               <p class="settings-desc" data-i18n="pwaSectionDesc">以应用形式将 2FA Manager 添加到主屏幕或桌面，支持离线访问。</p>
               <button class="btn btn-primary btn-sm" id="settingsPwaInstallBtn" onclick="triggerPwaInstallFromSettings()" title="暂不可用（浏览器未触发安装提示）" disabled data-i18n-title="pwaUnavailable" data-i18n="pwaInstallBtn">安装到桌面</button>
+            </div>
+          </div>
+          <div class="settings-panel" data-panel="about">
+            <div class="settings-section">
+              <h3 class="settings-section-title">2FA Manager</h3>
+              <p class="settings-desc" id="settingsAboutVersion" data-i18n="aboutCurrentVersion" data-i18n-params='{"version":"v${APP_VERSION}"}'>当前版本：v${APP_VERSION}</p>
+              <p class="settings-desc" id="settingsAboutStatus" role="status" aria-live="polite" hidden></p>
+              <a class="btn btn-primary btn-sm" id="settingsAboutUpdate" href="${APP_LINKS.releases}" target="_blank" rel="noopener noreferrer" data-i18n="aboutViewUpdate" hidden>查看更新</a>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
+              <div class="settings-about-links">
+                <a class="btn btn-secondary btn-sm" href="${APP_LINKS.documentation}" target="_blank" rel="noopener noreferrer" data-i18n="pageDocumentation">使用文档</a>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openBrowserExtensionStore()" data-i18n="pageBrowserExtension">浏览器扩展</button>
+                <a class="btn btn-secondary btn-sm" href="${APP_LINKS.feedback}" target="_blank" rel="noopener noreferrer" data-i18n="pageFeedback">反馈问题</a>
+                <a class="btn btn-secondary btn-sm" href="${APP_LINKS.source}" target="_blank" rel="noopener noreferrer" data-i18n="aboutSourceCode">源代码</a>
+              </div>
+              <p class="settings-desc settings-about-credit">Made with ❤️ by <a href="${APP_LINKS.author}" target="_blank" rel="noopener noreferrer">wuzf</a> · <span id="settingsAboutLicense" data-i18n="aboutLicense" data-i18n-params='{"license":"MIT"}'>开源许可：MIT</span></p>
             </div>
           </div>
         </div>

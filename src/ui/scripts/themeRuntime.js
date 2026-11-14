@@ -20,7 +20,8 @@ export function getThemeRuntimeCode() {
         dirty: Boolean((typeof hasUnsavedSettingsChanges === 'function' && hasUnsavedSettingsChanges()) ||
           (typeof window.hasAppearancePendingChanges === 'function' && window.hasAppearancePendingChanges()) || secretDialogOpen),
         saving: Boolean(secretDialogSubmission),
-        appearancePublished: Boolean(window.__2FA_APPEARANCE__)
+        appearancePublished: Boolean(window.__2FA_APPEARANCE__),
+        about: typeof getAppAboutState === 'function' ? getAppAboutState() : null
       };
     }
     function getThemeEnvironmentSnapshot() {

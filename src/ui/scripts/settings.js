@@ -173,6 +173,9 @@ export function getSettingsCode() {
       if (tabName === 'custom-code') {
         loadCustomCode();
       }
+      if (tabName === 'about' && typeof renderAboutPanel === 'function') {
+        renderAboutPanel();
+      }
     }
 
     /**
