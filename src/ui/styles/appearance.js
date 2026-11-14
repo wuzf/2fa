@@ -34,7 +34,7 @@ export function getAppearanceStyles() {
     .appearance-layout [data-region="leading"] {grid-column:1;grid-row:2;}
     .appearance-layout [data-region="trailing"] {grid-column:1;grid-row:4;}
     .appearance-layout [data-region="footer"] {grid-row:5;}
-    .appearance-layout .search-section {margin:0;}
+    .appearance-layout .search-section {margin:-12px 0;}
     .appearance-layout [data-part="view-controls"] {align-self:flex-end;}
     .appearance-layout [data-part="accounts"] {min-width:0;}
     .appearance-layout [data-part="system-status"]:empty {display:none;}

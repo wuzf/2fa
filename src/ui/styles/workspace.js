@@ -81,7 +81,9 @@ export function getWorkspaceStyles() {
     }
     .fluent-app > .container, .fluent-app > :where(#officialThemeRoot) > .container { max-width: 1400px; }
     .fluent-app .content { padding: 24px 24px 40px; text-align: left; }
-    .fluent-app .search-section { margin-bottom: 24px; }
+    /* The search row stays at the top while the accounts scroll beneath it. Its padding sits in the
+       content's own padding, so the page is laid out as before; the backdrop repeats the page's. */
+    .fluent-app .search-section { position: sticky; top: 0; z-index: 20; margin: -12px 0 12px; padding: 12px 0; background: var(--workspace-bg) var(--2fa-background-image, none) center / cover fixed; }
     .fluent-app .search-action-row { gap: 12px; }
     .fluent-app .search-input-wrapper { border: 1px solid var(--search-border); border-bottom-color: #8a8a8a; border-radius: 4px; }
     .fluent-app .search-input-wrapper:focus-within { border-color: var(--workspace-brand); box-shadow: inset 0 -1px var(--workspace-brand); }
@@ -166,7 +168,7 @@ export function getWorkspaceStyles() {
     .fluent-app :is(.search-clear,.sort-trigger,.card-menu-trigger,.menu-item,.submenu-item,.main-action-button,.otp-code,.otp-next-container,.workspace-action):focus-visible { outline: 2px solid var(--workspace-brand); outline-offset: 3px; }
     @media (max-width: 768px) {
       .fluent-app .content { padding: 16px 16px 32px; }
-      .fluent-app .search-section { margin-bottom: 20px; }
+      .fluent-app .search-section { margin-bottom: 8px; }
       .fluent-app .search-input { font-size: 16px; }
       .fluent-app .search-input, .fluent-app .search-icon, .fluent-app .search-clear { height: 42px; }
       .fluent-app .sort-trigger { height: 44px; width: 44px; }
