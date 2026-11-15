@@ -207,17 +207,23 @@ describe('host about data', () => {
 		expect(fixture({ host: { about: { latestVersion: '2.0.0' } } }).sdk.getSnapshot().host.about).toBeNull();
 	});
 
-	it('lists About after the theme settings, where themes show it last among the settings', () => {
+	it('lists the settings in the settings dialog order, About after the theme settings, and signing out last', () => {
 		const ids = createHostFlows()
 			.listActions()
 			.map((action) => action.actionId);
-		expect(ids.slice(ids.indexOf('settings:security'), ids.indexOf('settings:custom-code') + 1)).toEqual([
+		const settings = ids.filter((id) => id.startsWith('settings:') || id === 'appearance');
+		expect(settings).toEqual([
 			'settings:security',
-			'settings:preferences',
 			'settings:sync',
+			'settings:preferences',
 			'settings:custom-code',
+			'appearance',
+			'settings:about',
 		]);
 		expect(ids.indexOf('settings:about')).toBe(ids.indexOf('appearance') + 1);
+		expect(ids.slice(-2)).toEqual(['login', 'logout']);
+		expect(ids.indexOf('extension')).toBeLessThan(ids.indexOf('logout'));
+		expect(ids.indexOf('pwa-install')).toBeLessThan(ids.indexOf('logout'));
 	});
 
 	it('opens the about section of the settings', async () => {

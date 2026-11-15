@@ -160,9 +160,8 @@ export function createAppPreviewMockSdk({ config, call, report, now = Date.now, 
 	function command(name, args) {
 		return active ? call(name, args) : Promise.resolve(reject());
 	}
+	// Same order as the host's actions: signing in or out comes last.
 	const kinds = [
-		'login',
-		'logout',
 		'account-add',
 		'account-edit',
 		'account-delete',
@@ -180,6 +179,8 @@ export function createAppPreviewMockSdk({ config, call, report, now = Date.now, 
 		'extension',
 		'pwa-install',
 		'quick-otp',
+		'login',
+		'logout',
 	];
 	return {
 		sdk: freeze({

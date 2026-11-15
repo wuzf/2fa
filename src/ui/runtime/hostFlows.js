@@ -4,10 +4,9 @@ export function createHostFlows(ports = {}) {
 	const active = new Set();
 	const tools = ['qr-decode', 'qr-generate', 'base32', 'timestamp', 'key-check', 'key-generate'];
 	const providers = ['webdav', 's3', 'onedrive', 'gdrive'];
-	const sections = ['security', 'preferences', 'sync', 'custom-code', 'about'];
+	// Themes list the actions in this order: the settings follow the settings dialog's tabs.
+	const sections = ['security', 'sync', 'preferences', 'custom-code', 'about'];
 	const definitions = [
-		['login', 'loginSubmitBtn'],
-		['logout', 'logoutBtn'],
 		['account-add', 'fabAddSecret'],
 		['account-edit', 'cardMenuEdit', 'account'],
 		['account-delete', 'cardMenuDelete', 'account'],
@@ -31,6 +30,9 @@ export function createHostFlows(ports = {}) {
 		['extension', 'pageBrowserExtension'],
 		['pwa-install', 'pwaInstallBtn'],
 		['quick-otp', 'appTitle'],
+		// Signing out closes the app actions, like deleting closes an account's menu.
+		['login', 'loginSubmitBtn'],
+		['logout', 'logoutBtn'],
 	];
 	const registry = new Map(definitions.map(([kind, labelKey, parameter]) => [kind, { kind, labelKey, parameter }]));
 	// Every frozen business-matrix row is assigned an actual interface owner.
