@@ -9,19 +9,19 @@
 
 import { buildRuntime } from './build-runtime.js';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = join(__dirname, '..');
 
-// 解析命令行参数
+// 解析命令行参数（--output 可以是相对仓库根目录的路径或绝对路径）
 const args = process.argv.slice(2);
 const shouldMinify = args.includes('--minify');
 const outputArg = args.find(arg => arg.startsWith('--output='));
 const outputPath = outputArg
-  ? join(rootDir, outputArg.split('=')[1])
+  ? resolve(rootDir, outputArg.slice('--output='.length))
   : join(rootDir, 'dist', 'worker.js');
 
 console.log('🚀 开始构建 Release 版本...\n');
@@ -53,7 +53,22 @@ async function buildRelease() {
     // mainFields: ['browser', 'module', 'main'] for every supported entry point.
     const runtime = await buildRuntime({ rootDir, minify: shouldMinify });
     const serviceWorkerVersion = runtime.buildId;
-    writeFileSync(outputPath, runtime.code, 'utf8');
+    // The banner goes outside the hashed bundle, so the build identity does not
+    // change. scripts/publish-release.js checks its @version against the tag.
+    const banner = `/**
+ * 2FA Manager - Cloudflare Worker (Release Build)
+ *
+ * @name ${packageJson.name}
+ * @version ${version}
+ * @author ${packageJson.author}
+ * @license ${packageJson.license}
+ * @build ${buildDate}
+ *
+ * This is a bundled release version for easy deployment.
+ * For source code, visit: https://github.com/wuzf/2fa
+ */
+`;
+    writeFileSync(outputPath, banner + runtime.code, 'utf8');
 
     // 获取文件大小
     const outputContent = readFileSync(outputPath, 'utf-8');

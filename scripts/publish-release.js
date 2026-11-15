@@ -112,6 +112,12 @@ function assertAssets(release, assets, { verifyContents = false, onlyAllowed = f
 	}
 }
 
+/** The `@version` values in the doc comment that opens a release Worker. */
+export function workerBannerVersions(worker) {
+	const banner = worker.match(/^\s*\/\*\*([\s\S]*?)\*\//)?.[1] || '';
+	return [...banner.matchAll(/^\s*\*\s*@version\s+(\S+)\s*$/gm)].map((match) => match[1]);
+}
+
 /** Publish a verified existing tag. This function never pushes or creates tags. */
 export function publishRelease({ tag, repo, rootDir = defaultRoot, run = execFileSync, sleep = sleepSync } = {}) {
 	if (typeof tag !== 'string' || !tagPattern.test(tag)) {
@@ -136,8 +142,7 @@ export function publishRelease({ tag, repo, rootDir = defaultRoot, run = execFil
 	});
 	const metadata = JSON.parse(assets.find((asset) => asset.name === 'worker.metadata.json').content.toString('utf8'));
 	const worker = assets.find((asset) => asset.name === 'worker.js').content.toString('utf8');
-	const banner = worker.match(/^\s*\/\*\*([\s\S]*?)\*\//)?.[1] || '';
-	const bannerVersions = [...banner.matchAll(/^\s*\*\s*@version\s+(\S+)\s*$/gm)].map((match) => match[1]);
+	const bannerVersions = workerBannerVersions(worker);
 	if (packageJson.version !== version || metadata.version !== version || bannerVersions.length !== 1 || bannerVersions[0] !== version) {
 		throw new Error('Tag, package.json, worker metadata, and Worker banner versions must match');
 	}
