@@ -72,7 +72,7 @@ function harness(language = 'en') {
 		vi.fn(),
 		vi.fn(),
 	);
-	return { api, fetch, toast, confirm, listeners, storage };
+	return { api, fetch, toast, confirm, listeners, storage, navigator };
 }
 
 beforeEach(() => vi.useFakeTimers());
@@ -182,12 +182,30 @@ describe('settings and installation language behavior', () => {
 		expect(h.confirm).toHaveBeenCalledWith(
 			expect.objectContaining({ title: 'Cancel unsynced change', confirmText: 'Cancel change', cancelText: 'Keep change' }),
 		);
+		h.navigator.serviceWorker = { controller: {} };
 		h.api.showOfflineBanner();
 		h.api.setLanguage('zh-TW');
 		expect(document.getElementById('offlineQueueSummary').textContent).toBe('有 1 項尚未同步的變更');
 		expect(document.querySelector('.offline-queue-label').textContent).toContain('更新帳號');
 		expect(document.querySelector('#offlineQueue time').textContent).toBe(h.api.formatI18nDate(timestamp));
 		expect(document.querySelector('.offline-banner-text').textContent).toBe('離線模式 - 操作將在網路恢復後自動同步');
+	});
+
+	it('does not promise to keep offline changes on a page no worker controls yet', () => {
+		const h = harness();
+		h.listeners.get('offline')();
+		expect(h.toast).toHaveBeenLastCalledWith('📡', 'You are offline. This page cannot save changes until you reconnect.');
+		expect(document.querySelector('.offline-banner-text').textContent).toBe(
+			'Offline mode - this page cannot save changes offline yet; reload it once after reconnecting',
+		);
+		h.api.setLanguage('zh-CN');
+		expect(document.querySelector('.offline-banner-text').textContent).toBe('离线模式 - 本页面还不能离线保存修改，联网后刷新一次即可');
+		// A controlled page keeps its changes for syncing and says so.
+		document.getElementById('offline-banner').remove();
+		h.navigator.serviceWorker = { controller: {} };
+		h.listeners.get('offline')();
+		expect(h.toast).toHaveBeenLastCalledWith('📡', '已离线，操作将保存待同步');
+		expect(document.querySelector('.offline-banner-text').textContent).toBe('离线模式 - 操作将在网络恢复后自动同步');
 	});
 
 	it('refreshes a cached version notice and extension copy result while preserving the instance URL', async () => {

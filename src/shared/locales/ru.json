@@ -694,6 +694,8 @@
 	"Connection restored. Syncing...": "Соединение восстановлено. Синхронизация...",
 	"You are offline. Changes will be saved for syncing.": "Вы не в сети. Изменения будут сохранены для синхронизации.",
 	"Offline mode - changes will sync automatically when the connection is restored": "Автономный режим — изменения будут синхронизироваться автоматически при восстановлении соединения.",
+	"You are offline. This page cannot save changes until you reconnect.": "Вы не в сети. Эта страница не сможет сохранить изменения, пока соединение не восстановится.",
+	"Offline mode - this page cannot save changes offline yet; reload it once after reconnecting": "Автономный режим — эта страница пока не может сохранять изменения без сети; после восстановления соединения перезагрузите её один раз.",
 	"🆕 New version available: {version}": "🆕 Доступна новая версия: {version}",
 	"About": "О приложении",
 	"Current version: {version}": "Текущая версия: {version}",

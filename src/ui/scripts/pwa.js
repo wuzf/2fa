@@ -285,13 +285,19 @@ export function getPWACode() {
       }
     }
 
+    // Only a page the worker controls queues offline changes. A first visit or a hard reload is
+    // controlled from its next load on, so until then it does not promise to keep them.
+    function offlineTextKey(queued, unqueued) {
+      return navigator.serviceWorker?.controller ? queued : unqueued;
+    }
+
     function refreshPwaLanguage() {
       renderOfflineQueue();
       updateSettingsPwaInstallButton();
       const feedback = document.getElementById('offlineQueueFeedback');
       if (feedback && !feedback.hidden) feedback.textContent = t(offlineQueueFeedbackKey || 'offlineQueueUnavailable');
       const bannerText = document.querySelector('#offline-banner .offline-banner-text');
-      if (bannerText) bannerText.textContent = t('pwaOfflineBanner');
+      if (bannerText) bannerText.textContent = t(offlineTextKey('pwaOfflineBanner', 'pwaOfflineUnqueuedBanner'));
     }
 
     function toggleOfflineQueueDetails() {
@@ -792,7 +798,7 @@ export function getPWACode() {
       document.body.classList.add('offline-mode');
       showOfflineBanner();
 
-      showCenterToast('📡', t('pwaOfflineQueued'));
+      showCenterToast('📡', t(offlineTextKey('pwaOfflineQueued', 'pwaOfflineUnqueued')));
     });
 
     /**
@@ -808,9 +814,10 @@ export function getPWACode() {
       const banner = document.createElement('div');
       banner.id = 'offline-banner';
       banner.className = 'offline-banner';
+      const textKey = offlineTextKey('pwaOfflineBanner', 'pwaOfflineUnqueuedBanner');
       banner.innerHTML = \`
         <span class="offline-banner-icon">📡</span>
-        <span class="offline-banner-text" data-i18n="pwaOfflineBanner">\${t('pwaOfflineBanner')}</span>
+        <span class="offline-banner-text" data-i18n="\${textKey}">\${t(textKey)}</span>
       \`;
       document.body.prepend(banner); // 添加到页面顶部
 

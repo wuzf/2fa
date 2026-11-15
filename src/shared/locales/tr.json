@@ -694,6 +694,8 @@
 	"Connection restored. Syncing...": "Bağlantı yeniden kuruldu. Senkronize ediliyor...",
 	"You are offline. Changes will be saved for syncing.": "Çevrimdışısınız. Değişiklikler senkronizasyon için kaydedilecek.",
 	"Offline mode - changes will sync automatically when the connection is restored": "Çevrimdışı mod - bağlantı yeniden kurulduğunda değişiklikler otomatik olarak senkronize edilecektir",
+	"You are offline. This page cannot save changes until you reconnect.": "Çevrimdışısınız. Bu sayfa, yeniden bağlanana kadar değişiklikleri kaydedemez.",
+	"Offline mode - this page cannot save changes offline yet; reload it once after reconnecting": "Çevrimdışı mod - bu sayfa henüz değişiklikleri çevrimdışı kaydedemiyor; yeniden bağlandıktan sonra sayfayı bir kez yeniden yükleyin",
 	"🆕 New version available: {version}": "🆕 Yeni sürüm mevcut: {version}",
 	"About": "Hakkında",
 	"Current version: {version}": "Geçerli sürüm: {version}",

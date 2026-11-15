@@ -694,6 +694,8 @@
 	"Connection restored. Syncing...": "คืนการเชื่อมต่อแล้ว กำลังซิงค์...",
 	"You are offline. Changes will be saved for syncing.": "คุณออฟไลน์อยู่ การเปลี่ยนแปลงจะถูกบันทึกเพื่อการซิงค์",
 	"Offline mode - changes will sync automatically when the connection is restored": "โหมดออฟไลน์ - การเปลี่ยนแปลงจะซิงค์โดยอัตโนมัติเมื่อการเชื่อมต่อกลับคืนมา",
+	"You are offline. This page cannot save changes until you reconnect.": "คุณออฟไลน์อยู่ หน้านี้จะบันทึกการเปลี่ยนแปลงไม่ได้จนกว่าจะเชื่อมต่ออีกครั้ง",
+	"Offline mode - this page cannot save changes offline yet; reload it once after reconnecting": "โหมดออฟไลน์ - หน้านี้ยังบันทึกการเปลี่ยนแปลงแบบออฟไลน์ไม่ได้ โปรดโหลดหน้าใหม่หนึ่งครั้งหลังจากเชื่อมต่ออีกครั้ง",
 	"🆕 New version available: {version}": "🆕 มีเวอร์ชันใหม่: {version}",
 	"About": "เกี่ยวกับ",
 	"Current version: {version}": "เวอร์ชันปัจจุบัน: {version}",

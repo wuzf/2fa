@@ -694,6 +694,8 @@
 	"Connection restored. Syncing...": "接続が復元しました。同期中...",
 	"You are offline. Changes will be saved for syncing.": "オフラインです。変更は同期のために保存されます。",
 	"Offline mode - changes will sync automatically when the connection is restored": "オフライン モード - 接続が復元されると、変更は自動的に同期されます",
+	"You are offline. This page cannot save changes until you reconnect.": "オフラインです。接続が戻るまで、このページでは変更を保存できません。",
+	"Offline mode - this page cannot save changes offline yet; reload it once after reconnecting": "オフライン モード - このページはまだオフラインで変更を保存できません。再接続後に一度再読み込みしてください",
 	"🆕 New version available: {version}": "🆕 新しいバージョンが利用可能: {version}",
 	"About": "アプリ情報",
 	"Current version: {version}": "現在のバージョン: {version}",

@@ -694,6 +694,8 @@
 	"Connection restored. Syncing...": "Đã khôi phục kết nối. Đang đồng bộ hóa...",
 	"You are offline. Changes will be saved for syncing.": "Bạn đang ngoại tuyến. Những thay đổi sẽ được lưu để đồng bộ hóa.",
 	"Offline mode - changes will sync automatically when the connection is restored": "Chế độ ngoại tuyến - các thay đổi sẽ tự động đồng bộ hóa khi kết nối được khôi phục",
+	"You are offline. This page cannot save changes until you reconnect.": "Bạn đang ngoại tuyến. Trang này chưa thể lưu thay đổi cho đến khi bạn kết nối lại.",
+	"Offline mode - this page cannot save changes offline yet; reload it once after reconnecting": "Chế độ ngoại tuyến - trang này chưa thể lưu thay đổi khi ngoại tuyến; hãy tải lại trang một lần sau khi kết nối lại",
 	"🆕 New version available: {version}": "🆕 Đã có phiên bản mới: {version}",
 	"About": "Giới thiệu",
 	"Current version: {version}": "Phiên bản hiện tại: {version}",

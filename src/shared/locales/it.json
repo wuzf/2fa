@@ -694,6 +694,8 @@
 	"Connection restored. Syncing...": "Connessione ripristinata. Sincronizzazione...",
 	"You are offline. Changes will be saved for syncing.": "Sei offline. Le modifiche verranno salvate per la sincronizzazione.",
 	"Offline mode - changes will sync automatically when the connection is restored": "Modalità offline: le modifiche verranno sincronizzate automaticamente quando la connessione verrà ripristinata",
+	"You are offline. This page cannot save changes until you reconnect.": "Sei offline. Questa pagina non può salvare modifiche finché non torni online.",
+	"Offline mode - this page cannot save changes offline yet; reload it once after reconnecting": "Modalità offline: questa pagina non può ancora salvare modifiche offline; ricaricala una volta tornato online",
 	"🆕 New version available: {version}": "🆕 Nuova versione disponibile: {version}",
 	"About": "Informazioni",
 	"Current version: {version}": "Versione attuale: {version}",

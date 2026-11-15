@@ -694,6 +694,8 @@
 	"Connection restored. Syncing...": "Koneksi dipulihkan. Menyinkronkan...",
 	"You are offline. Changes will be saved for syncing.": "Anda sedang offline. Perubahan akan disimpan untuk sinkronisasi.",
 	"Offline mode - changes will sync automatically when the connection is restored": "Mode offline - perubahan akan disinkronkan secara otomatis ketika koneksi dipulihkan",
+	"You are offline. This page cannot save changes until you reconnect.": "Anda sedang offline. Halaman ini tidak dapat menyimpan perubahan sampai Anda terhubung kembali.",
+	"Offline mode - this page cannot save changes offline yet; reload it once after reconnecting": "Mode offline - halaman ini belum dapat menyimpan perubahan secara offline; muat ulang sekali setelah terhubung kembali",
 	"🆕 New version available: {version}": "🆕 Versi baru tersedia: {version}",
 	"About": "Tentang",
 	"Current version: {version}": "Versi saat ini: {version}",
