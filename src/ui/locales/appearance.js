@@ -18,6 +18,7 @@ export const APPEARANCE_LOCALES = {
 		appearanceAutoUpdateCapabilities: 'it asks for new permissions',
 		appearanceAutoUpdateSettings: 'its settings need adjusting',
 		appearanceImport: 'Import theme',
+		appearanceMakeTheme: 'Make a theme',
 		appearanceCatalogSources: 'Theme catalogs',
 		appearanceCatalogSourcesHelp:
 			'Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.',
@@ -159,6 +160,7 @@ export const APPEARANCE_LOCALES = {
 		appearanceAutoUpdateCapabilities: '申请了新的权限',
 		appearanceAutoUpdateSettings: '设置需要重新调整',
 		appearanceImport: '导入主题',
+		appearanceMakeTheme: '制作主题',
 		appearanceCatalogSources: '主题目录',
 		appearanceCatalogSourcesHelp: '可添加与社区目录结构相同的公开 GitHub 仓库。只安装你信任的作者的主题。',
 		appearanceCatalogRepository: 'GitHub 仓库（所有者/仓库名）',
@@ -297,6 +299,7 @@ export const APPEARANCE_LOCALES = {
 		appearanceAutoUpdateCapabilities: '要求了新的權限',
 		appearanceAutoUpdateSettings: '設定需要重新調整',
 		appearanceImport: '匯入主題',
+		appearanceMakeTheme: '製作主題',
 		appearanceCatalogSources: '主題目錄',
 		appearanceCatalogSourcesHelp: '可新增與社群目錄結構相同的公開 GitHub 儲存庫。只安裝你信任之作者的主題。',
 		appearanceCatalogRepository: 'GitHub 儲存庫（擁有者/名稱）',

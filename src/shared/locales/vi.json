@@ -1871,6 +1871,7 @@
 	"Delete this installed theme?": "Xóa chủ đề đã cài đặt này?",
 	"Discard changes that have not been applied?": "Bỏ các thay đổi chưa được áp dụng?",
 	"Import theme": "Nhập chủ đề",
+	"Make a theme": "Tạo chủ đề",
 	"Theme catalogs": "Danh mục chủ đề",
 	"Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.": "Thêm kho GitHub công khai có cấu trúc giống danh mục cộng đồng. Chỉ cài chủ đề từ tác giả bạn tin tưởng.",
 	"GitHub repository (owner/name)": "Kho GitHub (chủ sở hữu/tên)",

@@ -2,6 +2,7 @@ import { serializeBrowserFunction } from './browserSource.js';
 import { getAppearancePreviewDocument } from './appearanceRuntime.js';
 import { getAppearanceErrorCode } from './appearanceMessages.js';
 import { migrateSettings, validateSettingValue } from '../../themes/schema.js';
+import { APP_LINKS } from './versionCheck.js';
 
 /** Keep valid user values across versions while preserving each theme's saved profile. */
 export function createAppearanceDraft(theme, current = {}, { reset = false } = {}, migrate = migrateSettings) {
@@ -30,10 +31,10 @@ export function createAppearanceDraft(theme, current = {}, { reset = false } = {
 /** The editor keeps one in-memory draft; only an explicit apply publishes it. */
 export function getAppearanceEditorCode() {
 	const template = getAppearancePreviewDocument({ nonce: 'APPEARANCEPREVIEWNONCE' });
-	return `${getAppearanceErrorCode()}\nwindow.createAppearancePreviewDocument = function(nonce) { return ${JSON.stringify(template).replace(/</g, '\\u003c')}.split('APPEARANCEPREVIEWNONCE').join(nonce.replace(/[^a-z0-9_-]/gi, '')); };\n(function() { const validateValue = ${serializeBrowserFunction(validateSettingValue)}; const migrate = function(previous, next, values) { return (${serializeBrowserFunction(migrateSettings)})(previous, next, values, validateValue); }; const createDraft = function(theme, current, options) { return (${serializeBrowserFunction(createAppearanceDraft)})(theme, current, options, migrate); }; (${serializeBrowserFunction(appearanceEditorClient)})(createDraft); })();`;
+	return `${getAppearanceErrorCode()}\nwindow.createAppearancePreviewDocument = function(nonce) { return ${JSON.stringify(template).replace(/</g, '\\u003c')}.split('APPEARANCEPREVIEWNONCE').join(nonce.replace(/[^a-z0-9_-]/gi, '')); };\n(function() { const validateValue = ${serializeBrowserFunction(validateSettingValue)}; const migrate = function(previous, next, values) { return (${serializeBrowserFunction(migrateSettings)})(previous, next, values, validateValue); }; const createDraft = function(theme, current, options) { return (${serializeBrowserFunction(createAppearanceDraft)})(theme, current, options, migrate); }; (${serializeBrowserFunction(appearanceEditorClient)})(createDraft, ${JSON.stringify(APP_LINKS.themes)}); })();`;
 }
 
-function appearanceEditorClient(createAppearanceDraft) {
+function appearanceEditorClient(createAppearanceDraft, themeGuideUrl) {
 	const state = {
 		open: false,
 		busy: false,
@@ -774,6 +775,12 @@ function appearanceEditorClient(createAppearanceDraft) {
 		const mine = node('section', 'appearance-section');
 		const head = node('div', 'appearance-section-head');
 		head.append(node('h3', 'appearance-section-title', tr('appearanceLibrary')));
+		// Authors start from the theme guide, which leads to the template and the SDK reference.
+		const guide = node('a', 'appearance-link appearance-guide', tr('appearanceMakeTheme'));
+		guide.href = themeGuideUrl;
+		guide.target = '_blank';
+		guide.rel = 'noopener noreferrer';
+		head.append(guide);
 		if (state.capabilities.write) {
 			const file = node('input');
 			file.id = 'appearanceImportFile';

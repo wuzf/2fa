@@ -32,6 +32,8 @@ export function getAppearanceEditorStyles() {
     #appearanceModal .appearance-catalog-source-add .btn {flex:0 0 auto;min-height:34px;}
     #appearanceModal .appearance-link {border:0;background:none;padding:2px 0;font:inherit;font-size:12px;color:var(--dialog-brand,var(--primary));cursor:pointer;}
     #appearanceModal .appearance-link:hover {text-decoration:underline;}
+    #appearanceModal a.appearance-link {text-decoration:none;}
+    #appearanceModal .appearance-guide {margin-left:auto;white-space:nowrap;}
     #appearanceModal .appearance-theme-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
     #appearanceModal .appearance-theme-item {position:relative;min-width:0;}
     #appearanceModal .appearance-theme-card {width:100%;height:100%;display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:8px;text-align:left;border:1px solid var(--dialog-line,var(--border-primary));border-radius:8px;background:var(--dialog-surface,var(--bg-primary));color:var(--dialog-text,var(--text-primary));font:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s;}

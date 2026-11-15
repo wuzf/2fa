@@ -1871,6 +1871,7 @@
 	"Delete this installed theme?": "このインストール済みテーマを削除しますか？",
 	"Discard changes that have not been applied?": "適用していない変更を破棄しますか？",
 	"Import theme": "テーマをインポート",
+	"Make a theme": "テーマを作成",
 	"Theme catalogs": "テーマカタログ",
 	"Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.": "コミュニティカタログと同じ構成の公開 GitHub リポジトリを追加できます。信頼できる作者のテーマだけをインストールしてください。",
 	"GitHub repository (owner/name)": "GitHub リポジトリ（所有者/名前）",

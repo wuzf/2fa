@@ -1871,6 +1871,7 @@
 	"Delete this installed theme?": "Удалить эту установленную тему?",
 	"Discard changes that have not been applied?": "Отменить неприменённые изменения?",
 	"Import theme": "Импортировать тему",
+	"Make a theme": "Создать тему",
 	"Theme catalogs": "Каталоги тем",
 	"Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.": "Добавьте публичные репозитории GitHub с такой же структурой, как у каталога сообщества. Устанавливайте темы только от авторов, которым доверяете.",
 	"GitHub repository (owner/name)": "Репозиторий GitHub (владелец/имя)",

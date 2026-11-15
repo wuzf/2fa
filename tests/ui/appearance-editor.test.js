@@ -183,6 +183,19 @@ describe('appearance editor controls', () => {
 		expect(custom.document.getElementById('appearancePanel').textContent).toContain('作者说明');
 	});
 
+	it('links the theme guide from the library heading, also without write access', async () => {
+		for (const write of [true, false]) {
+			const h = harness({ write });
+			await h.window.showAppearanceEditor();
+			const guide = h.document.querySelector('#appearancePanel .appearance-section-head a.appearance-guide');
+			expect(guide?.textContent).toBe(zh.appearanceMakeTheme);
+			expect(guide.href).toBe('https://github.com/wuzf/2fa/blob/main/docs/THEMES.md');
+			expect(guide.target).toBe('_blank');
+			expect(guide.rel).toBe('noopener noreferrer');
+			expect(guide.closest('.appearance-section').textContent).toContain(zh.appearanceLibrary);
+		}
+	});
+
 	it('renders boolean, text, textarea and number settings and stores typed values', async () => {
 		const theme = getBuiltinTheme('document');
 		theme.packageId = 'f'.repeat(64);

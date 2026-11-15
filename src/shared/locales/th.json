@@ -1871,6 +1871,7 @@
 	"Delete this installed theme?": "ลบธีมที่ติดตั้งนี้หรือไม่?",
 	"Discard changes that have not been applied?": "ละทิ้งการเปลี่ยนแปลงที่ยังไม่ได้ใช้หรือไม่?",
 	"Import theme": "นำเข้าธีม",
+	"Make a theme": "สร้างธีม",
 	"Theme catalogs": "แคตตาล็อกธีม",
 	"Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.": "เพิ่มที่เก็บ GitHub สาธารณะที่มีโครงสร้างเดียวกับแคตตาล็อกชุมชนได้ ติดตั้งเฉพาะธีมจากผู้สร้างที่คุณไว้วางใจ",
 	"GitHub repository (owner/name)": "ที่เก็บ GitHub (เจ้าของ/ชื่อ)",

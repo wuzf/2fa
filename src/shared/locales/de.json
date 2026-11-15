@@ -1871,6 +1871,7 @@
 	"Delete this installed theme?": "Dieses installierte Thema löschen?",
 	"Discard changes that have not been applied?": "Nicht angewendete Änderungen verwerfen?",
 	"Import theme": "Thema importieren",
+	"Make a theme": "Thema erstellen",
 	"Theme catalogs": "Themenkataloge",
 	"Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.": "Fügen Sie öffentliche GitHub-Repositorys hinzu, die wie der Community-Katalog aufgebaut sind. Installieren Sie nur Themen von Autoren, denen Sie vertrauen.",
 	"GitHub repository (owner/name)": "GitHub-Repository (Besitzer/Name)",

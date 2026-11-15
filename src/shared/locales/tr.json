@@ -1871,6 +1871,7 @@
 	"Delete this installed theme?": "Yüklü olan bu tema silinsin mi?",
 	"Discard changes that have not been applied?": "Uygulanmamış değişiklikler atılsın mı?",
 	"Import theme": "Tema içe aktar",
+	"Make a theme": "Tema oluştur",
 	"Theme catalogs": "Tema katalogları",
 	"Add public GitHub repositories laid out like the community catalog. Install themes only from authors you trust.": "Topluluk kataloğuyla aynı yapıdaki herkese açık GitHub depolarını ekleyin. Yalnızca güvendiğiniz yazarların temalarını yükleyin.",
 	"GitHub repository (owner/name)": "GitHub deposu (sahip/ad)",

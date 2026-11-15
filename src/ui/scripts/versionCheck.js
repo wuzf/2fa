@@ -16,6 +16,7 @@ export const APP_LINKS = Object.freeze({
 	source: `https://github.com/${GITHUB_REPO}`,
 	releases: `https://github.com/${GITHUB_REPO}/releases/latest`,
 	author: 'https://github.com/wuzf',
+	themes: `https://github.com/${GITHUB_REPO}/blob/main/docs/THEMES.md`,
 });
 
 /**
