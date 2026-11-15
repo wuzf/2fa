@@ -219,6 +219,14 @@ async function enqueueEdit(page) {
 	await expect(page.locator('#secretModal')).toBeHidden();
 }
 
+// The worker does not claim the page that installed it; like a user's next visit, the reload is controlled.
+async function reloadUnderWorker(page) {
+	await page.evaluate(() => navigator.serviceWorker.ready);
+	await page.reload();
+	await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+	await expect(page.locator('.secret-card').filter({ hasText: 'Existing account' })).toBeVisible();
+}
+
 async function syncOnce(page) {
 	await page.evaluate(
 		() =>
@@ -253,7 +261,7 @@ test('real service worker pauses offline add/edit on 401, resumes on login, and 
 		await context.route('**/*', (route) => (new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort()));
 		await page.goto(fixture.origin);
 		await expect(page.locator('.secret-card').filter({ hasText: 'Existing account' })).toBeVisible();
-		await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+		await reloadUnderWorker(page);
 		await context.setOffline(true);
 		await enqueueAdd(page, 'Added while offline');
 		await enqueueEdit(page);
@@ -339,7 +347,7 @@ test('real service worker stops a rejected offline change at once and reopens it
 		await expect(page.locator('.secret-card').filter({ hasText: 'Existing account' })).toBeVisible();
 		await expect(page.locator('.secret-card')).toHaveCount(1);
 		await expect(page.locator('#emptyState')).not.toContainText('账户数据暂时无法读取');
-		await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+		await reloadUnderWorker(page);
 
 		await context.setOffline(true);
 		await page.getByRole('button', { name: '打开操作菜单', exact: true }).click();
@@ -400,7 +408,9 @@ for (const stall of ['headers', 'body']) {
 			await context.route('**/*', (route) => (new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort()));
 			await page.goto(fixture.origin);
 			await expect(page.locator('#otp-existing')).toHaveText(/^\d{6}$/);
-			await page.waitForFunction(async () => Boolean(navigator.serviceWorker.controller && (await caches.match('/'))));
+			// An async predicate passes at once (its promise is truthy), so wait for the worker and poll the stored page.
+			await page.evaluate(() => navigator.serviceWorker.ready);
+			await expect.poll(() => page.evaluate(async () => Boolean(await caches.match('/')))).toBe(true);
 			await page.waitForFunction(() => Boolean(localStorage.getItem('2fa-secrets-cache')));
 			await page.evaluate(() => localStorage.removeItem('2fa-clock-sync-v1'));
 			fixture.state.records = [record('existing', 'Updated after reconnect')];
