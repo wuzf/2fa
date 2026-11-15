@@ -187,6 +187,16 @@ Kayan düğmeye → **⚙️ Ayarlar** seçeneğine tıklayın:
 - **Uzak yedekleme** — WebDAV/S3/OneDrive/Google Drive yedek hedeflerini yapılandırın
 - **Çıkış yap** — Geçerli oturum çerezini ve yerel önbelleği tek tıkla temizler; sunucuya ulaşılamadığında da yerel olarak çalışır
 
+### Temalar
+
+Kayan düğmeye → **⚙️ Ayarlar → Görünüm ve temalar** seçeneğine tıklayın:
+
+- **Temayı değiştir** — Resmi varsayılan temayı veya bir topluluk temasını seçin, sağ tarafta önizleyin ve kullanmak için **Görünümü uygula** düğmesine tıklayın
+- **Tema içe aktar** — Kendi hazırladığınız tema ZIP dosyasını yükleyin veya kendi tema kataloğunuzu ekleyin
+- **Tema oluştur** — Yalnızca renkleri ve düzeni değiştirmek için v1'i (JavaScript gerekmez), arayüzün tamamını kendiniz tasarlamak için v2'yi kullanın; [tema şablonundan](https://github.com/wuzf/2fa-theme-template) başlayın. Ayrıntılar için [Özel temalar](../THEMES.md) belgesine bakın (şu anda Çince)
+
+Bir tema sayfayı kullanılamaz duruma getirirse temaları geçici olarak devre dışı bırakmak için `https://alan-adınız/?safeMode=1` adresini açın.
+
 ### Mobil uygulama olarak yükleme (PWA)
 
 - **iOS**: Safari'de açın → Paylaş düğmesi → Ana Ekrana Ekle
@@ -226,15 +236,17 @@ TOTP sayfaları hem geçerli hem de sonraki kodu gösterir; her ikisi de kopyala
 
 ## 📚 Diğer belgeler
 
-| Belge                                              | Açıklama                                                     |
-| -------------------------------------------------- | ------------------------------------------------------------ |
-| [Dağıtım kılavuzu](../DEPLOYMENT.md)               | Elle dağıtım, KV yapılandırması, Secrets                     |
-| [Bulut sürücüsü kurulumu](../CLOUD_DRIVE_SETUP.md) | OneDrive / Google Drive kurulum adımları (Çince)             |
-| [API başvuru belgesi](../API_REFERENCE.md)         | Tüm API uç noktalarının belgeleri                            |
-| [Mimari](../ARCHITECTURE.md)                       | Sistem mimarisi ve teknik tasarım                            |
-| [Geliştirme kılavuzu](../DEVELOPMENT.md)           | Yerel geliştirme, testler, kod biçemi                        |
-| [PWA kılavuzu](../PWA_GUIDE.md)                    | PWA kurulumu ve çevrimdışı özellikler                        |
-| [Tarayıcı eklentisi](../BROWSER_EXTENSION.md)      | Chrome / Edge / Firefox yükleme, kullanım ve izinler (Çince) |
+| Belge                                              | Açıklama                                                            |
+| -------------------------------------------------- | ------------------------------------------------------------------- |
+| [Dağıtım kılavuzu](../DEPLOYMENT.md)               | Elle dağıtım, KV yapılandırması, Secrets                            |
+| [Bulut sürücüsü kurulumu](../CLOUD_DRIVE_SETUP.md) | OneDrive / Google Drive kurulum adımları (Çince)                    |
+| [API başvuru belgesi](../API_REFERENCE.md)         | Tüm API uç noktalarının belgeleri                                   |
+| [Mimari](../ARCHITECTURE.md)                       | Sistem mimarisi ve teknik tasarım                                   |
+| [Geliştirme kılavuzu](../DEVELOPMENT.md)           | Yerel geliştirme, testler, kod biçemi                               |
+| [PWA kılavuzu](../PWA_GUIDE.md)                    | PWA kurulumu ve çevrimdışı özellikler                               |
+| [Tarayıcı eklentisi](../BROWSER_EXTENSION.md)      | Chrome / Edge / Firefox yükleme, kullanım ve izinler (Çince)        |
+| [Özel temalar](../THEMES.md)                       | Tema yükleme, değiştirme ve oluşturma (Çince)                       |
+| [Tema SDK'sı](../THEME_APP_SDK.md)                 | Tam ön yüz temaları için arayüzler, paketleme ve denetimler (Çince) |
 
 ## 🤝 Katkıda bulunma
 

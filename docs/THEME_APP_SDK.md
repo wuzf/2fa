@@ -2,6 +2,8 @@
 
 本文面向独立主题仓库作者，对应当前实现的 `themeApiVersion: 2`、`kind: "app"`、`sdkApiVersion: 1`。用户安装、离线与安全模式说明见 [主题指南](THEMES.md)。v1 CSS/layout 主题仍使用原协议，不能把 JS 塞进 v1 包。
 
+第一次制作建议从模板仓库 [wuzf/2fa-theme-template](https://github.com/wuzf/2fa-theme-template) 开始：它已经按本文实现账户列表、管理菜单、各种状态和 15 种语言，并带有开发预览、测试、打包和主机校验脚本，README 按步骤说明。本文是接口与验收的完整参考。
+
 <!-- APP_THEME_ACTIVATION_STATUS -->
 
 完整前端运行层已通过独立审核，社区目录安装、联网隔离预览和发布入口已开放。发布不会跳过设备端的完整资源准备、SDK 许可及安全恢复检查；不要修改 Service Worker 来绕过这些检查。
@@ -463,6 +465,6 @@ if (account) {
 
 发布前至少完成：320/390/768/1440 宽度、浅/深色、长文字、全部支持语言；分组/平铺与各排序；当前码/下一码、HOTP pending/未知/对账；菜单实际命中、键盘和焦点恢复；主机编辑保存、同步、队列；配置迁移、包升级、v1↔v2；首次无 controller、离线资源缺失、安全模式、BFCache 和旧异步结果。遵循 `prefers-reduced-motion`，并提供加载、空、无结果、离线和登录状态，不用示例数据掩盖失败。
 
-独立参考实现名为 **`2fa-theme-pixel`**；当前工作区与主项目并列，可查看 [本地 Pixel README](../../2fa-theme-pixel/README.md)。这是本地相对链接，只有两个仓库按该目录结构检出时可用；没有假定它已经发布到任何远端仓库。它使用主机 SDK、独立构建与合成开发壳，开发壳测试不替代正式安装和实机验收。
+参考实现是模板仓库 [wuzf/2fa-theme-template](https://github.com/wuzf/2fa-theme-template)。它使用主机 SDK、独立构建与合成开发壳；开发壳测试不替代正式安装和实机验收。模板的 `npm run test:host` 用主项目的导入器校验产物，需要把主项目克隆到旁边并设置 `HOST_ROOT`，具体步骤见模板 README。
 
 本合同的源码依据：[appSchema](../src/themes/appSchema.js)、[资源校验](../src/themes/appResources.js)、[SDK](../src/ui/runtime/themeSdk.js)、[视图状态](../src/ui/runtime/accountViewState.js)、[主机入口](../src/ui/runtime/hostFlows.js)、[宿主生命周期](../src/ui/scripts/appThemeHost.js)。以这些公开边界为准，不把内部 controller 方法当作主题 API。

@@ -187,6 +187,16 @@ Klicken Sie auf die schwebende Schaltfläche → **⚙️ Einstellungen**:
 - **Remote-Sicherung** — Sicherungsziele für WebDAV/S3/OneDrive/Google Drive konfigurieren.
 - **Abmelden** — Mit einem Klick das aktuelle Sitzungscookie und den lokalen Cache löschen; funktioniert lokal auch dann, wenn der Server nicht erreichbar ist.
 
+### Designs
+
+Klicken Sie auf die schwebende Schaltfläche → **⚙️ Einstellungen → Darstellung und Designs**:
+
+- **Design wechseln** — Das offizielle Standarddesign oder ein Community-Design auswählen, rechts in der Vorschau ansehen und mit **Darstellung anwenden** übernehmen.
+- **Thema importieren** — Ein selbst erstelltes Design als ZIP installieren oder einen eigenen Designkatalog hinzufügen.
+- **Thema erstellen** — Mit v1 nur Farben und Layout ändern (ohne JavaScript); mit v2 die gesamte Oberfläche selbst gestalten, ausgehend von der [Designvorlage](https://github.com/wuzf/2fa-theme-template). Siehe [Eigene Designs](../THEMES.md) (derzeit auf Chinesisch).
+
+Wenn ein Design die Seite unbedienbar macht, öffnen Sie `https://ihre-domain/?safeMode=1`, um Designs vorübergehend zu deaktivieren.
+
 ### Als mobile App installieren (PWA)
 
 - **iOS**: In Safari öffnen → Teilen-Schaltfläche → Zum Home-Bildschirm.
@@ -226,15 +236,17 @@ TOTP-Seiten zeigen den aktuellen und den nächsten Code an. Beide können kopier
 
 ## 📚 Weitere Dokumentation
 
-| Dokument                                             | Beschreibung                                                                      |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------- |
-| [Bereitstellungsanleitung](../DEPLOYMENT.md)         | Manuelle Bereitstellung, KV-Konfiguration, Secrets                                |
-| [Cloud-Speicher einrichten](../CLOUD_DRIVE_SETUP.md) | Einrichtung von OneDrive / Google Drive (Chinesisch)                              |
-| [API-Referenz](../API_REFERENCE.md)                  | Vollständige Dokumentation der API-Endpunkte                                      |
-| [Architektur](../ARCHITECTURE.md)                    | Systemarchitektur und technisches Design                                          |
-| [Entwicklungsanleitung](../DEVELOPMENT.md)           | Lokale Entwicklung, Tests, Codestil                                               |
-| [PWA-Anleitung](../PWA_GUIDE.md)                     | PWA-Installation und Offline-Funktionen                                           |
-| [Browser-Erweiterung](../BROWSER_EXTENSION.md)       | Installation, Nutzung und Berechtigungen für Chrome / Edge / Firefox (Chinesisch) |
+| Dokument                                             | Beschreibung                                                                        |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| [Bereitstellungsanleitung](../DEPLOYMENT.md)         | Manuelle Bereitstellung, KV-Konfiguration, Secrets                                  |
+| [Cloud-Speicher einrichten](../CLOUD_DRIVE_SETUP.md) | Einrichtung von OneDrive / Google Drive (Chinesisch)                                |
+| [API-Referenz](../API_REFERENCE.md)                  | Vollständige Dokumentation der API-Endpunkte                                        |
+| [Architektur](../ARCHITECTURE.md)                    | Systemarchitektur und technisches Design                                            |
+| [Entwicklungsanleitung](../DEVELOPMENT.md)           | Lokale Entwicklung, Tests, Codestil                                                 |
+| [PWA-Anleitung](../PWA_GUIDE.md)                     | PWA-Installation und Offline-Funktionen                                             |
+| [Browser-Erweiterung](../BROWSER_EXTENSION.md)       | Installation, Nutzung und Berechtigungen für Chrome / Edge / Firefox (Chinesisch)   |
+| [Eigene Designs](../THEMES.md)                       | Installation, Wechsel und Erstellung von Designs (Chinesisch)                       |
+| [Design-SDK](../THEME_APP_SDK.md)                    | Schnittstellen, Paketierung und Prüfung vollständiger Frontend-Designs (Chinesisch) |
 
 ## 🤝 Mitwirken
 

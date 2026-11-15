@@ -187,6 +187,16 @@ Fai clic sul pulsante flottante → **⚙️ Impostazioni**:
 - **Backup remoto** — Configura le destinazioni di backup WebDAV/S3/OneDrive/Google Drive
 - **Esci** — Cancella con un clic il cookie della sessione corrente e la cache locale; continua a funzionare localmente anche quando il server non è raggiungibile
 
+### Temi
+
+Fai clic sul pulsante flottante → **⚙️ Impostazioni → Aspetto e temi**:
+
+- **Cambia tema** — Scegli il tema ufficiale predefinito o un tema della comunità, visualizzane l'anteprima a destra e fai clic su **Applica aspetto** per usarlo
+- **Importa tema** — Installa lo ZIP di un tema che hai creato oppure aggiungi un tuo catalogo di temi
+- **Crea tema** — Usa v1 per cambiare solo colori e disposizione (senza JavaScript); usa v2 per progettare l'intera interfaccia a modo tuo, partendo dal [modello di tema](https://github.com/wuzf/2fa-theme-template). Consulta [Temi personalizzati](../THEMES.md) (attualmente in cinese)
+
+Se un tema rende la pagina inutilizzabile, apri `https://tuo-dominio/?safeMode=1` per disattivare temporaneamente i temi.
+
 ### Installare come app mobile (PWA)
 
 - **iOS**: apri in Safari → pulsante Condividi → Aggiungi alla schermata Home
@@ -226,15 +236,17 @@ Le pagine TOTP mostrano il codice corrente e quello successivo, entrambi copiabi
 
 ## 📚 Altra documentazione
 
-| Documento                                                          | Descrizione                                                                 |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| [Guida alla distribuzione](../DEPLOYMENT.md)                       | Distribuzione manuale, configurazione KV, Secrets                           |
-| [Configurazione dell'archiviazione cloud](../CLOUD_DRIVE_SETUP.md) | Passaggi di configurazione di OneDrive / Google Drive (in cinese)           |
-| [Riferimento API](../API_REFERENCE.md)                             | Documentazione completa degli endpoint API                                  |
-| [Architettura](../ARCHITECTURE.md)                                 | Architettura del sistema e progettazione tecnica                            |
-| [Guida allo sviluppo](../DEVELOPMENT.md)                           | Sviluppo locale, test e stile del codice                                    |
-| [Guida PWA](../PWA_GUIDE.md)                                       | Installazione della PWA e funzionalità offline                              |
-| [Estensione del browser](../BROWSER_EXTENSION.md)                  | Installazione, uso e autorizzazioni per Chrome / Edge / Firefox (in cinese) |
+| Documento                                                          | Descrizione                                                                        |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| [Guida alla distribuzione](../DEPLOYMENT.md)                       | Distribuzione manuale, configurazione KV, Secrets                                  |
+| [Configurazione dell'archiviazione cloud](../CLOUD_DRIVE_SETUP.md) | Passaggi di configurazione di OneDrive / Google Drive (in cinese)                  |
+| [Riferimento API](../API_REFERENCE.md)                             | Documentazione completa degli endpoint API                                         |
+| [Architettura](../ARCHITECTURE.md)                                 | Architettura del sistema e progettazione tecnica                                   |
+| [Guida allo sviluppo](../DEVELOPMENT.md)                           | Sviluppo locale, test e stile del codice                                           |
+| [Guida PWA](../PWA_GUIDE.md)                                       | Installazione della PWA e funzionalità offline                                     |
+| [Estensione del browser](../BROWSER_EXTENSION.md)                  | Installazione, uso e autorizzazioni per Chrome / Edge / Firefox (in cinese)        |
+| [Temi personalizzati](../THEMES.md)                                | Installazione, cambio e creazione dei temi (in cinese)                             |
+| [SDK dei temi](../THEME_APP_SDK.md)                                | Interfacce, pacchettizzazione e verifiche per i temi frontend completi (in cinese) |
 
 ## 🤝 Contributi
 

@@ -187,6 +187,16 @@ Klik tombol mengambang → **⚙️ Pengaturan**:
 - **Cadangan jarak jauh** — Konfigurasikan tujuan cadangan WebDAV/S3/OneDrive/Google Drive
 - **Keluar** — Hapus cookie sesi saat ini dan cache lokal dengan sekali klik; tetap bekerja secara lokal ketika server tidak dapat dijangkau
 
+### Tema
+
+Klik tombol mengambang → **⚙️ Pengaturan → Tampilan dan tema**:
+
+- **Ganti tema** — Pilih tema bawaan resmi atau tema komunitas, lihat pratinjaunya di sebelah kanan, lalu klik **Terapkan tampilan** untuk menggunakannya
+- **Impor tema** — Pasang ZIP tema buatan Anda sendiri, atau tambahkan katalog tema milik Anda
+- **Buat tema** — Gunakan v1 untuk mengubah warna dan tata letak saja (tanpa JavaScript); gunakan v2 untuk merancang seluruh antarmuka sendiri, dimulai dari [templat tema](https://github.com/wuzf/2fa-theme-template). Lihat [Tema kustom](../THEMES.md) (saat ini dalam bahasa Tionghoa)
+
+Jika tema membuat halaman tidak dapat digunakan, buka `https://domain-anda/?safeMode=1` untuk menonaktifkan tema sementara.
+
 ### Pasang sebagai aplikasi seluler (PWA)
 
 - **iOS**: Buka di Safari → Tombol Bagikan → Tambahkan ke Layar Utama
@@ -226,15 +236,17 @@ Halaman TOTP menampilkan kode saat ini dan kode berikutnya, keduanya dapat disal
 
 ## 📚 Dokumentasi lainnya
 
-| Dokumen                                          | Deskripsi                                                                  |
-| ------------------------------------------------ | -------------------------------------------------------------------------- |
-| [Panduan penerapan](../DEPLOYMENT.md)            | Penerapan manual, konfigurasi KV, Secrets                                  |
-| [Penyiapan drive cloud](../CLOUD_DRIVE_SETUP.md) | Langkah penyiapan OneDrive / Google Drive (bahasa Tionghoa)                |
-| [Referensi API](../API_REFERENCE.md)             | Dokumentasi lengkap endpoint API                                           |
-| [Arsitektur](../ARCHITECTURE.md)                 | Arsitektur sistem dan desain teknis                                        |
-| [Panduan pengembangan](../DEVELOPMENT.md)        | Pengembangan lokal, pengujian, gaya kode                                   |
-| [Panduan PWA](../PWA_GUIDE.md)                   | Pemasangan PWA dan fitur offline                                           |
-| [Ekstensi browser](../BROWSER_EXTENSION.md)      | Pemasangan, penggunaan, dan izin Chrome / Edge / Firefox (bahasa Tionghoa) |
+| Dokumen                                          | Deskripsi                                                                            |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| [Panduan penerapan](../DEPLOYMENT.md)            | Penerapan manual, konfigurasi KV, Secrets                                            |
+| [Penyiapan drive cloud](../CLOUD_DRIVE_SETUP.md) | Langkah penyiapan OneDrive / Google Drive (bahasa Tionghoa)                          |
+| [Referensi API](../API_REFERENCE.md)             | Dokumentasi lengkap endpoint API                                                     |
+| [Arsitektur](../ARCHITECTURE.md)                 | Arsitektur sistem dan desain teknis                                                  |
+| [Panduan pengembangan](../DEVELOPMENT.md)        | Pengembangan lokal, pengujian, gaya kode                                             |
+| [Panduan PWA](../PWA_GUIDE.md)                   | Pemasangan PWA dan fitur offline                                                     |
+| [Ekstensi browser](../BROWSER_EXTENSION.md)      | Pemasangan, penggunaan, dan izin Chrome / Edge / Firefox (bahasa Tionghoa)           |
+| [Tema kustom](../THEMES.md)                      | Pemasangan, penggantian, dan pembuatan tema (bahasa Tionghoa)                        |
+| [SDK tema](../THEME_APP_SDK.md)                  | Antarmuka, pengemasan, dan pemeriksaan untuk tema frontend lengkap (bahasa Tionghoa) |
 
 ## 🤝 Berkontribusi
 

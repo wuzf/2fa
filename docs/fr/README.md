@@ -187,6 +187,16 @@ Cliquez sur le bouton flottant → **⚙️ Paramètres** :
 - **Sauvegarde distante** — Configurer les destinations WebDAV/S3/OneDrive/Google Drive.
 - **Se déconnecter** — Supprimer en un clic le cookie de session actuel et le cache local ; l’opération reste possible localement lorsque le serveur est inaccessible.
 
+### Thèmes
+
+Cliquez sur le bouton flottant → **⚙️ Paramètres → Apparence et thèmes** :
+
+- **Changer de thème** — Choisir le thème officiel par défaut ou un thème de la communauté, le prévisualiser à droite, puis cliquer sur **Appliquer l’apparence** pour l’utiliser.
+- **Importer un thème** — Installer l’archive ZIP d’un thème que vous avez créé, ou ajouter votre propre catalogue de thèmes.
+- **Créer un thème** — Utiliser v1 pour ne modifier que les couleurs et la disposition (sans JavaScript) ; utiliser v2 pour concevoir entièrement l’interface, à partir du [modèle de thème](https://github.com/wuzf/2fa-theme-template). Voir [Thèmes personnalisés](../THEMES.md) (actuellement en chinois).
+
+Si un thème rend la page inutilisable, ouvrez `https://votre-domaine/?safeMode=1` pour désactiver temporairement les thèmes.
+
 ### Installer comme application mobile (PWA)
 
 - **iOS** : ouvrir dans Safari → bouton de partage → Sur l’écran d’accueil.
@@ -226,15 +236,17 @@ Les pages TOTP affichent le code actuel et le suivant, tous deux copiables, et s
 
 ## 📚 Documentation complémentaire
 
-| Document                                                   | Description                                                                          |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| [Guide de déploiement](../DEPLOYMENT.md)                   | Déploiement manuel, configuration KV, Secrets                                        |
-| [Configuration du stockage cloud](../CLOUD_DRIVE_SETUP.md) | Configuration de OneDrive / Google Drive (en chinois)                                |
-| [Référence de l’API](../API_REFERENCE.md)                  | Documentation complète des points de terminaison de l’API                            |
-| [Architecture](../ARCHITECTURE.md)                         | Architecture du système et conception technique                                      |
-| [Guide de développement](../DEVELOPMENT.md)                | Développement local, tests, style de code                                            |
-| [Guide PWA](../PWA_GUIDE.md)                               | Installation de la PWA et fonctionnalités hors ligne                                 |
-| [Extension de navigateur](../BROWSER_EXTENSION.md)         | Installation, utilisation et autorisations pour Chrome / Edge / Firefox (en chinois) |
+| Document                                                   | Description                                                                             |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [Guide de déploiement](../DEPLOYMENT.md)                   | Déploiement manuel, configuration KV, Secrets                                           |
+| [Configuration du stockage cloud](../CLOUD_DRIVE_SETUP.md) | Configuration de OneDrive / Google Drive (en chinois)                                   |
+| [Référence de l’API](../API_REFERENCE.md)                  | Documentation complète des points de terminaison de l’API                               |
+| [Architecture](../ARCHITECTURE.md)                         | Architecture du système et conception technique                                         |
+| [Guide de développement](../DEVELOPMENT.md)                | Développement local, tests, style de code                                               |
+| [Guide PWA](../PWA_GUIDE.md)                               | Installation de la PWA et fonctionnalités hors ligne                                    |
+| [Extension de navigateur](../BROWSER_EXTENSION.md)         | Installation, utilisation et autorisations pour Chrome / Edge / Firefox (en chinois)    |
+| [Thèmes personnalisés](../THEMES.md)                       | Installation, changement et création de thèmes (en chinois)                             |
+| [SDK des thèmes](../THEME_APP_SDK.md)                      | Interfaces, empaquetage et vérifications pour les thèmes frontend complets (en chinois) |
 
 ## 🤝 Contribuer
 

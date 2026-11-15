@@ -187,6 +187,16 @@ Click the floating button → **⚙️ Settings**:
 - **Remote Backup** — Configure WebDAV/S3/OneDrive/Google Drive backup targets
 - **Sign Out** — One-click clear of the current session cookie and local cache; still works locally when the server is unreachable
 
+### Themes
+
+Click the floating button → **⚙️ Settings → Appearance and themes**:
+
+- **Change theme** — Choose the official default theme or a community theme, preview it on the right, and click **Apply appearance** to use it
+- **Import theme** — Install a theme ZIP you built, or add your own theme catalog
+- **Make a theme** — Use v1 to change only colors and layout (no JavaScript); use v2 to design the whole interface, starting from the [theme template](https://github.com/wuzf/2fa-theme-template). See [Custom Themes](../THEMES.md) (currently Chinese)
+
+If a theme makes the page unusable, open `https://your-domain/?safeMode=1` to turn themes off temporarily.
+
 ### Install as Mobile App (PWA)
 
 - **iOS**: Open in Safari → Share button → Add to Home Screen
@@ -235,6 +245,8 @@ TOTP pages show both the current and next codes, each available to copy, and upd
 | [Development Guide](../DEVELOPMENT.md)       | Local development, testing, code style                                 |
 | [PWA Guide](../PWA_GUIDE.md)                 | PWA installation & offline features                                    |
 | [Browser Extension](../BROWSER_EXTENSION.md) | Chrome / Edge / Firefox installation, usage, and permissions (Chinese) |
+| [Custom Themes](../THEMES.md)                | Installing, switching and making themes (Chinese)                      |
+| [Theme SDK](../THEME_APP_SDK.md)             | Interfaces, packaging and checks for full frontend themes (Chinese)    |
 
 ## 🤝 Contributing
 

@@ -187,6 +187,16 @@ Clique no botão flutuante → **⚙️ Configurações**:
 - **Backup remoto** — Configure destinos de backup WebDAV/S3/OneDrive/Google Drive
 - **Sair** — Limpe com um clique o cookie da sessão atual e o cache local; a ação continua funcionando localmente quando o servidor está inacessível
 
+### Temas
+
+Clique no botão flutuante → **⚙️ Configurações → Aparência e temas**:
+
+- **Trocar de tema** — Escolha o tema oficial padrão ou um tema da comunidade, confira a visualização à direita e clique em **Aplicar aparência** para usá-lo
+- **Importar tema** — Instale o ZIP de um tema que você criou ou adicione seu próprio catálogo de temas
+- **Criar tema** — Use a v1 para mudar apenas cores e layout (sem JavaScript); use a v2 para projetar toda a interface do seu jeito, começando pelo [modelo de tema](https://github.com/wuzf/2fa-theme-template). Consulte [Temas personalizados](../THEMES.md) (atualmente em chinês)
+
+Se um tema deixar a página inutilizável, acesse `https://seu-dominio/?safeMode=1` para desativar os temas temporariamente.
+
 ### Instalar como aplicativo móvel (PWA)
 
 - **iOS**: abra no Safari → botão Compartilhar → Adicionar à Tela de Início
@@ -226,15 +236,17 @@ As páginas TOTP mostram os códigos atual e seguinte, ambos disponíveis para c
 
 ## 📚 Mais documentação
 
-| Documento                                                         | Descrição                                                           |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------- |
-| [Guia de implantação](../DEPLOYMENT.md)                           | Implantação manual, configuração KV, Secrets                        |
-| [Configuração de armazenamento em nuvem](../CLOUD_DRIVE_SETUP.md) | Etapas de configuração do OneDrive / Google Drive (em chinês)       |
-| [Referência da API](../API_REFERENCE.md)                          | Documentação completa dos endpoints da API                          |
-| [Arquitetura](../ARCHITECTURE.md)                                 | Arquitetura do sistema e projeto técnico                            |
-| [Guia de desenvolvimento](../DEVELOPMENT.md)                      | Desenvolvimento local, testes e estilo de código                    |
-| [Guia de PWA](../PWA_GUIDE.md)                                    | Instalação do PWA e recursos offline                                |
-| [Extensão de navegador](../BROWSER_EXTENSION.md)                  | Instalação, uso e permissões no Chrome / Edge / Firefox (em chinês) |
+| Documento                                                         | Descrição                                                                            |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [Guia de implantação](../DEPLOYMENT.md)                           | Implantação manual, configuração KV, Secrets                                         |
+| [Configuração de armazenamento em nuvem](../CLOUD_DRIVE_SETUP.md) | Etapas de configuração do OneDrive / Google Drive (em chinês)                        |
+| [Referência da API](../API_REFERENCE.md)                          | Documentação completa dos endpoints da API                                           |
+| [Arquitetura](../ARCHITECTURE.md)                                 | Arquitetura do sistema e projeto técnico                                             |
+| [Guia de desenvolvimento](../DEVELOPMENT.md)                      | Desenvolvimento local, testes e estilo de código                                     |
+| [Guia de PWA](../PWA_GUIDE.md)                                    | Instalação do PWA e recursos offline                                                 |
+| [Extensão de navegador](../BROWSER_EXTENSION.md)                  | Instalação, uso e permissões no Chrome / Edge / Firefox (em chinês)                  |
+| [Temas personalizados](../THEMES.md)                              | Instalação, troca e criação de temas (em chinês)                                     |
+| [SDK de temas](../THEME_APP_SDK.md)                               | Interfaces, empacotamento e verificações para temas de frontend completo (em chinês) |
 
 ## 🤝 Contribuições
 

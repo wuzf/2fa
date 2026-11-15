@@ -187,6 +187,16 @@ Nhấp nút nổi → **⚙️ Cài đặt**:
 - **Sao lưu từ xa** — Cấu hình đích sao lưu WebDAV/S3/OneDrive/Google Drive
 - **Đăng xuất** — Xóa cookie phiên hiện tại và bộ nhớ đệm cục bộ bằng một lần nhấp; vẫn hoạt động cục bộ khi không thể kết nối máy chủ
 
+### Chủ đề
+
+Nhấp nút nổi → **⚙️ Cài đặt → Giao diện và chủ đề**:
+
+- **Đổi chủ đề** — Chọn chủ đề mặc định chính thức hoặc chủ đề cộng đồng, xem trước ở bên phải, rồi nhấp **Áp dụng giao diện** để sử dụng
+- **Nhập chủ đề** — Cài tệp ZIP chủ đề do bạn tự làm, hoặc thêm danh mục chủ đề của riêng bạn
+- **Tạo chủ đề** — Dùng v1 để chỉ thay đổi màu sắc và bố cục (không cần JavaScript); dùng v2 để tự thiết kế toàn bộ giao diện, bắt đầu từ [mẫu chủ đề](https://github.com/wuzf/2fa-theme-template). Xem [Chủ đề tùy chỉnh](../THEMES.md) (hiện bằng tiếng Trung)
+
+Nếu chủ đề khiến trang không thể sử dụng được, hãy mở `https://tên-miền-của-bạn/?safeMode=1` để tạm thời tắt chủ đề.
+
 ### Cài đặt như ứng dụng di động (PWA)
 
 - **iOS**: Mở bằng Safari → Nút Chia sẻ → Thêm vào Màn hình chính
@@ -226,15 +236,17 @@ Trang TOTP hiển thị cả mã hiện tại và mã kế tiếp, mỗi mã đ�
 
 ## 📚 Tài liệu khác
 
-| Tài liệu                                           | Mô tả                                                               |
-| -------------------------------------------------- | ------------------------------------------------------------------- |
-| [Hướng dẫn triển khai](../DEPLOYMENT.md)           | Triển khai thủ công, cấu hình KV, Secrets                           |
-| [Thiết lập ổ đĩa đám mây](../CLOUD_DRIVE_SETUP.md) | Các bước thiết lập OneDrive / Google Drive (tiếng Trung)            |
-| [Tài liệu tham khảo API](../API_REFERENCE.md)      | Tài liệu đầy đủ về các điểm cuối API                                |
-| [Kiến trúc](../ARCHITECTURE.md)                    | Kiến trúc hệ thống và thiết kế kỹ thuật                             |
-| [Hướng dẫn phát triển](../DEVELOPMENT.md)          | Phát triển cục bộ, kiểm thử, quy cách mã nguồn                      |
-| [Hướng dẫn PWA](../PWA_GUIDE.md)                   | Cài đặt PWA và các tính năng ngoại tuyến                            |
-| [Tiện ích trình duyệt](../BROWSER_EXTENSION.md)    | Cài đặt, sử dụng và quyền của Chrome / Edge / Firefox (tiếng Trung) |
+| Tài liệu                                           | Mô tả                                                                  |
+| -------------------------------------------------- | ---------------------------------------------------------------------- |
+| [Hướng dẫn triển khai](../DEPLOYMENT.md)           | Triển khai thủ công, cấu hình KV, Secrets                              |
+| [Thiết lập ổ đĩa đám mây](../CLOUD_DRIVE_SETUP.md) | Các bước thiết lập OneDrive / Google Drive (tiếng Trung)               |
+| [Tài liệu tham khảo API](../API_REFERENCE.md)      | Tài liệu đầy đủ về các điểm cuối API                                   |
+| [Kiến trúc](../ARCHITECTURE.md)                    | Kiến trúc hệ thống và thiết kế kỹ thuật                                |
+| [Hướng dẫn phát triển](../DEVELOPMENT.md)          | Phát triển cục bộ, kiểm thử, quy cách mã nguồn                         |
+| [Hướng dẫn PWA](../PWA_GUIDE.md)                   | Cài đặt PWA và các tính năng ngoại tuyến                               |
+| [Tiện ích trình duyệt](../BROWSER_EXTENSION.md)    | Cài đặt, sử dụng và quyền của Chrome / Edge / Firefox (tiếng Trung)    |
+| [Chủ đề tùy chỉnh](../THEMES.md)                   | Cài đặt, chuyển đổi và tạo chủ đề (tiếng Trung)                        |
+| [SDK chủ đề](../THEME_APP_SDK.md)                  | API, đóng gói và kiểm tra cho chủ đề frontend hoàn chỉnh (tiếng Trung) |
 
 ## 🤝 Đóng góp
 

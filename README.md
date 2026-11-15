@@ -187,6 +187,16 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 - **远程备份** — 配置 WebDAV/S3/OneDrive/Google Drive 备份目标
 - **退出登录** — 一键清除当前会话 Cookie 与本地缓存，离线/服务端故障时仍能本地登出
 
+### 主题
+
+点击悬浮按钮 → **⚙️ 设置 → 外观与主题**：
+
+- **更换主题** — 选择官方默认主题或社区主题，在右侧预览，点击 **应用外观** 后生效
+- **导入主题** — 安装自己做好的主题 ZIP，或添加自己的主题目录
+- **制作主题** — 只换配色和布局用 v1（不写 JavaScript）；自己设计整个界面用 v2，从 [主题模板](https://github.com/wuzf/2fa-theme-template) 开始。详见 [自定义主题](docs/THEMES.md)
+
+主题导致页面无法操作时，访问 `https://你的域名/?safeMode=1` 临时停用主题。
+
 ### 安装为手机应用（PWA）
 
 - **iOS**：Safari 打开 → 分享按钮 → 添加到主屏幕
@@ -235,6 +245,8 @@ TOTP 网页同时显示当前和下一个验证码，均可点击复制，到期
 | [开发指南](docs/DEVELOPMENT.md)               | 本地开发、测试、代码规范                           |
 | [PWA 指南](docs/PWA_GUIDE.md)                 | PWA 安装与离线功能                                 |
 | [浏览器扩展指南](docs/BROWSER_EXTENSION.md)   | Chrome / Edge / Firefox 扩展安装、使用与权限       |
+| [自定义主题](docs/THEMES.md)                  | 安装、切换和制作主题                               |
+| [主题 SDK](docs/THEME_APP_SDK.md)             | 完整前端主题的接口、打包与验收                     |
 
 ## 🤝 参与贡献
 

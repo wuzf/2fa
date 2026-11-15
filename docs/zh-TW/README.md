@@ -154,6 +154,16 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 在 **設定 → 同步設定** 中新增與管理遠端備份目標。
 
+### 主題
+
+點選懸浮按鈕 → **⚙️ 設定 → 外觀與主題**：
+
+- **更換主題** — 選擇官方預設主題或社群主題，在右側預覽，點選 **套用外觀** 後生效
+- **匯入主題** — 安裝自己做好的主題 ZIP，或新增自己的主題目錄
+- **製作主題** — 只換配色和版面用 v1（不寫 JavaScript）；自行設計整個介面用 v2，從 [主題範本](https://github.com/wuzf/2fa-theme-template) 開始。詳見 [自訂主題](../THEMES.md) 與 [主題 SDK](../THEME_APP_SDK.md)（簡體中文）
+
+主題導致頁面無法操作時，造訪 `https://你的網域/?safeMode=1` 暫時停用主題。
+
 ---
 
 ## 🔒 安全性
