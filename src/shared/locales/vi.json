@@ -1844,6 +1844,7 @@
 	"Reload page": "Tải lại trang",
 	"Preparing your theme…": "Đang chuẩn bị giao diện…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "Giao diện chưa thể khởi động. Bạn có thể tiếp tục dùng giao diện mặc định hoặc thử lại.",
+	"2FA has been updated, and your theme can start only after the other 2FA pages are closed. Close them, including the installed app, then select Retry.": "2FA đã được cập nhật và giao diện chỉ có thể khởi động sau khi các trang 2FA khác được đóng. Hãy đóng chúng, kể cả ứng dụng đã cài đặt, rồi chọn Thử lại.",
 	"The theme stopped. Open safe mode to continue using 2FA.": "Giao diện đã dừng. Mở chế độ an toàn để tiếp tục sử dụng 2FA.",
 	"Loading {module} timed out. Check your connection and try again.": "Quá thời gian tải {module}. Hãy kiểm tra kết nối và thử lại.",
 	"Version history ({count})": "Lịch sử phiên bản ({count})",

@@ -1844,6 +1844,7 @@
 	"Reload page": "Перезагрузить страницу",
 	"Preparing your theme…": "Подготовка темы…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "Тема пока не может запуститься. Вы можете пользоваться стандартным видом или повторить попытку.",
+	"2FA has been updated, and your theme can start only after the other 2FA pages are closed. Close them, including the installed app, then select Retry.": "2FA обновлён: тема запустится только после закрытия других страниц 2FA. Закройте их, включая установленное приложение, и нажмите «Повторить попытку».",
 	"The theme stopped. Open safe mode to continue using 2FA.": "Тема остановлена. Откройте безопасный режим, чтобы продолжить пользоваться 2FA.",
 	"Loading {module} timed out. Check your connection and try again.": "Время ожидания загрузки {module} истекло. Проверьте подключение и повторите попытку.",
 	"Version history ({count})": "История версий ({count})",

@@ -765,4 +765,14 @@ describe('switching only to a theme that is ready', () => {
 		expect(putBodies(h)).toHaveLength(1);
 		expect(h.window.requestAppearanceRuntimeReload).toHaveBeenCalledWith('theme-change');
 	});
+
+	it('keeps the saved theme and takes the waiting update where the worker predates 2.0', async () => {
+		const { h, app } = await switching(async () => ({ status: 'blocked', reason: 'legacy-worker' }));
+		h.network.serviceWorker = { getRegistration: async () => ({ waiting: {} }) };
+		await act(h, 'apply');
+		expect(putBodies(h)).toHaveLength(1);
+		expect(putBodies(h)[0].packageId).toBe(app.packageId);
+		expect(h.window.requestAppearanceRuntimeReload.mock.calls.map(([reason]) => reason)).toEqual(['update']);
+		expect(status(h).textContent).not.toContain(zh.appearanceNotReady);
+	});
 });

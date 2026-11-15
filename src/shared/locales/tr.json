@@ -1844,6 +1844,7 @@
 	"Reload page": "Sayfayı yeniden yükle",
 	"Preparing your theme…": "Temanız hazırlanıyor…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "Temanız henüz başlatılamıyor. Varsayılan görünümü kullanmaya devam edebilir veya yeniden deneyebilirsiniz.",
+	"2FA has been updated, and your theme can start only after the other 2FA pages are closed. Close them, including the installed app, then select Retry.": "2FA güncellendi; temanız ancak diğer 2FA sayfaları kapatıldıktan sonra başlayabilir. Yüklü uygulama dahil bu sayfaları kapatın, ardından Tekrar dene’yi seçin.",
 	"The theme stopped. Open safe mode to continue using 2FA.": "Tema durdu. 2FA kullanmaya devam etmek için güvenli modu açın.",
 	"Loading {module} timed out. Check your connection and try again.": "{module} yüklemesi zaman aşımına uğradı. Bağlantınızı kontrol edip yeniden deneyin.",
 	"Version history ({count})": "Sürüm geçmişi ({count})",

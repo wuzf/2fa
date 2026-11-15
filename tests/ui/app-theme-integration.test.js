@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MessageChannel } from 'node:worker_threads';
 import { createRuntimeFixture } from '../helpers/theme-runtime.js';
 
 const buildId = 'a'.repeat(64);
@@ -396,6 +397,85 @@ describe('official shell and full-theme integration', () => {
 		h.ports().onFallback({ generation: 1, reason: 'no-controller' });
 		await vi.waitFor(() => expect(status(h).dataset.phase).toBe('official-fallback'));
 		expect(reload).not.toHaveBeenCalled();
+	});
+	describe('a page still controlled by a worker from before 2.0', () => {
+		// The old worker ignores runtime messages; the waiting update answers like the real one.
+		async function legacy({ othersOpen = false } = {}) {
+			const h = await fixture({
+				setupWindow: (window) => {
+					window.MessageChannel = MessageChannel;
+				},
+			});
+			const reload = vi.spyOn(h.window.location, 'reload').mockImplementation(() => {});
+			const state = { othersOpen, activations: 0 };
+			h.worker.controller = { postMessage() {} };
+			const waiting = {
+				postMessage(request, [port]) {
+					if (request.type !== 'RUNTIME_ACTIVATE') {
+						port.postMessage({ ok: true });
+						return;
+					}
+					state.activations++;
+					if (state.othersOpen) {
+						port.postMessage({
+							protocol: '2fa-runtime-v1',
+							nonce: request.nonce,
+							generation: request.generation,
+							status: 'blocked',
+							reason: 'other-pages-open',
+						});
+						return;
+					}
+					h.worker.controller = waiting;
+					h.worker.dispatchEvent(new h.window.Event('controllerchange'));
+				},
+			};
+			h.worker.getRegistration = async () => ({ active: {}, waiting });
+			return { h, reload, state };
+		}
+		it('takes the waiting update by itself and reloads once', async () => {
+			const { h, reload, state } = await legacy();
+			h.start();
+			h.ports().onFallback({ generation: 1, reason: 'worker-timeout' });
+			await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+			expect(status(h).dataset.phase).not.toBe('official-fallback');
+			expect(h.host.retry).not.toHaveBeenCalled();
+			// The theme still did not start after that reload: show the usual fallback.
+			h.ports().onFallback({ generation: 2, reason: 'worker-timeout' });
+			await vi.waitFor(() => expect(status(h).dataset.phase).toBe('official-fallback'));
+			expect(status(h).dataset.reason).toBe('worker-timeout');
+			expect(state.activations).toBe(1);
+			expect(reload).toHaveBeenCalledOnce();
+		});
+		it('asks to close the other pages, then takes the update on Retry', async () => {
+			const { h, reload, state } = await legacy({ othersOpen: true });
+			h.start();
+			h.ports().onFallback({ generation: 1, reason: 'worker-timeout' });
+			await vi.waitFor(() => expect(status(h).dataset.reason).toBe('other-pages-open'));
+			expect(status(h).dataset.phase).toBe('official-fallback');
+			expect(status(h).querySelector('.app-theme-status-message').textContent).toBe(h.window.eval("t('appearanceRuntimeOtherPages')"));
+			expect(reload).not.toHaveBeenCalled();
+			// Retry asks again while a page is still open.
+			statusAction(h, 'retry').click();
+			await vi.waitFor(() => expect(state.activations).toBe(2));
+			await vi.waitFor(() => expect(status(h).dataset.reason).toBe('other-pages-open'));
+			state.othersOpen = false;
+			statusAction(h, 'retry').click();
+			await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+			expect(h.host.retry).not.toHaveBeenCalled();
+		});
+		it('keeps the usual fallback and Retry when no update waits', async () => {
+			const { h, state } = await legacy();
+			h.worker.getRegistration = async () => ({ active: {} });
+			h.start();
+			h.ports().onFallback({ generation: 1, reason: 'worker-timeout' });
+			await vi.waitFor(() => expect(status(h).dataset.phase).toBe('official-fallback'));
+			expect(status(h).dataset.reason).toBe('worker-timeout');
+			expect(status(h).querySelector('.app-theme-status-message').textContent).toBe(h.window.eval("t('appearanceRuntimeUnavailable')"));
+			statusAction(h, 'retry').click();
+			await vi.waitFor(() => expect(h.host.retry).toHaveBeenCalledOnce());
+			expect(state.activations).toBe(0);
+		});
 	});
 	it('uses a guarded user-requested navigation when the first worker is active but the page is uncontrolled', async () => {
 		const h = await fixture();

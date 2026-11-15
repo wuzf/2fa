@@ -1844,6 +1844,7 @@
 	"Reload page": "Muat ulang halaman",
 	"Preparing your theme…": "Menyiapkan tema Anda…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "Tema Anda belum dapat dimulai. Anda dapat tetap menggunakan tampilan bawaan atau mencoba lagi.",
+	"2FA has been updated, and your theme can start only after the other 2FA pages are closed. Close them, including the installed app, then select Retry.": "2FA telah diperbarui, dan tema Anda baru dapat dimulai setelah halaman 2FA lainnya ditutup. Tutup halaman tersebut, termasuk aplikasi yang terpasang, lalu pilih Coba lagi.",
 	"The theme stopped. Open safe mode to continue using 2FA.": "Tema berhenti. Buka mode aman untuk terus menggunakan 2FA.",
 	"Loading {module} timed out. Check your connection and try again.": "Waktu pemuatan {module} habis. Periksa koneksi Anda dan coba lagi.",
 	"Version history ({count})": "Riwayat versi ({count})",

@@ -12,6 +12,7 @@ export function createRuntimeTransport({
 	const pending = new Set();
 	const permits = new WeakMap();
 	const preparations = new Map();
+	const protocolWorkers = new WeakSet();
 	const setTimer = timers.setTimeout || ((callback, delay) => globalThis.setTimeout(callback, delay));
 	const clearTimer = timers.clearTimeout || ((id) => globalThis.clearTimeout(id));
 	let generation = 0;
@@ -244,6 +245,43 @@ export function createRuntimeTransport({
 			return () => listeners.delete(listener);
 		},
 		getState: () => state,
+		// A worker from before this protocol ignores its messages instead of refusing them, so a
+		// request to it would only end at its timeout. Only an answer is remembered: a slow start is not proof.
+		controllerAnswers({ timeout = 4000 } = {}) {
+			const worker = controller();
+			if (disposed || !worker || typeof Channel !== 'function') {
+				return Promise.resolve(false);
+			}
+			if (protocolWorkers.has(worker)) {
+				return Promise.resolve(true);
+			}
+			return new Promise((resolve) => {
+				const channel = new Channel();
+				const nonce = random();
+				let timer = null;
+				const finish = (answered) => {
+					clearTimer(timer);
+					channel.port1.onmessage = null;
+					channel.port1.close();
+					channel.port2.close();
+					if (answered) {
+						protocolWorkers.add(worker);
+					}
+					resolve(answered);
+				};
+				timer = setTimer(() => finish(false), timeout);
+				channel.port1.onmessage = (event) => {
+					if (event.data?.protocol === protocol && event.data.nonce === nonce) {
+						finish(true);
+					}
+				};
+				try {
+					worker.postMessage({ type: 'RUNTIME_PROTOCOL_INFO', nonce }, [channel.port2]);
+				} catch {
+					finish(false);
+				}
+			});
+		},
 		async requestUpdate() {
 			if (isReloadBlocked()) {
 				return blocked('unsaved-or-pending');

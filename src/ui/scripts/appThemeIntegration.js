@@ -166,7 +166,8 @@ export function getAppThemeIntegrationCode() {
         const slow = !window.__2FA_APP_STARTUP_PRESENTATION__ || Boolean(window.__2FA_APP_STARTUP_PRESENTATION__.slow);
         const displayReason = currentPhase==='access-unavailable' ? session.library.errorKey || 'access-unavailable' : reason;
         const failed = ['access-unavailable','official-fallback','recovery-required'].includes(currentPhase) || (currentPhase === 'running' && Boolean(reason));
-        const messageKey = navigation ? 'appearancePublishedReload' : pending.length ? 'coreHotpPendingRecovery' : loading ? 'loading' : {
+        const messageKey = navigation ? 'appearancePublishedReload' : pending.length ? 'coreHotpPendingRecovery' : loading ? 'loading' :
+          currentPhase==='official-fallback' && reason==='other-pages-open' ? 'appearanceRuntimeOtherPages' : {
           'login-required':'appearanceRuntimeLoginRequired',
           'access-unavailable':'coreConnectionFailed',
           'official-fallback':'appearanceRuntimeUnavailable','recovery-required':'appearanceRuntimeRecovery',
@@ -222,9 +223,15 @@ export function getAppThemeIntegrationCode() {
             const session=runtime.accounts.getState();
             if(session.blocked){runtime.sdk.host.open({kind:'login'});return;}
             if(!session.accessVerified){if(startPhase==='access-unavailable')await runtime.sdk.accounts.refresh();return;}
+            let update=null;
             if(activeAppThemeHost.getState?.().reason==='no-controller' && (await navigator.serviceWorker?.getRegistration?.())?.active){
               const result=await runtime.sdk.lifecycle.requestReload('theme-change');
               if(result.status!=='completed'&&ownsRetry()){showStatus(previous.phase,previous.reason);if(result.status==='rejected')showCenterToast('⚠️',t('moduleRefreshBlocked'));}
+            } else if(previous.phase==='official-fallback' && ['worker-timeout','other-pages-open'].includes(previous.reason) && (update=await replaceLegacyWorker(false))){
+              if(update.status!=='completed'&&ownsRetry()){
+                showStatus('official-fallback',update.reason==='other-pages-open'?update.reason:previous.reason);
+                if(update.reason==='unsaved-or-pending')showCenterToast('⚠️',t('moduleRefreshBlocked'));
+              }
             } else await activeAppThemeHost.retry();
           } catch(error){if(ownsRetry())showStatus('official-fallback',error?.message || 'theme-retry-failed');}
           finally{retryBusy=false;renderStatus();}
@@ -256,6 +263,20 @@ export function getAppThemeIntegrationCode() {
           sessionStorage.setItem(key,String(Date.now()));
           return (await runtime.sdk.lifecycle.requestReload('theme-change')).status==='completed';
         } catch {return false;}
+      };
+      // A worker from before 2.0 never answers the theme runtime. The waiting update replaces it at
+      // once while this is the only 2FA page; otherwise the other pages have to be closed first.
+      // Done by itself at most once per 30 seconds after it reloaded the page; Retry always asks.
+      const replaceLegacyWorker = async automatic => {
+        const key='2fa-app-theme-worker-update';
+        try {
+          if(automatic && Date.now()-(Number(sessionStorage.getItem(key))||0)<30000)return null;
+          if(!(await navigator.serviceWorker?.getRegistration?.())?.waiting || !integrationActive)return null;
+          if(automatic)sessionStorage.setItem(key,String(Date.now()));
+          const result=await runtime.sdk.lifecycle.requestReload('update');
+          if(automatic && result?.status!=='completed')sessionStorage.removeItem(key);
+          return result;
+        } catch {return null;}
       };
       const removeOfficial = () => {
         if (removedOfficial) return;
@@ -296,6 +317,15 @@ export function getAppThemeIntegrationCode() {
         },
         onFallback: state => {
           if(!acceptState(state))return;if(!removedOfficial){root.hidden=true;root.style.cssText='';}
+          if(state?.reason==='worker-timeout'){
+            // Keep the loading view while a waiting update may replace a worker from before 2.0.
+            const generation=hostGeneration;
+            void replaceLegacyWorker(true).then(result=>{
+              if(result?.status!=='completed'&&integrationActive&&hostGeneration===generation)
+                showStatus('official-fallback',result?.reason==='other-pages-open'?result.reason:state.reason);
+            });
+            return;
+          }
           if(state?.reason!=='no-controller'){showStatus('official-fallback',state?.reason);return;}
           // A hard reload (Ctrl+F5) bypasses the active worker, and a theme runs only in a page it
           // controls. Reload normally once, keeping the loading view, instead of asking for Retry.

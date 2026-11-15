@@ -1844,6 +1844,7 @@
 	"Reload page": "Ricarica pagina",
 	"Preparing your theme…": "Preparazione del tema…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "Il tema non può ancora avviarsi. Puoi continuare a usare la vista predefinita o riprovare.",
+	"2FA has been updated, and your theme can start only after the other 2FA pages are closed. Close them, including the installed app, then select Retry.": "2FA è stato aggiornato e il tema potrà avviarsi solo dopo la chiusura delle altre pagine di 2FA. Chiudile, inclusa l’app installata, quindi seleziona Riprova.",
 	"The theme stopped. Open safe mode to continue using 2FA.": "Il tema si è interrotto. Apri la modalità provvisoria per continuare a usare 2FA.",
 	"Loading {module} timed out. Check your connection and try again.": "Il caricamento di {module} ha superato il tempo limite. Controlla la connessione e riprova.",
 	"Version history ({count})": "Cronologia delle versioni ({count})",

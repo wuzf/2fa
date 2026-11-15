@@ -1844,6 +1844,7 @@
 	"Reload page": "โหลดหน้าใหม่",
 	"Preparing your theme…": "กำลังเตรียมธีมของคุณ…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "ธีมยังไม่สามารถเริ่มทำงานได้ คุณสามารถใช้มุมมองเริ่มต้นต่อไปหรือลองอีกครั้ง",
+	"2FA has been updated, and your theme can start only after the other 2FA pages are closed. Close them, including the installed app, then select Retry.": "2FA ได้รับการอัปเดตแล้ว ธีมจะเริ่มทำงานได้หลังจากปิดหน้า 2FA อื่นทั้งหมด ปิดหน้าเหล่านั้นรวมถึงแอปที่ติดตั้งไว้ แล้วเลือก ลองอีกครั้ง",
 	"The theme stopped. Open safe mode to continue using 2FA.": "ธีมหยุดทำงานแล้ว เปิดโหมดปลอดภัยเพื่อใช้งาน 2FA ต่อไป",
 	"Loading {module} timed out. Check your connection and try again.": "การโหลด {module} หมดเวลา โปรดตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง",
 	"Version history ({count})": "ประวัติเวอร์ชัน ({count})",

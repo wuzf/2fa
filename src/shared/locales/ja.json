@@ -1844,6 +1844,7 @@
 	"Reload page": "ページを再読み込み",
 	"Preparing your theme…": "テーマを準備中…",
 	"Your theme cannot start yet. You can keep using the default view or try again.": "テーマをまだ起動できません。標準画面を使い続けるか、再試行できます。",
+	"2FA has been updated, and your theme can start only after the other 2FA pages are closed. Close them, including the installed app, then select Retry.": "2FA が更新されました。テーマはほかの 2FA ページをすべて閉じた後に起動できます。インストールしたアプリも含めてほかのページを閉じてから、「再試行」を選んでください。",
 	"The theme stopped. Open safe mode to continue using 2FA.": "テーマが停止しました。セーフモードを開いて 2FA の使用を続けてください。",
 	"Loading {module} timed out. Check your connection and try again.": "{module} の読み込みがタイムアウトしました。接続を確認して、もう一度お試しください。",
 	"Version history ({count})": "バージョン履歴（{count}）",

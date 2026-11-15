@@ -139,6 +139,32 @@ describe('stored page that the server has replaced', () => {
 	});
 });
 
+describe('preparing a saved appearance before the reload', () => {
+	function preparing(answers) {
+		const h = fixture('app');
+		h.window.computeAppShellConfigId = async () => 'e'.repeat(64);
+		h.transport.controllerAnswers = vi.fn(async () => answers);
+		return h;
+	}
+	it('does not wait for a worker from before 2.0 while an update waits to replace it', async () => {
+		const h = preparing(false);
+		h.navigator.serviceWorker.getRegistration = async () => ({ active: {}, waiting: {} });
+		expect(await h.window.prepareAppearanceRuntime(h.window.__2FA_APPEARANCE__)).toEqual({ status: 'blocked', reason: 'legacy-worker' });
+		expect(h.transport.prepare).not.toHaveBeenCalled();
+	});
+	it('prepares through a worker that answers, and asks only while an update waits', async () => {
+		const h = preparing(true);
+		h.navigator.serviceWorker.getRegistration = async () => ({ active: {}, waiting: {} });
+		expect((await h.window.prepareAppearanceRuntime(h.window.__2FA_APPEARANCE__)).status).toBe('ready');
+		expect(h.transport.prepare).toHaveBeenCalledWith(expect.objectContaining({ mode: 'app' }), { expectedShellConfigId: 'e'.repeat(64) });
+		h.navigator.serviceWorker.getRegistration = async () => ({ active: {} });
+		h.transport.controllerAnswers.mockClear();
+		expect((await h.window.prepareAppearanceRuntime(h.window.__2FA_APPEARANCE__)).status).toBe('ready');
+		expect(h.transport.controllerAnswers).not.toHaveBeenCalled();
+		expect(h.transport.prepare).toHaveBeenCalledTimes(2);
+	});
+});
+
 describe('emitted PWA runtime startup', () => {
 	it('publishes worker preparation progress without treating it as an execution permit', () => {
 		const h = fixture();

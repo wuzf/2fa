@@ -47,6 +47,8 @@ export const APPEARANCE_LOCALES = {
 		appearanceRuntimeMounting: 'Starting the theme interface…',
 		appearanceUseDefault: 'Use default interface',
 		appearanceRuntimeUnavailable: 'Your theme cannot start yet. You can keep using the default view or try again.',
+		appearanceRuntimeOtherPages:
+			'2FA has been updated, and your theme can start only after the other 2FA pages are closed. Close them, including the installed app, then select Retry.',
 		appearanceRuntimeRecovery: 'The theme stopped. Open safe mode to continue using 2FA.',
 		appearanceImportFormat: 'Theme format',
 		appearanceStyleTheme: 'Style and layout',
@@ -188,6 +190,8 @@ export const APPEARANCE_LOCALES = {
 		appearanceRuntimeMounting: '正在启动主题界面…',
 		appearanceUseDefault: '使用默认界面',
 		appearanceRuntimeUnavailable: '主题暂时无法启动，可继续使用默认界面或重试。',
+		appearanceRuntimeOtherPages:
+			'2FA 已更新，主题要等其他 2FA 页面都关闭后才能启动。请关闭其他 2FA 页面（包括安装到桌面或手机的 2FA），再点“重试”。',
 		appearanceRuntimeRecovery: '主题已停止运行，请进入安全模式继续使用 2FA。',
 		appearanceImportFormat: '主题格式',
 		appearanceStyleTheme: '样式和布局',
@@ -327,6 +331,8 @@ export const APPEARANCE_LOCALES = {
 		appearanceRuntimeMounting: '正在啟動主題介面…',
 		appearanceUseDefault: '使用預設介面',
 		appearanceRuntimeUnavailable: '主題暫時無法啟動，可繼續使用預設介面或重試。',
+		appearanceRuntimeOtherPages:
+			'2FA 已更新，主題要等其他 2FA 頁面都關閉後才能啟動。請關閉其他 2FA 頁面（包括安裝到桌面或手機的 2FA），再點「重試」。',
 		appearanceRuntimeRecovery: '主題已停止執行，請進入安全模式繼續使用 2FA。',
 		appearanceImportFormat: '主題格式',
 		appearanceStyleTheme: '樣式與版面',

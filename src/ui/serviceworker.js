@@ -1376,6 +1376,12 @@ async function activeRuntimeBuild() {
     try { active.postMessage({type:'RUNTIME_PROTOCOL_INFO',nonce},[channel.port2]); } catch { finish(null); }
   });
 }
+// A worker from before the runtime protocol cannot hand its pages over. It is replaced only while
+// the asking page is the only one open, and that page reloads right after.
+async function onlyWindow(clientId) {
+  const windows = await self.clients.matchAll({type:'window',includeUncontrolled:true});
+  return windows.length === 1 && windows[0].id === clientId;
+}
 async function handleRuntimeRequest(event, type = event.data?.type) {
   const request = event.data || {};
   const echo = {protocol:'2fa-runtime-v1',nonce:request.nonce,generation:request.generation,tuple:request.tuple,workerBuild:BUILD_ID};
@@ -1389,11 +1395,19 @@ async function handleRuntimeRequest(event, type = event.data?.type) {
     else if (type === 'RUNTIME_STARTED') result = await runtimeSnapshots.markStartup(request.tuple,event.source.id,request);
     else if (type === 'RUNTIME_ACTIVATE') {
       const activeWorkerBuild = await activeRuntimeBuild();
-      if (!activeWorkerBuild || activeWorkerBuild === BUILD_ID) result = {status:'blocked',reason:'legacy-or-current-worker'};
+      if (!self.registration?.active || activeWorkerBuild === BUILD_ID) result = {status:'blocked',reason:'legacy-or-current-worker'};
+      else if (!activeWorkerBuild && !(await onlyWindow(event.source.id))) result = {status:'blocked',reason:'other-pages-open'};
       else {
+        // Preparing first also keeps an offline page on the worker it has.
         const prepared = await runtimeSnapshots.prepareServerRuntime(event.source.id);
-        result = prepared.status === 'ready'
-          ? await runtimeSnapshots.activation({activeWorkerBuild,skipWaiting:()=>self.skipWaiting()}) : prepared;
+        if (prepared.status !== 'ready') result = prepared;
+        else if (activeWorkerBuild) result = await runtimeSnapshots.activation({activeWorkerBuild,skipWaiting:()=>self.skipWaiting()});
+        // Another page may have opened during the download.
+        else if (!(await onlyWindow(event.source.id))) result = {status:'blocked',reason:'other-pages-open'};
+        else {
+          await self.skipWaiting();
+          result = {status:'ready',reason:'activation-requested'};
+        }
       }
     }
     else throw new Error('unknown-runtime-request');

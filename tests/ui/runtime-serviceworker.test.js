@@ -217,3 +217,73 @@ describe('emitted SW runtime admission and fetch paths', () => {
 		expect(h.requests).toContain(origin + '/theme-packages/' + packageId + '/chunks/history.js');
 	});
 });
+
+describe('replacing a worker from before the runtime protocol', () => {
+	async function legacyFixture() {
+		const h = await fixture();
+		// A worker from before 2.0 ignores runtime messages instead of answering them.
+		h.self.registration.active = { postMessage: () => {} };
+		return h;
+	}
+	async function activate(h) {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			const answer = h.message({ type: 'RUNTIME_ACTIVATE', protocol: '2fa-runtime-v1', nonce: 'activate-12345678', generation: 1 });
+			await vi.advanceTimersByTimeAsync(3000);
+			vi.useRealTimers();
+			return await answer;
+		} finally {
+			vi.useRealTimers();
+		}
+	}
+	it('activates after preparing the server theme while the asking page is the only one open', async () => {
+		const h = await legacyFixture();
+		h.live.push({ id: 'real-tab' }, { id: 'other-tab' });
+		expect(await activate(h)).toMatchObject({ status: 'blocked', reason: 'other-pages-open' });
+		// Nothing is downloaded while another page keeps the old worker.
+		expect(h.requests).toEqual([]);
+		expect(h.self.skipWaiting).not.toHaveBeenCalled();
+		h.live.splice(1);
+		expect(await activate(h)).toMatchObject({ status: 'ready', reason: 'activation-requested' });
+		expect(h.self.skipWaiting).toHaveBeenCalledOnce();
+		expect(h.requests).toContain(origin + '/');
+		expect(h.requests).toContain(origin + '/theme-packages/' + packageId + '/chunks/history.js');
+		const state = await h.index.read();
+		expect(state.snapshots[state.active].tuple).toEqual(h.current.tuple);
+	});
+	it('keeps the old worker when the server cannot be reached', async () => {
+		const h = await legacyFixture();
+		h.live.push({ id: 'real-tab' });
+		h.intercept(async () => {
+			throw new TypeError('Failed to fetch');
+		});
+		expect((await activate(h)).status).toBe('blocked');
+		expect(h.self.skipWaiting).not.toHaveBeenCalled();
+	});
+	it('keeps the old worker when another page opened during the download', async () => {
+		const h = await legacyFixture();
+		h.live.push({ id: 'real-tab' });
+		h.intercept(async (address) => {
+			if (new URL(address).pathname === '/') {
+				h.live.push({ id: 'new-tab' });
+			}
+			return null;
+		});
+		expect(await activate(h)).toMatchObject({ status: 'blocked', reason: 'other-pages-open' });
+		expect(h.self.skipWaiting).not.toHaveBeenCalled();
+	});
+	it('still refuses to activate over its own build', async () => {
+		const h = await fixture();
+		h.self.registration.active = {
+			postMessage: (request, ports) => ports[0].postMessage({ protocol: '2fa-runtime-v1', nonce: request.nonce, workerBuild: buildId }),
+		};
+		h.live.push({ id: 'real-tab' });
+		expect(
+			await h.message({ type: 'RUNTIME_ACTIVATE', protocol: '2fa-runtime-v1', nonce: 'activate-12345678', generation: 1 }),
+		).toMatchObject({
+			status: 'blocked',
+			reason: 'legacy-or-current-worker',
+		});
+		expect(h.self.skipWaiting).not.toHaveBeenCalled();
+	});
+});

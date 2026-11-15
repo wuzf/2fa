@@ -1015,8 +1015,9 @@ function appearanceEditorClient(createAppearanceDraft, themeGuideUrl) {
 			}),
 		]);
 		clearTimeout(timer);
-		// No worker means nothing can be prepared; the switch goes ahead as before.
-		if (!result || result.status === 'ready') {
+		// No worker means nothing can be prepared; the switch goes ahead as before. So does a worker
+		// from before 2.0: the update that replaces it on the reload prepares the theme instead.
+		if (!result || result.status === 'ready' || result.reason === 'legacy-worker') {
 			return;
 		}
 		const target = clone(state.draft);

@@ -196,6 +196,54 @@ describe('runtime transport permit lifecycle', () => {
 	});
 });
 
+describe('telling a controller from before the runtime protocol apart', () => {
+	const answer = (h, index, changes = {}) =>
+		h.requests[index].port.postMessage({
+			protocol: '2fa-runtime-v1',
+			nonce: h.requests[index].request.nonce,
+			workerBuild: tuple.hostBuild,
+			...changes,
+		});
+	it('asks the controller once and remembers that it answers', async () => {
+		const h = fixture();
+		const asking = h.t.controllerAnswers();
+		expect(h.requests[0].request.type).toBe('RUNTIME_PROTOCOL_INFO');
+		answer(h, 0);
+		expect(await asking).toBe(true);
+		expect(await h.t.controllerAnswers()).toBe(true);
+		expect(h.requests).toHaveLength(1);
+	});
+	it('reports a silent controller after the timeout and asks again the next time', async () => {
+		vi.useFakeTimers();
+		const h = fixture();
+		const asking = h.t.controllerAnswers();
+		// An answer to another question does not count.
+		answer(h, 0, { nonce: 'other-question' });
+		await vi.advanceTimersByTimeAsync(3999);
+		answer(h, 0, { protocol: 'other-protocol' });
+		await vi.advanceTimersByTimeAsync(1);
+		expect(await asking).toBe(false);
+		const again = h.t.controllerAnswers();
+		expect(h.requests).toHaveLength(2);
+		answer(h, 1);
+		expect(await again).toBe(true);
+	});
+	it('asks a new controller again and needs no question without one', async () => {
+		const h = fixture();
+		const first = h.t.controllerAnswers();
+		answer(h, 0);
+		await first;
+		h.serviceWorker.controller = { postMessage: h.worker.postMessage };
+		const second = h.t.controllerAnswers();
+		expect(h.requests).toHaveLength(2);
+		answer(h, 1);
+		expect(await second).toBe(true);
+		h.serviceWorker.controller = null;
+		expect(await h.t.controllerAnswers()).toBe(false);
+		expect(h.requests).toHaveLength(2);
+	});
+});
+
 describe('verified cached ATTACH admission', () => {
 	it('uses an old worker ATTACH reply directly and establishes STARTED proof before ready observers run', async () => {
 		const h = fixture();

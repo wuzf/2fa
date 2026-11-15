@@ -29,6 +29,9 @@ export function getPWACode() {
     window.prepareAppearanceRuntime = async appearance => {
       if (!navigator.serviceWorker?.controller || typeof window.computeAppShellConfigId !== 'function' ||
           !/^[a-f0-9]{64}$/.test(window.__2FA_BUILD_ID__ || '')) return null;
+      // A worker from before 2.0 never answers. The waiting update replaces it on the reload and prepares the theme itself.
+      const registration = await navigator.serviceWorker.getRegistration?.().catch(() => null);
+      if (registration?.waiting && !(await window.twofaRuntimeTransport.controllerAnswers())) return {status:'blocked',reason:'legacy-worker'};
       const expectedShellConfigId = await window.computeAppShellConfigId(appearance);
       return window.twofaRuntimeTransport.prepare(getCurrentRuntimeTuple(null, appearance), {expectedShellConfigId});
     };
