@@ -230,8 +230,6 @@ await writeFile('release/2fa-theme.zip', zipSync(entries));
 
 ### PR 上架到社区目录
 
-社区仓库当前暂为私有，公开投稿与应用内目录读取尚未开放。作者可以先独立开发，并通过下节的个人导入方式使用主题；仓库公开后按以下流程上架。
-
 主题公共仓库为 **[wuzf/2fa-theme-mytheme](https://github.com/wuzf/2fa-theme-mytheme)**。作者在自己的仓库开发和构建，向公共仓库提交 PR，收录完整产物：
 
 ```text
