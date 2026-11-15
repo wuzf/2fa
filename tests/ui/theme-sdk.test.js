@@ -207,6 +207,19 @@ describe('host about data', () => {
 		expect(fixture({ host: { about: { latestVersion: '2.0.0' } } }).sdk.getSnapshot().host.about).toBeNull();
 	});
 
+	it('lists About after the theme settings, where themes show it last among the settings', () => {
+		const ids = createHostFlows()
+			.listActions()
+			.map((action) => action.actionId);
+		expect(ids.slice(ids.indexOf('settings:security'), ids.indexOf('settings:custom-code') + 1)).toEqual([
+			'settings:security',
+			'settings:preferences',
+			'settings:sync',
+			'settings:custom-code',
+		]);
+		expect(ids.indexOf('settings:about')).toBe(ids.indexOf('appearance') + 1);
+	});
+
 	it('opens the about section of the settings', async () => {
 		const settings = vi.fn(() => ({ status: 'completed' }));
 		const host = createHostFlows({ handlers: { settings } });

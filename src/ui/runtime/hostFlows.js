@@ -157,23 +157,28 @@ export function createHostFlows(ports = {}) {
 			'custom-code': 'settingsTabCustomCode',
 			about: 'settingsTabAbout',
 		};
-		return Object.freeze(
-			definitions.flatMap(([kind, labelKey, parameter]) => {
-				const values = parameter === 'tool' ? tools : parameter === 'provider' ? providers : parameter === 'section' ? sections : [null];
-				return values.map((value) => {
-					const request = { kind, ...(value ? { [parameter]: value } : {}) };
-					const reason = availability(request);
-					return Object.freeze({
-						actionId: kind + (value ? ':' + value : ''),
-						labelKey: labels[value] || labelKey,
-						request: Object.freeze(request),
-						requires: parameter === 'account' || parameter === 'operationId' ? parameter : null,
-						enabled: !reason,
-						reason,
-					});
+		const actions = definitions.flatMap(([kind, labelKey, parameter]) => {
+			const values = parameter === 'tool' ? tools : parameter === 'provider' ? providers : parameter === 'section' ? sections : [null];
+			return values.map((value) => {
+				const request = { kind, ...(value ? { [parameter]: value } : {}) };
+				const reason = availability(request);
+				return Object.freeze({
+					actionId: kind + (value ? ':' + value : ''),
+					labelKey: labels[value] || labelKey,
+					request: Object.freeze(request),
+					requires: parameter === 'account' || parameter === 'operationId' ? parameter : null,
+					enabled: !reason,
+					reason,
 				});
-			}),
-		);
+			});
+		});
+		// Themes list the settings in this order: About closes them, after the theme settings.
+		const about = actions.findIndex((action) => action.actionId === 'settings:about');
+		const appearance = actions.findIndex((action) => action.actionId === 'appearance');
+		if (about >= 0 && appearance > about) {
+			actions.splice(appearance, 0, actions.splice(about, 1)[0]);
+		}
+		return Object.freeze(actions);
 	}
 	function open(request, options = {}, guard = {}) {
 		const validated = validate(request);
