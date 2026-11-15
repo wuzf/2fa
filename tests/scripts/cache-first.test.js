@@ -46,7 +46,7 @@ async function flush() {
 	}
 }
 
-function harness({ cached, online = true } = {}) {
+function harness({ cached, online = true, view = true } = {}) {
 	document.body.innerHTML =
 		'<div id="loading">正在加载密钥</div><div id="secretsList"></div><div id="emptyState"></div><input id="searchInput">';
 	const values = new Map(cached === undefined ? [] : [[CACHE_KEY, JSON.stringify({ data: cached, timestamp: 1 })]]);
@@ -108,9 +108,12 @@ function harness({ cached, online = true } = {}) {
 			},
 		},
 	});
-	const official = createOfficialAccountView({ document, window, sdk: runtime.sdk, renderer: createAccountRenderer(), translate: api.t });
+	// Thousands of real cards take gigabytes in happy-dom, so tests that only check reads leave them out.
+	const official = view
+		? createOfficialAccountView({ document, window, sdk: runtime.sdk, renderer: createAccountRenderer(), translate: api.t })
+		: null;
 	disposers.push(() => {
-		official.dispose();
+		official?.dispose();
 		runtime.dispose();
 		viewState.dispose();
 	});
@@ -390,13 +393,13 @@ describe('main-page cache-first account reads', () => {
 	});
 
 	it('restores more than 5000 accounts from the persisted web cache on an offline reopen', async () => {
-		const h = harness();
+		const h = harness({ view: false });
 		const records = Array.from({ length: 5001 }, (_, index) => ({ ...ACCOUNT, id: String(index) }));
 		h.fetch.mockResolvedValueOnce(response(records));
 		await h.loadSecrets();
 		expect(h.getSecrets()).toHaveLength(5001);
 
-		const reopened = harness({ cached: h.readCache().data, online: false });
+		const reopened = harness({ cached: h.readCache().data, online: false, view: false });
 		await reopened.loadSecrets();
 		expect(reopened.getSecrets()).toEqual(records);
 		expect(reopened.render).toHaveBeenCalledOnce();
